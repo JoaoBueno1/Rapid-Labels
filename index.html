@@ -10,7 +10,7 @@
 </head>
 <body>
     <div class="main-container">
-        <h1>📦 Rapid Label Printer</h1>
+        <h1>📦 Rapid Label</h1>
         <div class="button-group">
             <button class="main-btn search-btn" onclick="openSearchModal()">
                 🔍 Search Product
@@ -28,7 +28,7 @@
             <h2>🔍 Search Product</h2>
             
             <div class="search-section">
-                <label for="productSearch">Enter product code, SKU:</label>
+                <label for="productSearch">Enter product Code, SKU:</label>
                 <div class="search-input-group">
                     <input type="text" id="productSearch" placeholder="Ex: 30429 or R1069-BK">
                     <button onclick="searchProduct()" class="search-btn-small">Search</button>
@@ -50,41 +50,39 @@
                     </div>
                 </div>
 
-                <div class="editable-fields">
-                    <div class="field-row">
+                <form id="searchForm">
+                    <div class="manual-fields">
                         <div class="field-group">
                             <label for="editQty">QTY: *</label>
-                            <input type="text" id="editQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" inputmode="numeric" pattern="[0-9]*">
+                            <input type="number" id="editQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" autocomplete="off">
+                            <div class="error" id="editQtyError"></div>
                         </div>
                         <div class="field-group">
                             <label for="editDate">Date:</label>
                             <input type="date" id="editDate">
                         </div>
                     </div>
-                </div>
-
-                <div class="size-selection">
-                    <label>Select size: *</label>
-                    <div class="size-buttons">
-                        <button class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
-                        <button class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
+                    <div class="size-selection">
+                        <label>Select size: *</label>
+                        <div class="size-buttons">
+                            <button class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
+                            <button class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
+                        </div>
                     </div>
-                </div>
-
-                <div class="pages-selection">
-                    <label>Number of pages: *</label>
-                    <div class="pages-input">
-                        <button onclick="decreasePages()" class="pages-btn">▼</button>
-                        <input type="number" id="pagesCount" value="1" min="1" readonly>
-                        <button onclick="increasePages()" class="pages-btn">▲</button>
+                    <div class="pages-selection">
+                        <label>Number of pages: *</label>
+                        <div class="pages-input">
+                            <button onclick="decreasePages()" class="pages-btn">▼</button>
+                            <input type="number" id="pagesCount" value="1" min="1" readonly>
+                            <button onclick="increasePages()" class="pages-btn">▲</button>
+                        </div>
                     </div>
-                </div>
-
-                <div class="print-section">
-                    <button id="printSearchBtn" class="print-btn disabled" onclick="printSearchLabel()">
-                        🖨️ Print
-                    </button>
-                </div>
+                    <div class="print-section">
+                        <button id="printSearchBtn" class="print-btn disabled" onclick="printSearchLabel()">
+                            🖨️ Print
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

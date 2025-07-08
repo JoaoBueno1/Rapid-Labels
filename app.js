@@ -100,7 +100,7 @@ async function performSearch() {
     resultsDiv.innerHTML = '';
     errorDiv.textContent = '';
     
-    if (searchTerm.length < 2) {
+    if (searchTerm.length < 3) {
         return;
     }
     
@@ -327,24 +327,8 @@ function setupValidation() {
     }
     
     // Special handling for QTY fields - limit to 5 digits (max 99999)
-    const qtyFields = ['editQty', 'manualQty'];
-    qtyFields.forEach(fieldId => {
-        const field = document.getElementById(fieldId);
-        if (field) {
-            field.addEventListener('input', function(e) {
-                // Remove non-numeric characters
-                this.value = this.value.replace(/[^0-9]/g, '');
-                // Limit to 5 digits
-                if (this.value.length > 5) {
-                    this.value = this.value.slice(0, 5);
-                }
-                // Limit to 99999
-                if (parseInt(this.value) > 99999) {
-                    this.value = 99999;
-                }
-            });
-        }
-    });
+    // Para type=number, não precisa JS para bloquear letras, o input já faz isso
+    // Só adiciona validação visual e alerta no submit
 }
 
 function validateField(fieldId) {
@@ -372,6 +356,12 @@ function validateField(fieldId) {
             isValid = false;
             errorMessage = 'SKU must be exactly 5 digits';
         }
+    } else if (fieldId === 'editQty' || fieldId === 'manualQty') {
+        // Show error if not a valid number
+        if (field.value && !/^\d+$/.test(field.value)) {
+            isValid = false;
+            errorMessage = 'Only numbers are allowed';
+        }
     }
     
     if (errorDiv) {
@@ -386,19 +376,15 @@ function validateField(fieldId) {
 
 function validateSearchForm() {
     const qty = document.getElementById('editQty').value;
-    
     if (!selectedProduct) {
         return false;
     }
-    
-    if (!qty || parseInt(qty) < 1) {
+    if (!qty || !qty.trim() || parseInt(qty) < 1) {
         return false;
     }
-    
     if (!selectedSearchSize) {
         return false;
     }
-    
     return true;
 }
 
