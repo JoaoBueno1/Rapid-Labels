@@ -68,16 +68,16 @@
                     <div class="size-selection">
                         <label>Select size: *</label>
                         <div class="size-buttons">
-                            <button class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
-                            <button class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
+                            <button type="button" class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
+                            <button type="button" class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
                         </div>
                     </div>
                     <div class="pages-selection">
                         <label>Number of pages: *</label>
                         <div class="pages-input">
-                            <button onclick="decreasePages()" class="pages-btn">▼</button>
+                            <button type="button" onclick="decreasePages()" class="pages-btn">▼</button>
                             <input type="number" id="pagesCount" value="1" min="1" readonly>
-                            <button onclick="increasePages()" class="pages-btn">▲</button>
+                            <button type="button" onclick="increasePages()" class="pages-btn">▲</button>
                         </div>
                     </div>
                     <div class="print-section">
