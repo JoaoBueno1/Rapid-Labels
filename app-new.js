@@ -1,13 +1,13 @@
-// Global variables
+// Variáveis globais
 let selectedSearchSize = null;
 let selectedManualSize = null;
 let searchPages = 1;
 let manualPages = 1;
 let selectedProduct = null;
 
-// Page load initialization
+// Inicialização quando a página carrega
 document.addEventListener('DOMContentLoaded', function() {
-    // Set current date as default
+    // Set data atual como padrão
     const today = new Date().toISOString().split('T')[0];
     const editDateInput = document.getElementById('editDate');
     const manualDateInput = document.getElementById('manualDate');
@@ -15,13 +15,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (editDateInput) editDateInput.value = today;
     if (manualDateInput) manualDateInput.value = today;
     
-    // Event listeners for manual form
+    // Event listeners para formulário manual
     const manualForm = document.getElementById('manualForm');
     if (manualForm) {
         manualForm.addEventListener('submit', handleManualSubmit);
     }
     
-    // Event listener for real-time search
+    // Event listener para busca em tempo real
     const searchInput = document.getElementById('productSearch');
     if (searchInput) {
         searchInput.addEventListener('input', debounce(performSearch, 300));
@@ -32,11 +32,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Event listeners for real-time validation
+    // Event listeners para validação em tempo real
     setupValidation();
 });
 
-// Debounce function to limit API calls
+// Função debounce para limitar chamadas de API
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -76,13 +76,13 @@ function resetSearchModal() {
     selectedProduct = null;
 }
 
-// Real-time search as user types
+// Busca em tempo real conforme digita
 async function performSearch() {
     const searchTerm = document.getElementById('productSearch').value.trim();
     const resultsDiv = document.getElementById('searchResults');
     const errorDiv = document.getElementById('searchError');
     
-    // Clear previous results
+    // Limpa resultados anteriores
     resultsDiv.innerHTML = '';
     errorDiv.textContent = '';
     
@@ -91,33 +91,28 @@ async function performSearch() {
     }
     
     try {
-        // Show loading
+        // Mostra loading
         resultsDiv.innerHTML = '<div class="loading">🔍 Searching...</div>';
         
-        console.log('🔍 Starting search for:', searchTerm);
+        // Busca no Supabase
+        const results = await window.supabaseSearch.searchProducts(searchTerm);
         
-        // Search in Supabase
-        const result = await window.supabaseSearch.searchProduct(searchTerm);
-        
-        console.log('📊 Results received:', result);
-        
-        if (!result.success) {
+        if (results.length === 0) {
             resultsDiv.innerHTML = '<div class="no-results">❌ No products found</div>';
-            errorDiv.textContent = result.error || 'No products found';
             return;
         }
         
-        // Show results - convert single product to array format for compatibility
-        displaySearchResults([result.product]);
+        // Mostra resultados
+        displaySearchResults(results);
         
     } catch (error) {
         console.error('Search error:', error);
-        errorDiv.textContent = `❌ Search error: ${error.message}`;
+        errorDiv.textContent = '❌ Search error. Please check your connection.';
         resultsDiv.innerHTML = '';
     }
 }
 
-// Display search results
+// Exibe os resultados da busca
 function displaySearchResults(results) {
     const resultsDiv = document.getElementById('searchResults');
     
@@ -135,33 +130,33 @@ function displaySearchResults(results) {
     resultsDiv.innerHTML = html;
 }
 
-// Select a product from search results
+// Seleciona um produto dos resultados
 async function selectProduct(sku, code) {
     try {
-        // Get complete product details
-        const result = await window.supabaseSearch.searchBySKU(sku);
+        // Busca detalhes completos do produto
+        const product = await window.supabaseSearch.searchBySKU(sku);
         
-        if (!result.success) {
-            document.getElementById('searchError').textContent = result.error || '❌ Product not found';
+        if (!product) {
+            document.getElementById('searchError').textContent = '❌ Product not found';
             return;
         }
         
-        selectedProduct = result.product;
+        selectedProduct = product;
         
-        // Fill product details
-        document.getElementById('foundSku').textContent = result.product.sku;
-        document.getElementById('foundCode').textContent = result.product.code;
+        // Preenche os detalhes do produto
+        document.getElementById('foundSku').textContent = product.sku;
+        document.getElementById('foundCode').textContent = product.code;
         
-        // Fill default QTY if available
-        if (result.product.qty) {
-            document.getElementById('editQty').value = result.product.qty;
+        // Preenche QTY padrão se disponível
+        if (product.qty) {
+            document.getElementById('editQty').value = product.qty;
         }
         
-        // Show details section
+        // Mostra a seção de detalhes
         document.getElementById('productDetails').classList.remove('hidden');
         document.getElementById('searchResults').innerHTML = '';
         
-        // Focus on QTY field
+        // Foca no campo QTY
         document.getElementById('editQty').focus();
         
         updatePrintButton('search');
@@ -172,7 +167,7 @@ async function selectProduct(sku, code) {
     }
 }
 
-// Search product (search button)
+// Busca produto (botão search)
 async function searchProduct() {
     await performSearch();
 }

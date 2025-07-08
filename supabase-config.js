@@ -1,81 +1,178 @@
-// Configuração do Supabase
-// IMPORTANTE: Substitua as variáveis abaixo pelas suas credenciais do Supabase
+// Supabase Configuration
+// IMPORTANT: Replace the variables below with your Supabase credentials
 
-const SUPABASE_URL = 'YOUR_SUPABASE_URL'; // Ex: https://xyzcompany.supabase.co
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'; // Sua chave pública do Supabase
+const SUPABASE_URL = 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5NTc5MzQsImV4cCI6MjA2NzUzMzkzNH0.k3G4Tc6U7XdYGmU9wTkcg3R1cLRij-CN6EbjSSbd9bE';
 
-// Inicializar cliente Supabase
+// Initialize Supabase client
 const { createClient } = supabase;
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Função para buscar produtos por SKU ou CODE
-async function searchProducts(searchTerm) {
+// Export the supabase client globally for debugging
+window.supabase = supabaseClient;
+
+// Main search function using confirmed table structure: Products with SKU and Code columns
+async function searchProduct(searchTerm) {
+    console.log('🔍 Searching for:', searchTerm);
+    
+    if (!searchTerm || searchTerm.trim() === '') {
+        console.log('❌ Empty search term');
+        return { success: false, error: 'Search term is required' };
+    }
+
     try {
-        // Busca tanto por SKU quanto por CODE
-        const { data, error } = await supabaseClient
-            .from('Palltes Labels') // Nome da sua tabela
-            .select('*')
-            .or(`sku.ilike.%${searchTerm}%,code.ilike.%${searchTerm}%`)
-            .limit(10); // Limita a 10 resultados para performance
+        console.log('🔄 Searching in Products table with SKU and Code columns');
+        
+        const { data, error, count } = await supabaseClient
+            .from('Products')
+            .select('*', { count: 'exact' })
+            .or(`SKU.ilike.%${searchTerm}%,Code.ilike.%${searchTerm}%`)
+            .limit(10);
 
         if (error) {
-            console.error('Erro ao buscar produtos:', error);
-            return [];
+            console.log('❌ Database error:', error.message);
+            return { 
+                success: false, 
+                error: `Database error: ${error.message}`,
+                searchTerm: searchTerm
+            };
         }
 
-        return data || [];
-    } catch (error) {
-        console.error('Erro na conexão com Supabase:', error);
-        return [];
+        console.log(`✅ Query successful! Found ${count} total matches`);
+        console.log('📊 Data:', data);
+
+        if (data && data.length > 0) {
+            // Found results, return the first match
+            const product = data[0];
+            console.log('🎯 Selected product:', product);
+            
+            return {
+                success: true,
+                product: {
+                    sku: product.SKU || '',
+                    code: product.Code || '',
+                    name: product.name || product.nome || product.Name || product.Nome || 'Product Name',
+                    description: product.description || product.descricao || product.Description || product.Descricao || 'Product Description'
+                }
+            };
+        } else {
+            console.log('ℹ️ No products found matching the search term');
+            return { 
+                success: false, 
+                error: 'No products found matching your search',
+                searchTerm: searchTerm
+            };
+        }
+
+    } catch (err) {
+        console.log('� Exception during search:', err.message);
+        return { 
+            success: false, 
+            error: `Search failed: ${err.message}`,
+            searchTerm: searchTerm
+        };
     }
 }
 
-// Função para buscar produto específico por SKU (para scanner)
+// Search specifically by SKU
 async function searchBySKU(sku) {
     try {
+        console.log('🔍 Searching by SKU:', sku);
+        
         const { data, error } = await supabaseClient
-            .from('Palltes Labels')
+            .from('Products')
             .select('*')
-            .eq('sku', sku)
-            .single(); // Retorna apenas um resultado
-
-        if (error) {
-            console.error('Erro ao buscar por SKU:', error);
-            return null;
-        }
-
-        return data;
-    } catch (error) {
-        console.error('Erro na busca por SKU:', error);
-        return null;
-    }
-}
-
-// Função para buscar produto específico por CODE
-async function searchByCode(code) {
-    try {
-        const { data, error } = await supabaseClient
-            .from('Palltes Labels')
-            .select('*')
-            .eq('code', code)
+            .eq('SKU', sku)
             .single();
 
-        if (error) {
-            console.error('Erro ao buscar por CODE:', error);
+        if (!error && data) {
+            console.log('✅ SKU found:', data);
+            return {
+                success: true,
+                product: {
+                    sku: data.SKU || '',
+                    code: data.Code || '',
+                    name: data.name || data.nome || data.Name || data.Nome || 'Product Name',
+                    description: data.description || data.descricao || data.Description || data.Descricao || 'Product Description'
+                }
+            };
+        }
+        
+        console.log('❌ SKU not found');
+        return { success: false, error: 'SKU not found' };
+    } catch (error) {
+        console.error('❌ Error searching by SKU:', error);
+        return { success: false, error: `SKU search failed: ${error.message}` };
+    }
+}
+
+// Search specifically by Code
+async function searchByCode(code) {
+    try {
+        console.log('🔍 Searching by Code:', code);
+        
+        const { data, error } = await supabaseClient
+            .from('Products')
+            .select('*')
+            .eq('Code', code)
+            .single();
+
+        if (!error && data) {
+            console.log('✅ Code found:', data);
+            return {
+                success: true,
+                product: {
+                    sku: data.SKU || '',
+                    code: data.Code || '',
+                    name: data.name || data.nome || data.Name || data.Nome || 'Product Name',
+                    description: data.description || data.descricao || data.Description || data.Descricao || 'Product Description'
+                }
+            };
+        }
+        
+        console.log('❌ Code not found');
+        return { success: false, error: 'Code not found' };
+    } catch (error) {
+        console.error('❌ Error searching by Code:', error);
+        return { success: false, error: `Code search failed: ${error.message}` };
+    }
+}
+
+// Debug function to discover table structure
+async function discoverTableStructure() {
+    try {
+        console.log('🔍 Discovering table structure...');
+        
+        // Check the Products table
+        const { data, error } = await supabaseClient
+            .from('Products')
+            .select('*')
+            .limit(1);
+
+        if (!error && data && data.length > 0) {
+            console.log('✅ Products table found!');
+            console.log('📊 Table structure:', Object.keys(data[0]));
+            console.log('📝 Sample record:', data[0]);
+            return {
+                tableName: 'Products',
+                columns: Object.keys(data[0]),
+                sample: data[0]
+            };
+        } else {
+            console.log('❌ Products table not accessible:', error?.message || 'No data');
             return null;
         }
-
-        return data;
     } catch (error) {
-        console.error('Erro na busca por CODE:', error);
+        console.error('❌ Error discovering structure:', error);
         return null;
     }
 }
 
-// Exportar funções para uso em outros arquivos
+// Export functions for use in other files
 window.supabaseSearch = {
-    searchProducts,
+    searchProduct,
     searchBySKU,
     searchByCode,
-    client: supabaseClient
+    client: supabaseClient,
+    discoverTableStructure
 };

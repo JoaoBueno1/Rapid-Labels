@@ -28,10 +28,10 @@
             <h2>🔍 Search Product</h2>
             
             <div class="search-section">
-                <label for="productSearch">Enter product code (5 digits):</label>
+                <label for="productSearch">Enter SKU or CODE:</label>
                 <div class="search-input-group">
-                    <input type="text" id="productSearch" placeholder="Ex: 72452" maxlength="5" pattern="[0-9]{5}">
-                    <button onclick="searchProduct()" class="search-btn-small">Search</button>
+                    <input type="text" id="productSearch" placeholder="Ex: 72452 or R3118-REFLECTOR-AL">
+                    <button onclick="searchProduct()" class="search-btn-small">🔍 Search</button>
                 </div>
                 <div class="search-results" id="searchResults"></div>
                 <div class="search-error" id="searchError"></div>

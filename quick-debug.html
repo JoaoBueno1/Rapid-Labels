@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 Rapid Debug - Supabase Connection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        input {
+            padding: 10px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 200px;
+        }
+        
+        #output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug Supabase - Rapid Labels</h1>
+        
+        <h3>1. Teste de Conexão</h3>
+        <button onclick="testConnection()">Testar Conexão</button>
+        
+        <h3>2. Descobrir Estrutura</h3>
+        <button onclick="discoverStructure()">Descobrir Tabelas e Colunas</button>
+        
+        <h3>3. Buscar Produto</h3>
+        <input type="text" id="searchInput" placeholder="Digite SKU (ex: 10148)" value="10148">
+        <button onclick="searchProduct()">Buscar</button>
+        
+        <h3>4. Listar Primeiros Registros</h3>
+        <button onclick="listFirst10()">Listar 10 Primeiros</button>
+        
+        <div id="output">Aguardando teste...</div>
+    </div>
+
+    <script>
+        // Configuração do Supabase
+        const SUPABASE_URL = 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5NTc5MzQsImV4cCI6MjA2NzUzMzkzNH0.k3G4Tc6U7XdYGmU9wTkcg3R1cLRij-CN6EbjSSbd9bE';
+        
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        function log(message) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.textContent += `[${timestamp}] ${message}\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        async function testConnection() {
+            log('🔄 Testando conexão básica...');
+            try {
+                const { data, error } = await supabaseClient.auth.getSession();
+                if (error) {
+                    log(`❌ Erro de autenticação: ${error.message}`);
+                } else {
+                    log('✅ Conexão com Supabase estabelecida!');
+                }
+            } catch (error) {
+                log(`❌ Erro de conexão: ${error.message}`);
+            }
+        }
+        
+        async function discoverStructure() {
+            log('🔍 Descobrindo estrutura das tabelas...');
+            
+            const possibleNames = [
+                'Products',
+                'products', 
+                'Palltes Labels',
+                'palltes_labels', 
+                'labels',
+                'PalltesLabels',
+                'pallets_labels',
+                'pallets-labels'
+            ];
+            
+            for (const tableName of possibleNames) {
+                try {
+                    log(`📋 Testando tabela: "${tableName}"`);
+                    
+                    const { data, error } = await supabaseClient
+                        .from(tableName)
+                        .select('*')
+                        .limit(1);
+                    
+                    if (error) {
+                        log(`❌ Erro na tabela "${tableName}": ${error.message}`);
+                    } else if (data && data.length > 0) {
+                        log(`✅ TABELA ENCONTRADA: "${tableName}"`);
+                        log(`📊 Colunas: ${Object.keys(data[0]).join(', ')}`);
+                        log(`📝 Exemplo: ${JSON.stringify(data[0], null, 2)}`);
+                        return tableName;
+                    } else {
+                        log(`⚠️ Tabela "${tableName}" existe mas está vazia`);
+                    }
+                } catch (err) {
+                    log(`❌ Erro ao acessar "${tableName}": ${err.message}`);
+                }
+            }
+            
+            log('❌ Nenhuma tabela encontrada!');
+            return null;
+        }
+        
+        async function searchProduct() {
+            const searchTerm = document.getElementById('searchInput').value.trim();
+            if (!searchTerm) {
+                log('⚠️ Digite um termo para buscar');
+                return;
+            }
+            
+            log(`🔍 Buscando produto: "${searchTerm}"`);
+            
+            const possibleNames = ['Products', 'products', 'Palltes Labels', 'palltes_labels', 'labels'];
+            
+            for (const tableName of possibleNames) {
+                try {
+                    log(`📋 Buscando na tabela: "${tableName}"`);
+                    
+                    // Testa diferentes tipos de busca
+                    const searches = [
+                        { type: 'sku exact', query: supabaseClient.from(tableName).select('*').eq('sku', searchTerm) },
+                        { type: 'SKU exact', query: supabaseClient.from(tableName).select('*').eq('SKU', searchTerm) },
+                        { type: 'sku ilike', query: supabaseClient.from(tableName).select('*').ilike('sku', `%${searchTerm}%`) },
+                        { type: 'code exact', query: supabaseClient.from(tableName).select('*').eq('code', searchTerm) },
+                        { type: 'CODE exact', query: supabaseClient.from(tableName).select('*').eq('CODE', searchTerm) }
+                    ];
+                    
+                    for (const search of searches) {
+                        try {
+                            const { data, error } = await search.query.limit(5);
+                            
+                            if (!error && data && data.length > 0) {
+                                log(`✅ ENCONTRADO com ${search.type}!`);
+                                log(`📦 Resultados (${data.length}): ${JSON.stringify(data, null, 2)}`);
+                                return;
+                            } else if (error) {
+                                log(`❌ Erro com ${search.type}: ${error.message}`);
+                            }
+                        } catch (searchErr) {
+                            log(`❌ Erro na busca ${search.type}: ${searchErr.message}`);
+                        }
+                    }
+                    
+                } catch (tableErr) {
+                    log(`❌ Erro na tabela ${tableName}: ${tableErr.message}`);
+                }
+            }
+            
+            log(`❌ Produto "${searchTerm}" não encontrado em nenhuma tabela`);
+        }
+        
+        async function listFirst10() {
+            log('📋 Listando primeiros 10 registros...');
+            
+            const possibleNames = ['Products', 'products', 'Palltes Labels', 'palltes_labels', 'labels'];
+            
+            for (const tableName of possibleNames) {
+                try {
+                    log(`📋 Listando de: "${tableName}"`);
+                    
+                    const { data, error } = await supabaseClient
+                        .from(tableName)
+                        .select('*')
+                        .limit(10);
+                    
+                    if (!error && data) {
+                        log(`✅ ${data.length} registros encontrados na tabela "${tableName}":`);
+                        data.forEach((item, index) => {
+                            log(`${index + 1}. ${JSON.stringify(item)}`);
+                        });
+                        return;
+                    } else if (error) {
+                        log(`❌ Erro na tabela "${tableName}": ${error.message}`);
+                    }
+                } catch (err) {
+                    log(`❌ Erro ao listar "${tableName}": ${err.message}`);
+                }
+            }
+        }
+        
+        // Auto-test ao carregar
+        window.onload = function() {
+            log('🚀 Debug Supabase carregado. Use os botões para testar.');
+        };
+    </script>
+</body>
+</html>

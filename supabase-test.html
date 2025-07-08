@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Supabase Connection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        .output {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #007bff; }
+        .warning { color: #ffc107; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Test Supabase Connection & Discover Columns</h1>
+        
+        <button onclick="testConnection()">Test Connection</button>
+        <button onclick="discoverColumns()">Discover Products Table Columns</button>
+        <button onclick="getSampleData()">Get Sample Data (3 records)</button>
+        <button onclick="clearOutput()">Clear Output</button>
+        
+        <div id="output" class="output">
+            Ready to test Supabase connection...
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Direct Supabase configuration
+        const SUPABASE_URL = 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5NTc5MzQsImV4cCI6MjA2NzUzMzkzNH0.k3G4Tc6U7XdYGmU9wTkcg3R1cLRij-CN6EbjSSbd9bE';
+        
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type;
+            output.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = 'Output cleared...\n';
+        }
+
+        async function testConnection() {
+            clearOutput();
+            log('🚀 Testing Supabase connection...', 'info');
+            
+            try {
+                // Test basic connection
+                const { data, error } = await supabaseClient
+                    .from('Products')
+                    .select('*')
+                    .limit(1);
+
+                if (error) {
+                    log(`❌ Connection error: ${error.message}`, 'error');
+                    log(`Error details: ${JSON.stringify(error, null, 2)}`, 'error');
+                } else {
+                    log('✅ Connection successful!', 'success');
+                    if (data && data.length > 0) {
+                        log(`📊 Table "Products" exists and has data`, 'success');
+                    } else {
+                        log(`⚠️ Table "Products" exists but is empty`, 'warning');
+                    }
+                }
+            } catch (error) {
+                log(`❌ Unexpected error: ${error.message}`, 'error');
+            }
+        }
+
+        async function discoverColumns() {
+            clearOutput();
+            log('🔍 Discovering columns in "Products" table...', 'info');
+            
+            try {
+                // Get one record to see column structure
+                const { data, error } = await supabaseClient
+                    .from('Products')
+                    .select('*')
+                    .limit(1);
+
+                if (error) {
+                    log(`❌ Error: ${error.message}`, 'error');
+                    return;
+                }
+
+                if (!data || data.length === 0) {
+                    log('⚠️ Table exists but has no data', 'warning');
+                    return;
+                }
+
+                log('✅ Found table structure!', 'success');
+                log('📋 Column names:', 'info');
+                
+                const columns = Object.keys(data[0]);
+                columns.forEach((col, index) => {
+                    log(`  ${index + 1}. "${col}"`, 'info');
+                });
+
+                log('\n📝 Sample values:', 'info');
+                Object.entries(data[0]).forEach(([key, value]) => {
+                    const displayValue = typeof value === 'string' && value.length > 50 
+                        ? value.substring(0, 50) + '...' 
+                        : JSON.stringify(value);
+                    log(`  ${key}: ${displayValue}`, 'info');
+                });
+
+                // Look for likely SKU/CODE columns
+                log('\n🎯 Analyzing for SKU/CODE-like columns:', 'info');
+                const possibleSKU = columns.filter(col => 
+                    col.toLowerCase().includes('sku') || 
+                    col.toLowerCase().includes('code') || 
+                    col.toLowerCase().includes('id') ||
+                    col.toLowerCase().includes('ref')
+                );
+                
+                if (possibleSKU.length > 0) {
+                    log('🎯 Possible SKU/CODE columns found:', 'success');
+                    possibleSKU.forEach(col => {
+                        log(`  - "${col}" = ${JSON.stringify(data[0][col])}`, 'success');
+                    });
+                } else {
+                    log('⚠️ No obvious SKU/CODE columns found', 'warning');
+                }
+
+            } catch (error) {
+                log(`❌ Unexpected error: ${error.message}`, 'error');
+            }
+        }
+
+        async function getSampleData() {
+            clearOutput();
+            log('📦 Getting 3 sample records from Products table...', 'info');
+            
+            try {
+                const { data, error } = await supabaseClient
+                    .from('Products')
+                    .select('*')
+                    .limit(3);
+
+                if (error) {
+                    log(`❌ Error: ${error.message}`, 'error');
+                    return;
+                }
+
+                if (!data || data.length === 0) {
+                    log('⚠️ No data found in table', 'warning');
+                    return;
+                }
+
+                log(`✅ Found ${data.length} records:`, 'success');
+                
+                data.forEach((record, index) => {
+                    log(`\n📄 Record ${index + 1}:`, 'info');
+                    Object.entries(record).forEach(([key, value]) => {
+                        const displayValue = typeof value === 'string' && value.length > 100 
+                            ? value.substring(0, 100) + '...' 
+                            : JSON.stringify(value);
+                        log(`  ${key}: ${displayValue}`, 'info');
+                    });
+                });
+
+            } catch (error) {
+                log(`❌ Unexpected error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-test on load
+        document.addEventListener('DOMContentLoaded', () => {
+            log('🚀 Supabase test tool loaded. Click buttons to test connection.', 'success');
+        });
+    </script>
+</body>
+</html>

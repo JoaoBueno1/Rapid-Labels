@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Search Function</title>
+</head>
+<body>
+    <h1>Test Search Function</h1>
+    <div id="results"></div>
+    
+    <!-- Load Supabase -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <!-- Load our config -->
+    <script src="supabase-config.js"></script>
+    
+    <script>
+        async function testSearch() {
+            console.log('🧪 Testing search for "10148"...');
+            
+            try {
+                const result = await window.supabaseSearch.searchProduct('10148');
+                console.log('Result:', result);
+                
+                document.getElementById('results').innerHTML = `
+                    <h2>Search Result:</h2>
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                `;
+                
+                if (result.success) {
+                    console.log('✅ Search successful!');
+                    console.log('Product found:', result.product);
+                } else {
+                    console.log('❌ Search failed:', result.error);
+                }
+                
+            } catch (error) {
+                console.error('💥 Test error:', error);
+                document.getElementById('results').innerHTML = `
+                    <h2>Error:</h2>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+        
+        // Run test when page loads
+        window.addEventListener('load', () => {
+            setTimeout(testSearch, 1000); // Wait a bit for libraries to load
+        });
+    </script>
+</body>
+</html>
