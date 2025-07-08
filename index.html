@@ -28,9 +28,9 @@
             <h2>🔍 Search Product</h2>
             
             <div class="search-section">
-                <label for="productSearch">Enter product code, SKU, or name:</label>
+                <label for="productSearch">Enter product code, SKU:</label>
                 <div class="search-input-group">
-                    <input type="text" id="productSearch" placeholder="Ex: 10148, ABC123, or product name">
+                    <input type="text" id="productSearch" placeholder="Ex: 30429 or R1069-BK">
                     <button onclick="searchProduct()" class="search-btn-small">Search</button>
                 </div>
                 <div class="search-results" id="searchResults"></div>
@@ -54,7 +54,7 @@
                     <div class="field-row">
                         <div class="field-group">
                             <label for="editQty">QTY: *</label>
-                            <input type="number" id="editQty" min="1" max="99999" required placeholder="Quantity" maxlength="5">
+                            <input type="text" id="editQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" inputmode="numeric" pattern="[0-9]*">
                         </div>
                         <div class="field-group">
                             <label for="editDate">Date:</label>

@@ -163,8 +163,8 @@ async function selectProduct(sku, code) {
         selectedProduct = result.product;
         
         // Fill product details
-        document.getElementById('foundSku').textContent = result.product.SKU;
-        document.getElementById('foundCode').textContent = result.product.Code;
+        document.getElementById('foundSku').textContent = result.product.sku;
+        document.getElementById('foundCode').textContent = result.product.code;
         
         // Fill default QTY if available
         if (result.product.qty) {
@@ -481,7 +481,7 @@ function handleManualSubmit(e) {
     
     const labelData = {
         sku: document.getElementById('manualSku').value,
-        code: document.getElementById('manualCode').value,
+        code: document.getElementById('manualCode').value.toUpperCase(),
         qty: document.getElementById('manualQty').value,
         date: document.getElementById('manualDate').value,
         size: selectedManualSize,
