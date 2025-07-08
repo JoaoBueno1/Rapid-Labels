@@ -28,9 +28,9 @@
             <h2>🔍 Search Product</h2>
             
             <div class="search-section">
-                <label for="productSearch">Enter product code (5 digits):</label>
+                <label for="productSearch">Enter product code, SKU, or name:</label>
                 <div class="search-input-group">
-                    <input type="text" id="productSearch" placeholder="Ex: 72452" maxlength="5" pattern="[0-9]{5}">
+                    <input type="text" id="productSearch" placeholder="Ex: 10148, ABC123, or product name">
                     <button onclick="searchProduct()" class="search-btn-small">Search</button>
                 </div>
                 <div class="search-results" id="searchResults"></div>
@@ -54,7 +54,7 @@
                     <div class="field-row">
                         <div class="field-group">
                             <label for="editQty">QTY: *</label>
-                            <input type="number" id="editQty" min="1" required>
+                            <input type="number" id="editQty" min="1" max="99999" required placeholder="99999" maxlength="5">
                         </div>
                         <div class="field-group">
                             <label for="editDate">Date:</label>
@@ -99,20 +99,20 @@
                 <div class="manual-fields">
                     <div class="field-group">
                         <label for="manualSku">SKU: *</label>
-                        <input type="text" id="manualSku" required>
+                        <input type="text" id="manualSku" required placeholder="12345" maxlength="5" pattern="[0-9]{5}" title="SKU must be exactly 5 digits">
                         <div class="error" id="manualSkuError"></div>
                     </div>
                     
                     <div class="field-group">
                         <label for="manualCode">Code: *</label>
-                        <input type="text" id="manualCode" required>
+                        <input type="text" id="manualCode" required placeholder="Enter Code">
                         <div class="error" id="manualCodeError"></div>
                     </div>
                     
                     <div class="field-row">
                         <div class="field-group">
                             <label for="manualQty">Qty: *</label>
-                            <input type="number" id="manualQty" min="1" required>
+                            <input type="number" id="manualQty" min="1" max="99999" required placeholder="99999" maxlength="5">
                             <div class="error" id="manualQtyError"></div>
                         </div>
                         <div class="field-group">

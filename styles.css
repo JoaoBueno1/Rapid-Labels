@@ -24,6 +24,26 @@ body {
     text-align: center;
     max-width: 500px;
     width: 100%;
+    position: relative;
+}
+
+/* Mock Mode Indicator */
+.mock-indicator {
+    background: linear-gradient(45deg, #ff6b6b, #feca57);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9em;
+    font-weight: 600;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
 }
 
 h1 {
@@ -356,10 +376,34 @@ h2 {
 /* Manual Fields */
 .manual-fields {
     margin-bottom: 25px;
+    display: block !important;
+    visibility: visible !important;
 }
 
 .manual-fields .field-group {
     margin-bottom: 15px;
+    display: block !important;
+    visibility: visible !important;
+}
+
+.manual-fields .field-group label {
+    display: block !important;
+    visibility: visible !important;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #555;
+}
+
+.manual-fields .field-group input {
+    display: block !important;
+    visibility: visible !important;
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #e1e8ed;
+    border-radius: 8px;
+    font-size: 1em;
+    transition: border-color 0.3s;
+    background: white;
 }
 
 .error {

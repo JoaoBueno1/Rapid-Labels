@@ -7,6 +7,20 @@ let selectedProduct = null;
 
 // Page load initialization
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Page loading...');
+    
+    // Debug: Check if manual modal elements exist
+    const manualModal = document.getElementById('manualModal');
+    const manualSku = document.getElementById('manualSku');
+    const manualCode = document.getElementById('manualCode');
+    const manualQty = document.getElementById('manualQty');
+    
+    console.log('🔧 Manual modal elements check:');
+    console.log('Modal:', manualModal ? '✅ Found' : '❌ Not found');
+    console.log('SKU field:', manualSku ? '✅ Found' : '❌ Not found');
+    console.log('Code field:', manualCode ? '✅ Found' : '❌ Not found');
+    console.log('Qty field:', manualQty ? '✅ Found' : '❌ Not found');
+    
     // Set current date as default
     const today = new Date().toISOString().split('T')[0];
     const editDateInput = document.getElementById('editDate');
@@ -180,8 +194,29 @@ async function searchProduct() {
 // ==================== MODAL MANUAL ====================
 
 function openManualModal() {
-    document.getElementById('manualModal').classList.remove('hidden');
-    document.getElementById('manualSku').focus();
+    console.log('🔧 Opening manual modal...');
+    const modal = document.getElementById('manualModal');
+    const skuField = document.getElementById('manualSku');
+    
+    if (!modal) {
+        console.error('❌ Manual modal not found!');
+        return;
+    }
+    
+    if (!skuField) {
+        console.error('❌ Manual SKU field not found!');
+        return;
+    }
+    
+    modal.classList.remove('hidden');
+    console.log('✅ Modal opened, focusing on SKU field...');
+    
+    // Small delay to ensure modal is visible before focusing
+    setTimeout(() => {
+        skuField.focus();
+        console.log('✅ SKU field focused');
+    }, 100);
+    
     resetManualModal();
 }
 
@@ -277,6 +312,33 @@ function setupValidation() {
             });
         }
     });
+    
+    // Special handling for SKU field - only allow numbers and limit to 5 digits
+    const skuField = document.getElementById('manualSku');
+    if (skuField) {
+        skuField.addEventListener('input', function(e) {
+            // Remove non-numeric characters
+            this.value = this.value.replace(/[^0-9]/g, '');
+            // Limit to 5 characters
+            if (this.value.length > 5) {
+                this.value = this.value.slice(0, 5);
+            }
+        });
+    }
+    
+    // Special handling for QTY fields - limit to 5 digits (max 99999)
+    const qtyFields = ['editQty', 'manualQty'];
+    qtyFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener('input', function(e) {
+                // Limit to 99999
+                if (parseInt(this.value) > 99999) {
+                    this.value = 99999;
+                }
+            });
+        }
+    });
 }
 
 function validateField(fieldId) {
@@ -294,6 +356,16 @@ function validateField(fieldId) {
     } else if (field.type === 'number' && field.value && parseInt(field.value) < 1) {
         isValid = false;
         errorMessage = 'Must be greater than 0';
+    } else if (field.type === 'number' && field.value && parseInt(field.value) > 99999) {
+        isValid = false;
+        errorMessage = 'Must be 99999 or less';
+    } else if (fieldId === 'manualSku') {
+        // Special validation for SKU: exactly 5 digits
+        const skuValue = field.value.trim();
+        if (skuValue && (!/^\d{5}$/.test(skuValue))) {
+            isValid = false;
+            errorMessage = 'SKU must be exactly 5 digits';
+        }
     }
     
     if (errorDiv) {
@@ -444,51 +516,23 @@ function generateAndPrintLabel(labelData) {
 function generateLabelHTML(labelData) {
     const { sku, code, qty, date, size, pages } = labelData;
     
-    // Dimensões baseadas no tamanho
-    const dimensions = size === 'A3' ? 
-        { width: '420mm', height: '297mm' } : 
-        { width: '297mm', height: '210mm' };
+    // Format date to DD/MM/YY
+    const formattedDate = formatDateForLabel(date);
     
     let pagesHTML = '';
     
     for (let i = 0; i < pages; i++) {
         pagesHTML += `
-            <div class="label-page" style="
-                width: ${dimensions.width};
-                height: ${dimensions.height};
-                padding: 20mm;
-                margin: 0;
-                page-break-after: ${i < pages - 1 ? 'always' : 'auto'};
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                font-family: Arial, sans-serif;
-                border: 2px solid #000;
-                box-sizing: border-box;
-            ">
-                <div style="text-align: center; width: 100%;">
-                    <h1 style="font-size: ${size === 'A3' ? '48px' : '36px'}; margin: 20px 0; font-weight: bold;">
-                        📦 PRODUCT LABEL
-                    </h1>
-                    
-                    <div style="font-size: ${size === 'A3' ? '32px' : '24px'}; margin: 30px 0; line-height: 1.5;">
-                        <div style="margin: 20px 0;">
-                            <strong>SKU:</strong> ${sku}
-                        </div>
-                        <div style="margin: 20px 0;">
-                            <strong>CODE:</strong> ${code}
-                        </div>
-                        <div style="margin: 20px 0;">
-                            <strong>QTY:</strong> ${qty}
-                        </div>
-                        <div style="margin: 20px 0;">
-                            <strong>DATE:</strong> ${formatDate(date)}
-                        </div>
+            <div class="label-page" style="page-break-after: ${i < pages - 1 ? 'always' : 'auto'};">
+                <div class="label-content">
+                    <div class="sku-line">
+                        <span class="sku-label">SKU:</span><span class="sku-spaces"></span><span class="sku-value">${sku}</span>
                     </div>
-                    
-                    <div style="margin-top: 40px; font-size: ${size === 'A3' ? '20px' : '16px'}; color: #666;">
-                        Page ${i + 1} of ${pages} • Size: ${size}
+                    <div class="code-line">
+                        <span class="code-label">CODE:</span><span class="code-space"> </span><span class="code-value">${code}</span>
+                    </div>
+                    <div class="qty-line">
+                        <span class="qty-label">QTY:</span><span class="qty-spaces"></span><span class="qty-value">${qty}</span><span class="qty-date-space"></span><span class="date-value">${formattedDate}</span>
                     </div>
                 </div>
             </div>
@@ -504,20 +548,151 @@ function generateLabelHTML(labelData) {
             <style>
                 @page {
                     margin: 0;
-                    size: ${size === 'A3' ? 'A3' : 'A4'};
+                    size: ${size === 'A3' ? 'A3 landscape' : 'A4 landscape'};
                 }
+                
                 * {
                     margin: 0;
                     padding: 0;
                     box-sizing: border-box;
                 }
+                
                 body {
                     margin: 0;
-                    padding: 0;
+                    padding: 40mm;
                     font-family: Arial, sans-serif;
+                    line-height: 1;
                 }
+                
+                body.a4-mode {
+                    width: 297mm;
+                    height: 210mm;
+                }
+                
+                body.a3-mode {
+                    width: 420mm;
+                    height: 297mm;
+                }
+                
+                .label-page {
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: flex-start;
+                    page-break-inside: avoid;
+                }
+                
+                .label-content {
+                    width: 100%;
+                }
+                
+                .sku-line, .code-line, .qty-line {
+                    display: block;
+                    margin-bottom: 10mm;
+                }
+                
+                /* A3 specific spacing - more space before QTY line */
+                body.a3-mode .qty-line {
+                    margin-top: 15mm;
+                }
+                
+                /* A4 Styles */
+                body.a4-mode .sku-label,
+                body.a4-mode .code-label,
+                body.a4-mode .qty-label,
+                body.a4-mode .date-value {
+                    font-size: 36px;
+                }
+                
+                body.a4-mode .sku-spaces {
+                    font-size: 36px;
+                    display: inline-block;
+                    width: 2em;
+                }
+                
+                body.a4-mode .sku-spaces::after {
+                    content: "";
+                }
+                
+                body.a4-mode .sku-value {
+                    font-size: 180px;
+                }
+                
+                body.a4-mode .code-value {
+                    font-size: 90px;
+                    max-width: 20ch;
+                    word-break: break-word;
+                }
+                
+                body.a4-mode .qty-spaces {
+                    display: inline-block;
+                    width: 2em;
+                    font-size: 36px;
+                }
+                
+                body.a4-mode .qty-spaces::after {
+                    content: "";
+                }
+                
+                body.a4-mode .qty-value {
+                    font-size: 160px;
+                }
+                
+                body.a4-mode .qty-date-space::after {
+                    content: "    "; /* 2 spaces */
+                    font-size: 160px;
+                }
+                
+                /* A3 Styles */
+                body.a3-mode .sku-label,
+                body.a3-mode .code-label,
+                body.a3-mode .qty-label,
+                body.a3-mode .date-value {
+                    font-size: 75px;
+                }
+                
+                body.a3-mode .sku-spaces {
+                    display: inline-block;
+                    width: 2em;
+                    font-size: 75px;
+                }
+                
+                body.a3-mode .sku-spaces::after {
+                    content: "";
+                }
+                
+                body.a3-mode .sku-value {
+                    font-size: 200px;
+                }
+                
+                body.a3-mode .code-value {
+                    font-size: 150px;
+                    max-width: 25ch;
+                    word-break: break-word;
+                }
+                
+                body.a3-mode .qty-spaces {
+                    display: inline-block;
+                    width: 2em;
+                    font-size: 75px;
+                }
+                
+                body.a3-mode .qty-spaces::after {
+                    content: "";
+                }
+                
+                body.a3-mode .qty-value {
+                    font-size: 200px;
+                }
+                
+                body.a3-mode .qty-date-space::after {
+                    content: "       "; /* 3 spaces */
+                    font-size: 200px;
+                }
+                
                 @media print {
-                    body { margin: 0; }
+                    body { margin: 0; padding: 40mm; }
                     .label-page { 
                         margin: 0 !important;
                         page-break-inside: avoid;
@@ -525,11 +700,29 @@ function generateLabelHTML(labelData) {
                 }
             </style>
         </head>
-        <body>
+        <body class="${size.toLowerCase()}-mode">
             ${pagesHTML}
         </body>
         </html>
     `;
+}
+
+function formatDateForLabel(dateStr) {
+    if (!dateStr) {
+        const today = new Date();
+        return today.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: '2-digit'
+        });
+    }
+    
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit', 
+        year: '2-digit'
+    });
 }
 
 function formatDate(dateStr) {
