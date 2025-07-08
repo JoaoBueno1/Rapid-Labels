@@ -92,7 +92,7 @@ function resetSearchModal() {
 
 // Real-time search as user types
 async function performSearch() {
-    const searchTerm = document.getElementById('productSearch').value.trim();
+    const searchTerm = String(document.getElementById('productSearch').value.trim());
     const resultsDiv = document.getElementById('searchResults');
     const errorDiv = document.getElementById('searchError');
     
@@ -120,9 +120,8 @@ async function performSearch() {
             errorDiv.textContent = result.error || 'No products found';
             return;
         }
-        
-        // Show results - convert single product to array format for compatibility
-        displaySearchResults([result.product]);
+        // Show results - display ALL products found
+        displaySearchResults(result.products);
         
     } catch (error) {
         console.error('Search error:', error);
@@ -137,10 +136,11 @@ function displaySearchResults(results) {
     
     let html = '<div class="search-results-list">';
     results.forEach(product => {
+        // Usa as propriedades maiúsculas do banco
         html += `
-            <div class="search-result-item" onclick="selectProduct('${product.sku}', '${product.code}')">
-                <div class="result-sku">📦 ${product.sku}</div>
-                <div class="result-code">🏷️ ${product.code}</div>
+            <div class="search-result-item" onclick="selectProduct('${product.SKU}', '${product.Code}')">
+                <div class="result-sku">📦 ${product.SKU}</div>
+                <div class="result-code">🏷️ ${product.Code}</div>
             </div>
         `;
     });
@@ -163,8 +163,8 @@ async function selectProduct(sku, code) {
         selectedProduct = result.product;
         
         // Fill product details
-        document.getElementById('foundSku').textContent = result.product.sku;
-        document.getElementById('foundCode').textContent = result.product.code;
+        document.getElementById('foundSku').textContent = result.product.SKU;
+        document.getElementById('foundCode').textContent = result.product.Code;
         
         // Fill default QTY if available
         if (result.product.qty) {
@@ -299,7 +299,7 @@ function decreaseManualPages() {
 // ==================== VALIDATION ====================
 
 function setupValidation() {
-    // Validação em tempo real para campos obrigatórios
+    // Real-time validation for required fields
     const requiredFields = ['editQty', 'manualSku', 'manualCode', 'manualQty'];
     
     requiredFields.forEach(fieldId => {
@@ -332,6 +332,12 @@ function setupValidation() {
         const field = document.getElementById(fieldId);
         if (field) {
             field.addEventListener('input', function(e) {
+                // Remove non-numeric characters
+                this.value = this.value.replace(/[^0-9]/g, '');
+                // Limit to 5 digits
+                if (this.value.length > 5) {
+                    this.value = this.value.slice(0, 5);
+                }
                 // Limit to 99999
                 if (parseInt(this.value) > 99999) {
                     this.value = 99999;
@@ -739,7 +745,7 @@ function formatDate(dateStr) {
 // ==================== KEYBOARD SHORTCUTS ====================
 
 document.addEventListener('keydown', function(e) {
-    // ESC para fechar modais
+    // ESC to close modals
     if (e.key === 'Escape') {
         if (!document.getElementById('searchModal').classList.contains('hidden')) {
             closeSearchModal();
@@ -749,7 +755,7 @@ document.addEventListener('keydown', function(e) {
         }
     }
     
-    // Ctrl+P para imprimir (se modal estiver aberto)
+    // Ctrl+P to print (if modal is open)
     if (e.ctrlKey && e.key === 'p') {
         e.preventDefault();
         
