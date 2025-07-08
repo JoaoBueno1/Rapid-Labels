@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Create Manual Label</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .form-container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 1em;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        
+        .size-selector {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .size-option {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .size-option:hover {
+            border-color: #007bff;
+        }
+        
+        .size-option.selected {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        
+        .error {
+            color: #dc3545;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✏️ Create Manual Label</h1>
+        <div class="form-container">
+            <div id="successMessage" class="success" style="display: none;">
+                Label created successfully! Check your printer.
+            </div>
+            
+            <form id="manualLabelForm">
+                <div class="form-group">
+                    <label for="sku">SKU: *</label>
+                    <input type="text" id="sku" name="sku" required>
+                    <div class="error" id="skuError"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="code">CODE: *</label>
+                    <input type="text" id="code" name="code" required>
+                    <div class="error" id="codeError"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="qty">QTY: *</label>
+                    <input type="number" id="qty" name="qty" min="1" required>
+                    <div class="error" id="qtyError"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="date">Date:</label>
+                    <input type="date" id="date" name="date">
+                </div>
+                
+                <div class="form-group">
+                    <label>Label Size: *</label>
+                    <div class="size-selector">
+                        <div class="size-option selected" data-size="A4">
+                            📄 A4<br><small>210 x 297 mm</small>
+                        </div>
+                        <div class="size-option" data-size="A3">
+                            📄 A3<br><small>297 x 420 mm</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="previewManualLabel()">👁 Preview</button>
+                    <button type="submit" class="btn btn-primary">🖨 Print Label</button>
+                </div>
+            </form>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="index.html" style="color: #007bff; text-decoration: none;">← Back to Home</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedSize = 'A4';
+        
+        // Size selection handling
+        document.querySelectorAll('.size-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.size-option').forEach(o => o.classList.remove('selected'));
+                this.classList.add('selected');
+                selectedSize = this.dataset.size;
+            });
+        });
+        
+        // Set today's date as default
+        document.getElementById('date').valueAsDate = new Date();
+        
+        // Form validation and submission
+        document.getElementById("manualLabelForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            
+            if (validateForm()) {
+                const formData = getFormData();
+                generateManualLabel(formData, false);
+                showSuccess();
+            }
+        });
+        
+        function validateForm() {
+            let isValid = true;
+            
+            // Clear previous errors
+            document.querySelectorAll('.error').forEach(error => error.textContent = '');
+            
+            const sku = document.getElementById('sku').value.trim();
+            const code = document.getElementById('code').value.trim();
+            const qty = document.getElementById('qty').value;
+            
+            if (!sku) {
+                document.getElementById('skuError').textContent = 'SKU is required';
+                isValid = false;
+            }
+            
+            if (!code) {
+                document.getElementById('codeError').textContent = 'CODE is required';
+                isValid = false;
+            }
+            
+            if (!qty || qty < 1) {
+                document.getElementById('qtyError').textContent = 'QTY must be at least 1';
+                isValid = false;
+            }
+            
+            return isValid;
+        }
+        
+        function getFormData() {
+            const dateInput = document.getElementById('date').value;
+            const formattedDate = dateInput ? new Date(dateInput).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
+            
+            return {
+                sku: document.getElementById('sku').value.trim(),
+                code: document.getElementById('code').value.trim(),
+                qty: document.getElementById('qty').value,
+                date: formattedDate,
+                size: selectedSize
+            };
+        }
+        
+        function previewManualLabel() {
+            if (validateForm()) {
+                const formData = getFormData();
+                generateManualLabel(formData, true);
+            }
+        }
+        
+        function generateManualLabel(data, isPreview) {
+            const width = data.size === 'A4' ? '210mm' : '297mm';
+            const height = data.size === 'A4' ? '297mm' : '420mm';
+            const fontSize = isPreview ? '16pt' : '24pt';
+            const previewStyle = isPreview ? 'transform: scale(0.5); transform-origin: top left;' : '';
+            
+            const labelHTML = `
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Manual Label ${data.size} ${isPreview ? '- Preview' : ''}</title>
+                    <style>
+                        body {
+                            width: ${width};
+                            height: ${height};
+                            padding: 40mm;
+                            box-sizing: border-box;
+                            font-family: Arial, sans-serif;
+                            margin: 0;
+                            ${previewStyle}
+                        }
+                        .label {
+                            font-size: ${fontSize};
+                            line-height: 2;
+                        }
+                        .bold {
+                            font-weight: bold;
+                        }
+                        ${isPreview ? '.preview-header { background: #e3f2fd; padding: 10px; margin-bottom: 20px; text-align: center; font-size: 14pt; color: #1976d2; }' : ''}
+                    </style>
+                </head>
+                <body>
+                    ${isPreview ? '<div class="preview-header">🔍 PREVIEW - Close this window to return</div>' : ''}
+                    <div class="label">
+                        <div><span class="bold">SKU:</span> ${data.sku}</div>
+                        <div><span class="bold">CODE:</span> ${data.code}</div>
+                        <div><span class="bold">QTY:</span> ${data.qty} &nbsp;&nbsp;&nbsp; ${data.date}</div>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            const windowName = isPreview ? 'preview' : 'print';
+            const windowFeatures = isPreview ? 'width=600,height=400' : 'width=800,height=600';
+            const labelWindow = window.open('', windowName, windowFeatures);
+            
+            labelWindow.document.write(labelHTML);
+            labelWindow.document.close();
+            labelWindow.focus();
+            
+            if (!isPreview) {
+                setTimeout(() => {
+                    labelWindow.print();
+                }, 500);
+            }
+        }
+        
+        function showSuccess() {
+            const successMessage = document.getElementById('successMessage');
+            successMessage.style.display = 'block';
+            setTimeout(() => {
+                successMessage.style.display = 'none';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
