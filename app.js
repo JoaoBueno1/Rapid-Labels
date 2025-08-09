@@ -484,11 +484,15 @@ function generateAndPrintLabel(labelData) {
         printWindow.document.write(labelHTML);
         printWindow.document.close();
         
+        // Add a small delay to ensure content and scripts are loaded
         printWindow.onload = function() {
-            printWindow.print();
-            printWindow.onafterprint = function() {
-                printWindow.close();
-            };
+            console.log('Print window loaded, waiting for barcodes...');
+            setTimeout(function() {
+                printWindow.print();
+                printWindow.onafterprint = function() {
+                    printWindow.close();
+                };
+            }, 1000); // Wait 1 second for barcodes to generate
         };
         
         // Fecha o modal após imprimir
@@ -506,37 +510,52 @@ function generateAndPrintLabel(labelData) {
 }
 
 function generateLabelHTML(labelData) {
-    const { sku, code, qty, date, size, pages } = labelData;
-    
-    // Format date to DD/MM/YY
-    const formattedDate = formatDateForLabel(date);
+    const { sku, code, qty, date, size } = labelData;
     
     let pagesHTML = '';
-    
-    for (let i = 0; i < pages; i++) {
+    for (let i = 1; i <= labelData.pages; i++) {
         pagesHTML += `
-            <div class="label-page" style="page-break-after: ${i < pages - 1 ? 'always' : 'auto'};">
+            <div class="label-page">
                 <div class="label-content">
                     <div class="sku-line">
-                        <span class="sku-label">SKU:</span><span class="sku-spaces"></span><span class="sku-value">${sku}</span>
+                        <div class="sku-left">
+                            <span class="sku-label">SKU:</span>
+                            <span class="sku-value">${sku}</span>
+                        </div>
+                        <div class="sku-barcode-right">
+                            <svg class="barcode"></svg>
+                        </div>
                     </div>
                     <div class="code-line">
-                        <span class="code-label">CODE:</span><span class="code-space"> </span><span class="code-value">${code}</span>
+                        <span class="code-label">Code:</span>
+                        <span class="code-value">${code}</span>
                     </div>
                     <div class="qty-line">
-                        <span class="qty-label">QTY:</span><span class="qty-spaces"></span><span class="qty-value">${qty}</span><span class="qty-date-space"></span><span class="date-value">${formattedDate}</span>
+                        <div class="qty-left">
+                            <span class="qty-label">QTY:</span>
+                            <span class="qty-value">${qty}</span>
+                        </div>
+                        <div class="qty-date-right">
+                            ${date ? `<span class="date-value">${formatDateForLabel(date)}</span>` : ''}
+                        </div>
                     </div>
                 </div>
             </div>
         `;
     }
-    
+
     return `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <title>Label - ${sku}</title>
+            <!-- JsBarcode Library for barcode generation - load synchronously -->
+            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+            <script>
+                // Ensure library is loaded
+                console.log('JsBarcode loaded:', typeof JsBarcode !== 'undefined');
+            </script>
             <style>
                 @page {
                     margin: 0;
@@ -551,7 +570,7 @@ function generateLabelHTML(labelData) {
                 
                 body {
                     margin: 0;
-                    padding: 40mm;
+                    padding: 20mm;
                     font-family: Arial, sans-serif;
                     line-height: 1;
                 }
@@ -577,114 +596,124 @@ function generateLabelHTML(labelData) {
                 
                 .label-content {
                     width: 100%;
+                    text-align: left;
                 }
                 
-                .sku-line, .code-line, .qty-line {
+                .sku-line, .code-line {
                     display: block;
-                    margin-bottom: 10mm;
+                    margin-bottom: 15mm;
+                    text-align: left;
                 }
                 
-                /* A3 specific spacing - more space before QTY line */
-                body.a3-mode .qty-line {
-                    margin-top: 15mm;
+                .sku-line {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    width: 100%;
+                }
+                
+                .sku-left {
+                    display: flex;
+                    align-items: baseline;
+                    flex: 1;
+                }
+                
+                .sku-barcode-right {
+                    flex-shrink: 0;
+                    text-align: right;
+                }
+                
+                .qty-line {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 15mm;
+                    width: 100%;
+                }
+                
+                .qty-left {
+                    display: flex;
+                    align-items: baseline;
+                    flex: 1;
+                }
+                
+                .qty-date-right {
+                    flex-shrink: 0;
+                    text-align: right;
                 }
                 
                 /* A4 Styles */
                 body.a4-mode .sku-label,
                 body.a4-mode .code-label,
-                body.a4-mode .qty-label,
+                body.a4-mode .qty-label {
+                    font-size: 40px;
+                    font-weight: bold;
+                }
+                
                 body.a4-mode .date-value {
-                    font-size: 36px;
-                }
-                
-                body.a4-mode .sku-spaces {
-                    font-size: 36px;
-                    display: inline-block;
-                    width: 2em;
-                }
-                
-                body.a4-mode .sku-spaces::after {
-                    content: "";
+                    font-size: 42px;
+                    font-weight: bold;
                 }
                 
                 body.a4-mode .sku-value {
                     font-size: 180px;
+                    margin-left: 20px;
                 }
                 
                 body.a4-mode .code-value {
                     font-size: 90px;
-                    max-width: 20ch;
+                    margin-left: 20px;
+                    max-width: 80%;
                     word-break: break-word;
-                }
-                
-                body.a4-mode .qty-spaces {
-                    display: inline-block;
-                    width: 2em;
-                    font-size: 36px;
-                }
-                
-                body.a4-mode .qty-spaces::after {
-                    content: "";
                 }
                 
                 body.a4-mode .qty-value {
                     font-size: 160px;
+                    margin-left: 20px;
                 }
                 
-                body.a4-mode .qty-date-space::after {
-                    content: "    "; /* 2 spaces */
-                    font-size: 160px;
+                body.a4-mode .barcode {
+                    height: 120px;
+                    max-width: 300px;
                 }
                 
                 /* A3 Styles */
                 body.a3-mode .sku-label,
                 body.a3-mode .code-label,
-                body.a3-mode .qty-label,
+                body.a3-mode .qty-label {
+                    font-size: 80px;
+                    font-weight: bold;
+                }
+                
                 body.a3-mode .date-value {
                     font-size: 75px;
-                }
-                
-                body.a3-mode .sku-spaces {
-                    display: inline-block;
-                    width: 2em;
-                    font-size: 75px;
-                }
-                
-                body.a3-mode .sku-spaces::after {
-                    content: "";
+                    font-weight: bold;
                 }
                 
                 body.a3-mode .sku-value {
-                    font-size: 200px;
+                    font-size: 220px;
+                    margin-left: 30px;
                 }
                 
                 body.a3-mode .code-value {
                     font-size: 150px;
-                    max-width: 25ch;
+                    margin-left: 30px;
+                    max-width: 80%;
                     word-break: break-word;
-                }
-                
-                body.a3-mode .qty-spaces {
-                    display: inline-block;
-                    width: 2em;
-                    font-size: 75px;
-                }
-                
-                body.a3-mode .qty-spaces::after {
-                    content: "";
                 }
                 
                 body.a3-mode .qty-value {
                     font-size: 200px;
+                    margin-left: 30px;
                 }
                 
-                body.a3-mode .qty-date-space::after {
-                    content: "       "; /* 3 spaces */
-                    font-size: 200px;
+                body.a3-mode .barcode {
+                    height: 150px;
+                    max-width: 400px;
                 }
                 
                 @media print {
-                    body { margin: 0; padding: 40mm; }
+                    body { margin: 0; padding: 20mm; }
                     .label-page { 
                         margin: 0 !important;
                         page-break-inside: avoid;
@@ -694,27 +723,73 @@ function generateLabelHTML(labelData) {
         </head>
         <body class="${size.toLowerCase()}-mode">
             ${pagesHTML}
+            
+            <script>
+                // Generate barcodes after page loads with proper timing
+                function generateBarcodes() {
+                    // Check if JsBarcode is loaded
+                    if (typeof JsBarcode === 'undefined') {
+                        // If not loaded, wait a bit and try again
+                        setTimeout(generateBarcodes, 100);
+                        return;
+                    }
+                    
+                    // Find all barcode elements by class instead of ID to avoid duplicates
+                    const barcodeElements = document.querySelectorAll('.barcode');
+                    console.log('Found', barcodeElements.length, 'barcode elements');
+                    
+                    barcodeElements.forEach(function(barcodeElement, index) {
+                        if (barcodeElement) {
+                            try {
+                                JsBarcode(barcodeElement, "${code}", {
+                                    format: "CODE128",
+                                    width: 3,
+                                    height: ${size === 'A3' ? '150' : '120'},
+                                    displayValue: true,
+                                    fontSize: 16,
+                                    textAlign: "center",
+                                    textPosition: "bottom",
+                                    background: "#ffffff",
+                                    lineColor: "#000000"
+                                });
+                                console.log('Barcode generated for element', index);
+                            } catch (error) {
+                                console.error('Error generating barcode for element', index, error);
+                            }
+                        }
+                    });
+                }
+                
+                // Start generation when page loads
+                window.onload = function() {
+                    console.log('Page loaded, starting barcode generation...');
+                    generateBarcodes();
+                };
+                
+                // Fallback: also try after DOM is ready
+                document.addEventListener('DOMContentLoaded', function() {
+                    console.log('DOM ready, ensuring barcodes are generated...');
+                    setTimeout(generateBarcodes, 200);
+                });
+            </script>
         </body>
         </html>
     `;
 }
 
 function formatDateForLabel(dateStr) {
+    let date;
     if (!dateStr) {
-        const today = new Date();
-        return today.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: '2-digit'
-        });
+        date = new Date();
+    } else {
+        date = new Date(dateStr);
     }
     
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: '2-digit', 
-        year: '2-digit'
-    });
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    
+    return `${day}/${month}/${year}`;
 }
 
 function formatDate(dateStr) {
