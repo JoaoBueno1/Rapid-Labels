@@ -16,7 +16,12 @@ async function searchProduct(searchTerm) {
     const { data, error } = await supabaseClient
         .from('Products')
         .select('*')
-        .or(`SKU.ilike.%${cleanTerm}%,Code.ilike.%${cleanTerm}%`);
+        .or(
+            `SKU.ilike.%${cleanTerm}%,Code.ilike.%${cleanTerm}%,` +
+            `barcode1.ilike.%${cleanTerm}%,barcode2.ilike.%${cleanTerm}%,` +
+            `barcode3.ilike.%${cleanTerm}%,barcode4.ilike.%${cleanTerm}%,` +
+            `barcode5.ilike.%${cleanTerm}%,barcode6.ilike.%${cleanTerm}%`
+        );
 
     if (error) {
         return { success: false, error: error.message };
