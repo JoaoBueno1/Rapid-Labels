@@ -204,27 +204,32 @@ async function refreshCollections(silent = false){
 })();
 
 function openAddOrderModal(){
-  // Reset draft parcels
-  draftParcels=[]; updateParcelDraftUI();
-  // Clear all input fields inside the add order modal
+  console.log('[AddOrder] openAddOrderModal()');
+  // Reset draft parcels FIRST
+  draftParcels = [];
+  // Show modal earlier so elements are measurable/visible if any CSS depends on :not(.hidden)
+  showModal('addOrderModal');
   const addModal = document.getElementById('addOrderModal');
+  // Ensure placeholder present immediately (in case JS execution later fails)
+  const wrap = document.getElementById('parcelDraftList');
+  if(wrap){ wrap.innerHTML = 'No parcels added yet.'; wrap.classList.add('field-error-msg'); wrap.style.color = '#dc2626'; }
+  // Clear input fields
   if(addModal){
     addModal.querySelectorAll('input').forEach(inp=>{
-      // preserve date field which we set fresh below
       if(inp.id !== 'orderDate') inp.value='';
       inp.classList.remove('error');
       inp.removeAttribute('aria-invalid');
-      if(inp.dataset && inp.dataset.phOrig){
-        inp.setAttribute('placeholder', inp.dataset.phOrig);
-      }
+      if(inp.dataset && inp.dataset.phOrig){ inp.setAttribute('placeholder', inp.dataset.phOrig); }
     });
-    // Remove previous inline error messages
-    addModal.querySelectorAll('.field-error-msg').forEach(el=>el.remove());
+    addModal.querySelectorAll('.field-error-msg').forEach(el=>{
+      // keep the parcelDraftList message; remove only those next to inputs
+      if(el.id !== 'parcelDraftList') el.remove();
+    });
   }
-  // Fresh date (today)
   const today = new Date().toISOString().slice(0,10);
   const dateEl = document.getElementById('orderDate'); if (dateEl) dateEl.value = today;
-  showModal('addOrderModal');
+  // Re-render parcel UI after a tick (ensures DOM ready)
+  setTimeout(()=>{ try { updateParcelDraftUI(); } catch(e){ console.error('[AddOrder] updateParcelDraftUI after open failed', e); } }, 0);
 }
 function closeAddOrderModal(){ document.getElementById('addOrderModal').classList.add('hidden'); }
 
@@ -232,14 +237,28 @@ function showModal(id){ const el=document.getElementById(id); if(el) el.classLis
 function hideModal(id){ const el=document.getElementById(id); if(el) el.classList.add('hidden'); }
 
 function addParcelToDraft(){
+  console.log('[AddOrder] addParcelToDraft click');
   const type = document.getElementById('parcelType').value;
   const qty = parseInt(document.getElementById('parcelQty').value||'0',10);
   if(!qty||qty<1){ toast('Enter a valid quantity','error'); return; }
   draftParcels.push({type,qty});
+  console.log('[AddOrder] parcels now:', draftParcels);
   document.getElementById('parcelQty').value='';
   updateParcelDraftUI();
 }
+
+// Defensive: if inline onclick was stripped or script loaded late, ensure button works
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const btn = document.getElementById('addParcelBtn');
+    if(btn && !btn._boundAdd){
+      btn.addEventListener('click', (e)=>{ e.preventDefault(); addParcelToDraft(); });
+      btn._boundAdd = true;
+    }
+  } catch(e){ console.warn('Add parcel bind failed', e); }
+});
 function updateParcelDraftUI(){
+  try { console.log('[AddOrder] updateParcelDraftUI start len=', draftParcels.length); } catch(e){}
   const wrap=document.getElementById('parcelDraftList');
   if(!wrap) return;
   if(draftParcels.length){
@@ -266,6 +285,7 @@ function updateParcelDraftUI(){
       }
     };
   });
+  try { console.log('[AddOrder] updateParcelDraftUI done'); } catch(e){}
 }
 
 // (Legacy confirmAddOrder removed; single implementation lives in confirmAddOrderInternal)
