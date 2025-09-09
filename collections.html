@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Collections - Rapid Label</title>
+	<link rel="stylesheet" href="styles.css" />
+	<link rel="icon" type="image/svg+xml" href="icon-192.svg">
+	<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+	<meta name="x-build" content="2025-09-09T00:00:00Z-v3" />
+</head>
+ <body>
+	<header class="site-header">
+		<div class="header-inner">
+			<div class="left">
+				<a class="back-link" href="index.html">← Back</a>
+				<a class="brand" href="index.html">JSlab.dev</a>
+			</div>
+			<nav class="site-nav">
+				<a href="index.html" class="nav-link">Home</a>
+				<a href="#" class="nav-link" onclick="openSearchModal();return false;">Search Product Label</a>
+				<a href="#" class="nav-link" onclick="openManualModal();return false;">Manual Label</a>
+				<a href="collections.html" class="nav-link">Collections</a>
+				<a href="collections-history.html" class="nav-link">Collections History</a>
+				<a href="restock.html" class="nav-link">Re-Stock</a>
+			</nav>
+		</div>
+	</header>
+
+	<div class="main-container wide-container">
+			<div class="page-header">
+				<h1>Collections</h1>
+			<div class="header-actions">
+				<div class="search-input-group">
+					<input type="text" id="collectionsSearch" placeholder="Search by Customer, Contact or Reference or scan" oninput="filterCollections()" />
+					<button class="search-btn-small" onclick="filterCollections()">Search</button>
+					<button class="search-btn-small secondary" type="button" onclick="openScanModal('collectionsSearch', filterCollections)" aria-label="Open camera">📷</button>
+				</div>
+        
+			</div>
+		</div>
+			<div id="selfTestPanel" class="small-note hidden" style="border:1px solid var(--border);background:#fff;border-radius:8px;padding:8px 10px;margin:6px 0"></div>
+				<div class="legend-row">
+					<div class="small-note">Status legend: <span class="badge neutral">0–7 days</span> <span class="badge warn">7–14 days</span> <span class="badge danger">14+ days</span></div>
+					<div><button class="search-btn-small" onclick="openAddOrderModal()">Add Order</button></div>
+				</div>
+
+		<div class="table-wrapper">
+			<table class="app-table">
+				<thead>
+					<tr>
+						<th>Customer</th>
+						<th>Reference</th>
+						<th>Cartons</th>
+						<th>Pallets</th>
+						<th>Tubes</th>
+						<th>Contact name</th>
+						<th>Contact number</th>
+						<th>Email</th>
+						<th>Date</th>
+						<th class="actions-col" style="text-align:right">Actions</th>
+					</tr>
+				</thead>
+			<tbody id="collectionsTbody"><tr><td colspan="10" style="text-align:center;opacity:.7">No data</td></tr></tbody>
+			</table>
+		</div>
+	</div>
+
+	<footer class="site-footer">
+		<div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
+	</footer>
+
+	<!-- Add Order Modal -->
+	<div id="addOrderModal" class="modal hidden">
+		<div class="modal-content">
+			<span class="close" onclick="closeAddOrderModal()">&times;</span>
+			<h2>➕ Add Collection Order</h2>
+					<div class="manual-fields">
+						<div class="field-row">
+							<div class="field-group">
+								<label for="orderCustomer">Customer</label>
+								<input id="orderCustomer" type="text" placeholder="Customer name" />
+							</div>
+							<div class="field-group">
+								<label for="orderReference">Reference</label>
+								<input id="orderReference" type="text" placeholder="Sales Order / Reference" />
+							</div>
+						</div>
+						<div class="field-row">
+							<div class="field-group">
+								<label for="orderContactName">Contact name</label>
+								<input id="orderContactName" type="text" placeholder="Contact person" />
+							</div>
+							<div class="field-group">
+								<label for="orderContactNumber">Contact number</label>
+								<input id="orderContactNumber" type="tel" placeholder="Phone" />
+							</div>
+						</div>
+						<div class="field-group">
+							<label for="orderEmail">Email (optional)</label>
+							<input id="orderEmail" type="email" placeholder="email@example.com" />
+						</div>
+						<div class="field-group">
+							<label for="orderDate">Date</label>
+							<input id="orderDate" type="date" />
+						</div>
+					</div>
+
+			<div class="size-selection">
+				<label>Add parcels</label>
+						<div class="field-row">
+							<div class="field-group">
+								<label for="parcelType">Type</label>
+								<select id="parcelType">
+									<option value="carton">Carton</option>
+									<option value="pallet">Pallet</option>
+									<option value="tube">Tube</option>
+								</select>
+							</div>
+							<div class="field-group">
+								<label for="parcelQty">Quantity</label>
+								<input id="parcelQty" type="number" min="1" placeholder="e.g. 3" />
+							</div>
+							<div class="field-group" style="display:flex;align-items:flex-end">
+								<button class="search-btn-small" onclick="addParcelToDraft()">Add</button>
+							</div>
+						</div>
+				<div id="parcelDraftList" class="small-note" style="margin-top:8px">No parcels added yet.</div>
+			</div>
+
+			<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+				<button class="search-btn-small secondary" onclick="closeAddOrderModal()">Cancel</button>
+				<button class="search-btn-small" style="background:#334155" data-save-print="1" onclick="confirmAddOrderAndPrint()">Save & Print</button>
+				<button class="search-btn-small" onclick="confirmAddOrder()">Save Order</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Confirm Collect Modal -->
+	<div id="confirmCollectModal" class="modal hidden">
+		<div class="modal-content">
+			<span class="close" onclick="closeConfirmCollectModal()">&times;</span>
+				<h2>✅ Confirm Collection</h2>
+				<div class="small-note" style="margin:6px 0 12px">Customer: <strong id="collectCustomerName">—</strong></div>
+			<div class="manual-fields">
+				<div class="field-group">
+						  <label for="collectedBy">Collected by</label>
+						  <input id="collectedBy" type="text" placeholder="Name" />
+				</div>
+				<div class="field-group">
+					<label for="collectionOperator">Operator</label>
+					<select id="collectionOperator"></select>
+				</div>
+				<div class="field-row">
+					<div class="field-group">
+						<label for="collectionDate">Date</label>
+						<input id="collectionDate" type="date" />
+					</div>
+					<div class="field-group">
+						<label for="collectionTime">Time</label>
+						<input id="collectionTime" type="time" />
+					</div>
+				</div>
+			</div>
+				<div style="display:flex; gap:10px; align-items:center; margin:6px 0 8px">
+					<button class="search-btn-small secondary" type="button" onclick="toggleSignaturePad()">Signature</button>
+					<span class="small-note">Optional</span>
+				</div>
+				<div id="signaturePadWrap" class="signature-wrap hidden">
+					<canvas id="signatureCanvas" class="signature-canvas"></canvas>
+					<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+						<button class="search-btn-small secondary" type="button" onclick="clearSignature()">Clear</button>
+					</div>
+				</div>
+			<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+				<button class="search-btn-small secondary" onclick="closeConfirmCollectModal()">Cancel</button>
+				<button id="confirmCollectionBtn" class="search-btn-small" onclick="submitCollection()">Confirm</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Search Product Modal (shared) -->
+	<div id="searchModal" class="modal hidden">
+		<div class="modal-content">
+			<span class="close" onclick="closeSearchModal()">&times;</span>
+			<h2>🏷️ Search Product</h2>
+			<div class="search-section">
+				<label for="productSearch">Enter product Code, SKU:</label>
+				<div class="search-input-group">
+					<input type="text" id="productSearch" placeholder="Ex: 30429 or R1069-BK" />
+					<button onclick="searchProduct()" class="search-btn-small">Search</button>
+					<button type="button" class="search-btn-small secondary" onclick="openScanModal('productSearch', searchProduct)" aria-label="Open camera">📷</button>
+				</div>
+				<div class="search-results" id="searchResults"></div>
+				<div class="search-error" id="searchError"></div>
+			</div>
+			<div id="productDetails" class="product-details hidden">
+				<h3>📦 Product Selected</h3>
+				<div class="product-info">
+					<div class="info-item">
+						<label>SKU:</label>
+						<span id="foundSku"></span>
+					</div>
+					<div class="info-item">
+						<label>CODE:</label>
+						<span id="foundCode"></span>
+					</div>
+				</div>
+				<form id="searchForm">
+					<div class="manual-fields">
+						<div class="field-group">
+							<label for="editQty">QTY: *</label>
+							<input type="number" id="editQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" autocomplete="off" />
+							<div class="error" id="editQtyError"></div>
+						</div>
+						<div class="field-group">
+							<label for="editDate">Date:</label>
+							<input type="date" id="editDate" />
+						</div>
+					</div>
+					<div class="size-selection">
+						<label>Select size: *</label>
+						<div class="size-buttons">
+							<button type="button" class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
+							<button type="button" class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
+						</div>
+					</div>
+					<div class="pages-selection">
+						<label>Number of pages: *</label>
+						<div class="pages-input">
+							<button type="button" onclick="decreasePages()" class="pages-btn">▼</button>
+							<input type="number" id="pagesCount" value="1" min="1" readonly />
+							<button type="button" onclick="increasePages()" class="pages-btn">▲</button>
+						</div>
+					</div>
+					<div class="print-section">
+						<button id="printSearchBtn" type="button" class="print-btn disabled" onclick="printSearchLabel()" aria-disabled="true">🖨️ Print</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+
+	<!-- Manual Entry Modal (shared) -->
+	<div id="manualModal" class="modal hidden">
+		<div class="modal-content">
+			<span class="close" onclick="closeManualModal()">&times;</span>
+			<h2>✏️ Manual Entry</h2>
+			<form id="manualForm">
+				<div class="manual-fields">
+					<div class="field-group">
+						<label for="manualSku">SKU: *</label>
+						<input type="text" id="manualSku" required placeholder="SKU" maxlength="5" pattern="[0-9]{5}" title="SKU must be exactly 5 digits" />
+						<div class="error" id="manualSkuError"></div>
+					</div>
+					<div class="field-group">
+						<label for="manualCode">Code: *</label>
+						<input type="text" id="manualCode" required placeholder="Enter code" />
+						<div class="error" id="manualCodeError"></div>
+					</div>
+					<div class="field-row">
+						<div class="field-group">
+							<label for="manualQty">Qty: *</label>
+							<input type="number" id="manualQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" />
+							<div class="error" id="manualQtyError"></div>
+						</div>
+						<div class="field-group">
+							<label for="manualDate">Date:</label>
+							<input type="date" id="manualDate" />
+						</div>
+					</div>
+				</div>
+				<div class="size-selection">
+					<label>Select size: *</label>
+					<div class="size-buttons">
+						<button type="button" class="size-btn" data-size="A4" onclick="selectManualSize('A4')">A4</button>
+						<button type="button" class="size-btn" data-size="A3" onclick="selectManualSize('A3')">A3</button>
+					</div>
+				</div>
+				<div class="pages-selection">
+					<label>Number of pages: *</label>
+					<div class="pages-input">
+						<button type="button" onclick="decreaseManualPages()" class="pages-btn">▼</button>
+						<input type="number" id="manualPagesCount" value="1" min="1" readonly />
+						<button type="button" onclick="increaseManualPages()" class="pages-btn">▲</button>
+					</div>
+				</div>
+				<div class="print-section">
+					<button type="submit" id="printManualBtn" class="print-btn disabled">🖨️ Print</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+		<!-- Edit Order Modal -->
+		<div id="editOrderModal" class="modal hidden">
+			<div class="modal-content">
+				<span class="close" onclick="closeEditOrderModal()">&times;</span>
+				<h2>✏️ Edit Order</h2>
+						<div class="manual-fields">
+							<div class="field-row">
+								<div class="field-group">
+									<label for="editCustomer">Customer</label>
+									<input id="editCustomer" type="text" />
+								</div>
+								<div class="field-group">
+									<label for="editReference">Reference</label>
+									<input id="editReference" type="text" />
+								</div>
+							</div>
+							<div class="field-row">
+								<div class="field-group">
+									<label for="editContactName">Contact name</label>
+									<input id="editContactName" type="text" />
+								</div>
+								<div class="field-group">
+									<label for="editContactNumber">Contact number</label>
+									<input id="editContactNumber" type="tel" />
+								</div>
+							</div>
+							<div class="field-group">
+								<label for="editEmail">Email (optional)</label>
+								<input id="editEmail" type="email" />
+							</div>
+							<div class="field-row">
+								<div class="field-group">
+									<label for="editCartons">Cartons</label>
+									<input id="editCartons" type="number" min="0" />
+								</div>
+								<div class="field-group">
+									<label for="editPallets">Pallets</label>
+									<input id="editPallets" type="number" min="0" />
+								</div>
+								<div class="field-group">
+									<label for="editTubes">Tubes</label>
+									<input id="editTubes" type="number" min="0" />
+								</div>
+							</div>
+							<div class="field-group">
+								<label for="editDate">Date</label>
+								<input id="editDate" type="date" />
+							</div>
+						</div>
+				<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+					<button class="search-btn-small secondary" onclick="closeEditOrderModal()">Cancel</button>
+					<button class="search-btn-small" onclick="saveEditOrder()">Save</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Generic Confirm Modal -->
+		<div id="confirmModal" class="modal hidden">
+			<div class="modal-content">
+				<span class="close" onclick="closeConfirmModal()">&times;</span>
+				<h2>Confirm</h2>
+				<div id="confirmMessage" class="small-note" style="margin:10px 0 14px"></div>
+				<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+					<button id="confirmNo" class="search-btn-small secondary" onclick="closeConfirmModal()">Cancel</button>
+					<button id="confirmYes" class="search-btn-small">Confirm</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Toasts -->
+		<div id="toastContainer" class="toast-container"></div>
+
+	<!-- Shared Scan Modal -->
+	<div id="scanModal" class="modal hidden">
+		<div class="modal-content">
+			<span class="close" onclick="closeScanModal()">&times;</span>
+			<h2>📷 Scan with Camera</h2>
+			<div style="display:flex;flex-direction:column;gap:10px">
+				<video id="scanVideo" style="width:100%;border-radius:12px;background:#000;min-height:220px"></video>
+				<div id="scanError" class="error" style="display:none"></div>
+			</div>
+			<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+				<button class="search-btn-small" onclick="closeScanModal()">Close</button>
+			</div>
+		</div>
+	</div>
+
+			<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+			<script src="supabase-config.js"></script>
+		<script src="scanner.js"></script>
+			<script src="app.js"></script>
+			<script src="collections.js?v=5"></script>
+    </script>
+	<script>
+// Force reload if new service worker version (v3) installed
+if ('serviceWorker' in navigator) {
+	navigator.serviceWorker.getRegistration().then(reg => {
+		if (reg) {
+			reg.update().catch(()=>{});
+		}
+	});
+}
+// Basic cache-bust helper for hard reload if table structure mismatch detected
+try {
+	if (!document.querySelector('th') || !document.querySelector('th').textContent.includes('Customer')){
+		console.warn('Incomplete cached HTML – forcing reload');
+		setTimeout(()=>location.reload(), 400);
+	}
+} catch(e){}
+</script>
+</body>
+ </html>

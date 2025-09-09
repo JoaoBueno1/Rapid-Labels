@@ -50,6 +50,22 @@ document.addEventListener('DOMContentLoaded', function() {
     setupValidation();
 });
 
+// Temporary Analytics placeholder
+function openAnalyticsNotice(){
+    try {
+        if (typeof toast === 'function') {
+            toast('Analytics: coming soon...','warn');
+        } else {
+            // Minimal non-blocking fallback
+            const box=document.createElement('div');
+            box.textContent='Analytics: coming soon...';
+            Object.assign(box.style,{position:'fixed',right:'16px',bottom:'16px',background:'#fff',color:'#0f172a',padding:'10px 14px',border:'1px solid #cbd5e1',borderRadius:'10px',fontSize:'14px',fontWeight:'600',zIndex:3000,boxShadow:'0 4px 16px rgba(0,0,0,.12)'});
+            document.body.appendChild(box);
+            setTimeout(()=>{ try{ box.remove(); }catch(e){} },2200);
+        }
+    } catch(e){ /* ignore */ }
+}
+
 // Debounce function to limit API calls
 function debounce(func, wait) {
     let timeout;
@@ -483,16 +499,9 @@ function generateAndPrintLabel(labelData) {
         const printWindow = window.open('', '_blank');
         printWindow.document.write(labelHTML);
         printWindow.document.close();
-        
-        // Add a small delay to ensure content and scripts are loaded
+        // Let the child window manage dynamic readiness & printing internally
         printWindow.onload = function() {
-            console.log('Print window loaded, waiting for barcodes...');
-            setTimeout(function() {
-                printWindow.print();
-                printWindow.onafterprint = function() {
-                    printWindow.close();
-                };
-            }, 1000); // Wait 1 second for barcodes to generate
+            try { console.log('Print window loaded; internal script will auto-print when barcodes are ready.'); } catch(e){}
         };
         
         // Fecha o modal após imprimir
@@ -758,6 +767,38 @@ function generateLabelHTML(labelData) {
                             }
                         }
                     });
+                    if (!window.__wfStarted) { window.__wfStarted = true; waitForBarcodes(performance.now()); }
+                }
+                
+                function allBarcodesReady() {
+                    const svgs = document.querySelectorAll('.barcode');
+                    if (!svgs.length) return false;
+                    return [...svgs].every(svg => svg.childElementCount > 0 || svg.querySelector('rect,g'));
+                }
+                
+                function waitForBarcodes(startTs) {
+                    if (allBarcodesReady()) {
+                        if (!window.__printed) {
+                            window.__printed = true;
+                            console.log('All barcodes ready -> printing');
+                            try { window.focus(); } catch(e){}
+                            window.print();
+                            window.onafterprint = function(){ try { window.close(); } catch(e){} };
+                        }
+                        return;
+                    }
+                    const elapsed = performance.now() - startTs;
+                    if (elapsed > 5000) { // fallback after 5s
+                        console.warn('Timeout waiting for barcodes, proceeding to print');
+                        if (!window.__printed) {
+                            window.__printed = true;
+                            try { window.focus(); } catch(e){}
+                            window.print();
+                            window.onafterprint = function(){ try { window.close(); } catch(e){} };
+                        }
+                        return;
+                    }
+                    setTimeout(() => waitForBarcodes(startTs), 120);
                 }
                 
                 // Start generation when page loads
@@ -831,3 +872,5 @@ document.addEventListener('keydown', function(e) {
         }
     }
 });
+
+// (Collections logic removed – now centralized in collections.js to avoid duplication.)

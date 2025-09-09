@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Collections History - Rapid Label</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="icon-192.svg">
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="index.html">← Back</a>
+        <a class="brand" href="index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="index.html" class="nav-link">Home</a>
+  <a href="#" class="nav-link" onclick="openSearchModal();return false;">Search Product Label</a>
+  <a href="#" class="nav-link" onclick="openManualModal();return false;">Manual Label</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="collections-history.html" class="nav-link active">Collections History</a>
+        <a href="restock.html" class="nav-link">Re-Stock</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="main-container wide-container">
+    <div class="page-header">
+      <h1>Collections History</h1>
+      <div class="header-actions" style="flex-wrap:wrap;justify-content:flex-end;gap:10px">
+        <div class="search-input-group">
+          <input type="text" id="historySearch" placeholder="Search by Customer, Contact, Reference or ID" oninput="filterHistory()" />
+          <button class="search-btn-small" onclick="filterHistory()">Search</button>
+          <button class="search-btn-small secondary" type="button" onclick="openScanModal('historySearch', filterHistory)" aria-label="Open camera">📷</button>
+        </div>
+        <div class="filters-inline" style="margin:0;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+              <input id="historyFrom" type="date" class="history-date" placeholder="From" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+              <input id="historyTo" type="date" class="history-date" placeholder="To" />
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button id="historyApplyBtn" class="search-btn-small" type="button">Apply</button>
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button id="historyResetBtn" class="search-btn-small secondary" type="button">Reset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="small-note" id="historyNotice" style="margin:4px 0 6px">History stored for up to 2 years. Range limit 60 days.</div>
+
+    <div class="table-wrapper">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Reference</th>
+            <th>Cartons</th>
+            <th>Pallets</th>
+            <th>Tubes</th>
+            <th>Contact name</th>
+            <th>Contact number</th>
+            <th>Email</th>
+            <th>Collected by</th>
+            <th>Operator</th>
+            <th>Date & Time</th>
+            <th>Signature</th>
+          </tr>
+        </thead>
+        <tbody id="historyTbody">
+          <tr><td colspan="12" style="text-align:center;opacity:.6">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="historyPagination" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
+      <button id="histPrevPage" class="pages-btn" type="button" aria-label="Previous page">‹</button>
+      <span id="histPageInfo" class="small-note">Page 1 / 1</span>
+      <button id="histNextPage" class="pages-btn" type="button" aria-label="Next page">›</button>
+    </div>
+  </div>
+
+  <footer class="site-footer"></footer>
+
+  <!-- Signature Zoom Modal -->
+  <div id="signatureModal" class="modal hidden">
+    <div class="modal-content" style="max-width:620px">
+      <span class="close" onclick="closeSignatureModal()">&times;</span>
+      <h2>Signature</h2>
+      <div style="display:flex;justify-content:center;margin-top:4px">
+        <img id="signatureModalImg" alt="Signature" style="max-width:100%;max-height:480px;border:1px solid #334155;border-radius:12px;background:#fff;padding:6px;object-fit:contain" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared Scan Modal (same markup as collections page) -->
+  <div id="scanModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close" onclick="closeScanModal()">&times;</span>
+      <h2>📷 Scan with Camera</h2>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <video id="scanVideo" style="width:100%;border-radius:12px;background:#000;min-height:220px"></video>
+        <div id="scanError" class="error" style="display:none"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+        <button class="search-btn-small" onclick="closeScanModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared Modals: Search & Manual -->
+  <div id="searchModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close" onclick="closeSearchModal()">&times;</span>
+      <h2>🏷️ Search Product</h2>
+      <div class="search-section">
+        <label for="productSearch">Enter product Code, SKU:</label>
+        <div class="search-input-group">
+          <input type="text" id="productSearch" placeholder="Ex: 30429 or R1069-BK" />
+          <button onclick="searchProduct()" class="search-btn-small">Search</button>
+          <button type="button" class="search-btn-small secondary" onclick="openScanModal('productSearch', searchProduct)" aria-label="Open camera">📷</button>
+        </div>
+        <div class="search-results" id="searchResults"></div>
+        <div class="search-error" id="searchError"></div>
+      </div>
+      <div id="productDetails" class="product-details hidden">
+        <h3>📦 Product Selected</h3>
+        <div class="product-info">
+          <div class="info-item">
+            <label>SKU:</label>
+            <span id="foundSku"></span>
+          </div>
+          <div class="info-item">
+            <label>CODE:</label>
+            <span id="foundCode"></span>
+          </div>
+        </div>
+        <form id="searchForm">
+          <div class="manual-fields">
+            <div class="field-group">
+              <label for="editQty">QTY: *</label>
+              <input type="number" id="editQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" autocomplete="off" />
+              <div class="error" id="editQtyError"></div>
+            </div>
+            <div class="field-group">
+              <label for="editDate">Date:</label>
+              <input type="date" id="editDate" />
+            </div>
+          </div>
+          <div class="size-selection">
+            <label>Select size: *</label>
+            <div class="size-buttons">
+              <button type="button" class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
+              <button type="button" class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
+            </div>
+          </div>
+          <div class="pages-selection">
+            <label>Number of pages: *</label>
+            <div class="pages-input">
+              <button type="button" onclick="decreasePages()" class="pages-btn">▼</button>
+              <input type="number" id="pagesCount" value="1" min="1" readonly />
+              <button type="button" onclick="increasePages()" class="pages-btn">▲</button>
+            </div>
+          </div>
+          <div class="print-section">
+            <button id="printSearchBtn" type="button" class="print-btn disabled" onclick="printSearchLabel()" aria-disabled="true">🖨️ Print</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="manualModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close" onclick="closeManualModal()">&times;</span>
+      <h2>✏️ Manual Entry</h2>
+      <form id="manualForm">
+        <div class="manual-fields">
+          <div class="field-group">
+            <label for="manualSku">SKU: *</label>
+            <input type="text" id="manualSku" required placeholder="SKU" maxlength="5" pattern="[0-9]{5}" title="SKU must be exactly 5 digits" />
+            <div class="error" id="manualSkuError"></div>
+          </div>
+          <div class="field-group">
+            <label for="manualCode">Code: *</label>
+            <input type="text" id="manualCode" required placeholder="Enter code" />
+            <div class="error" id="manualCodeError"></div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <label for="manualQty">Qty: *</label>
+              <input type="number" id="manualQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" />
+              <div class="error" id="manualQtyError"></div>
+            </div>
+            <div class="field-group">
+              <label for="manualDate">Date:</label>
+              <input type="date" id="manualDate" />
+            </div>
+          </div>
+        </div>
+        <div class="size-selection">
+          <label>Select size: *</label>
+          <div class="size-buttons">
+            <button type="button" class="size-btn" data-size="A4" onclick="selectManualSize('A4')">A4</button>
+            <button type="button" class="size-btn" data-size="A3" onclick="selectManualSize('A3')">A3</button>
+          </div>
+        </div>
+        <div class="pages-selection">
+          <label>Number of pages: *</label>
+          <div class="pages-input">
+            <button type="button" onclick="decreaseManualPages()" class="pages-btn">▼</button>
+            <input type="number" id="manualPagesCount" value="1" min="1" readonly />
+            <button type="button" onclick="increaseManualPages()" class="pages-btn">▲</button>
+          </div>
+        </div>
+        <div class="print-section">
+          <button type="submit" id="printManualBtn" class="print-btn disabled">🖨️ Print</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="supabase-config.js"></script>
+  <script src="scanner.js"></script>
+  <script src="app.js"></script>
+  <script src="collections-history.js"></script>
+</body>
+</html>

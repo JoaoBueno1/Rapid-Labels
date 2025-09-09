@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Collection Label</title>
+  <style>
+    body { margin:0; }
+    .label {
+      width:100mm; height:150mm;
+      border:2px solid #000;
+      box-sizing:border-box;
+      padding:8mm 8mm 12mm;
+      font-family: Arial, sans-serif;
+      page-break-after:always;
+      position:relative;
+    }
+    .header { text-align:center; font-weight:bold; font-size:30px; letter-spacing:1px; }
+    .divider { border-bottom:2px solid #000; margin:8px 0 10px; }
+    .info-line { display:flex; align-items:baseline; font-size:16px; margin:5px 0; }
+    .section-label { font-weight:bold; min-width:96px; font-size:15px; }
+    .footer {
+      position:absolute; left:0; bottom:8mm;
+      width:100%; display:flex; justify-content:space-between;
+      align-items:flex-end; padding:0 6mm; box-sizing:border-box;
+    }
+    .qr-wrap { display:flex; align-items:center; justify-content:center; }
+    .qr-code { width:34mm; height:34mm; border:1px solid #000; border-radius:4px; object-fit:contain; }
+    .label-number { font-weight:bold; font-size:18px; }
+    @media print { @page { size:100mm 150mm; margin:0; } .label{ margin:0; } }
+  </style>
+</head>
+<body>
+  <div class="label">
+    <div class="header">COLLECTION ORDER</div>
+    <div class="divider"></div>
+    <div class="info-line"><span class="section-label">CUSTOMER:</span><span>{{ order.customer }}</span></div>
+    <div class="info-line"><span class="section-label">REFERENCE:</span><span>{{ order.reference }}</span></div>
+    <div class="info-line"><span class="section-label">CONTACT:</span><span>{{ order.contact_name }} ({{ order.contact_number }})</span></div>
+    {% if order.cartons and order.cartons > 0 %}<div class="info-line"><span class="section-label">CARTONS:</span><span>{{ order.cartons }}</span></div>{% endif %}
+    {% if order.pallets and order.pallets > 0 %}<div class="info-line"><span class="section-label">PALLETS:</span><span>{{ order.pallets }}</span></div>{% endif %}
+    {% if order.tubes and order.tubes > 0 %}<div class="info-line"><span class="section-label">TUBES:</span><span>{{ order.tubes }}</span></div>{% endif %}
+    <div class="info-line"><span class="section-label">DATE:</span><span>{{ order.collection_date }}</span></div>
+    <div class="footer">
+      <div class="label-number">{{ label_number }} / {{ total_labels }}</div>
+      <div class="qr-wrap">
+        <img
+          class="qr-code"
+          src="https://barcode.tec-it.com/barcode.ashx?data=COLL:{{ order.id }}:{{ label_number }}/{{ total_labels }}&code=QRCode&translate-esc=true"
+          alt="QR">
+      </div>
+    </div>
+  </div>
+  <script>
+    window.onload = function(){
+      setTimeout(function(){ try { window.print(); window.onafterprint = ()=>window.close(); } catch(e){} }, 120);
+    };
+  </script>
+</body>
+</html>

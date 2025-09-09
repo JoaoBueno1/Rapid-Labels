@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Re-Stock - Rapid Label</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="icon-192.svg">
+  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+ </head>
+ <body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="index.html">← Back</a>
+        <a class="brand" href="index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="index.html" class="nav-link">Home</a>
+  <a href="#" class="nav-link" onclick="openSearchModal();return false;">Search Product Label</a>
+  <a href="#" class="nav-link" onclick="openManualModal();return false;">Manual Label</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="collections-history.html" class="nav-link">Collections History</a>
+        <a href="restock.html" class="nav-link">Re-Stock</a>
+      </nav>
+    </div>
+  </header>
+  <div class="main-container wide-container">
+    <div class="page-header">
+      <h1>Re-Stock</h1>
+      <div class="header-actions">
+        <div class="search-input-group">
+          <input type="text" id="restockSearch" placeholder="Search SKU, Product, Pickface or scan" />
+          <button class="search-btn-small" onclick="alert('Re-Stock filters coming soon')">Search</button>
+          <button class="search-btn-small secondary" type="button" onclick="openScanModal('restockSearch')" aria-label="Open camera">📷</button>
+        </div>
+      </div>
+    </div>
+    <div class="small-note">List shows items to replenish. Status order: LOW, MEDIUM, FULL/OVER. You can hide 'No reserve' later.</div>
+    <div class="small-note" style="margin-top:6px">
+      Status colors: <span class="status-badge low">low</span> <span class="status-badge medium">medium</span> <span class="status-badge full">full</span> <span class="status-badge over">over</span>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="app-table" id="restockTable">
+        <thead>
+          <tr>
+            <th>SKU</th><th>Product</th><th>Pickface</th><th>On Hand</th><th>Capacity</th><th>Status</th><th>Reserve</th><th>Restock</th>
+          </tr>
+        </thead>
+        <tbody id="restockTbody"><tr><td colspan="8" style="text-align:center;opacity:.7">Coming soon</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <footer class="site-footer">
+    <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
+  </footer>
+  <!-- Shared Scan Modal -->
+  <div id="scanModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close" onclick="closeScanModal()">&times;</span>
+      <h2>📷 Scan with Camera</h2>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <video id="scanVideo" style="width:100%;border-radius:12px;background:#000;min-height:220px"></video>
+        <div id="scanError" class="error" style="display:none"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+        <button class="search-btn-small" onclick="closeScanModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared modals for search/manual -->
+  <div id="searchModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close" onclick="closeSearchModal()">&times;</span>
+      <h2>🏷️ Search Product</h2>
+      <div class="search-section">
+        <label for="productSearch">Enter product Code, SKU:</label>
+        <div class="search-input-group">
+          <input type="text" id="productSearch" placeholder="Ex: 30429 or R1069-BK" />
+          <button onclick="searchProduct()" class="search-btn-small">Search</button>
+          <button type="button" class="search-btn-small secondary" onclick="openScanModal('productSearch', searchProduct)" aria-label="Open camera">📷</button>
+        </div>
+        <div class="search-results" id="searchResults"></div>
+        <div class="search-error" id="searchError"></div>
+      </div>
+      <div id="productDetails" class="product-details hidden">
+        <h3>📦 Product Selected</h3>
+        <div class="product-info">
+          <div class="info-item">
+            <label>SKU:</label>
+            <span id="foundSku"></span>
+          </div>
+          <div class="info-item">
+            <label>CODE:</label>
+            <span id="foundCode"></span>
+          </div>
+        </div>
+        <form id="searchForm">
+          <div class="manual-fields">
+            <div class="field-group">
+              <label for="editQty">QTY: *</label>
+              <input type="number" id="editQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" autocomplete="off" />
+              <div class="error" id="editQtyError"></div>
+            </div>
+            <div class="field-group">
+              <label for="editDate">Date:</label>
+              <input type="date" id="editDate" />
+            </div>
+          </div>
+          <div class="size-selection">
+            <label>Select size: *</label>
+            <div class="size-buttons">
+              <button type="button" class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
+              <button type="button" class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
+            </div>
+          </div>
+            <div class="pages-selection">
+              <label>Number of pages: *</label>
+              <div class="pages-input">
+                <button type="button" onclick="decreasePages()" class="pages-btn">▼</button>
+                <input type="number" id="pagesCount" value="1" min="1" readonly />
+                <button type="button" onclick="increasePages()" class="pages-btn">▲</button>
+              </div>
+            </div>
+          <div class="print-section">
+            <button id="printSearchBtn" type="button" class="print-btn disabled" onclick="printSearchLabel()" aria-disabled="true">🖨️ Print</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="manualModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close" onclick="closeManualModal()">&times;</span>
+      <h2>✏️ Manual Entry</h2>
+      <form id="manualForm">
+        <div class="manual-fields">
+          <div class="field-group">
+            <label for="manualSku">SKU: *</label>
+            <input type="text" id="manualSku" required placeholder="SKU" maxlength="5" pattern="[0-9]{5}" title="SKU must be exactly 5 digits" />
+            <div class="error" id="manualSkuError"></div>
+          </div>
+          <div class="field-group">
+            <label for="manualCode">Code: *</label>
+            <input type="text" id="manualCode" required placeholder="Enter code" />
+            <div class="error" id="manualCodeError"></div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <label for="manualQty">Qty: *</label>
+              <input type="number" id="manualQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" />
+              <div class="error" id="manualQtyError"></div>
+            </div>
+            <div class="field-group">
+              <label for="manualDate">Date:</label>
+              <input type="date" id="manualDate" />
+            </div>
+          </div>
+        </div>
+        <div class="size-selection">
+          <label>Select size: *</label>
+          <div class="size-buttons">
+            <button type="button" class="size-btn" data-size="A4" onclick="selectManualSize('A4')">A4</button>
+            <button type="button" class="size-btn" data-size="A3" onclick="selectManualSize('A3')">A3</button>
+          </div>
+        </div>
+        <div class="pages-selection">
+          <label>Number of pages: *</label>
+          <div class="pages-input">
+            <button type="button" onclick="decreaseManualPages()" class="pages-btn">▼</button>
+            <input type="number" id="manualPagesCount" value="1" min="1" readonly />
+            <button type="button" onclick="increaseManualPages()" class="pages-btn">▲</button>
+          </div>
+        </div>
+        <div class="print-section">
+          <button type="submit" id="printManualBtn" class="print-btn disabled">🖨️ Print</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="scanner.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // Style status cells by value
+    function styleRestockStatuses(){
+      const tbody = document.getElementById('restockTbody');
+      if (!tbody) return;
+      [...tbody.querySelectorAll('tr')].forEach(tr => {
+        const statusTd = tr.children && tr.children[5];
+        if (!statusTd) return;
+        const val = (statusTd.textContent || '').trim().toLowerCase();
+        if (!val) return;
+        statusTd.innerHTML = '';
+        const span = document.createElement('span');
+        const map = { low:'low', medium:'medium', full:'full', over:'over' };
+        const cls = map[val];
+        if (!cls) return;
+        span.className = 'status-badge ' + cls;
+        span.textContent = val;
+        statusTd.appendChild(span);
+      });
+    }
+    // Run now and expose for later when data is loaded
+    styleRestockStatuses();
+    window.styleRestockStatuses = styleRestockStatuses;
+  </script>
+</body>
+</html>

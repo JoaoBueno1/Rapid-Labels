@@ -10,20 +10,46 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#232946">
     <link rel="icon" type="image/svg+xml" href="icon-192.svg">
+    <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+    <meta name="x-build" content="2025-09-09T00:00:00Z-v3" />
 </head>
 <body>
-    <div class="main-container">
-        <h1>📦 Rapid Label</h1>
+        <header class="site-header">
+            <div class="header-inner">
+                <div class="left">
+                    <a class="brand" href="index.html">JSlab.dev</a>
+                </div>
+                <nav class="site-nav">
+                    <a href="index.html" class="nav-link">Home</a>
+                    <a href="#" class="nav-link" onclick="openSearchModal()">Search Product Label</a>
+                    <a href="#" class="nav-link" onclick="openManualModal()">Manual Label</a>
+                    <a href="collections.html" class="nav-link">Collections</a>
+                    <a href="collections-history.html" class="nav-link">Collections History</a>
+                    <a href="restock.html" class="nav-link">Re-Stock</a>
+                </nav>
+            </div>
+        </header>
+        <main class="main-container home-container">
+        <h1>Rapid Led WMS Lite</h1>
         <div class="button-group">
             <button class="main-btn search-btn" onclick="openSearchModal()">
-                🔍 Search Product
+                🏷️ Search Product Label
             </button>
             <button class="main-btn manual-btn" onclick="openManualModal()">
-                ✏️ Manual Entry
+                ✏️ Manual Label
             </button>
+            <a class="main-btn" href="collections.html">📦 Collections</a>
+                <a class="main-btn" href="collections-history.html">📁 Collections History</a>
+            <a class="main-btn" href="restock.html">♻️ Re-Stock</a>
+            <button class="main-btn" type="button" onclick="openAnalyticsNotice()">📊 Analytics</button>
         </div>
-    </div>
+        </main>
 
+            // Proactively update SW (v3) and reload if a new controller takes over
+            if ('serviceWorker' in navigator){
+                navigator.serviceWorker.addEventListener('controllerchange', () => { try { if (!window.__reloaded){ window.__reloaded = true; location.reload(); } } catch(e){} });
+                navigator.serviceWorker.getRegistration().then(r=>{ if(r){ r.update().catch(()=>{}); } });
+            }
     <!-- Modal Search Product -->
     <div id="searchModal" class="modal hidden">
         <div class="modal-content">
@@ -35,6 +61,7 @@
                 <div class="search-input-group">
                     <input type="text" id="productSearch" placeholder="Ex: 30429 or R1069-BK">
                     <button onclick="searchProduct()" class="search-btn-small">Search</button>
+                    <button type="button" class="search-btn-small secondary" onclick="openScanModal('productSearch', searchProduct)" aria-label="Open camera">📷</button>
                 </div>
                 <div class="search-results" id="searchResults"></div>
                 <div class="search-error" id="searchError"></div>
@@ -81,9 +108,10 @@
                         </div>
                     </div>
                     <div class="print-section">
-                        <button id="printSearchBtn" class="print-btn disabled" onclick="printSearchLabel()">
+                        <button id="printSearchBtn" type="button" class="print-btn disabled" onclick="printSearchLabel()" aria-disabled="true">
                             🖨️ Print
-                        </div>
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -148,8 +176,28 @@
         </div>
     </div>
 
-    <!-- Scripts -->
+    <!-- Shared Scan Modal -->
+    <div id="scanModal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close" onclick="closeScanModal()">&times;</span>
+            <h2>📷 Scan with Camera</h2>
+            <div style="display:flex;flex-direction:column;gap:10px">
+                <video id="scanVideo" style="width:100%;border-radius:12px;background:#000;min-height:220px"></video>
+                <div id="scanError" class="error" style="display:none"></div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+                <button class="search-btn-small" onclick="closeScanModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+        <footer class="site-footer">
+            <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
+        </footer>
+
+        <!-- Scripts -->
     <script src="supabase-config.js"></script>
+    <script src="scanner.js"></script>
     <script src="app.js"></script>
     <script>
       if ('serviceWorker' in navigator) {
@@ -157,6 +205,11 @@
           navigator.serviceWorker.register('service-worker.js');
         });
       }
+            // Open modals via hash shortcuts (from secondary pages)
+            document.addEventListener('DOMContentLoaded', () => {
+                if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
+                if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
+            });
     </script>
 </body>
 </html>
