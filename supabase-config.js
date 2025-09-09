@@ -219,7 +219,7 @@ window.supabaseReady = (async () => {
             if (!sc_isServerId(id)){
                 return { success:false, error:'Invalid server id for update' };
             }
-            const { data, error } = await supabaseClient
+                const { data, error } = await supabaseClient
                 .from('collections_active')
                 .update(payload)
                 .eq('id', id) // works for uuid or numeric
