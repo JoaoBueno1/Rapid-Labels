@@ -16,6 +16,431 @@ let signature = { enabled:false, drawing:false, dataUrl:null };
 // dbIdMap legacy removed – all IDs must be server IDs now
 let dbIdMap = {};
 
+// ================= Customer Autocomplete (Add Order) =================
+// In-memory index of customers -> latest known contact info and recency
+let customerIndex = new Map(); // key: nameLower -> { name, contactName, contactNumber, email, lastDateMs, count }
+let customerSuggestionsInitialized = false;
+let customerAutocompleteTimer = null;
+let customerBlacklist = new Set();
+// Overlay UI elements for richer interactions (no layout changes)
+let customerSugPanel = null; // wrapper div appended to body
+let customerSugVisible = false;
+let customerSugAnchor = null; // input element
+let customerDatalistDisabled = false;
+
+function loadCustomerBlacklist(){
+  try{
+    const raw = localStorage.getItem('customerBlacklist') || '[]';
+    const arr = JSON.parse(raw);
+    if(Array.isArray(arr)) customerBlacklist = new Set(arr.map(s=>String(s).toLowerCase()));
+  }catch(e){ customerBlacklist = new Set(); }
+}
+function saveCustomerBlacklist(){
+  try{ localStorage.setItem('customerBlacklist', JSON.stringify(Array.from(customerBlacklist))); }catch(e){}
+}
+
+function normStr(s){ return (s==null?'':String(s)).trim(); }
+function keyStr(s){ return normStr(s).toLowerCase(); }
+
+function buildCustomerIndex(){
+  try{
+    const idx = new Map();
+    const push = (name, contactName, contactNumber, email, dateStr, createdAt)=>{
+      const nameClean = normStr(name); if(!nameClean) return;
+      const k = keyStr(nameClean);
+      const when = (()=>{ try{ return new Date(dateStr||createdAt||Date.now()).getTime(); }catch{ return Date.now(); } })();
+      const prev = idx.get(k);
+      if(!prev){
+        idx.set(k, { name: nameClean, contactName: normStr(contactName)||'', contactNumber: normStr(contactNumber)||'', email: normStr(email)||'', lastDateMs: when, count: 1 });
+      } else {
+        prev.count += 1;
+        if(when >= prev.lastDateMs){
+          // Prefer most recent non-empty contact info
+          prev.lastDateMs = when;
+          if(contactName) prev.contactName = normStr(contactName);
+          if(contactNumber) prev.contactNumber = normStr(contactNumber);
+          if(email) prev.email = normStr(email);
+        }
+      }
+    };
+    for(const o of collectionsActive){
+      if(!o) continue;
+      push(o.customer, o.contactName, o.contactNumber, o.email, o.date, o.createdAt);
+    }
+    customerIndex = idx;
+  }catch(e){ reportError('buildCustomerIndex', e); }
+}
+
+async function extendCustomerIndexFromHistory(limit=1000){
+  // Pull additional customers from collections history (broader dataset)
+  if(!dbIsEnabled() || !window.supabaseCollections || typeof window.supabaseCollections.listHistory !== 'function') return;
+  try{
+    const res = await window.supabaseCollections.listHistory(limit);
+    if(!res || !res.success || !Array.isArray(res.data)) return;
+    // Merge into existing index
+    const rows = res.data;
+    for(const r of rows){
+      // History columns come snake_cased; mirror collections-history.js normalize
+      const name = r.customer;
+      const contactName = r.contact_name;
+      const contactNumber = r.contact_number;
+      const email = r.email;
+      const collectedAt = r.collected_at || r.created_at;
+      const k = keyStr(name);
+      if(!k) continue;
+      const when = (()=>{ try{ return new Date(collectedAt||Date.now()).getTime(); }catch{ return Date.now(); } })();
+      const prev = customerIndex.get(k);
+      if(!prev){
+        customerIndex.set(k, { name: normStr(name), contactName: normStr(contactName)||'', contactNumber: normStr(contactNumber)||'', email: normStr(email)||'', lastDateMs: when, count: 1 });
+      } else {
+        prev.count += 1;
+        if(when >= prev.lastDateMs){
+          prev.lastDateMs = when;
+          if(contactName) prev.contactName = normStr(contactName);
+          if(contactNumber) prev.contactNumber = normStr(contactNumber);
+          if(email) prev.email = normStr(email);
+        }
+      }
+    }
+  } catch(e){ reportError('extendCustomerIndexFromHistory', e); }
+}
+
+function getCustomerEntry(name){
+  if(!name) return null;
+  return customerIndex.get(keyStr(name)) || null;
+}
+
+function fillContactsForCustomer(name){
+  try{
+    const entry = getCustomerEntry(name);
+    if(!entry) return;
+    const n = document.getElementById('orderContactName'); if(n && entry.contactName) n.value = entry.contactName;
+    const p = document.getElementById('orderContactNumber'); if(p && entry.contactNumber) p.value = entry.contactNumber;
+    const e = document.getElementById('orderEmail'); if(e && entry.email) e.value = entry.email;
+  }catch(err){ reportError('fillContactsForCustomer', err); }
+}
+
+function computeCustomerSuggestions(prefix){
+  const p = keyStr(prefix);
+  if(!p || p.length < 2) return [];
+  const out = [];
+  for(const [k, v] of customerIndex.entries()){
+    if(customerBlacklist.has(k)) continue;
+    if(k.startsWith(p)) out.push(v);
+  }
+  // Sort by recency desc, then frequency desc, then alpha
+  out.sort((a,b)=> (b.lastDateMs - a.lastDateMs) || (b.count - a.count) || a.name.localeCompare(b.name));
+  const TOP_LIMIT = 50; // limit overall to avoid huge lists; browser will provide scroll if needed
+  return out.slice(0, TOP_LIMIT);
+}
+
+function ensureCustomerDatalist(){
+  // Create datalist once and attach to #orderCustomer via JS (no HTML/layout change)
+  let dl = document.getElementById('customerSuggestions');
+  if(!dl){
+    dl = document.createElement('datalist');
+    dl.id = 'customerSuggestions';
+    document.body.appendChild(dl);
+  }
+  const inp = document.getElementById('orderCustomer');
+  if(inp && inp.getAttribute('list') !== 'customerSuggestions'){
+    inp.setAttribute('list','customerSuggestions');
+  }
+  return dl;
+}
+
+function setCustomerDatalistEnabled(enabled){
+  const inp = document.getElementById('orderCustomer');
+  if(!inp) return;
+  if(enabled){
+    if(customerDatalistDisabled){
+      // Keep disabled to avoid duplicate UI
+      customerDatalistDisabled = false;
+    }
+  } else {
+    if(!customerDatalistDisabled){
+      inp.removeAttribute('list');
+      customerDatalistDisabled = true;
+    }
+  }
+}
+
+function disableCustomerDatalistHard(){
+  try{
+    const inp = document.getElementById('orderCustomer');
+    if(inp) inp.removeAttribute('list');
+    const dl = document.getElementById('customerSuggestions');
+    if(dl && dl.parentNode) dl.parentNode.removeChild(dl);
+    customerDatalistDisabled = true;
+  } catch(e){ /* noop */ }
+}
+
+function updateCustomerDatalist(prefix){
+  const dl = ensureCustomerDatalist();
+  if(!dl) return;
+  // Clear previous options
+  dl.innerHTML = '';
+  const list = computeCustomerSuggestions(prefix);
+  if(!list.length) return;
+  // Place top 5 first (browser decides how many visible before scroll)
+  const top = list.slice(0, 5);
+  const rest = list.slice(5);
+  const makeOpt = (name)=>{ const opt=document.createElement('option'); opt.value = name; return opt; };
+  top.forEach(e=> dl.appendChild(makeOpt(e.name)));
+  rest.forEach(e=> dl.appendChild(makeOpt(e.name)));
+}
+
+function ensureCustomerOverlay(){
+  if(customerSugPanel) return customerSugPanel;
+  const panel = document.createElement('div');
+  panel.id = 'customerSugPanel';
+  Object.assign(panel.style,{
+    position: 'absolute',
+    left: '0px', top: '0px', width: '0px',
+    background: '#fff', border: '1px solid var(--border, #cbd5e1)', borderRadius: '8px',
+    boxShadow: '0 8px 20px rgba(0,0,0,0.10)',
+    padding: '4px 0', maxHeight: '260px', overflowY: 'auto', zIndex: '1000',
+    display: 'none'
+  });
+  document.body.appendChild(panel);
+  customerSugPanel = panel;
+  return panel;
+}
+
+function positionCustomerOverlay(anchor){
+  if(!customerSugPanel || !anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+  const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+  customerSugPanel.style.left = (rect.left + scrollX) + 'px';
+  customerSugPanel.style.top = (rect.bottom + scrollY + 6) + 'px';
+  customerSugPanel.style.width = rect.width + 'px';
+}
+
+function closeCustomerOverlay(){
+  if(!customerSugPanel) return;
+  customerSugPanel.style.display = 'none';
+  customerSugPanel.innerHTML = '';
+  customerSugVisible = false;
+  // Keep datalist disabled to avoid duplicate suggestion UI
+}
+
+function openCustomerOverlay(matches, anchor){
+  ensureCustomerOverlay();
+  customerSugAnchor = anchor;
+  positionCustomerOverlay(anchor);
+  const panel = customerSugPanel;
+  panel.innerHTML = '';
+  if(!matches || !matches.length){ closeCustomerOverlay(); return; }
+  // Build items: top 5 first, but all in list; panel shows scroll for rest
+  const applySelection = (entry)=>{
+    try{
+      const inp = document.getElementById('orderCustomer');
+      if(inp){
+        inp.value = entry.name;
+        // Clear required error state if any
+        inp.classList.remove('error'); inp.removeAttribute('aria-invalid');
+        if(inp.dataset && inp.dataset.phOrig !== undefined){ inp.setAttribute('placeholder', inp.dataset.phOrig); }
+      }
+      fillContactsForCustomer(entry.name);
+      // Fire both input and change so other listeners react
+      if(inp){
+        inp.dispatchEvent(new Event('input', {bubbles:true}));
+        inp.dispatchEvent(new Event('change', {bubbles:true}));
+        // Focus and move caret to end
+        inp.focus();
+        const len = inp.value.length;
+        if(typeof inp.setSelectionRange === 'function') inp.setSelectionRange(len, len);
+      }
+      closeCustomerOverlay();
+    }catch(e){ reportError('applyCustomerSelection', e); }
+  };
+  const makeItem = (entry)=>{
+    const row = document.createElement('div');
+    row.className = 'cust-sug-item';
+    Object.assign(row.style,{
+      display:'flex', alignItems:'flex-start', justifyContent:'space-between',
+      gap:'8px', padding:'8px 10px', cursor:'pointer', fontSize:'.9rem'
+    });
+    // left: name + preview (hidden until hover)
+    const left = document.createElement('div');
+    left.style.flex = '1';
+    const nameEl = document.createElement('div');
+    nameEl.textContent = entry.name;
+    nameEl.style.fontWeight = '600';
+    nameEl.style.color = 'var(--text, #0f172a)';
+    const prev = document.createElement('div');
+    prev.className = 'cust-sug-preview';
+    prev.textContent = [entry.contactName, entry.contactNumber, entry.email].filter(Boolean).join(' • ') || '—';
+    Object.assign(prev.style,{ fontSize:'.78rem', color:'#475569', marginTop:'2px', display:'none' });
+    left.appendChild(nameEl);
+    left.appendChild(prev);
+    // right: remove X
+  const right = document.createElement('button');
+    right.type = 'button';
+    right.title = 'Remove from suggestions';
+    right.textContent = '×';
+  right.className = 'cust-sug-remove';
+    Object.assign(right.style,{
+      border:'none', background:'transparent', color:'#64748b',
+      fontWeight:'700', fontSize:'16px', lineHeight:'1', cursor:'pointer',
+      padding:'0 4px', marginLeft:'8px'
+    });
+    const handleRemove = async ()=>{
+      const ok = await uiConfirm(`Remove "${entry.name}" from suggestions?`);
+      if(!ok) return;
+      customerBlacklist.add(keyStr(entry.name));
+      saveCustomerBlacklist();
+      // Rebuild current list based on current input value
+      const v = (customerSugAnchor && customerSugAnchor.value) ? customerSugAnchor.value : '';
+      const next = computeCustomerSuggestions(v);
+      openCustomerOverlay(next, customerSugAnchor);
+      toast('Suggestion removed','warn');
+    };
+    // Stop propagation early to avoid row mousedown selection
+    right.addEventListener('mousedown', (ev)=>{ ev.stopPropagation(); ev.preventDefault(); });
+    right.addEventListener('click', async (ev)=>{
+      ev.stopPropagation(); ev.preventDefault();
+      await handleRemove();
+    });
+    row.addEventListener('mouseenter', ()=>{ prev.style.display = 'block'; row.style.background = '#f8fafc'; });
+    row.addEventListener('mouseleave', ()=>{ prev.style.display = 'none'; row.style.background = '#fff'; });
+    // Select on mousedown (ignore clicks on remove X) and on click as fallback
+    row.addEventListener('mousedown', (ev)=>{
+      if(ev.target && ev.target.closest && ev.target.closest('.cust-sug-remove')) return; // ignore remove
+      ev.preventDefault();
+      applySelection(entry);
+    });
+    row.addEventListener('click', (ev)=>{
+      if(ev.target && ev.target.closest && ev.target.closest('.cust-sug-remove')) return; // ignore remove
+      ev.preventDefault();
+      applySelection(entry);
+    });
+    row.appendChild(left);
+    row.appendChild(right);
+    return row;
+  };
+  // Append all items; browser will limit visible via panel maxHeight
+  const top = matches.slice(0,5), rest = matches.slice(5);
+  top.forEach(m => panel.appendChild(makeItem(m)));
+  rest.forEach(m => panel.appendChild(makeItem(m)));
+  panel.style.display = 'block';
+  customerSugVisible = true;
+}
+
+function setupCustomerAutocomplete(){
+  if(customerSuggestionsInitialized) return;
+  loadCustomerBlacklist();
+  buildCustomerIndex();
+  // Fully disable native datalist and autofill to avoid duplicate suggestions
+  disableCustomerDatalistHard();
+  const inp = document.getElementById('orderCustomer');
+  if(!inp) return;
+  // Reduce browser's own autofill to avoid duplicate suggestion UIs
+  inp.setAttribute('autocomplete','new-password');
+  inp.setAttribute('autocapitalize','off');
+  inp.setAttribute('autocorrect','off');
+  inp.setAttribute('spellcheck','false');
+  inp.setAttribute('name','no-autofill-customer');
+
+  // Background: extend from history for richer suggestions (no UI block)
+  (async ()=>{
+    try{
+      await extendCustomerIndexFromHistory(1000);
+      // If user already typed something, refresh suggestions with the extended index
+      const v = inp.value || '';
+      if((v.trim().length)>=2){
+        const matches = computeCustomerSuggestions(v);
+        openCustomerOverlay(matches, inp);
+      }
+    } catch(e){ reportError('customerHistoryWarmup', e); }
+  })();
+
+  const onInput = ()=>{
+    const v = inp.value || '';
+    if(customerAutocompleteTimer) clearTimeout(customerAutocompleteTimer);
+  customerAutocompleteTimer = setTimeout(()=>{
+      // Custom overlay suggestions (match width to input)
+      if(v.trim().length >= 2){
+        const matches = computeCustomerSuggestions(v);
+        openCustomerOverlay(matches, inp);
+      } else {
+        closeCustomerOverlay();
+      }
+    }, 120);
+  };
+  inp.addEventListener('input', onInput);
+
+  // Fill contacts when a known customer is chosen (change fires on datalist selection)
+  inp.addEventListener('change', ()=>{
+    const v = inp.value || '';
+    const entry = getCustomerEntry(v);
+    if(entry){ fillContactsForCustomer(entry.name); }
+    closeCustomerOverlay();
+  });
+
+  // Long-press to remove current value from suggestions (no layout changes)
+  let pressTimer = null;
+  const pressStart = () => {
+    if(pressTimer) clearTimeout(pressTimer);
+    pressTimer = setTimeout(async ()=>{
+      try{
+        const v = (inp.value||'').trim();
+        if(!v) return;
+        const k = keyStr(v);
+        if(!customerIndex.has(k)) return;
+        const ok = await uiConfirm(`Remove "${v}" from suggestions?`);
+        if(!ok) return;
+        customerBlacklist.add(k);
+        saveCustomerBlacklist();
+        updateCustomerDatalist(inp.value||'');
+        toast('Suggestion removed','warn');
+      } catch(e){ reportError('customerLongPress', e); }
+    }, 800); // ~0.8s hold
+  };
+  const pressEnd = () => { if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } };
+  inp.addEventListener('mousedown', pressStart);
+  inp.addEventListener('touchstart', pressStart, {passive:true});
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=> inp.addEventListener(ev, pressEnd));
+
+  // Keyboard remove: Shift+Delete when value matches a known suggestion
+  inp.addEventListener('keydown', async (e)=>{
+    if(e.key === 'Delete' && e.shiftKey){
+      const v = (inp.value||'').trim(); if(!v) return;
+      const k = keyStr(v); if(!customerIndex.has(k)) return;
+      e.preventDefault();
+      const ok = await uiConfirm(`Remove "${v}" from suggestions?`);
+      if(!ok) return;
+  customerBlacklist.add(k); saveCustomerBlacklist();
+  // Refresh overlay (no datalist)
+  const matches = computeCustomerSuggestions(v);
+  if(matches.length){ openCustomerOverlay(matches, inp); } else { closeCustomerOverlay(); }
+  toast('Suggestion removed','warn');
+    }
+  });
+
+  // Close overlay when clicking outside
+  document.addEventListener('click', (e)=>{
+    const target = e.target;
+    if(customerSugVisible){
+      if(customerSugPanel && !customerSugPanel.contains(target) && target !== inp){
+        closeCustomerOverlay();
+      }
+    }
+  });
+  window.addEventListener('resize', ()=>{ if(customerSugVisible && customerSugAnchor) positionCustomerOverlay(customerSugAnchor); });
+  window.addEventListener('scroll', ()=>{ if(customerSugVisible && customerSugAnchor) positionCustomerOverlay(customerSugAnchor); }, true);
+
+  customerSuggestionsInitialized = true;
+}
+
+function refreshCustomerAutocompleteSources(){
+  // Recompute index after data changes and refresh current suggestions if input has content
+  buildCustomerIndex();
+  const inp = document.getElementById('orderCustomer');
+  if(inp && (inp.value||'').length>=2){ updateCustomerDatalist(inp.value); }
+}
+
 // ---- Validation helpers (no UI impact) ----
 function clampNumber(v, min, max){
   const n = Number(v); if(Number.isNaN(n)) return min; return Math.min(max, Math.max(min, n));
@@ -131,6 +556,8 @@ async function refreshCollections(silent = false){
     if(res.success){
       collectionsActive = (res.data||[]).map(mapDbToUi);
       renderCollections();
+  // keep customer index in sync
+  refreshCustomerAutocompleteSources();
     } else if(!silent){
       handleDbError('realtime:listActive', res.error);
     }
@@ -190,6 +617,8 @@ async function refreshCollections(silent = false){
     }
   } catch(e){ reportError('init:listActive', e); }
   renderCollections();
+  // Initialize customer autocomplete data after first load
+  refreshCustomerAutocompleteSources();
   try { await maybeRunSelfTest(); } catch(e) { console.error('SelfTest error', e); }
 
   // === Realtime subscribe (após primeira carga) ===
@@ -209,6 +638,8 @@ function openAddOrderModal(){
   draftParcels = [];
   // Show modal earlier so elements are measurable/visible if any CSS depends on :not(.hidden)
   showModal('addOrderModal');
+  // Ensure customer autocomplete is ready (no layout change)
+  try { setupCustomerAutocomplete(); } catch(e){ reportError('setupCustomerAutocomplete', e); }
   const addModal = document.getElementById('addOrderModal');
   // Ensure placeholder present immediately (in case JS execution later fails)
   const wrap = document.getElementById('parcelDraftList');
@@ -367,6 +798,22 @@ async function confirmAddOrderInternal(shouldPrint){
   }
   const order = mapDbToUi(createRes.data);
   collectionsActive.unshift(order);
+  try { // update customer sources immediately
+    buildCustomerIndex();
+    if(order && order.customer){
+      // Prefer the latest contact values just submitted
+      const k = keyStr(order.customer);
+      const ex = customerIndex.get(k);
+      const newMs = new Date(order.date || order.createdAt || Date.now()).getTime();
+      const merged = ex || { name: order.customer, contactName:'', contactNumber:'', email:'', lastDateMs:0, count:0 };
+      merged.contactName = normStr(order.contactName) || merged.contactName;
+      merged.contactNumber = normStr(order.contactNumber) || merged.contactNumber;
+      merged.email = normStr(order.email) || merged.email;
+      merged.lastDateMs = Math.max(merged.lastDateMs, newMs);
+      merged.count = (merged.count||0) + 1;
+      customerIndex.set(k, merged);
+    }
+  } catch(e){ reportError('postCreateCustomerIndex', e); }
   toast('Order added','success');
   closeAddOrderModal();
   renderCollections();
