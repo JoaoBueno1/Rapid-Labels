@@ -17,9 +17,10 @@
         <a class="brand" href="index.html">JSlab.dev</a>
       </div>
       <nav class="site-nav">
-        <a href="index.html" class="nav-link">Home</a>
+  <a href="index.html" class="nav-link">Home</a>
   <a href="#" class="nav-link" onclick="openSearchModal();return false;">Search Product Label</a>
   <a href="#" class="nav-link" onclick="openManualModal();return false;">Manual Label</a>
+  <a href="#" class="nav-link" onclick="openBarcodesModal();return false;" style="display:none" aria-hidden="true">Barcodes</a>
         <a href="collections.html" class="nav-link">Collections</a>
         <a href="collections-history.html" class="nav-link active">Collections History</a>
         <a href="restock.html" class="nav-link">Re-Stock</a>
@@ -63,9 +64,8 @@
             <th>Cartons</th>
             <th>Pallets</th>
             <th>Tubes</th>
-            <th>Contact name</th>
-            <th>Contact number</th>
-            <th>Email</th>
+            <th>Invoice</th>
+            <th>Sales Rep</th>
             <th>Collected by</th>
             <th>Operator</th>
             <th>Date & Time</th>
@@ -73,7 +73,7 @@
           </tr>
         </thead>
         <tbody id="historyTbody">
-          <tr><td colspan="12" style="text-align:center;opacity:.6">Loading…</td></tr>
+          <tr><td colspan="11" style="text-align:center;opacity:.6">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -93,6 +93,18 @@
       <h2>Signature</h2>
       <div style="display:flex;justify-content:center;margin-top:4px">
         <img id="signatureModalImg" alt="Signature" style="max-width:100%;max-height:480px;border:1px solid #334155;border-radius:12px;background:#fff;padding:6px;object-fit:contain" />
+      </div>
+    </div>
+  </div>
+
+  <!-- History Message Modal -->
+  <div id="historyMessageModal" class="modal hidden">
+    <div class="modal-content" style="max-width:520px">
+      <span class="close" onclick="closeHistoryMessageModal()">&times;</span>
+      <h2>Detalhes</h2>
+      <div id="historyMessageBody" class="small-note" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button class="search-btn-small" onclick="closeHistoryMessageModal()">Fechar</button>
       </div>
     </div>
   </div>

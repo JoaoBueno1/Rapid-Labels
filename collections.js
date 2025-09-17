@@ -22,11 +22,15 @@ let customerIndex = new Map(); // key: nameLower -> { name, contactName, contact
 let customerSuggestionsInitialized = false;
 let customerAutocompleteTimer = null;
 let customerBlacklist = new Set();
+let skipNextCustomerInputSuggestions = false; // suprimir overlay após seleção
+// Sales rep lightweight autocomplete
+let salesRepSet = new Set();
 // Overlay UI elements for richer interactions (no layout changes)
 let customerSugPanel = null; // wrapper div appended to body
 let customerSugVisible = false;
 let customerSugAnchor = null; // input element
 let customerDatalistDisabled = false;
+let lastCustomerEntry = null; // guarda última seleção para debug / reaplicar
 
 function loadCustomerBlacklist(){
   try{
@@ -45,31 +49,59 @@ function keyStr(s){ return normStr(s).toLowerCase(); }
 function buildCustomerIndex(){
   try{
     const idx = new Map();
-    const push = (name, contactName, contactNumber, email, dateStr, createdAt)=>{
+    const push = (name, contactName, contactNumber, email, dateStr, createdAt, salesRep)=>{
       const nameClean = normStr(name); if(!nameClean) return;
       const k = keyStr(nameClean);
-      const when = (()=>{ try{ return new Date(dateStr||createdAt||Date.now()).getTime(); }catch{ return Date.now(); } })();
+  // Recency must reflect the last saved order, not the planned date
+  const when = (()=>{ try{ return new Date(createdAt||dateStr||Date.now()).getTime(); }catch{ return Date.now(); } })();
       const prev = idx.get(k);
       if(!prev){
-        idx.set(k, { name: nameClean, contactName: normStr(contactName)||'', contactNumber: normStr(contactNumber)||'', email: normStr(email)||'', lastDateMs: when, count: 1 });
+        idx.set(k, { name: nameClean, contactName: normStr(contactName)||'', contactNumber: normStr(contactNumber)||'', email: normStr(email)||'', lastDateMs: when, count: 1, salesRep: normStr(salesRep)||'' });
       } else {
         prev.count += 1;
         if(when >= prev.lastDateMs){
-          // Prefer most recent non-empty contact info
           prev.lastDateMs = when;
           if(contactName) prev.contactName = normStr(contactName);
           if(contactNumber) prev.contactNumber = normStr(contactNumber);
           if(email) prev.email = normStr(email);
+          if(salesRep) prev.salesRep = normStr(salesRep);
         }
       }
     };
-    for(const o of collectionsActive){
-      if(!o) continue;
-      push(o.customer, o.contactName, o.contactNumber, o.email, o.date, o.createdAt);
-    }
+    for(const o of collectionsActive){ if(o) push(o.customer, o.contactName, o.contactNumber, o.email, o.date, o.createdAt, o.salesRep); }
     customerIndex = idx;
   }catch(e){ reportError('buildCustomerIndex', e); }
 }
+
+function rebuildSalesRepIndex(){
+  try {
+    const s = new Set();
+    for(const o of collectionsActive){ if(o && o.salesRep){ s.add(normStr(o.salesRep)); } }
+    salesRepSet = s;
+  } catch(e){ reportError('rebuildSalesRepIndex', e); }
+}
+
+async function extendSalesRepIndexFromHistory(limit=500){
+  if(!dbIsEnabled() || !window.supabaseCollections || typeof window.supabaseCollections.listHistory !== 'function') return;
+  try {
+    const res = await window.supabaseCollections.listHistory(limit);
+    if(res.success && Array.isArray(res.data)){
+      for(const r of res.data){ if(r.sales_rep) salesRepSet.add(normStr(r.sales_rep)); }
+      ensureSalesRepDatalist();
+    }
+  } catch(e){ reportError('extendSalesRepIndexFromHistory', e); }
+}
+
+function ensureSalesRepDatalist(){
+  // Disabled: Sales Rep is customer-driven. Remove any datalist/arrow UI.
+  try{
+    const inp = document.getElementById('orderSalesRep');
+    if(inp) inp.removeAttribute('list');
+    const dl = document.getElementById('salesRepSuggestions');
+    if(dl && dl.parentNode) dl.parentNode.removeChild(dl);
+  }catch(e){ /* noop */ }
+}
+// (previous misplaced block removed – replaced by proper buildCustomerIndex above)
 
 async function extendCustomerIndexFromHistory(limit=1000){
   // Pull additional customers from collections history (broader dataset)
@@ -85,20 +117,23 @@ async function extendCustomerIndexFromHistory(limit=1000){
       const contactName = r.contact_name;
       const contactNumber = r.contact_number;
       const email = r.email;
-      const collectedAt = r.collected_at || r.created_at;
+      const salesRep = r.sales_rep || r.salesRep || '';
+  // Use created_at for recency so the latest saved entry wins; fallback to collected_at
+  const collectedAt = r.created_at || r.collected_at;
       const k = keyStr(name);
       if(!k) continue;
       const when = (()=>{ try{ return new Date(collectedAt||Date.now()).getTime(); }catch{ return Date.now(); } })();
       const prev = customerIndex.get(k);
       if(!prev){
-        customerIndex.set(k, { name: normStr(name), contactName: normStr(contactName)||'', contactNumber: normStr(contactNumber)||'', email: normStr(email)||'', lastDateMs: when, count: 1 });
+        customerIndex.set(k, { name: normStr(name), contactName: normStr(contactName)||'', contactNumber: normStr(contactNumber)||'', email: normStr(email)||'', lastDateMs: when, count: 1, salesRep: normStr(salesRep)||'' });
       } else {
         prev.count += 1;
-        if(when >= prev.lastDateMs){
+  if(when >= prev.lastDateMs){
           prev.lastDateMs = when;
           if(contactName) prev.contactName = normStr(contactName);
           if(contactNumber) prev.contactNumber = normStr(contactNumber);
           if(email) prev.email = normStr(email);
+          if(salesRep) prev.salesRep = normStr(salesRep);
         }
       }
     }
@@ -117,21 +152,35 @@ function fillContactsForCustomer(name){
     const n = document.getElementById('orderContactName'); if(n && entry.contactName) n.value = entry.contactName;
     const p = document.getElementById('orderContactNumber'); if(p && entry.contactNumber) p.value = entry.contactNumber;
     const e = document.getElementById('orderEmail'); if(e && entry.email) e.value = entry.email;
+  const sr = document.getElementById('orderSalesRep');
+  if(sr && !sr.value && entry.salesRep) sr.value = entry.salesRep;
+  // Only hint Sales Rep while Add Order modal is open; otherwise restore original placeholder
+  const addModal = document.getElementById('addOrderModal');
+  if(sr){
+    if(addModal && !addModal.classList.contains('hidden')){
+      if(entry.salesRep){ sr.setAttribute('placeholder', entry.salesRep); }
+    } else if(sr.dataset && sr.dataset.phOrig !== undefined){
+      sr.setAttribute('placeholder', sr.dataset.phOrig);
+    }
+  }
   }catch(err){ reportError('fillContactsForCustomer', err); }
 }
 
 function computeCustomerSuggestions(prefix){
   const p = keyStr(prefix);
-  if(!p || p.length < 2) return [];
-  const out = [];
-  for(const [k, v] of customerIndex.entries()){
+  const all = [];
+  for(const [k,v] of customerIndex.entries()){
     if(customerBlacklist.has(k)) continue;
-    if(k.startsWith(p)) out.push(v);
+    all.push(v);
   }
-  // Sort by recency desc, then frequency desc, then alpha
-  out.sort((a,b)=> (b.lastDateMs - a.lastDateMs) || (b.count - a.count) || a.name.localeCompare(b.name));
-  const TOP_LIMIT = 50; // limit overall to avoid huge lists; browser will provide scroll if needed
-  return out.slice(0, TOP_LIMIT);
+  // Sort master list once (recency, frequency, alpha)
+  all.sort((a,b)=> (b.lastDateMs - a.lastDateMs) || (b.count - a.count) || a.name.localeCompare(b.name));
+  if(!p){
+    return all.slice(0,30); // top recent when nada digitado
+  }
+  // Accept prefix length 1 agora
+  const filtered = all.filter(v=> keyStr(v.name).startsWith(p));
+  return filtered.slice(0,50);
 }
 
 function ensureCustomerDatalist(){
@@ -175,20 +224,8 @@ function disableCustomerDatalistHard(){
   } catch(e){ /* noop */ }
 }
 
-function updateCustomerDatalist(prefix){
-  const dl = ensureCustomerDatalist();
-  if(!dl) return;
-  // Clear previous options
-  dl.innerHTML = '';
-  const list = computeCustomerSuggestions(prefix);
-  if(!list.length) return;
-  // Place top 5 first (browser decides how many visible before scroll)
-  const top = list.slice(0, 5);
-  const rest = list.slice(5);
-  const makeOpt = (name)=>{ const opt=document.createElement('option'); opt.value = name; return opt; };
-  top.forEach(e=> dl.appendChild(makeOpt(e.name)));
-  rest.forEach(e=> dl.appendChild(makeOpt(e.name)));
-}
+// Datalist desativado: usamos somente overlay custom
+function updateCustomerDatalist(prefix){ /* no-op: native datalist removido */ }
 
 function ensureCustomerOverlay(){
   if(customerSugPanel) return customerSugPanel;
@@ -235,6 +272,7 @@ function openCustomerOverlay(matches, anchor){
   // Build items: top 5 first, but all in list; panel shows scroll for rest
   const applySelection = (entry)=>{
     try{
+      lastCustomerEntry = entry;
       const inp = document.getElementById('orderCustomer');
       if(inp){
         inp.value = entry.name;
@@ -245,6 +283,7 @@ function openCustomerOverlay(matches, anchor){
       fillContactsForCustomer(entry.name);
       // Fire both input and change so other listeners react
       if(inp){
+        skipNextCustomerInputSuggestions = true;
         inp.dispatchEvent(new Event('input', {bubbles:true}));
         inp.dispatchEvent(new Event('change', {bubbles:true}));
         // Focus and move caret to end
@@ -361,7 +400,11 @@ function setupCustomerAutocomplete(){
     if(customerAutocompleteTimer) clearTimeout(customerAutocompleteTimer);
   customerAutocompleteTimer = setTimeout(()=>{
       // Custom overlay suggestions (match width to input)
-      if(v.trim().length >= 2){
+      if(skipNextCustomerInputSuggestions){
+        skipNextCustomerInputSuggestions = false;
+        return; // não reabrir imediatamente após seleção
+      }
+      if(v.trim().length >= 1){
         const matches = computeCustomerSuggestions(v);
         openCustomerOverlay(matches, inp);
       } else {
@@ -370,12 +413,25 @@ function setupCustomerAutocomplete(){
     }, 120);
   };
   inp.addEventListener('input', onInput);
+  // Mostrar top sugestões ao focar sem digitar
+  inp.addEventListener('focus', ()=>{
+    const v = inp.value.trim();
+    const matches = computeCustomerSuggestions(v);
+    if(matches && matches.length){ openCustomerOverlay(matches, inp); }
+  });
 
   // Fill contacts when a known customer is chosen (change fires on datalist selection)
   inp.addEventListener('change', ()=>{
     const v = inp.value || '';
     const entry = getCustomerEntry(v);
-    if(entry){ fillContactsForCustomer(entry.name); }
+    if(entry){
+      fillContactsForCustomer(entry.name);
+      // Force-remove datalist artifacts from Sales Rep
+      try{
+        const sr = document.getElementById('orderSalesRep');
+        if(sr){ sr.removeAttribute('list'); sr.setAttribute('autocomplete','off'); }
+      }catch(e){ /* noop */ }
+    }
     closeCustomerOverlay();
   });
 
@@ -438,7 +494,10 @@ function refreshCustomerAutocompleteSources(){
   // Recompute index after data changes and refresh current suggestions if input has content
   buildCustomerIndex();
   const inp = document.getElementById('orderCustomer');
-  if(inp && (inp.value||'').length>=2){ updateCustomerDatalist(inp.value); }
+  if(inp && (inp.value||'').length>=1){
+    const matches = computeCustomerSuggestions(inp.value);
+    if(matches.length) openCustomerOverlay(matches, inp);
+  }
 }
 
 // ---- Validation helpers (no UI impact) ----
@@ -493,6 +552,8 @@ function mapDbToUi(row){
       cartons: row.cartons,
       pallets: row.pallets,
   tubes: row.tubes,
+  invoice: row.invoice || row.invoice_number || row.invoice_no || '',
+  salesRep: row.sales_rep || row.salesrep || row.rep || '',
       contactName: row.contact_name,
       contactNumber: row.contact_number,
       email: row.email,
@@ -558,6 +619,7 @@ async function refreshCollections(silent = false){
       renderCollections();
   // keep customer index in sync
   refreshCustomerAutocompleteSources();
+  // Sales Rep field no longer uses a datalist; it is populated from customer selection only
     } else if(!silent){
       handleDbError('realtime:listActive', res.error);
     }
@@ -608,6 +670,7 @@ async function refreshCollections(silent = false){
       const res = await window.supabaseCollections.listActive();
       if (res.success){
         collectionsActive = (res.data || []).map(mapDbToUi);
+  // Sales Rep datalist disabled; value/placeholder come from customer history
       } else {
         console.error('Supabase listActive error:', res.error);
         handleDbError('listActive', res.error);
@@ -619,6 +682,7 @@ async function refreshCollections(silent = false){
   renderCollections();
   // Initialize customer autocomplete data after first load
   refreshCustomerAutocompleteSources();
+  // Sales Rep suggestions warm-up removed (not used by UI)
   try { await maybeRunSelfTest(); } catch(e) { console.error('SelfTest error', e); }
 
   // === Realtime subscribe (após primeira carga) ===
@@ -647,10 +711,13 @@ function openAddOrderModal(){
   // Clear input fields
   if(addModal){
     addModal.querySelectorAll('input').forEach(inp=>{
+  // Capture original placeholder once
+  if(!inp.dataset.phOrig){ inp.dataset.phOrig = inp.getAttribute('placeholder') || ''; }
       if(inp.id !== 'orderDate') inp.value='';
       inp.classList.remove('error');
       inp.removeAttribute('aria-invalid');
-      if(inp.dataset && inp.dataset.phOrig){ inp.setAttribute('placeholder', inp.dataset.phOrig); }
+  // Always restore original placeholder (e.g., "Sales Rep")
+  inp.setAttribute('placeholder', inp.dataset.phOrig || '');
     });
     addModal.querySelectorAll('.field-error-msg').forEach(el=>{
       // keep the parcelDraftList message; remove only those next to inputs
@@ -662,7 +729,18 @@ function openAddOrderModal(){
   // Re-render parcel UI after a tick (ensures DOM ready)
   setTimeout(()=>{ try { updateParcelDraftUI(); } catch(e){ console.error('[AddOrder] updateParcelDraftUI after open failed', e); } }, 0);
 }
-function closeAddOrderModal(){ document.getElementById('addOrderModal').classList.add('hidden'); }
+function closeAddOrderModal(){
+  const modal = document.getElementById('addOrderModal');
+  if(modal) modal.classList.add('hidden');
+  // Garantir remoção do overlay de sugestões (evita "fantasma" no meio da página)
+  try {
+    if(customerSugPanel){
+      customerSugPanel.style.display='none';
+      customerSugPanel.innerHTML='';
+      customerSugVisible = false;
+    }
+  } catch(e){ /* noop */ }
+}
 
 function showModal(id){ const el=document.getElementById(id); if(el) el.classList.remove('hidden'); }
 function hideModal(id){ const el=document.getElementById(id); if(el) el.classList.add('hidden'); }
@@ -721,7 +799,7 @@ function updateParcelDraftUI(){
 
 // (Legacy confirmAddOrder removed; single implementation lives in confirmAddOrderInternal)
 
-// Save & immediately print labels based on total parcels (cartons + pallets + tubes)
+// Save & immediately print labels (opens after successful create)
 async function confirmAddOrderAndPrint(){
   await confirmAddOrderInternal(true);
 }
@@ -731,6 +809,8 @@ async function confirmAddOrderInternal(shouldPrint){
   // Sanitize textual fields (no layout/UI change)
   const customer = sanitizeText(document.getElementById('orderCustomer').value, 80);
   const reference = sanitizeText(document.getElementById('orderReference').value, 80);
+  const salesRep = sanitizeText((document.getElementById('orderSalesRep')?.value||''), 80);
+  const invoice = sanitizeText((document.getElementById('orderInvoice')?.value||''), 40);
   const contactName = sanitizeText(document.getElementById('orderContactName').value, 80);
   const contactNumber = sanitizeText(document.getElementById('orderContactNumber').value, 40);
   const email = sanitizeText((document.getElementById('orderEmail')?.value||''), 120);
@@ -771,15 +851,15 @@ async function confirmAddOrderInternal(shouldPrint){
         }
       }
     });
-    toast('Missing: '+missing.join(', '),'error');
-    return;
+  toast('Missing: '+missing.join(', '),'error');
+  return;
   }
   // Aggregate + clamp parcel counts
   const cartons = clampNumber(draftParcels.filter(p=>p.type==='carton').reduce((a,b)=>a+b.qty,0),0,9999);
   const pallets = clampNumber(draftParcels.filter(p=>p.type==='pallet').reduce((a,b)=>a+b.qty,0),0,9999);
   const tubes   = clampNumber(draftParcels.filter(p=>p.type==='tube').reduce((a,b)=>a+b.qty,0),0,9999);
   if(!cartons&&!pallets&&!tubes){
-  toast('Add at least one parcel','error');
+    toast('Add at least one parcel','error');
     return;
   }
   const summary=draftParcels.map(p=>`${p.type} x ${p.qty}`).join(', ');
@@ -789,7 +869,8 @@ async function confirmAddOrderInternal(shouldPrint){
   // Cria direto no DB (sem fallback local)
   let createRes = await window.supabaseCollections.create({
     customer, reference, cartons, pallets, tubes,
-    contactName, contactNumber, email, date
+    contactName, contactNumber, email, date,
+    salesRep, invoice
   });
   if(!createRes.success){
     handleDbError('create', createRes.error);
@@ -804,21 +885,37 @@ async function confirmAddOrderInternal(shouldPrint){
       // Prefer the latest contact values just submitted
       const k = keyStr(order.customer);
       const ex = customerIndex.get(k);
-      const newMs = new Date(order.date || order.createdAt || Date.now()).getTime();
-      const merged = ex || { name: order.customer, contactName:'', contactNumber:'', email:'', lastDateMs:0, count:0 };
+  const newMs = new Date(order.createdAt || order.date || Date.now()).getTime();
+  const merged = ex || { name: order.customer, contactName:'', contactNumber:'', email:'', lastDateMs:0, count:0, salesRep:'' };
       merged.contactName = normStr(order.contactName) || merged.contactName;
       merged.contactNumber = normStr(order.contactNumber) || merged.contactNumber;
       merged.email = normStr(order.email) || merged.email;
       merged.lastDateMs = Math.max(merged.lastDateMs, newMs);
       merged.count = (merged.count||0) + 1;
+  if(order.salesRep) merged.salesRep = normStr(order.salesRep);
       customerIndex.set(k, merged);
+    }
+    // Refresh overlay imediatamente para incluir novo cliente
+    const custInput = document.getElementById('orderCustomer');
+    if(custInput){
+      const matches = computeCustomerSuggestions(custInput.value.trim());
+      if(matches.length) openCustomerOverlay(matches, custInput);
     }
   } catch(e){ reportError('postCreateCustomerIndex', e); }
   toast('Order added','success');
   closeAddOrderModal();
   renderCollections();
-  ['orderCustomer','orderReference','orderContactName','orderContactNumber','orderEmail']
+  ['orderCustomer','orderReference','orderSalesRep','orderInvoice','orderContactName','orderContactNumber','orderEmail']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  // Restore Sales Rep placeholder to its original label after save
+  (function(){
+    const sr = document.getElementById('orderSalesRep');
+    if(sr){
+      if(!sr.dataset.phOrig){ sr.dataset.phOrig = sr.getAttribute('placeholder') || ''; }
+      sr.setAttribute('placeholder', sr.dataset.phOrig || '');
+    }
+  })();
+  if(salesRep) { salesRepSet.add(salesRep); ensureSalesRepDatalist(); }
   draftParcels=[]; updateParcelDraftUI();
   if (shouldPrint){
     try { printOrderLabels(order); } catch(e){ reportError('printLabels', e); toast('Print failed','error'); }
@@ -850,8 +947,8 @@ function buildCollectionLabelsHTML(order, total){
         <div class="header">COLLECTION ORDER</div>
         <div class="divider"></div>
         <div class="info-line"><span class="section-label">CUSTOMER:</span><span>${safe(order.customer)}</span></div>
-        <div class="info-line"><span class="section-label">REFERENCE:</span><span>${safe(order.reference)}</span></div>
-        <div class="info-line"><span class="section-label">CONTACT:</span><span>${safe(order.contactName)}${order.contactNumber?` - ${safe(order.contactNumber)}`:''}</span></div>
+  <div class="info-line"><span class="section-label">REFERENCE:</span><span>${safe(order.reference)}</span></div>
+  <div class='info-line'><span class='section-label'>INVOICE:</span><span>${safe(order.invoice)||'—'}</span></div>
         ${order.cartons?`<div class='info-line'><span class='section-label'>CARTONS:</span><span>${order.cartons}</span></div>`:''}
         ${order.pallets?`<div class='info-line'><span class='section-label'>PALLETS:</span><span>${order.pallets}</span></div>`:''}
         ${order.tubes?`<div class='info-line'><span class='section-label'>TUBES:</span><span>${order.tubes}</span></div>`:''}
@@ -906,16 +1003,16 @@ function renderCollections(){
   const rows=collectionsActive
     .slice()
     .sort((a,b)=> new Date(b.date||0) - new Date(a.date||0))
-    .filter(o=>{ if(!q) return true; return [o.customer,o.reference,o.contactName,o.email,o.id].some(v=>(v||'').toLowerCase().includes(q)); });
+    .filter(o=>{ if(!q) return true; return [o.customer,o.reference,o.invoice,o.salesRep,o.contactName,o.email,o.id].some(v=>(v||'').toLowerCase().includes(q)); });
   const tbody=document.getElementById('collectionsTbody');
   if (!tbody) return;
   if (rows.length === 0){
-    if(q){ tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;opacity:.7">Order not found</td></tr>'; }
-    else { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;opacity:.7">No data</td></tr>'; }
+    if(q){ tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;opacity:.7">Order not found</td></tr>'; }
+    else { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;opacity:.7">No data</td></tr>'; }
     return;
   }
   tbody.innerHTML = rows.map(o=>{
-    const highlight = q && [o.customer,o.reference,o.contactName,o.email,o.id].some(v => (v||'').toLowerCase().includes(q));
+    const highlight = q && [o.customer,o.reference,o.invoice,o.salesRep,o.contactName,o.email,o.id].some(v => (v||'').toLowerCase().includes(q));
     const hlAttr = highlight ? ' style="background:#fffbe6"' : '';
     return `<tr>
       <td${hlAttr}>${o.customer}</td>
@@ -923,9 +1020,8 @@ function renderCollections(){
       <td>${o.cartons||0}</td>
       <td>${o.pallets||0}</td>
       <td>${o.tubes||0}</td>
-      <td>${o.contactName}</td>
-      <td>${o.contactNumber}</td>
-      <td>${o.email||''}</td>
+      <td>${o.invoice||''}</td>
+      <td>${o.salesRep||''}</td>
       <td><span class="date-chip ${dateClass(o.date)}">${formatShort(o.date)}</span></td>
       <td class="actions-col" style="text-align:right">
         <div class="action-buttons">
@@ -961,7 +1057,7 @@ function openEditOrder(id){
   if(!o) return;
   editingOrderId = String(id);
   showModal('editOrderModal');
-  ['Customer','Reference','ContactName','ContactNumber','Email'].forEach(k=>{
+  ['Customer','Reference','SalesRep','Invoice','ContactName','ContactNumber','Email'].forEach(k=>{
     const el=document.getElementById('edit'+k); if(el) el.value = o[ k.charAt(0).toLowerCase()+k.slice(1) ] || '';
   });
   const ec=document.getElementById('editCartons'); if(ec) ec.value = o.cartons||0;
@@ -978,6 +1074,8 @@ async function saveEditOrder(){
     ...collectionsActive[idx],
   customer: sanitizeText((document.getElementById('editCustomer').value||''), 80),
   reference: sanitizeText((document.getElementById('editReference').value||''), 80),
+  salesRep: sanitizeText((document.getElementById('editSalesRep')?.value||''), 80),
+  invoice: sanitizeText((document.getElementById('editInvoice')?.value||''), 40),
   contactName: sanitizeText((document.getElementById('editContactName').value||''), 80),
   contactNumber: sanitizeText((document.getElementById('editContactNumber').value||''), 40),
   email: sanitizeText((document.getElementById('editEmail').value||''), 120),
@@ -1003,7 +1101,9 @@ async function saveEditOrder(){
       cartons: updated.cartons,
       pallets: updated.pallets,
   tubes: updated.tubes,
-      contactName: updated.contactName,
+  salesRep: updated.salesRep,
+  invoice: updated.invoice,
+  contactName: updated.contactName,
       contactNumber: updated.contactNumber,
       email: updated.email,
       date: updated.date
@@ -1099,12 +1199,14 @@ async function submitCollection(){
   const operatorRaw = operatorInput ? sanitizeText(operatorInput.value, 80) : '';
   const selectVal = document.getElementById('collectionOperator').value;
   const operator = operatorRaw || selectVal;
-    // Validate operator must exist in loaded list (or fallback if DB not loaded yet)
+    // Validate operator with case-insensitive match and normalize to canonical casing
     const validList = operatorNames.length ? operatorNames : operators;
-    if (!validList.includes(operator)){
+    const match = (operator || '').trim() ? validList.find(n => n.toLowerCase() === operator.toLowerCase()) : '';
+    if (!match){
       toast('Select a valid operator','error');
       return;
     }
+    const operatorFinal = match; // use canonical capitalization from the list
     const date=document.getElementById('collectionDate').value;
     const time=document.getElementById('collectionTime').value;
     // Reset invalid state
@@ -1156,7 +1258,7 @@ async function submitCollection(){
 
     const iso = new Date(`${date}T${time}:00`).toISOString();
     const res = await window.supabaseCollections.confirm(
-      order.id, collectedBy, operator, iso, sigPayload
+      order.id, collectedBy, operatorFinal, iso, sigPayload, order.invoice, order.salesRep
     );
 
     if (!res.success){
@@ -1178,7 +1280,29 @@ async function submitCollection(){
 }
 
 function messageOrder(id){
-  toast('Message action coming soon','warn');
+  const o = collectionsActive.find(x => String(x.id) === String(id));
+  if(!o){ toast('Order not found','error'); return; }
+  const modal = document.getElementById('messageModal');
+  const body = document.getElementById('messageModalBody');
+  if(!modal || !body){ toast('Modal missing','error'); return; }
+  body.innerHTML = `
+    <div><strong>Customer:</strong> ${escapeHtml(o.customer||'')}</div>
+    <div><strong>Reference:</strong> ${escapeHtml(o.reference||'')}</div>
+    <div><strong>Invoice:</strong> ${escapeHtml(o.invoice||'')}</div>
+    <div><strong>Sales Rep:</strong> ${escapeHtml(o.salesRep||'')}</div>
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:6px 0" />
+    <div><strong>Contact name:</strong> ${escapeHtml(o.contactName||'')}</div>
+    <div><strong>Contact number:</strong> ${escapeHtml(o.contactNumber||'')}</div>
+    <div><strong>Email:</strong> ${escapeHtml(o.email||'')}</div>
+    <div><strong>Date:</strong> ${escapeHtml(formatShort(o.date)||'')}</div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function closeMessageModal(){ const m=document.getElementById('messageModal'); if(m) m.classList.add('hidden'); }
+
+function escapeHtml(str){
+  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ================= Operator Select Helpers (type-ahead filter) =================
@@ -1305,7 +1429,11 @@ function enhanceOperatorSelect(){
   setTimeout(relocateSug,0);
 
   function closeSuggestions(){ sug.style.display='none'; }
-  function openSuggestions(){ sug.style.display='block'; }
+  function openSuggestions(){
+    // Ensure the dropdown is positioned just below the input row, even if the modal was previously hidden
+    relocateSug();
+    sug.style.display='block';
+  }
   function buildList(filter, forceAll){
     const list = (operatorNames.length?operatorNames:operators);
     let matches = list;
@@ -1326,7 +1454,16 @@ function enhanceOperatorSelect(){
     if(list.includes(val)) sel.value=val;
   });
   input.addEventListener('focus', ()=>{ const v=input.value.trim(); if(v.length>=2) buildList(v,false); });
-  btn.addEventListener('click', ()=>{ buildList('', true); input.focus(); });
+  // Toggle full list on button click
+  btn.addEventListener('click', ()=>{
+    if (sug.style.display === 'block'){
+      closeSuggestions();
+      input.focus();
+    } else {
+      buildList('', true);
+      input.focus();
+    }
+  });
   input.addEventListener('keydown', e=>{
     if(e.key==='Escape'){ closeSuggestions(); return; }
     if(e.key==='Enter'){
@@ -1369,7 +1506,8 @@ function enhanceOperatorSelect(){
 
   // Removed previous arrow overlay; button now controls full list.
 
-  document.addEventListener('click', e=>{ if(!parent.contains(e.target)) closeSuggestions(); });
+  // Close when clicking anywhere outside this control
+  document.addEventListener('click', e=>{ if(!outer.contains(e.target)) closeSuggestions(); });
   operatorInputInitialized = true;
 }
 

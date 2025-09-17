@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Barcodes 3-Up</title>
+  <style>
+  /*
+   =======================================================================
+   BARCODE LABELS TEMPLATE - ADJUSTMENT GUIDE
+   -----------------------------------------------------------------------
+   DIMENSOES GERAIS:
+    - Pagina inteira: 100mm (largura) x 150mm (altura) -> ver @page em @media print.
+    - 3 secoes empilhadas (Product / Location / Manual). Cada .sec ocupa 40mm de altura (flex:0 0 40mm).
+    - Espaco vertical entre secoes: controlado pelo gap de .label (atual: 2mm). Se quiser mais/menos distancia geral entre as secoes, alterar 'gap' em .label.
+
+   ONDE AJUSTAR:
+    1. Tamanho total da etiqueta:
+      - Se precisar mudar a largura/altura da pagina: editar @media print -> @page { size:100mm 150mm; }
+      - Ajustar tambem .label { width:100mm; height:150mm; }
+
+    2. Altura de cada secao (cada bloco de conteudo):
+      - .sec { flex:0 0 40mm; height:40mm; } -> alterar 40mm se quiser mais ou menos espaco por secao.
+      - IMPORTANTE: Some as alturas + gaps para nao ultrapassar os 150mm da pagina.
+
+    3. Padding interno da secao / margem lateral:
+      - .sec { padding:0mm 0mm 1mm 0mm; } -> alterar aqui para adicionar respiro interno.
+      - Nao ha padding nas laterais para maximizar largura imprimivel.
+
+    4. Distancias verticais internas (Product/Manual):
+      - Titulo (nome) encostado: .title line-height e margin.
+      - Gap geral entre elementos na linha: .row2 { gap:0.25mm; }
+      - Para aproximar ainda mais SKU do barcode: reduzir gap para 0 ou ajustar line-height de .big.
+
+    5. Fontes:
+      - Nome (titulo) -> .title { font-size:28px; line-height:0.95; }
+      - SKU / Code grande -> .big { font-size:32px; line-height:0.95; }
+      - Legenda (location caption) -> .sub { font-size:13px; }
+      - Digitos EAN-13 (HRI) -> definido em JS (fontSize: 16) dentro de JsBarcode (buscar por 'fontSize: hriFontSize').
+
+    6. Layout horizontal (Product/Manual):
+      - Larguras das colunas: .col-left (SKU) = 33% / .col-right (barcode) = 67%.
+      - Ajustar para ganhar mais largura no barcode mudando porcentagens.
+
+    7. Barcode (espessura / largura / altura):
+      - JS: const moduleWidth = (section.mode === 'location') ? 2.2 : 5;
+         * Aumente para 5.5 / 6 se quiser barras mais largas (mais ocupacao horizontal).
+      - Altura visual real controlada pelo atributo CSS .barcode { height:30mm; } e
+        a geracao JsBarcode usa height:120 (pixels SVG). Se aumentar CSS height, ele escala.
+      - Para LOCATION: classe .barcode.location { height:28mm; } -> ajuste aqui se quiser mais/menos altura.
+
+    8. Espacamento nome / SKU / barcode (Product & Manual):
+      - Encostar ainda mais: reduzir .title font-size ou line-height; reduzir .row2 gap; ajustar .big line-height.
+
+    9. Ocultar / mostrar digitos em baixo do EAN (HRI):
+      - Controlado pela opcao displayValue no JsBarcode (true exceto location). Editar em renderSection -> JsBarcode(... displayValue ...).
+
+    10. Fallback / Formatos:
+      - Product & Manual tentam EAN-13 primeiro (getEanForJsBarcode). Se invalido, usam CODE128 com SKU/Code.
+      - Location sempre CODE128.
+
+    11. Para adicionar variaveis centralizadas (opcional futuramente):
+      - Poderia criar :root { --sec-height:40mm; --col-left:33%; --barcode-module:5; } e referenciar.
+      - Atualmente mantido simples para leitura direta.
+
+   COMO PROCURAR RAPIDO:
+    - Altura secao: procurar 'flex:0 0 40mm'.
+    - Larguras colunas: procurar '.col-left' / '.col-right'.
+    - Barcode moduleWidth: procurar 'moduleWidth ='.
+    - Fonte digitos EAN: procurar 'hriFontSize'.
+    - Impressao pagina: procurar '@page { size:'.
+
+   QUALQUER EDICAO: Basta salvar e reimprimir; sem build.
+   =======================================================================
+   */
+    :root { --border:#000; }
+    html, body { margin:0; padding:0; }
+    body { font-family: Arial, sans-serif; }
+    .label {
+      /* ORIENTACAO RETRATO: 10.0cm x 15cm (100mm x 150mm) */
+      width:100mm; height:150mm;
+      border:none; box-sizing:border-box;
+      padding:0;
+      page-break-after:always;
+      display:flex; flex-direction:column;
+  /* gap controla espaco entre secoes (entre os blocos) */
+  gap:5mm; /* aumentado para 5mm */
+      position:relative;
+    }
+  /* Altura de cada secao (voltando para 40mm em layout retrato) */
+  /* Padding lateral: esquerda 1mm, direita 0.5mm */
+  .sec { flex:0 0 40mm; height:40mm; border:none; border-radius:0; padding:0 0.5mm 0 1mm; display:flex; flex-direction:column; }
+    /* Titulo (Product/Manual) – mesma fonte que SKU por requisito */
+  .title { font-weight:400; font-size:26px; line-height:1; text-align:center; margin:0 0 2mm 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%; }
+    /* SKU / Code grande (area 20mm x 10mm) -> altura controlada via .sku-box */
+    .big { font-weight:900; font-size:26px; line-height:1; }
+    .sub { font-size:13px; color:#111; line-height:1.05; text-align:center; margin:0; }
+    /* Linha principal Product/Manual centralizada horizontalmente */
+  .pm-row { display:flex; justify-content:flex-start; align-items:flex-start; gap:0.5mm; width:100%; }
+    /* Caixa SKU dimensionada 20mm x 10mm */
+  .sku-box { width:20mm; height:10mm; display:flex; align-items:center; justify-content:flex-start; padding-left:0.5mm; box-sizing:border-box; font-weight:900; font-size:36px; line-height:1; }
+    /* Container do barcode Product/Manual 45mm x 25mm */
+  /* Revert largura barcode Product/Manual para estado anterior */
+  /* Barcode Product/Manual largura original 45mm */
+  /* Barcode Product/Manual dimensoes fixas: width 5.97cm (59.7mm) x height 2.64cm (26.4mm) */
+  .barcode-box { width:59.7mm; height:26.4mm; display:flex; align-items:center; justify-content:flex-end; margin-left:auto; padding-right:0; box-sizing:border-box; }
+    .barcode.pm { width:100%; height:100%; display:block; }
+    /* LOCATION barcode container 80mm x 20mm */
+  /* Revert largura barcode Location */
+  /* Location largura original 80mm */
+  /* Location barcode dims from spec: width 3.15" (~80mm), total (barcode + caption) 0.88" (~22.35mm).
+    Caption (loc-name) ~3.7mm -> barcode box height ~18.5mm to hit total. */
+  /* Location barcode dimensoes fixas: width 9.16cm (91.6mm) x height 2.65cm (26.5mm) */
+  .loc-barcode-box { width:91.6mm; height:26.5mm; display:flex; align-items:center; justify-content:center; margin:0 auto; }
+    .barcode.location { width:100%; height:100%; display:block; }
+    /* Nome location abaixo do barcode (fonte pode ser ajustada aqui) */
+  /* Top name alinhado exatamente com o barcode (mesma largura e centrado) */
+  .loc-name-top { font-weight:900; font-size:36px; line-height:1; text-align:left; width:91.6mm; margin:0 auto 1mm auto; }
+  .loc-name { font-weight:600; font-size:14px; line-height:1; margin:0.5mm 0 0 0; text-align:center; }
+    /* (OPCIONAL FUTURO) Linha acima menor / abaixo maior - aguarda confirmacao */
+    .loc-top { font-weight:900; font-size:20px; line-height:1; margin:0 0 0.5mm 0; text-align:center; }
+    .loc-bottom { font-weight:600; font-size:13px; line-height:1; margin:0.5mm 0 0 0; text-align:center; }
+    .barcode-wrap { display:flex; align-items:center; justify-content:center; width:100%; line-height:0; }
+    /* Legacy generic barcode class (height override if needed) */
+    .barcode { display:block; }
+    .meta { display:none; }
+    .hint { display:none; }
+    .row { display:flex; gap:3mm; align-items:center; }
+    .half { flex:1 1 0; }
+  @media print { @page { size:100mm 150mm; margin:0; } .label{ margin:0; } }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script>
+    function byId(id){ return document.getElementById(id); }
+
+    function isValidEan13(s){
+      const d = String(s||'').replace(/\D+/g,'');
+      if (d.length !== 13) return false;
+      const nums = d.split('').map(x=>parseInt(x,10));
+      const check = nums.pop();
+      const sum = nums.reduce((acc,n,i)=> acc + n * (i%2===0 ? 1 : 3), 0);
+      const calc = (10 - (sum % 10)) % 10;
+      return calc === check;
+    }
+
+    function getEanForJsBarcode(raw){
+      const d = String(raw||'').replace(/\D+/g,'');
+      if (d.length >= 13){
+        if (isValidEan13(d)) return { format:'EAN13', value:d };
+        // Fall back to 12-digit body, JsBarcode will compute checksum
+        return { format:'EAN13', value:d.slice(0,12) };
+      }
+      if (d.length === 12){ return { format:'EAN13', value:d }; }
+      return null;
+    }
+
+    function renderSection(root, section){
+      // Clear
+      root.innerHTML = '';
+  const t = document.createElement('div'); t.className='title';
+  const big = document.createElement('div'); big.className='big';
+  const s = document.createElement('div'); s.className='sub';
+  const barWrap = document.createElement('div'); barWrap.className='barcode-wrap';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg'); svg.classList.add('barcode');
+      barWrap.appendChild(svg);
+      const meta = document.createElement('div'); meta.className='meta';
+      const hint = document.createElement('div'); hint.className='hint';
+      const right = document.createElement('div'); right.textContent = (section.mode||'').toUpperCase();
+      meta.appendChild(hint); meta.appendChild(right);
+
+  let bcValue = '';
+  let bcFormat = 'CODE128';
+  if (section.mode === 'product'){
+        const sku = section.sku||''; const name = section.name||'';
+    // Header centered on top; BIG (SKU) left; barcode right
+    t.textContent = name || '';
+        if (sku){ big.textContent = sku; }
+  s.textContent = '';
+        const eanObj = getEanForJsBarcode(section.ean13);
+        if (eanObj){ bcFormat = eanObj.format; bcValue = eanObj.value; }
+        else { bcFormat='CODE128'; bcValue = sku || name || ''; }
+      } else if (section.mode === 'location'){
+        const code = section.location||section.code||'';
+        // Layout like Location.svg: only barcode with single caption under (avoid duplicate HRI)
+        s.textContent = code || '';
+        hint.textContent = 'CODE128';
+        bcFormat = 'CODE128';
+        bcValue = code;
+  svg.classList.add('location');
+  } else if (section.mode === 'manual'){
+        const code = section.code||''; const title = section.title||''; const ean = (section.ean13||'').replace(/\D+/g,'');
+    // Same as Product: header on top, BIG (Code) left, barcode right
+    t.textContent = title || '';
+        if (code){ big.textContent = code; }
+  s.textContent = '';
+        const eanObjM = getEanForJsBarcode(ean) || getEanForJsBarcode(code);
+        if (eanObjM){ bcFormat = eanObjM.format; bcValue = eanObjM.value; }
+        else { bcFormat='CODE128'; bcValue = code; }
+      }
+
+      if (section.mode === 'location'){
+        // LOCATION: nome acima (grande), barcode, nome menor abaixo
+        if (s.textContent){
+          const topName = document.createElement('div'); topName.className='loc-name-top'; topName.textContent = s.textContent;
+          root.appendChild(topName);
+        }
+        const locBox = document.createElement('div'); locBox.className='loc-barcode-box';
+        locBox.appendChild(svg);
+        root.appendChild(locBox);
+        if (s.textContent){
+          const locName = document.createElement('div'); locName.className='loc-name'; locName.textContent = s.textContent;
+          root.appendChild(locName);
+        }
+      } else {
+        // PRODUCT / MANUAL: titulo acima, depois linha com SKU + barcode dimensionados
+        if (t.textContent) root.appendChild(t);
+        const row = document.createElement('div'); row.className='pm-row';
+        const skuBox = document.createElement('div'); skuBox.className='sku-box'; skuBox.textContent = big.textContent || '';
+        const bcBox = document.createElement('div'); bcBox.className='barcode-box';
+        bcBox.appendChild(svg);
+        row.appendChild(skuBox);
+        row.appendChild(bcBox);
+        root.appendChild(row);
+      }
+      root.appendChild(meta);
+
+      // Generate barcode
+      const format = bcFormat;
+      if (bcValue){
+        try {
+          // Ajuste de moduleWidth para caber dentro das dimensoes alvo sem overflow perceptivel
+          // EAN-13 tem numero fixo de barras; reduzir moduleWidth se largura real ultrapassar container.
+          // Valores anteriores estaveis de espessura
+          // ---- Ajuste MILIMETRICO de largura ----
+          // Requisitos fornecidos (atualizados):
+          // Product/Manual barcode box: 59.7mm x 26.4mm
+          // Location barcode box: 91.6mm x 26.5mm
+          // Ajuste dinamico de largura anterior
+          const hriFontSize = (section.mode === 'location') ? 0 : 20; // mantem HRI para product/manual
+          const containerEl = svg.parentElement; // barcode-box ou loc-barcode-box
+          let targetPx = containerEl ? containerEl.clientWidth : 0;
+          if (!targetPx) { // fallback aproximado usando mm declarados
+            // Fallback aproximado em mm quando largura real ainda não foi medida (flex layout):
+            // location ~100mm (quase largura total), product/manual ~70mm (restante depois da SKU)
+            const mmFallback = (section.mode === 'location') ? 91.6 : 59.7;
+            targetPx = mmFallback * (96/25.4);
+          }
+
+          let moduleWidth;
+          if (format === 'EAN13' && (section.mode === 'product' || section.mode === 'manual')) {
+            // EAN-13 sempre 95 módulos (barras + espaços). Ajustar width aproximado.
+            moduleWidth = (targetPx / 95);
+            // Evita barras exageradamente grossas em impressoras térmicas
+            if (moduleWidth > 4) moduleWidth = 4;
+            if (moduleWidth < 1) moduleWidth = 1; // limite inferior
+            JsBarcode(svg, bcValue, {
+              format,
+              width: moduleWidth,
+              height: 100, // ajustado para aproximar 26.4mm fisicos
+              displayValue: true,
+              fontSize: hriFontSize,
+              textMargin: 0,
+              margin: 0,
+              background: '#ffffff',
+              lineColor: '#000000'
+            });
+            // Aproxima ainda mais HRI das barras deslocando o texto levemente para cima
+            try {
+              const txt = svg.querySelector('text');
+              if (txt) {
+                const y = parseFloat(txt.getAttribute('y')||'0');
+                if (!isNaN(y)) txt.setAttribute('y', (y - 2).toString());
+              }
+            } catch(e){}
+            // Removido centramento para manter alinhado totalmente à direita
+          } else {
+            // CODE128 (location) ou fallback product/manual sem EAN: gerar e escalar se necessário
+            moduleWidth = (section.mode === 'location') ? 2 : 2.2;
+            JsBarcode(svg, bcValue, {
+              format,
+              width: moduleWidth,
+              height: (section.mode === 'location') ? 100 : 100, // altura uniforme aproximando 26.4/26.5mm
+              displayValue: (section.mode !== 'location'),
+              fontSize: hriFontSize,
+              textMargin: (section.mode !== 'location') ? 0 : 1,
+              margin: 0,
+              background: '#ffffff',
+              lineColor: '#000000'
+            });
+            if (section.mode !== 'location') {
+              try {
+                const txt = svg.querySelector('text');
+                if (txt) {
+                  const y = parseFloat(txt.getAttribute('y')||'0');
+                  if (!isNaN(y)) txt.setAttribute('y', (y - 2).toString());
+                }
+              } catch(e){}
+            }
+            // Escalar horizontalmente para preencher largura target sem alterar altura
+            try {
+              const boxW = svg.getBBox().width;
+              if (boxW && targetPx) {
+                const scale = targetPx / boxW;
+                if (Math.abs(scale - 1) > 0.02) {
+                  if (section.mode === 'location') {
+                    svg.style.transformOrigin = 'center center';
+                  } else {
+                    svg.style.transformOrigin = 'left center';
+                  }
+                  svg.style.transform = 'scaleX(' + scale + ')';
+                }
+              }
+            } catch(e){}
+          }
+        } catch(e) {
+          // Fallback: show as plain text
+          barWrap.innerHTML = `<div style="font-size:12px; text-align:center">${bcValue}</div>`;
+        }
+      } else {
+        barWrap.innerHTML = `<div style="font-size:12px; text-align:center; color:#666">(no data)</div>`;
+      }
+    }
+
+    function render(payload){
+      const root = byId('sectionsRoot');
+      root.innerHTML = '';
+      const secs = (payload.sections||[]).filter(s => {
+        if (!s || !s.mode) return false;
+        if (s.mode === 'location') return !!(s.location||s.code);
+        if (s.mode === 'product') return !!(s.sku||s.name||s.ean13);
+        if (s.mode === 'manual') return !!(s.code||s.title||s.ean13);
+        return false;
+      });
+      if (!secs.length) return;
+      secs.forEach(s => {
+        const el = document.createElement('div'); el.className='sec';
+        root.appendChild(el);
+        renderSection(el, s);
+      });
+      // After rendering, compute total used height and add top/bottom padding to center
+      requestAnimationFrame(()=>{
+        try {
+          const label = byId('labelRoot');
+          const blocks = Array.from(root.children);
+          const gapMm = 5; // matches CSS gap atualizado
+          // Convert mm to px approximation using 96dpi: 1in=25.4mm -> pxPerMm = 96/25.4
+          const pxPerMm = 96/25.4;
+          const gapPx = gapMm * pxPerMm;
+          let total = 0;
+          blocks.forEach((b,i)=>{ total += b.getBoundingClientRect().height; if (i < blocks.length-1) total += gapPx; });
+          const labelH = label.getBoundingClientRect().height;
+            let free = labelH - total;
+          if (free < 0) free = 0;
+          const pad = free/2;
+          label.style.paddingTop = pad + 'px';
+          label.style.paddingBottom = pad + 'px';
+        } catch(e){}
+      });
+      setTimeout(()=>{ try { window.print(); window.onafterprint = ()=>window.close(); } catch(e){} }, 200);
+    }
+
+    window.addEventListener('load', ()=>{
+      // Signal ready to opener
+      try { window.opener && window.opener.postMessage('BARCODES_READY','*'); } catch(e){}
+    });
+    window.addEventListener('message', (e)=>{
+      const msg = e.data || {};
+      if (msg && msg.type === 'BARCODES_DATA'){
+        render(msg.payload||{});
+      }
+    });
+  </script>
+  </head>
+  <body>
+    <div class="label" id="labelRoot">
+  <div id="sectionsRoot" style="display:flex; flex-direction:column; gap:5mm;"></div>
+    </div>
+  </body>
+  </html>

@@ -20,6 +20,7 @@
 				<a href="index.html" class="nav-link">Home</a>
 				<a href="#" class="nav-link" onclick="openSearchModal();return false;">Search Product Label</a>
 				<a href="#" class="nav-link" onclick="openManualModal();return false;">Manual Label</a>
+				<a href="index.html#barcodes" class="nav-link" style="display:none" aria-hidden="true">Barcodes</a>
 				<a href="collections.html" class="nav-link">Collections</a>
 				<a href="collections-history.html" class="nav-link">Collections History</a>
 				<a href="restock.html" class="nav-link">Re-Stock</a>
@@ -49,19 +50,18 @@
 			<table class="app-table">
 				<thead>
 					<tr>
-						<th>Customer</th>
-						<th>Reference</th>
-						<th>Cartons</th>
-						<th>Pallets</th>
-						<th>Tubes</th>
-						<th>Contact name</th>
-						<th>Contact number</th>
-						<th>Email</th>
-						<th>Date</th>
-						<th class="actions-col" style="text-align:right">Actions</th>
+								<th>Customer</th>
+								<th>Reference</th>
+								<th>Cartons</th>
+								<th>Pallets</th>
+								<th>Tubes</th>
+								<th>Invoice</th>
+								<th>Sales Rep</th>
+								<th>Date</th>
+								<th class="actions-col" style="text-align:right">Actions</th>
 					</tr>
 				</thead>
-			<tbody id="collectionsTbody"><tr><td colspan="10" style="text-align:center;opacity:.7">No data</td></tr></tbody>
+					<tbody id="collectionsTbody"><tr><td colspan="9" style="text-align:center;opacity:.7">No data</td></tr></tbody>
 			</table>
 		</div>
 	</div>
@@ -85,6 +85,16 @@
 								<label for="orderReference">Reference</label>
 								<input id="orderReference" type="text" placeholder="Sales Order / Reference" />
 							</div>
+							</div>
+							<div class="field-row">
+								<div class="field-group">
+									<label for="orderSalesRep">Sales Rep</label>
+									<input id="orderSalesRep" type="text" placeholder="Sales Rep" />
+								</div>
+								<div class="field-group">
+									<label for="orderInvoice">Invoice N.</label>
+									<input id="orderInvoice" type="text" placeholder="Invoice number" />
+								</div>
 						</div>
 						<div class="field-row">
 							<div class="field-group">
@@ -310,6 +320,16 @@
 							</div>
 							<div class="field-row">
 								<div class="field-group">
+									<label for="editSalesRep">Sales Rep</label>
+									<input id="editSalesRep" type="text" />
+								</div>
+								<div class="field-group">
+									<label for="editInvoice">Invoice N.</label>
+									<input id="editInvoice" type="text" />
+								</div>
+							</div>
+							<div class="field-row">
+								<div class="field-group">
 									<label for="editContactName">Contact name</label>
 									<input id="editContactName" type="text" />
 								</div>
@@ -363,6 +383,18 @@
 
 		<!-- Toasts -->
 		<div id="toastContainer" class="toast-container"></div>
+
+		<!-- Message Modal (per-row contact & extra details) -->
+		<div id="messageModal" class="modal hidden">
+			<div class="modal-content">
+				<span class="close" onclick="closeMessageModal()">&times;</span>
+				<h2>💬 Order Details</h2>
+				<div id="messageModalBody" class="small-note" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
+				<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+					<button class="search-btn-small" onclick="closeMessageModal()">Close</button>
+				</div>
+			</div>
+		</div>
 
 	<!-- Shared Scan Modal -->
 	<div id="scanModal" class="modal hidden">

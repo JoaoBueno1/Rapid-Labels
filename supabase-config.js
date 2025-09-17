@@ -96,6 +96,35 @@ window.supabaseReady = (async () => {
         }
     }
 
+    // Basic location search (adjust table/column names as needed)
+    async function searchLocation(term){
+        const q = String(term||'').trim();
+        try{
+            // Try common table/column names; adjust for your schema
+            const { data, error } = await supabaseClient
+                .from('Locations')
+                .select('*')
+                .ilike('code', `%${q}%`)
+                .limit(50);
+            if (error) return { success:false, error: error.message };
+            return { success:true, locations: data||[] };
+        } catch(e){ return { success:false, error: e.message }; }
+    }
+
+    // Search in Barcodes table for Product & Manual modes (SKU/Product/Barcode)
+    async function searchBarcodes(term){
+        const q = String(term||'').trim();
+        try{
+            const { data, error } = await supabaseClient
+                .from('Barcodes')
+                .select('id, sku, product, barcode')
+                .or(`sku.ilike.%${q}%,product.ilike.%${q}%,barcode.ilike.%${q}%`)
+                .limit(30);
+            if (error) return { success:false, error: error.message };
+            return { success:true, items: data||[] };
+        } catch(e){ return { success:false, error: e.message }; }
+    }
+
     async function discoverTableStructure() {
         try {
             console.log('🔍 Discovering table structure...');
@@ -126,6 +155,8 @@ window.supabaseReady = (async () => {
         searchProduct,
         searchBySKU,
         searchByCode,
+        searchLocation,
+    searchBarcodes,
         client: supabaseClient,
         discoverTableStructure
     };
@@ -325,7 +356,7 @@ window.supabaseReady = (async () => {
       async listActive(){
         const { data, error } = await supabase
           .from('collections_active')
-          .select('*')
+                    .select('*')
           .order('collection_date', { ascending:false })
           .order('created_at', { ascending:false });
         return error ? { success:false, error } : { success:true, data };
@@ -334,7 +365,8 @@ window.supabaseReady = (async () => {
         const { data, error } = await supabase
           .from('collections_history')
           .select(`
-            id, customer, reference, cartons, pallets, tubes,
+                        id, customer, reference, cartons, pallets, tubes,
+                        invoice, sales_rep,
             contact_name, contact_number, email,
             collected_by, operator, collected_at, collection_date,
             signature, signature_data, created_at
@@ -353,6 +385,8 @@ window.supabaseReady = (async () => {
           contact_name: order.contactName,
           contact_number: order.contactNumber,
           email: order.email || null,
+                    invoice: order.invoice || null,
+                    sales_rep: order.salesRep || null,
           collection_date: order.date
         };
         const { data, error } = await supabase
@@ -372,6 +406,8 @@ window.supabaseReady = (async () => {
           contact_name: patch.contactName,
           contact_number: patch.contactNumber,
           email: patch.email || null,
+                    invoice: patch.invoice || null,
+                    sales_rep: patch.salesRep || null,
           collection_date: patch.date
         };
         const { data, error } = await supabase
@@ -389,14 +425,16 @@ window.supabaseReady = (async () => {
           .eq('id', id);
         return error ? { success:false, error } : { success:true };
       },
-      async confirm(id, collectedBy, operator, isoDateTime, signatureDataUrl){
+    async confirm(id, collectedBy, operator, isoDateTime, signatureDataUrl, invoice, salesRep){
         const { data, error } = await supabase
           .rpc('confirm_collection', {
             p_id: id,
             p_collected_by: collectedBy,
             p_operator: operator,
             p_collected_at: isoDateTime,
-            p_signature: signatureDataUrl || null
+        p_signature: signatureDataUrl || null,
+        p_invoice: invoice || null,
+        p_sales_rep: salesRep || null
           });
         return error ? { success:false, error } : { success:true, data };
       }
@@ -411,6 +449,7 @@ window.supabaseCollections.listHistory = async function listHistory(limit = 500)
     .from('collections_history')
     .select(`
       id, customer, reference, cartons, pallets, tubes,
+    invoice, sales_rep,
       contact_name, contact_number, email,
       collected_by, operator, collected_at, collection_date,
       signature, signature_data, created_at

@@ -1,0 +1,44 @@
+# Node dependencies
+node_modules/
+# Optional: uncomment to ignore lock if you don't want to commit it
+# package-lock.json
+
+# Logs & debug
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime / coverage / build outputs
+dist/
+build/
+coverage/
+.tmp/
+.temp/
+.cache/
+parcel-cache/
+
+# Environment & local config
+.env
+.env.*
+!.env.example
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+*.pid
+*.pid.lock
+
+# Generated assets (add specific patterns if you later output compiled bundles)
+# public/build/
+
+# Supabase local emulator data (if ever used)
+.supabase/

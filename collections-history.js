@@ -1,7 +1,7 @@
 (function(){
   let fullHistory = [];
   let currentPage = 1;
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 30;
   let lastFiltered = [];
 
   function formatDT(dt){
@@ -10,7 +10,7 @@
 
   function setMsg(msg){
     const tb=document.getElementById('historyTbody');
-    if(tb) tb.innerHTML = `<tr><td colspan="12" style="text-align:center;opacity:.6">${msg}</td></tr>`;
+    if(tb) tb.innerHTML = `<tr><td colspan="11" style="text-align:center;opacity:.6">${msg}</td></tr>`;
   }
 
   function normalize(rows){
@@ -21,9 +21,11 @@
       cartons: r.cartons,
       pallets: r.pallets,
       tubes: r.tubes,
-      contactName: r.contact_name,
-      contactNumber: r.contact_number,
-      email: r.email,
+      invoice: r.invoice || '',
+      salesRep: r.sales_rep || '',
+  _contactName: r.contact_name,
+  _contactNumber: r.contact_number,
+  _email: r.email,
       collectedBy: r.collected_by,
       operator: r.operator,
       collectedAt: r.collected_at,
@@ -60,7 +62,7 @@
 
     if(q){
       rows = rows.filter(r=>[
-        r.customer,r.reference,r.contactName,r.contactNumber,r.collectedBy,r.id
+        r.customer,r.reference,r.invoice,r.salesRep,r._contactName,r._contactNumber,r._email,r.collectedBy,r.id
       ].some(v => (v||'').toString().toLowerCase().includes(q)));
     }
 
@@ -86,7 +88,7 @@
     const tbody=document.getElementById('historyTbody');
     if(!tbody) return;
     if(!rows.length){
-      tbody.innerHTML='<tr><td colspan="12" style="text-align:center;opacity:.6">No history</td></tr>';
+      tbody.innerHTML='<tr><td colspan="11" style="text-align:center;opacity:.6">No history</td></tr>';
       updatePaginationControls(0);
       return;
     }
@@ -101,20 +103,19 @@
       let sig = o.signature;
       if(sig && !sig.startsWith('data:image')) sig='data:image/png;base64,'+sig;
       const sigCell = sig ? `<img class="sig-thumb" src="${sig}" alt="signature" style="height:28px;max-width:140px;object-fit:contain;border:1px solid #e2e8f0;border-radius:6px;background:#fff"/>` : '<span style="opacity:.5">—</span>';
-      const highlight = q && [o.customer,o.reference,o.contactName,o.contactNumber,o.collectedBy,o.id].some(v => (v||'').toString().toLowerCase().includes(q));
+      const highlight = q && [o.customer,o.reference,o.invoice,o.salesRep,o._contactName,o._contactNumber,o._email,o.collectedBy,o.id].some(v => (v||'').toString().toLowerCase().includes(q));
       return `<tr>
         <td${highlight?' style="background:#fffbe6"':''}>${o.customer||''}</td>
         <td>${o.reference||''}</td>
-        <td>${o.cartons||0}</td>
-        <td>${o.pallets||0}</td>
-        <td>${o.tubes||0}</td>
-        <td>${o.contactName||''}</td>
-        <td>${o.contactNumber||''}</td>
-        <td>${o.email||''}</td>
+  <td class="col-small-num">${o.cartons||0}</td>
+  <td class="col-small-num">${o.pallets||0}</td>
+  <td class="col-small-num">${o.tubes||0}</td>
+        <td>${o.invoice||''}</td>
+        <td>${o.salesRep||''}</td>
         <td>${o.collectedBy||''}</td>
         <td>${o.operator||''}</td>
         <td>${o.collectedAt?formatDT(o.collectedAt):''}</td>
-        <td>${sigCell}</td>
+  <td>${sigCell}${(o._contactName||o._contactNumber||o._email)?`, <button type="button" class="btn-mini" style="vertical-align:middle" title="Detalhes" onclick="openHistoryMessage('${o.id}')">💬</button>`:''}</td>
       </tr>`;}).join('');
   }
 
@@ -138,7 +139,7 @@
     if(rows.length === 0){
       const q = (document.getElementById('historySearch')?.value||'').trim();
       const tbody=document.getElementById('historyTbody');
-      if(tbody && q){ tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;opacity:.6">Order not found</td></tr>'; updatePaginationControls(0); return; }
+  if(tbody && q){ tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;opacity:.6">Order not found</td></tr>'; updatePaginationControls(0); return; }
     }
     render(rows);
   }
@@ -170,6 +171,28 @@
       if(modal && img){ img.src = src; modal.classList.remove('hidden'); }
     }
   });
+
+  window.openHistoryMessage = function(id){
+    const row = fullHistory.find(r=>String(r.id)===String(id));
+    if(!row) return;
+    const modal = document.getElementById('historyMessageModal');
+    const body = document.getElementById('historyMessageBody');
+    if(!modal || !body) return;
+    body.innerHTML = `
+      <div><strong>Customer:</strong> ${escapeHtml(row.customer||'')}</div>
+      <div><strong>Reference:</strong> ${escapeHtml(row.reference||'')}</div>
+      <div><strong>Invoice:</strong> ${escapeHtml(row.invoice||'')}</div>
+      <div><strong>Sales Rep:</strong> ${escapeHtml(row.salesRep||'')}</div>
+      <hr style="border:none;border-top:1px solid #e2e8f0;margin:6px 0" />
+      <div><strong>Contact name:</strong> ${escapeHtml(row._contactName||'')}</div>
+      <div><strong>Contact number:</strong> ${escapeHtml(row._contactNumber||'')}</div>
+      <div><strong>Email:</strong> ${escapeHtml(row._email||'')}</div>
+      <div><strong>Date:</strong> ${escapeHtml(row.collectedAt?formatDT(row.collectedAt):'')}</div>
+    `;
+    modal.classList.remove('hidden');
+  };
+  window.closeHistoryMessageModal = function(){ const m=document.getElementById('historyMessageModal'); if(m) m.classList.add('hidden'); };
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
   // Realtime updates on new history rows
   (function initRealtime(){

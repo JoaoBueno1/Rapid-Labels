@@ -34,20 +34,95 @@ document.addEventListener('DOMContentLoaded', function() {
     if (manualForm) {
         manualForm.addEventListener('submit', handleManualSubmit);
     }
+
+    // Work around CSP: attach Barcodes modal open handlers without inline attributes
+    try {
+        const triggers = Array.from(document.querySelectorAll('[onclick*="openBarcodesModal"]'));
+        triggers.forEach(el => {
+            // Remove inline handler blocked by CSP
+            try { el.removeAttribute('onclick'); } catch(_){ }
+            // For anchors, make hash navigation open via existing hash watcher too
+            if (el.tagName === 'A') {
+                el.setAttribute('href', '#barcodes');
+            }
+            el.addEventListener('click', (e)=>{
+                e.preventDefault();
+                try { openBarcodesModal(); } catch(_){ }
+            });
+        });
+    } catch (_) { }
     
-    // Event listener for real-time search
+    // Event listener for real-time search (guard missing performSearch to avoid breaking other inits)
     const searchInput = document.getElementById('productSearch');
     if (searchInput) {
-        searchInput.addEventListener('input', debounce(performSearch, 300));
+        if (typeof performSearch === 'function') {
+            searchInput.addEventListener('input', debounce(performSearch, 300));
+        } else {
+            // no-op to keep DOMContentLoaded running and not block Barcodes modal init
+            searchInput.addEventListener('input', debounce(() => {}, 300));
+        }
         searchInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                searchProduct();
+                if (typeof searchProduct === 'function') {
+                    searchProduct();
+                }
             }
         });
     }
     
     // Event listeners for real-time validation
     setupValidation();
+
+    // Barcodes modal basic wiring
+    try {
+        const s1radios = document.querySelectorAll('input[name="bcS1Mode"]');
+        const s2radios = document.querySelectorAll('input[name="bcS2Mode"]');
+        const s3radios = document.querySelectorAll('input[name="bcS3Mode"]');
+        const bind = (radios, prodId, locId, manId, previewId)=>{
+            const setShow = (el, show)=>{
+                if(!el) return;
+                if (show) {
+                    // Keep inline layout if container uses inline-row
+                    el.style.display = el.classList.contains('inline-row') ? 'flex' : '';
+                } else {
+                    el.style.display = 'none';
+                }
+            };
+            radios.forEach(r=> r.addEventListener('change', ()=>{
+                const prod = document.getElementById(prodId);
+                const loc = document.getElementById(locId);
+                const man = document.getElementById(manId);
+                if(!prod||!loc||!man) return;
+                const mode = document.querySelector(`input[name="${r.name}"]:checked`)?.value;
+                setShow(prod, mode==='product');
+                setShow(loc, mode==='location');
+                setShow(man, mode==='manual');
+                // Update preview
+                try {
+                    const img = document.getElementById(previewId);
+                    if (img) {
+                        img.src = mode==='location' ? 'Location.svg' : 'Product.svg';
+                        img.alt = mode.charAt(0).toUpperCase()+mode.slice(1)+ ' preview';
+                    }
+                } catch(e){}
+                validateBarcodesForm();
+            }));
+        };
+        bind(s1radios,'bcS1ProductFields','bcS1LocationFields','bcS1ManualFields','bcS1ModePreview');
+        bind(s2radios,'bcS2ProductFields','bcS2LocationFields','bcS2ManualFields','bcS2ModePreview');
+        bind(s3radios,'bcS3ProductFields','bcS3LocationFields','bcS3ManualFields','bcS3ModePreview');
+
+        // Inputs change should re-validate
+        document.querySelectorAll('#barcodesModal input, #barcodesModal select').forEach(el=>{
+            el.addEventListener('input', validateBarcodesForm);
+            el.addEventListener('change', validateBarcodesForm);
+        });
+
+    // Setup Barcodes modal autocompletes and validations
+    setupBarcodesAutocompleteAndValidation();
+    // Ensure initial button state reflects empty fields
+    try { validateBarcodesForm(); } catch(_){}
+    } catch(e) { /* modal may not be on this page */ }
 });
 
 // Temporary Analytics placeholder
@@ -87,64 +162,127 @@ function openSearchModal() {
     resetSearchModal();
 }
 
-function closeSearchModal() {
-    document.getElementById('searchModal').classList.add('hidden');
-    resetSearchModal();
-}
-
-function resetSearchModal() {
-    document.getElementById('productSearch').value = '';
-    document.getElementById('searchResults').innerHTML = '';
-    document.getElementById('searchError').textContent = '';
-    document.getElementById('productDetails').classList.add('hidden');
-    document.getElementById('editQty').value = '';
-    selectedSearchSize = null;
-    searchPages = 1;
-    document.getElementById('pagesCount').value = 1;
-    updateSizeButtons('search');
-    updatePrintButton('search');
-    selectedProduct = null;
-}
-
-// Real-time search as user types
-async function performSearch() {
-    const searchTerm = String(document.getElementById('productSearch').value.trim());
-    const resultsDiv = document.getElementById('searchResults');
-    const errorDiv = document.getElementById('searchError');
-    
-    // Clear previous results
-    resultsDiv.innerHTML = '';
-    errorDiv.textContent = '';
-    
-    if (searchTerm.length < 3) {
-        return;
-    }
-    
+function printBarcodes3Up(){
+    // Business rules enforcement: 
+    // - SKU must be exactly 5 digits for product & manual (if provided / required)
+    // - Product prints only if product (by SKU) exists in DB
+    // - Location prints only if location exists in DB
+    // - Manual: must have 5-digit code (SKU field) AND EAN-13 exactly 13 digits to print; manual ignores DB existence for product but still validates lengths
+    // - EAN-13 fields (product/manual) only valid with length 13 numeric; otherwise ignored or block if mandatory scenario.
     try {
-        // Show loading
-        resultsDiv.innerHTML = '<div class="loading">🔍 Searching...</div>';
-        
-        console.log('🔍 Starting search for:', searchTerm);
-        
-        // Search in Supabase
-        const result = await window.supabaseSearch.searchProduct(searchTerm);
-        
-        console.log('📊 Results received:', result);
-        
-        if (!result.success) {
-            resultsDiv.innerHTML = '<div class="no-results">❌ No products found</div>';
-            errorDiv.textContent = result.error || 'No products found';
-            return;
-        }
-        // Show results - display ALL products found
-        displaySearchResults(result.products);
-        
-    } catch (error) {
-        console.error('Search error:', error);
-        errorDiv.textContent = `❌ Search error: ${error.message}`;
-        resultsDiv.innerHTML = '';
+        const skuRegex = /^\d{5}$/;
+        const eanRegex = /^\d{13}$/;
+        const getMode = (name)=> document.querySelector(`input[name="${name}"]:checked`)?.value || 'product';
+
+        const checkProductInDB = async (sku)=>{
+            if(!skuRegex.test(sku)) return false;
+            if(!window.supabaseSearch || !window.supabaseSearch.searchBySKU) return false; // fail closed
+            try {
+                const res = await window.supabaseSearch.searchBySKU(sku);
+                return !!(res && res.success && res.product);
+            } catch(e){ return false; }
+        };
+        const checkLocationInDB = async (loc)=>{
+            if(!loc) return false;
+            if(!window.supabaseSearch || !window.supabaseSearch.searchLocation) return false;
+            try {
+                const res = await window.supabaseSearch.searchLocation(loc);
+                return !!(res && res.success && Array.isArray(res.locations) && res.locations.length > 0);
+            } catch(e){ return false; }
+        };
+
+        const build = (n)=>({
+            mode: getMode(`bcS${n}Mode`),
+            product: {
+                sku: document.getElementById(`bcS${n}ProdSku`)?.value?.trim() || '',
+                name: document.getElementById(`bcS${n}ProdName`)?.value?.trim() || '',
+                ean13: (document.getElementById(`bcS${n}ProdEan`)?.value || '').trim()
+            },
+            location: {
+                code: document.getElementById(`bcS${n}LocCode`)?.value?.trim() || ''
+            },
+            manual: {
+                code: document.getElementById(`bcS${n}ManCode`)?.value?.trim() || '',
+                title: document.getElementById(`bcS${n}ManTitle`)?.value?.trim() || '',
+                ean13: (document.getElementById(`bcS${n}ManEan`)?.value || '').trim()
+            }
+        });
+
+        const raw = [build(1), build(2), build(3)];
+        const finalSections = [];
+        const errors = [];
+
+        const productCache = new Map();
+        const locationCache = new Map();
+
+        const ensureProduct = async (sku)=>{
+            if(productCache.has(sku)) return productCache.get(sku);
+            const ok = await checkProductInDB(sku);
+            productCache.set(sku, ok);
+            return ok;
+        };
+        const ensureLocation = async (code)=>{
+            if(locationCache.has(code)) return locationCache.get(code);
+            const ok = await checkLocationInDB(code);
+            locationCache.set(code, ok);
+            return ok;
+        };
+
+        const tasks = raw.map(async (r, idx)=>{
+            const i = idx+1;
+            if(r.mode === 'product'){
+                const { sku, name, ean13 } = r.product;
+                if(!skuRegex.test(sku)) { if(sku||name||ean13) errors.push(`Section ${i} (Product): SKU must be exactly 5 digits.`); return; }
+                const exists = await ensureProduct(sku);
+                if(!exists){ errors.push(`Section ${i} (Product): SKU not found in database.`); return; }
+                const eanValid = ean13 && eanRegex.test(ean13);
+                finalSections.push({ mode:'product', sku, name, ean13: eanValid ? ean13 : '' });
+            } else if(r.mode === 'location') {
+                const { code } = r.location;
+                if(!code){ return; }
+                const exists = await ensureLocation(code);
+                if(!exists){ errors.push(`Section ${i} (Location): code not found.`); return; }
+                finalSections.push({ mode:'location', location: code });
+            } else if(r.mode === 'manual') {
+                const { code, title, ean13 } = r.manual;
+                if(!skuRegex.test(code)) { if(code||title||ean13) errors.push(`Section ${i} (Manual): code must be exactly 5 digits.`); return; }
+                if(!eanRegex.test(ean13)) { errors.push(`Section ${i} (Manual): EAN-13 must be exactly 13 digits.`); return; }
+                finalSections.push({ mode:'manual', code, title, ean13 });
+            }
+        });
+
+        Promise.all(tasks).then(()=>{
+            // Block printing if there are any errors
+            if(errors.length){
+                const msg = errors.join('\n');
+                try { toast(msg,'error'); } catch(_) { alert(msg); }
+                return;
+            }
+            // If no errors but nothing valid to print, inform and stop
+            if(!finalSections.length){
+                const msg = 'Nothing to print';
+                try { toast(msg,'warn'); } catch(_) { alert(msg); }
+                return;
+            }
+            const payload = { sections: finalSections };
+            const w = window.open('barcodes_labels.html', '_blank');
+            if (!w) { try { toast('Popup blocked','error'); } catch(_) { alert('Popup blocked'); } return; }
+            const onReady = (e)=>{
+                if (e.data === 'BARCODES_READY'){
+                    try { w.postMessage({ type:'BARCODES_DATA', payload }, '*'); } catch(err){}
+                    // Clear modal after initiating print
+                    try { resetBarcodesModal(); } catch(_){}
+                    window.removeEventListener('message', onReady);
+                }
+            };
+            window.addEventListener('message', onReady);
+        });
+    } catch (e) {
+        console.error('Print error', e);
+        try { toast('Print error: '+ (e.message||'unknown'),'error'); } catch(_) { alert('Print error: ' + e.message); }
     }
 }
+// (Removed stray duplicated search error block accidentally inserted after printBarcodes3Up)
 
 // Display search results
 function displaySearchResults(results) {
@@ -874,3 +1012,392 @@ document.addEventListener('keydown', function(e) {
 });
 
 // (Collections logic removed – now centralized in collections.js to avoid duplication.)
+
+// ==================== MODAL BARCODES (3-UP) ====================
+function openBarcodesModal(){
+    try {
+        resetBarcodesModal();
+        document.getElementById('barcodesModal').classList.remove('hidden');
+    } catch(e){}
+}
+function closeBarcodesModal(){
+    try {
+        document.getElementById('barcodesModal').classList.add('hidden');
+        resetBarcodesModal();
+    } catch(e){}
+}
+
+function resetBarcodesModal(){
+    try {
+        const modal = document.getElementById('barcodesModal');
+        if (!modal) return;
+
+        // Clear all inputs and error styles
+        const clearIds = [
+            'bcS1ProdSku','bcS1ProdName','bcS1ProdEan','bcS1LocCode','bcS1ManCode','bcS1ManTitle','bcS1ManEan',
+            'bcS2ProdSku','bcS2ProdName','bcS2ProdEan','bcS2LocCode','bcS2ManCode','bcS2ManTitle','bcS2ManEan',
+            'bcS3ProdSku','bcS3ProdName','bcS3ProdEan','bcS3LocCode','bcS3ManCode','bcS3ManTitle','bcS3ManEan'
+        ];
+        clearIds.forEach(id=>{ const el=document.getElementById(id); if(el){ el.value=''; el.classList.remove('error'); } });
+
+        // Reset inline error notes
+        ['bcS1ManCodeErr','bcS1ManEanErr','bcS2ManCodeErr','bcS2ManEanErr','bcS3ManCodeErr','bcS3ManEanErr']
+            .forEach(id=>{ const el=document.getElementById(id); if(el){ el.textContent=''; el.style.display='none'; } });
+
+        // Reset mode radios to product and trigger change to update visible sections
+        ['1','2','3'].forEach(n=>{
+            const radios = document.querySelectorAll(`input[name="bcS${n}Mode"]`);
+            radios.forEach(r=>{ r.checked = (r.value === 'product'); });
+            const productRadio = Array.from(radios).find(r=> r.value === 'product');
+            if (productRadio){ productRadio.dispatchEvent(new Event('change', { bubbles:true })); }
+            const img = document.getElementById(`bcS${n}ModePreview`);
+            if (img){ img.src = 'Product.svg'; img.alt = 'Product preview'; }
+        });
+
+        // Close any autocomplete panels
+        modal.querySelectorAll('.ac-panel').forEach(p=>{ try{ p.remove(); }catch(_){} });
+
+        // Disable Print button
+        const btn = document.getElementById('bcPrintBtn');
+        if (btn) btn.disabled = true;
+
+        try { validateBarcodesForm(); } catch(_){}
+    } catch(e){}
+}
+
+function validateBarcodesForm(){
+    const hasData = ()=>{
+        // Section 1
+        const m1 = document.querySelector('input[name="bcS1Mode"]:checked')?.value;
+        if(m1==='product' && (document.getElementById('bcS1ProdName')?.value || document.getElementById('bcS1ProdSku')?.value || document.getElementById('bcS1ProdEan')?.value)) return true;
+        if(m1==='location' && (document.getElementById('bcS1LocCode')?.value)) return true;
+    if(m1==='manual' && (document.getElementById('bcS1ManTitle')?.value || document.getElementById('bcS1ManCode')?.value || document.getElementById('bcS1ManEan')?.value)) return true;
+        // Section 2
+        const m2 = document.querySelector('input[name="bcS2Mode"]:checked')?.value;
+        if(m2==='product' && (document.getElementById('bcS2ProdName')?.value || document.getElementById('bcS2ProdSku')?.value || document.getElementById('bcS2ProdEan')?.value)) return true;
+        if(m2==='location' && (document.getElementById('bcS2LocCode')?.value)) return true;
+    if(m2==='manual' && (document.getElementById('bcS2ManTitle')?.value || document.getElementById('bcS2ManCode')?.value || document.getElementById('bcS2ManEan')?.value)) return true;
+        // Section 3
+        const m3 = document.querySelector('input[name="bcS3Mode"]:checked')?.value;
+        if(m3==='product' && (document.getElementById('bcS3ProdName')?.value || document.getElementById('bcS3ProdSku')?.value || document.getElementById('bcS3ProdEan')?.value)) return true;
+        if(m3==='location' && (document.getElementById('bcS3LocCode')?.value)) return true;
+    if(m3==='manual' && (document.getElementById('bcS3ManTitle')?.value || document.getElementById('bcS3ManCode')?.value || document.getElementById('bcS3ManEan')?.value)) return true;
+        return false;
+    };
+    const btn = document.getElementById('bcPrintBtn');
+    if(btn) btn.disabled = !hasData();
+}
+
+// (Old printBarcodes3Up removed; new implementation with validation inserted later in file.)
+
+// ----- Zebra helpers -----
+function getZebraConfig(){
+    // Default Zebra at 203 dpi (8 dots/mm). If your printer is 300dpi, set dpi to 300.
+    const dpi = 203;
+    const dotsPerMm = dpi / 25.4; // ~8 for 203dpi
+    const mm = (v)=> Math.round(v * dotsPerMm);
+    return {
+        dpi,
+        mm,
+        // Full sticker: 150mm x 105mm
+        widthDots: mm(150),
+        heightDots: mm(105),
+        // 3 sections: each ~35mm height x 100mm width, centered
+        section: {
+            widthDots: mm(100),
+            heightDots: mm(35),
+            leftMarginDots: Math.round((mm(150) - mm(100)) / 2),
+            topOffsets: [ 0, mm(35), mm(70) ]
+        } 
+    };
+}
+
+function zplEscape(text){
+    return String(text||'').replace(/[\^~]/g, ' ').slice(0, 64); // keep short for small labels
+}
+
+function buildSectionPayload(n){
+    // n = 1..3
+    const mode = document.querySelector(`input[name="bcS${n}Mode"]:checked`)?.value;
+    if (!mode) return null;
+    if (mode === 'product'){
+        const sku = document.getElementById(`bcS${n}ProdSku`)?.value?.trim();
+        const name = document.getElementById(`bcS${n}ProdName`)?.value?.trim();
+        if (!sku && !name) return null;
+        return {
+            title: name || '',
+            big: sku || '',
+            barcode: sku || '',
+            barcodeType: 'CODE128'
+        };
+    }
+    if (mode === 'location'){
+        const loc = document.getElementById(`bcS${n}LocCode`)?.value?.trim();
+        if (!loc) return null;
+        return {
+            title: '',
+            big: loc,
+            barcode: loc,
+            barcodeType: 'CODE128'
+        };
+    }
+    // manual
+    const code = document.getElementById(`bcS${n}ManCode`)?.value?.trim();
+    const title = document.getElementById(`bcS${n}ManTitle`)?.value?.trim();
+    const ean = (document.getElementById(`bcS${n}ManEan`)?.value||'').trim();
+    if (!code && !ean && !title) return null;
+    return {
+        title: title || '',
+        big: code || '',
+        barcode: ean || code || '',
+        barcodeType: ean && ean.length === 13 ? 'EAN13' : 'CODE128'
+    };
+}
+
+function buildZpl3Up(sections, cfg){
+    const { widthDots, heightDots, section } = cfg;
+    const lines = [];
+    lines.push('^XA');
+    lines.push('^CI28'); // UTF-8
+    lines.push(`^PW${widthDots}`);
+    lines.push(`^LL${heightDots}`);
+    lines.push('^LH0,0');
+    // Default barcode module width
+    lines.push('^BY2,2');
+
+    sections.forEach((s, idx)=>{
+        if (!s) return;
+        const x0 = section.leftMarginDots;
+        const y0 = section.topOffsets[idx];
+        // Title (small)
+        if (s.title){
+            lines.push(`^FO${x0},${y0+8}`);
+            lines.push('^A0N,30,20');
+            lines.push(`^FD${zplEscape(s.title)}^FS`);
+        }
+        // Big text
+        if (s.big){
+            lines.push(`^FO${x0},${y0+44}`);
+            lines.push('^A0N,80,60');
+            lines.push(`^FD${zplEscape(s.big)}^FS`);
+        }
+        // Barcode
+        if (s.barcode){
+            const byH = 130; // bar height in dots (~16mm at 203dpi)
+            lines.push(`^FO${x0},${y0+128}`);
+            if (s.barcodeType === 'EAN13'){
+                lines.push(`^BEN,${byH},Y,N,N`);
+            } else {
+                lines.push(`^BCN,${byH},Y,N,N`);
+            }
+            lines.push(`^FD${zplEscape(s.barcode)}^FS`);
+        }
+        // Thin separator line at bottom of section (except last)
+        if (idx < 2){
+            lines.push(`^FO${cfg.mm(25)},${section.topOffsets[idx]+section.heightDots-2}`);
+            lines.push('^GB'+cfg.mm(100)+',2,2^FS');
+        }
+    });
+
+    lines.push('^PQ1'); // 1 copy
+    lines.push('^XZ');
+    return lines.join('');
+}
+
+async function sendZplToPrinter(zpl){
+    const resp = await fetch('/api/print-zpl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zpl })
+    });
+    if (!resp.ok){
+        const txt = await resp.text().catch(()=> '');
+        throw new Error(`Printer error (${resp.status}): ${txt || resp.statusText}`);
+    }
+    return resp.json();
+}
+
+// ==================== BARCODES AUTOCOMPLETE & VALIDATION ====================
+function setupBarcodesAutocompleteAndValidation(){
+    // Manual field validation (digits & length constraints)
+    const manSkuIds = ['bcS1ManCode','bcS2ManCode','bcS3ManCode'];
+    const manSkuErrIds = ['bcS1ManCodeErr','bcS2ManCodeErr','bcS3ManCodeErr'];
+    const manEanIds = ['bcS1ManEan','bcS2ManEan','bcS3ManEan'];
+    const manEanErrIds = ['bcS1ManEanErr','bcS2ManEanErr','bcS3ManEanErr'];
+    manSkuIds.forEach((id, i)=>{
+        const input = document.getElementById(id);
+        const err = document.getElementById(manSkuErrIds[i]);
+    if (input){
+            input.addEventListener('input', ()=>{
+                // digits only, max 5
+                const raw = input.value.replace(/\D+/g,'');
+                input.value = raw.slice(0,5);
+                if (input.value && input.value.length < 5){
+            if (err){ err.textContent = 'Must be 5 digits'; err.style.display = 'block'; }
+            input.classList.add('error');
+                } else {
+            if (err){ err.textContent = ''; err.style.display = 'none'; }
+            input.classList.remove('error');
+                }
+            });
+        }
+    });
+    manEanIds.forEach((id, i)=>{
+        const input = document.getElementById(id);
+        const err = document.getElementById(manEanErrIds[i]);
+    if (input){
+            input.addEventListener('input', ()=>{
+                // digits only, max 13
+                const raw = input.value.replace(/\D+/g,'');
+                input.value = raw.slice(0,13);
+                if (input.value && input.value.length < 13){
+            if (err){ err.textContent = 'Must be 13 digits'; err.style.display = 'block'; }
+            input.classList.add('error');
+                } else {
+            if (err){ err.textContent = ''; err.style.display = 'none'; }
+            input.classList.remove('error');
+                }
+            });
+        }
+    });
+
+    // Product autocomplete (Name & SKU), threshold 3
+    const prodPairs = [
+        { nameId:'bcS1ProdName', skuId:'bcS1ProdSku' },
+        { nameId:'bcS2ProdName', skuId:'bcS2ProdSku' },
+        { nameId:'bcS3ProdName', skuId:'bcS3ProdSku' },
+    ];
+    prodPairs.forEach(pair=>{
+        attachProductAutocomplete(pair.nameId, pair.skuId);
+        attachProductAutocomplete(pair.skuId, pair.nameId);
+    });
+
+    // Location autocomplete, threshold 4, scroll panel showing ~5 items height
+    const locIds = ['bcS1LocCode','bcS2LocCode','bcS3LocCode'];
+    locIds.forEach(id=> attachLocationAutocomplete(id));
+}
+
+function ensureAcPanel(container){
+    let panel = container.querySelector('.ac-panel');
+    if (!panel){
+        panel = document.createElement('div');
+        panel.className = 'ac-panel';
+        container.appendChild(panel);
+    }
+    return panel;
+}
+
+function closeAcPanel(panel){ if (panel){ try{ panel.remove(); }catch(e){} } }
+
+function renderSuggestions(panel, items, render){
+    panel.innerHTML = '';
+    items.forEach(item=>{
+        const row = document.createElement('div');
+        row.className = 'ac-item';
+        row.innerHTML = render(item);
+        panel.appendChild(row);
+    });
+}
+
+function attachProductAutocomplete(srcInputId, otherInputId){
+    const srcInput = document.getElementById(srcInputId);
+    const otherInput = document.getElementById(otherInputId);
+    if (!srcInput) return;
+    const handler = debounce(async () => {
+        const term = String(srcInput.value || '').trim();
+        if (term.length < 3){
+            const fg = srcInput.closest('.field-group');
+            if (fg){ const p=fg.querySelector('.ac-panel'); if(p) p.remove(); }
+            return;
+        }
+        try{
+            if (!window.supabaseSearch || !window.supabaseSearch.searchBarcodes) return;
+            const res = await window.supabaseSearch.searchBarcodes(term);
+            if (!res || !res.success || !Array.isArray(res.items)) return;
+            // Map suggestions
+            const items = res.items.map(p=>({
+                sku: p.sku || '',
+                product: p.product || '',
+                barcode: p.barcode || ''
+            }));
+            const fg = srcInput.closest('.field-group');
+            if (!fg) return;
+            const panel = ensureAcPanel(fg);
+            renderSuggestions(panel, items, (it)=>{
+                const left = it.sku ? `SKU ${it.sku}` : '';
+                const right = it.product ? `${it.product}` : '';
+                return `<div class="ac-left">${escapeHtml(left)}</div><div class="ac-right">${escapeHtml(right)}</div>`;
+            });
+            panel.querySelectorAll('.ac-item').forEach((row, idx)=>{
+                row.addEventListener('mousedown', (e)=>{
+                    e.preventDefault();
+                    const it = items[idx];
+                    // Fill fields
+                    if (srcInputId.toLowerCase().includes('name')){
+                        srcInput.value = it.product || '';
+                        if (otherInput) otherInput.value = it.sku || '';
+                    } else {
+                        srcInput.value = it.sku || '';
+                        if (otherInput) otherInput.value = it.product || '';
+                    }
+                    // Also store EAN in hidden field if present
+                    try {
+                        const hidId = srcInputId.replace(/(ProdSku|ProdName)$/,'ProdEan');
+                        const hidden = document.getElementById(hidId);
+                        if (hidden){ hidden.value = (it.barcode||'').replace(/\D+/g,''); }
+                    } catch(_){}
+                    try{ panel.remove(); }catch(err){}
+                    validateBarcodesForm();
+                });
+            });
+            // Close on blur/esc
+            const onBlur = (ev)=>{ setTimeout(()=>{ try{ panel.remove(); }catch(e){} }, 80); };
+            srcInput.addEventListener('blur', onBlur, { once:true });
+        } catch(e){ /* ignore */ }
+    }, 220);
+    srcInput.addEventListener('input', handler);
+}
+
+function attachLocationAutocomplete(inputId){
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const handler = debounce(async () => {
+        const term = String(input.value || '').trim();
+        if (term.length < 4){
+            const fg = input.closest('.field-group');
+            if (fg){ const p=fg.querySelector('.ac-panel'); if(p) p.remove(); }
+            return;
+        }
+        try{
+            if (!window.supabaseSearch || !window.supabaseSearch.searchLocation) return;
+            const res = await window.supabaseSearch.searchLocation(term);
+            if (!res || !res.success || !Array.isArray(res.locations)) return;
+            // Limit rendering count if needed; panel height caps to ~5 rows, scrollable
+            const items = res.locations;
+            const fg = input.closest('.field-group');
+            if (!fg) return;
+            const panel = ensureAcPanel(fg);
+            renderSuggestions(panel, items, (it)=>{
+                const code = it.code || it.Code || it.location || it.Location || '';
+                return `<div class="ac-left">${escapeHtml(code)}</div>`;
+            });
+            panel.querySelectorAll('.ac-item').forEach((row, idx)=>{
+                row.addEventListener('mousedown', (e)=>{
+                    e.preventDefault();
+                    const it = items[idx];
+                    const code = it.code || it.Code || it.location || it.Location || '';
+                    input.value = code;
+                    try{ panel.remove(); }catch(err){}
+                    validateBarcodesForm();
+                });
+            });
+            const onBlur = (ev)=>{ setTimeout(()=>{ try{ panel.remove(); }catch(e){} }, 80); };
+            input.addEventListener('blur', onBlur, { once:true });
+        } catch(e){ /* ignore */ }
+    }, 240);
+    input.addEventListener('input', handler);
+}
+
+function escapeHtml(s){
+    return String(s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c]));
+}

@@ -190,6 +190,17 @@ h2 {
     font-size: 1.1em;
     transition: border-color 0.3s;
 }
+    /* Hide datalist dropdown chevron/arrow (Chrome/Safari) */
+    input[list]::-webkit-calendar-picker-indicator { display: none !important; }
+    input[list]::-webkit-list-button { display: none !important; }
+    input[list] { -webkit-appearance: none; appearance: none; background-image: none !important; }
+    /* Specific safeguard for Sales Rep inputs (in case browser ignores the generic rule) */
+    input#orderSalesRep::-webkit-calendar-picker-indicator { display:none !important; }
+    input#orderSalesRep::-webkit-list-button { display:none !important; }
+    input#orderSalesRep { -webkit-appearance:none; appearance:none; background-image:none !important; }
+    input#editSalesRep::-webkit-calendar-picker-indicator { display:none !important; }
+    input#editSalesRep::-webkit-list-button { display:none !important; }
+    input#editSalesRep { -webkit-appearance:none; appearance:none; background-image:none !important; }
 
 .search-input-group input:focus {
     outline: none;
