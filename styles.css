@@ -286,6 +286,23 @@ h2 {
     text-align: center;
 }
 
+/* Duplicate customer indicator in Collections table */
+.dup-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    padding: 0 6px;
+    height: 18px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #b45309;           /* warn text */
+    background: #fff3cd;      /* warn bg (light yellow) */
+    border: 1px solid #fde68a;/* warn border */
+}
+
 /* Product Details */
 .product-details {
     margin-top: 20px;
@@ -863,6 +880,7 @@ h2 { color: var(--text); margin-bottom: 18px; font-size: 1.4rem; font-weight: 80
     gap: 10px;
     margin: 6px 0 8px;
 }
+.legend-row .legend-actions{ display:flex; align-items:center; gap:8px; }
 
 /* Toasts */
 .toast-container {

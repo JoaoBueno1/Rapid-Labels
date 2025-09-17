@@ -1004,18 +1004,35 @@ function renderCollections(){
     .slice()
     .sort((a,b)=> new Date(b.date||0) - new Date(a.date||0))
     .filter(o=>{ if(!q) return true; return [o.customer,o.reference,o.invoice,o.salesRep,o.contactName,o.email,o.id].some(v=>(v||'').toLowerCase().includes(q)); });
+  // Build duplicate info
+  const normalizeCustomer = (name)=> (typeof keyStr==='function'? keyStr(name): String(name||'').trim().toLowerCase());
+  const counts = new Map();
+  rows.forEach(o=>{ const k = normalizeCustomer(o.customer); counts.set(k, (counts.get(k)||0)+1); });
+  const dupKeys = new Set(Array.from(counts.entries()).filter(([,c])=>c>1).map(([k])=>k));
+  const btn = document.getElementById('toggleDupBtn');
+  const showOnlyDup = !!(btn && btn.getAttribute('aria-pressed')==='true');
+  if(btn){
+    const n = dupKeys.size;
+    btn.disabled = n===0;
+    btn.textContent = showOnlyDup ? `Show all (${n})` : `Show duplicates (${n})`;
+  }
+  const effRows = showOnlyDup ? rows.filter(o=> dupKeys.has(normalizeCustomer(o.customer))) : rows;
   const tbody=document.getElementById('collectionsTbody');
   if (!tbody) return;
-  if (rows.length === 0){
-    if(q){ tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;opacity:.7">Order not found</td></tr>'; }
+  if (effRows.length === 0){
+    if(q || showOnlyDup){ tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;opacity:.7">Order not found</td></tr>'; }
     else { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;opacity:.7">No data</td></tr>'; }
     return;
   }
-  tbody.innerHTML = rows.map(o=>{
+  tbody.innerHTML = effRows.map(o=>{
     const highlight = q && [o.customer,o.reference,o.invoice,o.salesRep,o.contactName,o.email,o.id].some(v => (v||'').toLowerCase().includes(q));
-    const hlAttr = highlight ? ' style="background:#fffbe6"' : '';
+    const isDup = dupKeys.has(normalizeCustomer(o.customer));
+    const hlAttr = (highlight || (showOnlyDup && isDup)) ? ' style="background:#fffbe6"' : '';
+    const custKey = normalizeCustomer(o.customer);
+    const dupCount = counts.get(custKey) || 0;
+    const dupBadge = (!showOnlyDup && dupCount>1) ? `<span class="dup-badge" title="This customer has ${dupCount} active orders">×${dupCount}</span>` : '';
     return `<tr>
-      <td${hlAttr}>${o.customer}</td>
+      <td${hlAttr}>${o.customer} ${dupBadge}</td>
       <td>${o.reference}</td>
       <td>${o.cartons||0}</td>
       <td>${o.pallets||0}</td>
@@ -1036,6 +1053,19 @@ function renderCollections(){
 }
 function filterCollections(){ renderCollections(); }
 function resetCollectionsFilters(){ document.getElementById('collectionsSearch').value=''; renderCollections(); }
+
+// Bind Show Duplicates toggle
+document.addEventListener('DOMContentLoaded', ()=>{
+  const btn = document.getElementById('toggleDupBtn');
+  if(btn && !btn._dupBound){
+    btn.addEventListener('click', ()=>{
+      const pressed = btn.getAttribute('aria-pressed')==='true';
+      btn.setAttribute('aria-pressed', pressed ? 'false' : 'true');
+      renderCollections();
+    });
+    btn._dupBound = true;
+  }
+});
 
 async function cancelOrder(id){
   const ok = await uiConfirm('Cancel this order?');

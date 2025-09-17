@@ -42,8 +42,11 @@
 		</div>
 			<div id="selfTestPanel" class="small-note hidden" style="border:1px solid var(--border);background:#fff;border-radius:8px;padding:8px 10px;margin:6px 0"></div>
 				<div class="legend-row">
-					<div class="small-note">Status legend: <span class="badge neutral">0–7 days</span> <span class="badge warn">7–14 days</span> <span class="badge danger">14+ days</span></div>
-					<div><button class="search-btn-small" onclick="openAddOrderModal()">Add Order</button></div>
+						<div class="small-note">Status legend: <span class="badge neutral">0–7 days</span> <span class="badge warn">7–14 days</span> <span class="badge danger">14+ days</span></div>
+						<div class="legend-actions">
+							<button id="toggleDupBtn" type="button" class="search-btn-small secondary" aria-pressed="false" title="Show only customers with multiple active orders">Show duplicates</button>
+							<button class="search-btn-small" onclick="openAddOrderModal()">Add Order</button>
+						</div>
 				</div>
 
 		<div class="table-wrapper">
