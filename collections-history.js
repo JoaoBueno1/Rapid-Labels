@@ -84,6 +84,26 @@
     [prev,next].forEach(btn=>{ if(!btn) return; if(btn.dataset.disabled==='1'){ btn.style.opacity='.45'; btn.style.pointerEvents='none'; } else { btn.style.opacity='1'; btn.style.pointerEvents='auto'; } });
   }
 
+  function cleanSignature(sig){
+    if(!sig) return null;
+    try{
+      // If object serialized as JSON with { dataUrl: '...' }
+      if(typeof sig === 'string' && sig.trim().startsWith('{')){
+        const obj = JSON.parse(sig);
+        if(obj && typeof obj.dataUrl === 'string') sig = obj.dataUrl;
+      }
+    } catch(e){}
+    if(typeof sig !== 'string') return null;
+    const s = sig.trim();
+    if(!s) return null;
+    if(s.startsWith('data:image')) return s;
+    // Accept plain base64 PNG, or already full https URL
+    if(/^https?:\/\//i.test(s)) return s;
+    // If it looks base64-ish, prefix as PNG
+    if(/^[A-Za-z0-9+/=]+$/.test(s)) return 'data:image/png;base64,'+s;
+    return null;
+  }
+
   function render(rows){
     const tbody=document.getElementById('historyTbody');
     if(!tbody) return;
@@ -100,9 +120,10 @@
 
     const q = (document.getElementById('historySearch')?.value||'').trim().toLowerCase();
     tbody.innerHTML = pageRows.map(o=>{
-      let sig = o.signature;
-      if(sig && !sig.startsWith('data:image')) sig='data:image/png;base64,'+sig;
-      const sigCell = sig ? `<img class="sig-thumb" src="${sig}" alt="signature" style="height:28px;max-width:140px;object-fit:contain;border:1px solid #e2e8f0;border-radius:6px;background:#fff"/>` : '<span style="opacity:.5">—</span>';
+      const sig = cleanSignature(o.signature);
+      const sigCell = sig
+        ? `<img class="sig-thumb" src="${sig}" alt="signature" style="height:28px;max-width:140px;object-fit:contain;border:1px solid #e2e8f0;border-radius:6px;background:#fff"/>`
+        : '<span style="opacity:.5">—</span>';
       const highlight = q && [o.customer,o.reference,o.invoice,o.salesRep,o._contactName,o._contactNumber,o._email,o.collectedBy,o.id].some(v => (v||'').toString().toLowerCase().includes(q));
       return `<tr>
         <td${highlight?' style="background:#fffbe6"':''}>${o.customer||''}</td>
@@ -163,12 +184,21 @@
   document.getElementById('historyResetBtn')?.addEventListener('click', resetFilters);
   });
 
+  function openSignatureFromSrc(src){
+    if(!src) return;
+    const modal = document.getElementById('signatureModal');
+    const img = document.getElementById('signatureModalImg');
+    if(modal && img){ img.src = src; modal.classList.remove('hidden'); }
+  }
   document.addEventListener('click', e=>{
     if(e.target.classList?.contains('sig-thumb')){
-      const src = e.target.src;
-      const modal = document.getElementById('signatureModal');
-      const img = document.getElementById('signatureModalImg');
-      if(modal && img){ img.src = src; modal.classList.remove('hidden'); }
+      openSignatureFromSrc(e.target.src);
+    }
+  });
+  document.addEventListener('keydown', e=>{
+    if((e.key==='Enter' || e.key===' ') && e.target.classList?.contains('sig-thumb')){
+      e.preventDefault();
+      openSignatureFromSrc(e.target.src);
     }
   });
 

@@ -19,7 +19,7 @@
   <a href="index.html" class="nav-link">Home</a>
   <a href="#" class="nav-link" onclick="openSearchModal();return false;">Search Product Label</a>
   <a href="#" class="nav-link" onclick="openManualModal();return false;">Manual Label</a>
-  <a href="index.html#barcodes" class="nav-link" style="display:none" aria-hidden="true">Barcodes</a>
+      <a href="#" class="nav-link" onclick="openBarcodesModal();return false;">Barcodes</a>
         <a href="collections.html" class="nav-link">Collections</a>
         <a href="collections-history.html" class="nav-link">Collections History</a>
         <a href="restock.html" class="nav-link">Re-Stock</a>
@@ -110,13 +110,6 @@
               <input type="date" id="editDate" />
             </div>
           </div>
-          <div class="size-selection">
-            <label>Select size: *</label>
-            <div class="size-buttons">
-              <button type="button" class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
-              <button type="button" class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
-            </div>
-          </div>
             <div class="pages-selection">
               <label>Number of pages: *</label>
               <div class="pages-input">
@@ -129,6 +122,132 @@
             <button id="printSearchBtn" type="button" class="print-btn disabled" onclick="printSearchLabel()" aria-disabled="true">🖨️ Print</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Barcodes (3 Sections) -->
+  <div id="barcodesModal" class="modal hidden">
+    <div class="modal-content">
+      <style>
+        /* Scoped to Barcodes modal */
+        #barcodesModal input::placeholder { font-size: 0.8rem; opacity: 0.7; }
+        #barcodesModal .inline-row { display:flex; gap:8px; align-items:flex-end; flex-wrap:nowrap; }
+        #barcodesModal .inline-row .field-group { margin: 0; }
+        #barcodesModal .inline-row .field-group input,
+        #barcodesModal .inline-row .field-group select { min-height: 30px; }
+        #barcodesModal .mode-icon { width:18px; height:18px; display:inline-block; }
+        #barcodesModal .mode-row { display:flex; align-items:center; justify-content: flex-start; gap:10px; }
+        #barcodesModal .mode-left { display:flex; gap:6px; align-items:center; font-size:.8rem; flex:0 0 auto; }
+        #barcodesModal .mode-preview { flex:1 1 auto; display:flex; justify-content:center; align-items:center; }
+        #barcodesModal .mode-preview-inner { display:flex; flex-direction:row; align-items:center; gap:6px; }
+        #barcodesModal .mode-preview img { width: 160px; height: 48px; object-fit: contain; opacity: .9; }
+        #barcodesModal .mode-preview .eg-note { font-size: 10px; color: #64748b; opacity: .8; }
+        /* Autocomplete dropdown */
+        #barcodesModal .ac-panel { position:absolute; left:0; right:0; top:100%; background:#fff; border:1px solid var(--border,#cbd5e1); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.08); z-index:3000; max-height:150px; overflow-y:auto; margin-top:4px; padding:4px 0; }
+        #barcodesModal .ac-item { padding:8px 10px; font-size:12px; display:flex; justify-content:space-between; gap:10px; cursor:pointer; }
+        #barcodesModal .ac-item:hover { background:#f1f5f9; }
+        #barcodesModal .ac-left { font-weight:600; color:#0f172a; }
+        #barcodesModal .ac-right { color:#475569; font-variant-numeric:tabular-nums; }
+        #barcodesModal .error-note { color:#dc2626; font-size:10px; margin-top:2px; display:none; }
+        #barcodesModal input.error { border-color:#dc2626 !important; outline-color:#dc2626 !important; }
+      </style>
+      <span class="close" onclick="closeBarcodesModal()">&times;</span>
+      <h2>🏷️ Barcodes (3 Sections)</h2>
+      <div class="manual-fields">
+        <div class="field-group" style="flex:1">
+          <div class="mode-row" style="margin:2px 0 4px;">
+            <div class="mode-left">
+              <label style="font-weight:700; margin-right:4px">Mode:</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS1Mode" value="product" checked> Product</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS1Mode" value="location"> Location</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS1Mode" value="manual"> Manual</label>
+            </div>
+            <div class="mode-preview">
+              <div class="mode-preview-inner">
+                <div class="eg-note">e.g.</div>
+                <img id="bcS1ModePreview" src="Product.svg" alt="Mode preview">
+              </div>
+            </div>
+          </div>
+          <div id="bcS1ProductFields" class="inline-row">
+            <div class="field-group" style="flex:0 0 140px; position:relative"><label>SKU</label><input id="bcS1ProdSku" type="text" placeholder="SKU" autocomplete="off"></div>
+            <div class="field-group" style="flex:1 1 50%; position:relative"><label>Name</label><input id="bcS1ProdName" type="text" placeholder="Product" autocomplete="off"></div>
+            <input id="bcS1ProdEan" type="hidden" />
+          </div>
+          <div id="bcS1LocationFields" class="inline-row" style="display:none">
+            <div class="field-group" style="flex:1 1 auto; position:relative"><label>Location</label><input id="bcS1LocCode" type="text" placeholder="Location" autocomplete="off"></div>
+          </div>
+          <div id="bcS1ManualFields" class="inline-row" style="display:none">
+            <div class="field-group" style="flex:0 0 120px"><label>Code content</label><input id="bcS1ManCode" type="text" placeholder="SKU" inputmode="numeric" autocomplete="off"><div id="bcS1ManCodeErr" class="error-note"></div></div>
+            <div class="field-group" style="flex:1 1 45%"><label>Title</label><input id="bcS1ManTitle" type="text" placeholder="Product"></div>
+            <div class="field-group" style="flex:0 0 180px"><label>EAN-13</label><input id="bcS1ManEan" type="text" placeholder="EAN-13" inputmode="numeric" autocomplete="off"><div id="bcS1ManEanErr" class="error-note"></div></div>
+          </div>
+        </div>
+        <div style="height:1px;background:var(--border,#cbd5e1);margin:12px 0"></div>
+        <div class="field-group" style="flex:1">
+          <div class="mode-row" style="margin:2px 0 4px;">
+            <div class="mode-left">
+              <label style="font-weight:700; margin-right:4px">Mode:</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS2Mode" value="product" checked> Product</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS2Mode" value="location"> Location</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS2Mode" value="manual"> Manual</label>
+            </div>
+            <div class="mode-preview">
+              <div class="mode-preview-inner">
+                <div class="eg-note">e.g.</div>
+                <img id="bcS2ModePreview" src="Product.svg" alt="Mode preview">
+              </div>
+            </div>
+          </div>
+          <div id="bcS2ProductFields" class="inline-row">
+            <div class="field-group" style="flex:0 0 140px; position:relative"><label>SKU</label><input id="bcS2ProdSku" type="text" placeholder="SKU" autocomplete="off"></div>
+            <div class="field-group" style="flex:1 1 50%; position:relative"><label>Name</label><input id="bcS2ProdName" type="text" placeholder="Product" autocomplete="off"></div>
+            <input id="bcS2ProdEan" type="hidden" />
+          </div>
+          <div id="bcS2LocationFields" class="inline-row" style="display:none">
+            <div class="field-group" style="flex:1 1 auto; position:relative"><label>Location</label><input id="bcS2LocCode" type="text" placeholder="Location" autocomplete="off"></div>
+          </div>
+          <div id="bcS2ManualFields" class="inline-row" style="display:none">
+            <div class="field-group" style="flex:0 0 120px"><label>Code content</label><input id="bcS2ManCode" type="text" placeholder="SKU" inputmode="numeric" autocomplete="off"><div id="bcS2ManCodeErr" class="error-note"></div></div>
+            <div class="field-group" style="flex:1 1 45%"><label>Title</label><input id="bcS2ManTitle" type="text" placeholder="Product"></div>
+            <div class="field-group" style="flex:0 0 180px"><label>EAN-13</label><input id="bcS2ManEan" type="text" placeholder="EAN-13" inputmode="numeric" autocomplete="off"><div id="bcS2ManEanErr" class="error-note"></div></div>
+          </div>
+        </div>
+        <div style="height:1px;background:var(--border,#cbd5e1);margin:12px 0"></div>
+        <div class="field-group" style="flex:1">
+          <div class="mode-row" style="margin:2px 0 4px;">
+            <div class="mode-left">
+              <label style="font-weight:700; margin-right:4px">Mode:</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS3Mode" value="product" checked> Product</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS3Mode" value="location"> Location</label>
+              <label style="display:inline-flex; align-items:center; gap:4px"><input style="transform:scale(0.9)" type="radio" name="bcS3Mode" value="manual"> Manual</label>
+            </div>
+            <div class="mode-preview">
+              <div class="mode-preview-inner">
+                <div class="eg-note">e.g.</div>
+                <img id="bcS3ModePreview" src="Product.svg" alt="Mode preview">
+              </div>
+            </div>
+          </div>
+          <div id="bcS3ProductFields" class="inline-row">
+            <div class="field-group" style="flex:0 0 140px; position:relative"><label>SKU</label><input id="bcS3ProdSku" type="text" placeholder="SKU" autocomplete="off"></div>
+            <div class="field-group" style="flex:1 1 50%; position:relative"><label>Name</label><input id="bcS3ProdName" type="text" placeholder="Product" autocomplete="off"></div>
+            <input id="bcS3ProdEan" type="hidden" />
+          </div>
+          <div id="bcS3LocationFields" class="inline-row" style="display:none">
+            <div class="field-group" style="flex:1 1 auto; position:relative"><label>Location</label><input id="bcS3LocCode" type="text" placeholder="Location" autocomplete="off"></div>
+          </div>
+          <div id="bcS3ManualFields" class="inline-row" style="display:none">
+            <div class="field-group" style="flex:0 0 120px"><label>Code content</label><input id="bcS3ManCode" type="text" placeholder="SKU" inputmode="numeric" autocomplete="off"><div id="bcS3ManCodeErr" class="error-note"></div></div>
+            <div class="field-group" style="flex:1 1 45%"><label>Title</label><input id="bcS3ManTitle" type="text" placeholder="Product"></div>
+            <div class="field-group" style="flex:0 0 180px"><label>EAN-13</label><input id="bcS3ManEan" type="text" placeholder="EAN-13" inputmode="numeric" autocomplete="off"><div id="bcS3ManEanErr" class="error-note"></div></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+        <button class="search-btn-small secondary" onclick="closeBarcodesModal()">Cancel</button>
+        <button id="bcPrintBtn" class="search-btn-small" onclick="printBarcodes3Up()" disabled>Print</button>
       </div>
     </div>
   </div>
@@ -152,20 +271,13 @@
           <div class="field-row">
             <div class="field-group">
               <label for="manualQty">Qty: *</label>
-              <input type="number" id="manualQty" min="1" max="99999" required placeholder="Quantity" maxlength="5" />
+              <input type="number" id="manualQty" min="0" max="99999" placeholder="Quantity" maxlength="5" />
               <div class="error" id="manualQtyError"></div>
             </div>
             <div class="field-group">
               <label for="manualDate">Date:</label>
               <input type="date" id="manualDate" />
             </div>
-          </div>
-        </div>
-        <div class="size-selection">
-          <label>Select size: *</label>
-          <div class="size-buttons">
-            <button type="button" class="size-btn" data-size="A4" onclick="selectManualSize('A4')">A4</button>
-            <button type="button" class="size-btn" data-size="A3" onclick="selectManualSize('A3')">A3</button>
           </div>
         </div>
         <div class="pages-selection">
@@ -183,6 +295,8 @@
     </div>
   </div>
 
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
   <script src="scanner.js"></script>
   <script src="app.js"></script>
   <script>

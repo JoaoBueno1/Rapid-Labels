@@ -298,9 +298,9 @@ h2 {
     font-size: 0.72rem;
     font-weight: 700;
     line-height: 1;
-    color: #b45309;           /* warn text */
-    background: #fff3cd;      /* warn bg (light yellow) */
-    border: 1px solid #fde68a;/* warn border */
+    color: #b45309;            /* warn text */
+    background: #fff;          /* match date-chip.warn (border-only style) */
+    border: 1px solid #fde68a; /* warn border */
 }
 
 /* Product Details */

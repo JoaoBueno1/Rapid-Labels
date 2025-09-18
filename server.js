@@ -19,7 +19,7 @@ app.use(helmet({
       "default-src": ["'self'"],
       "script-src": ["'self'", "https://unpkg.com", "https://cdn.jsdelivr.net", "'unsafe-inline'"],
       "style-src": ["'self'", "'unsafe-inline'"],
-      "img-src": ["'self'", 'data:', 'blob:'],
+  "img-src": ["'self'", 'data:', 'blob:', 'https://iaqnxamnjftwqdbsnfyl.supabase.co'],
       "connect-src": ["'self'", "https://iaqnxamnjftwqdbsnfyl.supabase.co"],
       "font-src": ["'self'", "data:"],
       "object-src": ["'none'"],

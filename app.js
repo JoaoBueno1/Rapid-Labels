@@ -162,6 +162,106 @@ function openSearchModal() {
     resetSearchModal();
 }
 
+// Close the Product Search modal and clear its state
+function closeSearchModal() {
+    try {
+        const modal = document.getElementById('searchModal');
+        if (modal) modal.classList.add('hidden');
+        resetSearchModal();
+    } catch (_) { }
+}
+
+// Reset Product Search modal UI and internal state without changing global styles/behavior
+function resetSearchModal() {
+    try {
+        // Clear input and messages
+        const input = document.getElementById('productSearch');
+        if (input) input.value = '';
+        const resultsDiv = document.getElementById('searchResults');
+        if (resultsDiv) resultsDiv.innerHTML = '';
+        const err = document.getElementById('searchError');
+        if (err) { err.textContent = ''; err.style.display = ''; }
+
+        // Hide details and clear displayed fields
+        const details = document.getElementById('productDetails');
+        if (details) details.classList.add('hidden');
+        const foundSku = document.getElementById('foundSku');
+        if (foundSku) foundSku.textContent = '';
+        const foundCode = document.getElementById('foundCode');
+        if (foundCode) foundCode.textContent = '';
+
+        // Reset qty/date, selected size and pages
+        const qty = document.getElementById('editQty');
+        if (qty) qty.value = '';
+        const dateEl = document.getElementById('editDate');
+        if (dateEl) {
+            const today = new Date().toISOString().split('T')[0];
+            dateEl.value = today;
+        }
+        selectedProduct = null;
+        selectedSearchSize = null;
+        searchPages = 1;
+        const pagesEl = document.getElementById('pagesCount');
+        if (pagesEl) pagesEl.value = 1;
+        // Unselect any size buttons inside search modal
+        try {
+            document.querySelectorAll('#searchModal .size-btn').forEach(btn => btn.classList.remove('selected'));
+        } catch(_){}
+
+        // Clear any validation errors and update print button state
+        try { clearValidationErrors(); } catch(_){}
+        try { updatePrintButton('search'); } catch(_){}
+    } catch (_) { }
+}
+
+// Execute product search via Supabase and render results
+async function performSearch() {
+    try {
+        const input = document.getElementById('productSearch');
+        const resultsDiv = document.getElementById('searchResults');
+        const err = document.getElementById('searchError');
+        const term = (input?.value || '').trim();
+
+        // Reset messages
+        if (err) { err.textContent = ''; err.style.display = ''; }
+        if (resultsDiv) resultsDiv.innerHTML = '';
+
+        // Empty term: keep UI clean
+        if (!term) {
+            return;
+        }
+
+        if (resultsDiv) {
+            resultsDiv.innerHTML = '<div class="loading">Searching…</div>';
+        }
+
+        // Ensure Supabase is ready
+        try { await (window.supabaseReady || Promise.resolve()); } catch(_){}
+        if (!window.supabaseSearch || typeof window.supabaseSearch.searchProduct !== 'function') {
+            if (resultsDiv) resultsDiv.innerHTML = '';
+            if (err) err.textContent = 'Search service unavailable';
+            return;
+        }
+
+        const res = await window.supabaseSearch.searchProduct(term);
+        if (res && res.success && Array.isArray(res.products) && res.products.length) {
+            displaySearchResults(res.products);
+            if (err) err.textContent = '';
+        } else {
+            if (resultsDiv) resultsDiv.innerHTML = '';
+            if (err) err.textContent = (res && res.error) ? res.error : 'No products found';
+            const details = document.getElementById('productDetails');
+            if (details) details.classList.add('hidden');
+        }
+    } catch (e) {
+        try {
+            const err = document.getElementById('searchError');
+            if (err) err.textContent = 'Search failed. Please try again.';
+        } catch(_){}
+        console.error('performSearch error', e);
+    }
+}
+
 function printBarcodes3Up(){
     // Business rules enforcement: 
     // - SKU must be exactly 5 digits for product & manual (if provided / required)
@@ -494,10 +594,10 @@ function validateField(fieldId) {
     let isValid = true;
     let errorMessage = '';
     
-    if (field.hasAttribute('required') && !field.value.trim()) {
+    if (field.hasAttribute('required') && !field.value.trim() && fieldId !== 'editQty' && fieldId !== 'manualQty') {
         isValid = false;
         errorMessage = 'This field is required';
-    } else if (field.type === 'number' && field.value && parseInt(field.value) < 1) {
+    } else if (field.type === 'number' && field.value && parseInt(field.value) < 1 && fieldId !== 'editQty') {
         isValid = false;
         errorMessage = 'Must be greater than 0';
     } else if (field.type === 'number' && field.value && parseInt(field.value) > 99999) {
@@ -529,16 +629,8 @@ function validateField(fieldId) {
 }
 
 function validateSearchForm() {
-    const qty = document.getElementById('editQty').value;
-    if (!selectedProduct) {
-        return false;
-    }
-    if (!qty || !qty.trim() || parseInt(qty) < 1) {
-        return false;
-    }
-    if (!selectedSearchSize) {
-        return false;
-    }
+    // Allow printing even if qty is 0/empty and no paper size is selected; only require a selected product
+    if (!selectedProduct) return false;
     return true;
 }
 
@@ -552,9 +644,8 @@ function validateManualForm() {
         }
     });
     
-    if (!selectedManualSize) {
-        isValid = false;
-    }
+    // Paper size selection is optional; chosen in printer dialog
+    // manualQty can be 0 or empty
     
     return isValid;
 }
@@ -657,7 +748,9 @@ function generateAndPrintLabel(labelData) {
 }
 
 function generateLabelHTML(labelData) {
-    const { sku, code, qty, date, size } = labelData;
+    const { sku, code, qty, date } = labelData;
+    // Default size to A4 unless explicitly A3
+    const size = (labelData && labelData.size === 'A3') ? 'A3' : 'A4';
     
     let pagesHTML = '';
     for (let i = 1; i <= labelData.pages; i++) {

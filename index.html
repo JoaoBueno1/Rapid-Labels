@@ -23,7 +23,7 @@
                     <a href="index.html" class="nav-link">Home</a>
                     <a href="#" class="nav-link" onclick="openSearchModal()">Search Product Label</a>
                     <a href="#" class="nav-link" onclick="openManualModal()">Manual Label</a>
-                    <a href="#" class="nav-link" onclick="openBarcodesModal()" style="display:none" aria-hidden="true">Barcodes</a>
+                    <a href="#" class="nav-link" onclick="openBarcodesModal()">Barcodes</a>
                     <a href="collections.html" class="nav-link">Collections</a>
                     <a href="collections-history.html" class="nav-link">Collections History</a>
                     <a href="restock.html" class="nav-link">Re-Stock</a>
@@ -39,7 +39,7 @@
             <button class="main-btn manual-btn" onclick="openManualModal()">
                 ✏️ Manual Label
             </button>
-            <button class="main-btn" type="button" onclick="openBarcodesModal()" style="display:none" aria-hidden="true">🏷️ Barcodes</button>
+            <button class="main-btn" type="button" onclick="openBarcodesModal()">🏷️ Barcodes</button>
             <a class="main-btn" href="collections.html">📦 Collections</a>
                 <a class="main-btn" href="collections-history.html">📁 Collections History</a>
             <a class="main-btn" href="restock.html">♻️ Re-Stock</a>
@@ -94,13 +94,6 @@
                             <input type="date" id="editDate">
                         </div>
                     </div>
-                    <div class="size-selection">
-                        <label>Select size: *</label>
-                        <div class="size-buttons">
-                            <button type="button" class="size-btn" data-size="A4" onclick="selectSize('A4')">A4</button>
-                            <button type="button" class="size-btn" data-size="A3" onclick="selectSize('A3')">A3</button>
-                        </div>
-                    </div>
                     <div class="pages-selection">
                         <label>Number of pages: *</label>
                         <div class="pages-input">
@@ -142,7 +135,7 @@
                     <div class="field-row">
                         <div class="field-group">
                             <label for="manualQty">Qty: *</label>
-                            <input type="number" id="manualQty" min="1" max="99999" required placeholder="Quantity" maxlength="5">
+                            <input type="number" id="manualQty" min="0" max="99999" placeholder="Quantity" maxlength="5">
                             <div class="error" id="manualQtyError"></div>
                         </div>
                         <div class="field-group">
@@ -152,13 +145,6 @@
                     </div>
                 </div>
 
-                <div class="size-selection">
-                    <label>Select size: *</label>
-                    <div class="size-buttons">
-                        <button type="button" class="size-btn" data-size="A4" onclick="selectManualSize('A4')">A4</button>
-                        <button type="button" class="size-btn" data-size="A3" onclick="selectManualSize('A3')">A3</button>
-                    </div>
-                </div>
 
                 <div class="pages-selection">
                     <label>Number of pages: *</label>
