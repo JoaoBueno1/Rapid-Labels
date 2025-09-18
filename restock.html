@@ -31,16 +31,41 @@
       <h1>Re-Stock</h1>
       <div class="header-actions">
         <div class="search-input-group">
-          <input type="text" id="restockSearch" placeholder="Search SKU, Product, Pickface or scan" />
-          <button class="search-btn-small" onclick="alert('Re-Stock filters coming soon')">Search</button>
-          <button class="search-btn-small secondary" type="button" onclick="openScanModal('restockSearch')" aria-label="Open camera">📷</button>
+          <input type="text" id="restockSearch" placeholder="Search SKU, Product, Pickface or scan" style="min-width: 420px" />
+          <button class="search-btn-small" onclick="runRestockSearch()">Search</button>
+        </div>
+        <div class="search-input-group" style="gap:8px">
+          <button class="search-btn-small" type="button" onclick="openImportModal()">Report Stock</button>
         </div>
       </div>
     </div>
-    <div class="small-note">List shows items to replenish. Status order: LOW, MEDIUM, FULL/OVER. You can hide 'No reserve' later.</div>
-    <div class="small-note" style="margin-top:6px">
-      Status colors: <span class="status-badge low">low</span> <span class="status-badge medium">medium</span> <span class="status-badge full">full</span> <span class="status-badge over">over</span>
+    <div style="margin-top:8px">
+      <div id="restockFilters" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-weight:600;color:#475569">Status:</span>
+          <button class="chip" data-status-filter="ALL" onclick="setStatusFilter('ALL', this)">All</button>
+      <button class="chip" data-status-filter="LOW" onclick="setStatusFilter('LOW', this)">Low</button>
+      <button class="chip" data-status-filter="MEDIUM" onclick="setStatusFilter('MEDIUM', this)">Medium</button>
+      <button class="chip" data-status-filter="FULL" onclick="setStatusFilter('FULL', this)">Full</button>
+      <button class="chip" data-status-filter="OVER" onclick="setStatusFilter('OVER', this)">Over</button>
+        </div>
+        <label style="display:inline-flex;align-items:center;gap:6px;margin-left:10px">
+          <input type="checkbox" id="toggleHideNoReserve" onchange="toggleHideNoReserve(this.checked)" />
+          Hide "No reserve"
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;margin-left:6px">
+          <input type="checkbox" id="toggleOnlyNeedsAdjustment" onchange="toggleOnlyNeedsAdjustment(this.checked)" />
+          Only needs adjustment
+        </label>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span id="lastReportStamp" class="small-note">Last report: —</span>
+          <button class="search-btn-small" type="button" onclick="printRestock()">Print</button>
+        </div>
+      </div>
     </div>
+
+    <div id="restockPrintHeader" class="print-header small-note" aria-hidden="true">Re-Stock Report</div>
 
     <div class="table-wrapper">
       <table class="app-table" id="restockTable">
@@ -49,8 +74,13 @@
             <th>SKU</th><th>Product</th><th>Pickface</th><th>On Hand</th><th>Capacity</th><th>Status</th><th>Reserve</th><th>Restock</th>
           </tr>
         </thead>
-        <tbody id="restockTbody"><tr><td colspan="8" style="text-align:center;opacity:.7">Coming soon</td></tr></tbody>
+  <tbody id="restockTbody"><tr><td colspan="8" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
       </table>
+    </div>
+    <div id="restockPagination" class="pager" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
+      <button id="restockPrevPage" class="pages-btn" type="button" aria-label="Previous page" onclick="restockPrevPage()">‹</button>
+      <span id="restockPageInfo" class="small-note">Page 1 / 1</span>
+      <button id="restockNextPage" class="pages-btn" type="button" aria-label="Next page" onclick="restockNextPage()">›</button>
     </div>
   </div>
   <footer class="site-footer">
@@ -300,6 +330,58 @@
   <script src="scanner.js"></script>
   <script src="app.js"></script>
   <script>
+    // Scoped styles for filters and reserve labels
+    (function(){
+  const css = `
+      .chip{padding:4px 10px;border:1px solid var(--border,#cbd5e1);border-radius:999px;background:#fff;color:#0f172a;font-size:12px;cursor:pointer}
+  /* Color the status chips */
+  #restockFilters .chip[data-status-filter="ALL"]{ background:#e2e8f0; color:#334155; border-color:#cbd5e1 }
+  #restockFilters .chip[data-status-filter="LOW"]{ background:#fee2e2; color:#b91c1c; border-color:#fecaca }
+  #restockFilters .chip[data-status-filter="MEDIUM"]{ background:#fef3c7; color:#b45309; border-color:#fde68a }
+  #restockFilters .chip[data-status-filter="FULL"]{ background:#dcfce7; color:#15803d; border-color:#bbf7d0 }
+  #restockFilters .chip[data-status-filter="OVER"]{ background:#dbeafe; color:#1d4ed8; border-color:#bfdbfe }
+  /* Active should not override color; just emphasize */
+  .chip.active{ background:inherit; color:inherit; border-color:currentColor; border-width:2px }
+      .reserve-none{color:#64748b;opacity:.8;font-style:italic}
+      .restock-strong{font-weight:700;color:#0f172a}
+  #restockTable th, #restockTable td{ text-align:center }
+  /* Status badge colors */
+  .status-badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;line-height:1;border:1px solid transparent;text-transform:uppercase}
+  .status-badge.low{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
+  .status-badge.medium{background:#fef3c7;color:#b45309;border-color:#fde68a}
+  .status-badge.full{background:#dcfce7;color:#15803d;border-color:#bbf7d0}
+  .status-badge.over{background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe}
+  .status-badge.configure{background:#f1f5f9;color:#475569;border-color:#e2e8f0;text-transform:none}
+  /* Pager */
+  .pager button[disabled]{ opacity:.5; cursor: not-allowed }
+  @media print{ .pager{ display:none !important } }
+  /* Print helpers */
+  tr.print-break{ display:none }
+  .print-header{ display:none }
+  @media print{
+    /* Hide everything but the print header and table wrapper */
+  html, body { background:#fff !important; color:#000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body * { visibility: hidden; }
+    header.site-header, footer.site-footer, #restockFilters, .header-actions, .modal, .site-footer { display: none !important; }
+    .print-header, .table-wrapper, .table-wrapper * { visibility: visible; }
+    .print-header { position: relative; }
+  .table-wrapper { position: relative; background:#fff !important; box-shadow:none !important; }
+  #restockTable { font-size: 11px; border-collapse: collapse; background:#fff !important; }
+  #restockTable th, #restockTable td { border:1px solid #333 !important; padding:6px 8px !important; }
+  #restockTable thead th { background:#f3f4f6 !important; color:#111827 !important; }
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    tr.print-break { display: table-row; break-before: page; page-break-before: always; height:0 }
+  .print-header{ display:block; font-size:12px; color:#0f172a; font-weight:600; margin: 0 0 6px; text-align:center; }
+  /* Make status badges monochrome-friendly */
+  .status-badge { background: transparent !important; border-color: #999 !important; color:#111 !important; }
+  }
+  @page { size: A4 landscape; margin: 12mm }
+      `;
+      const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+    })();
+
     // Style status cells by value
     function styleRestockStatuses(){
       const tbody = document.getElementById('restockTbody');
@@ -311,17 +393,112 @@
         if (!val) return;
         statusTd.innerHTML = '';
         const span = document.createElement('span');
-        const map = { low:'low', medium:'medium', full:'full', over:'over' };
+        const map = { low:'low', medium:'medium', full:'full', ok:'full', over:'over', configure:'configure' };
         const cls = map[val];
         if (!cls) return;
         span.className = 'status-badge ' + cls;
-        span.textContent = val;
+        span.textContent = (val === 'configure') ? 'precisa configurar' : val;
         statusTd.appendChild(span);
       });
     }
     // Run now and expose for later when data is loaded
     styleRestockStatuses();
     window.styleRestockStatuses = styleRestockStatuses;
+    function formatNow(){
+      const d = new Date();
+      const pad = (n)=> String(n).padStart(2,'0');
+      const dd = pad(d.getDate());
+      const mm = pad(d.getMonth()+1);
+      const yyyy = d.getFullYear();
+      const hh = pad(d.getHours());
+      const mi = pad(d.getMinutes());
+      return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+    }
+    function formatNowForFile(){
+      const d = new Date();
+      const pad = (n)=> String(n).padStart(2,'0');
+      const dd = pad(d.getDate());
+      const mm = pad(d.getMonth()+1);
+      const yyyy = d.getFullYear();
+      const hh = pad(d.getHours());
+      const mi = pad(d.getMinutes());
+      return `${dd}-${mm}-${yyyy} ${hh}.${mi}`; // safe for filenames
+    }
+    function printRestock(){
+      const stamp = formatNow();
+      const ph = document.getElementById('restockPrintHeader');
+      if (ph) ph.textContent = `Re-Stock Report — ${stamp}`;
+      // Set a clean document.title so 'Save as PDF' suggests a good filename
+      const prevTitle = document.title;
+      document.title = `Re-Stock ${formatNowForFile()}`;
+      const restore = ()=>{ document.title = prevTitle; window.removeEventListener('afterprint', restore); };
+      window.addEventListener('afterprint', restore);
+      // yield to DOM then print
+      setTimeout(()=> window.print(), 0);
+    }
+    // Filter helpers exposed for restock.js
+    function setStatusFilter(val, el){
+      if (window.restockSetStatusFilter){ window.restockSetStatusFilter(val); }
+      // Toggle active visual
+      document.querySelectorAll('#restockFilters .chip').forEach(btn=>btn.classList.remove('active'));
+      if (el) el.classList.add('active');
+    }
+  function toggleHideNoReserve(flag){ if (window.restockToggleHideNoReserve){ window.restockToggleHideNoReserve(flag); } }
+  function toggleOnlyNeedsAdjustment(flag){ if (window.restockToggleOnlyNeedsAdjustment){ window.restockToggleOnlyNeedsAdjustment(flag); } }
+    // Default filter state
+    window.addEventListener('DOMContentLoaded', ()=>{
+      const allBtn = document.querySelector('#restockFilters .chip[data-status-filter="ALL"]');
+      if (allBtn) allBtn.classList.add('active');
+    });
   </script>
+  
+  <!-- Import Modal -->
+  <div id="importModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close" onclick="closeImportModal()">&times;</span>
+      <h2>📥 Import stock report (Excel)</h2>
+      <ol style="margin:0 0 12px 18px;color:#334155">
+        <li>
+          Export an Excel with these column headers:
+          <ul style="margin:6px 0 0 16px">
+            <li><strong>Product additional attribute 1</strong></li>
+            <li><strong>SKU</strong></li>
+            <li><strong>Bin</strong></li>
+            <li><strong>Main Warehouse</strong></li>
+          </ul>
+        </li>
+      </ol>
+      <div style="display:flex;flex-direction:column;gap:10px;margin:8px 0">
+        <input type="file" id="importFile" accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" />
+        <div id="dropZone" style="border:3px dashed #6366f1;border-radius:14px;padding:22px;min-height:150px;display:flex;align-items:center;justify-content:center;gap:10px;color:#3730a3;background:#eef2ff;cursor:pointer;font-size:14px;font-weight:600;text-align:center" onclick="triggerImportFile()" aria-label="Drop Excel or click here">
+          <span>Drop Excel or click here</span>
+        </div>
+  <div id="importSummary" style="color:#475569" aria-live="polite"></div>
+        <div id="importPreview" style="max-height:180px;overflow:auto;border:1px solid var(--border,#cbd5e1);border-radius:8px;display:none">
+          <table class="app-table" style="margin:0">
+            <thead>
+              <tr><th>SKU</th><th>Product</th><th>Location</th><th>On Hand</th></tr>
+            </thead>
+            <tbody id="importPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+        <button class="search-btn-small secondary" onclick="closeImportModal()">Cancel</button>
+        <button id="confirmImportBtn" class="search-btn-small" onclick="confirmImport()" disabled>Import</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Import modal API (wired in restock.js for logic)
+    function openImportModal(){ document.getElementById('importModal')?.classList.remove('hidden'); }
+    function closeImportModal(){ document.getElementById('importModal')?.classList.add('hidden'); }
+    function triggerImportFile(){ document.getElementById('importFile')?.click(); }
+    function downloadRestockSample(){ if (window.restockDownloadSampleCSV) window.restockDownloadSampleCSV(); }
+    function confirmImport(){ if (window.restockConfirmImport) window.restockConfirmImport(); }
+  </script>
+  <!-- SheetJS for Excel parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="restock.js"></script>
 </body>
 </html>
