@@ -120,15 +120,11 @@
     if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
   }
 
-  // Apply status filter only; reserve-based filtering is applied after computing totals
+  // Apply status filter only; other toggles handled separately
   function applyStatusFilter(rows) {
     let filtered = Array.isArray(rows) ? rows.slice() : [];
     if (state.statusFilter && state.statusFilter !== 'ALL') {
-      filtered = filtered.filter(r => String(r.status || '').toUpperCase() === state.statusFilter);
-    }
-    // Only needs adjustment: on_hand == 0 and reserve > 0
-    if (state.onlyNeedsAdjustment) {
-      filtered = filtered.filter(r => (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0));
+      filtered = filtered.filter(r => String((r.__norm_status || r.status || '')).toUpperCase() === state.statusFilter);
     }
     return filtered;
   }
@@ -261,9 +257,7 @@
       for (const s of setupRows || []){
         setupBySku[s.sku] = { min: Number(s.cap_min), med: Number(s.cap_med), max: Number(s.cap_max) };
       }
-  // Apply status filter early
-  rows = applyStatusFilter(rows);
-  // Compute normalized status based on thresholds
+  // Compute normalized status based on thresholds for all rows
   for (const r of rows){
         const t = setupBySku[r.sku];
         if (!t || !Number.isFinite(t.min) || !Number.isFinite(t.med) || !Number.isFinite(t.max)){
@@ -280,14 +274,17 @@
   // Compute reserve totals and annotate
   const reserveTotals = await computeReserveTotals(rows);
   rows.forEach(r => { r.__reserve_total = reserveTotals[r.sku] || 0; });
-  // Arrange and optionally hide no-reserve
-  const arranged = stableSortByBusinessRules(rows);
+  // Save annotated rows
+  state.allRows = rows.slice();
+  // Apply current filters locally now
+  let filtered = applyStatusFilter(rows);
+  const arranged = stableSortByBusinessRules(filtered);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
   if (state.onlyNeedsAdjustment) {
     visible = visible.filter(r => (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0));
   }
-  state.allRows = rows.slice();
   state.rows = visible;
+  state.page = 1;
   render(visible);
     } catch (e) {
       console.error('restock fetch error', e);
@@ -337,6 +334,7 @@
   window.restockSetStatusFilter = function(val){
     state.statusFilter = String(val||'ALL').toUpperCase();
   // Rebuild view from annotated allRows
+  state.page = 1;
   let rows = applyStatusFilter(state.allRows);
   const arranged = stableSortByBusinessRules(rows);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
@@ -348,6 +346,7 @@
   };
   window.restockToggleHideNoReserve = function(flag){
     state.hideNoReserve = !!flag;
+  state.page = 1;
   let rows = applyStatusFilter(state.allRows);
   const arranged = stableSortByBusinessRules(rows);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
