@@ -57,6 +57,10 @@
           <input type="checkbox" id="toggleOnlyNeedsAdjustment" onchange="toggleOnlyNeedsAdjustment(this.checked)" />
           Only needs adjustment
         </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;margin-left:6px">
+          <input type="checkbox" id="toggleOnlyFavorites" onchange="toggleOnlyFavorites(this.checked)" />
+          Only favorites
+        </label>
         <div style="flex:1"></div>
         <div style="display:flex;align-items:center;gap:10px">
           <span id="lastReportStamp" class="small-note">Last report: —</span>
@@ -71,10 +75,10 @@
       <table class="app-table" id="restockTable">
         <thead>
           <tr>
-            <th>SKU</th><th>Product</th><th>Pickface</th><th>On Hand</th><th>Capacity</th><th>Status</th><th>Reserve</th><th>Restock</th>
+            <th style="width:36px">★</th><th>SKU</th><th>Product</th><th>Pickface</th><th>On Hand</th><th>Capacity</th><th>Status</th><th>Reserve</th><th>Restock</th>
           </tr>
         </thead>
-  <tbody id="restockTbody"><tr><td colspan="8" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
+  <tbody id="restockTbody"><tr><td colspan="9" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
       </table>
     </div>
     <div id="restockPagination" class="pager" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
@@ -387,7 +391,7 @@
       const tbody = document.getElementById('restockTbody');
       if (!tbody) return;
       [...tbody.querySelectorAll('tr')].forEach(tr => {
-        const statusTd = tr.children && tr.children[5];
+        const statusTd = tr.children && tr.children[6];
         if (!statusTd) return;
         const val = (statusTd.textContent || '').trim().toLowerCase();
         if (!val) return;
@@ -445,6 +449,7 @@
     }
   function toggleHideNoReserve(flag){ if (window.restockToggleHideNoReserve){ window.restockToggleHideNoReserve(flag); } }
   function toggleOnlyNeedsAdjustment(flag){ if (window.restockToggleOnlyNeedsAdjustment){ window.restockToggleOnlyNeedsAdjustment(flag); } }
+  function toggleOnlyFavorites(flag){ if (window.restockToggleOnlyFavorites){ window.restockToggleOnlyFavorites(flag); } }
     // Default filter state
     window.addEventListener('DOMContentLoaded', ()=>{
       const allBtn = document.querySelector('#restockFilters .chip[data-status-filter="ALL"]');

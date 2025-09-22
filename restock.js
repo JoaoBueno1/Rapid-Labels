@@ -20,9 +20,22 @@
     statusFilter: 'ALL', // ALL | LOW | MEDIUM | FULL | OVER
     hideNoReserve: false,
   onlyNeedsAdjustment: false, // new: show only rows where on_hand == 0 and reserve > 0
+  onlyFavorites: false, // show only favorited items
   page: 1,
   perPage: 30,
   };
+
+  // Favorites persistence (by SKU)
+  const FAVORITES_KEY = 'restock_favorites_skus';
+  const favorites = new Set();
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    if (raw) JSON.parse(raw).forEach((s) => favorites.add(String(s)));
+  } catch {}
+
+  function persistFavorites() {
+    try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favorites))); } catch {}
+  }
 
   const tbody = document.getElementById('restockTbody');
   const input = document.getElementById('restockSearch');
@@ -74,7 +87,7 @@
 
   function render(rows) {
     if (!rows || rows.length === 0) {
-      setTbody('<tr><td colspan="8" style="text-align:center;opacity:.7">No results</td></tr>');
+      setTbody('<tr><td colspan="9" style="text-align:center;opacity:.7">No results</td></tr>');
       updatePager(0);
       // Apply styling hook if present
       if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
@@ -97,8 +110,11 @@
   const status = escapeHtml((r.__norm_status || r.status || 'configure').toLowerCase());
         const reserveQty = Number(r.__reserve_total ?? 0);
         const restock = r.restock_qty ?? '';
+        const favOn = favorites.has(String(r.sku));
+        const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${sku}" onclick="restockToggleFavorite('${sku}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
         return `
           <tr>
+            <td>${star}</td>
             <td>${sku}</td>
             <td>${product}</td>
             <td>${pickface}</td>
@@ -111,7 +127,7 @@
       }).join('');
       chunks.push(rowsHtml);
       if (i + 30 < limited.length) {
-        chunks.push('<tr class="print-break"><td colspan="8"></td></tr>');
+        chunks.push('<tr class="print-break"><td colspan="9"></td></tr>');
       }
     }
     const html = chunks.join('');
@@ -127,6 +143,11 @@
       filtered = filtered.filter(r => String((r.__norm_status || r.status || '')).toUpperCase() === state.statusFilter);
     }
     return filtered;
+  }
+
+  function applyFavoritesFilter(rows) {
+    if (!state.onlyFavorites) return rows;
+    return rows.filter(r => favorites.has(String(r.sku)));
   }
 
   function stableSortByBusinessRules(rows) {
@@ -278,6 +299,7 @@
   state.allRows = rows.slice();
   // Apply current filters locally now
   let filtered = applyStatusFilter(rows);
+  filtered = applyFavoritesFilter(filtered);
   const arranged = stableSortByBusinessRules(filtered);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
   if (state.onlyNeedsAdjustment) {
@@ -317,14 +339,42 @@
 
   // Initial load
   fetchData();
-  // Restore Last report from localStorage (persists across reloads)
-  try{
-    const saved = localStorage.getItem('restock_last_report');
-    if (saved) {
-      const el = document.getElementById('lastReportStamp');
-      if (el) el.textContent = `Last report: ${saved}`;
-    }
-  } catch {}
+  // Helpers to manage Last report stamp
+  function setLastReportStampText(stamp){
+    const el = document.getElementById('lastReportStamp');
+    if (el) el.textContent = `Last report: ${stamp}`;
+    try{ localStorage.setItem('restock_last_report', stamp); } catch{}
+  }
+  function formatStampFromDate(d){
+    const pad = (n)=> String(n).padStart(2,'0');
+    const dd = pad(d.getDate());
+    const mm = pad(d.getMonth()+1);
+    const yyyy = d.getFullYear();
+    const hh = pad(d.getHours());
+    const mi = pad(d.getMinutes());
+    return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+  }
+  async function updateLastReportFromDB(){
+    try{
+      await window.supabaseReady;
+      const { data, error } = await window.supabase
+        .from('restock_report')
+        .select('location')
+        .eq('sku','__last_report__')
+        .single();
+      if (!error && data && data.location){
+        const d = new Date(data.location);
+        if (!isNaN(d)) setLastReportStampText(formatStampFromDate(d));
+        return;
+      }
+    } catch {}
+    // Fallback to localStorage
+    try{
+      const saved = localStorage.getItem('restock_last_report');
+      if (saved) setLastReportStampText(saved);
+    } catch {}
+  }
+  updateLastReportFromDB();
 
   // Pager controls
   window.restockPrevPage = function(){ if (state.page > 1) { state.page -= 1; render(state.rows); } };
@@ -336,6 +386,7 @@
   // Rebuild view from annotated allRows
   state.page = 1;
   let rows = applyStatusFilter(state.allRows);
+  rows = applyFavoritesFilter(rows);
   const arranged = stableSortByBusinessRules(rows);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
   if (state.onlyNeedsAdjustment) {
@@ -348,6 +399,7 @@
     state.hideNoReserve = !!flag;
   state.page = 1;
   let rows = applyStatusFilter(state.allRows);
+  rows = applyFavoritesFilter(rows);
   const arranged = stableSortByBusinessRules(rows);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
   if (state.onlyNeedsAdjustment) {
@@ -363,6 +415,51 @@
     // Reset to page 1 for clarity
     state.page = 1;
     let rows = applyStatusFilter(state.allRows);
+    rows = applyFavoritesFilter(rows);
+    const arranged = stableSortByBusinessRules(rows);
+    let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
+    if (state.onlyNeedsAdjustment) {
+      visible = visible.filter(r => (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0));
+    }
+    state.rows = visible;
+    render(visible);
+  };
+
+  // Favorites APIs
+  window.restockToggleFavorite = function(sku){
+    const key = String(sku);
+    if (favorites.has(key)) favorites.delete(key); else favorites.add(key);
+    persistFavorites();
+    // If filtering by favorites, re-apply; otherwise update stars only
+    if (state.onlyFavorites) {
+      state.page = 1;
+      let rows = applyStatusFilter(state.allRows);
+      rows = applyFavoritesFilter(rows);
+      const arranged = stableSortByBusinessRules(rows);
+      let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
+      if (state.onlyNeedsAdjustment) {
+        visible = visible.filter(r => (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0));
+      }
+      state.rows = visible;
+      render(visible);
+    } else {
+      // Update stars in-place
+      const tbody = document.getElementById('restockTbody');
+      if (!tbody) return;
+      [...tbody.querySelectorAll('button.fav-btn')].forEach(btn => {
+        const skuAttr = btn.getAttribute('data-sku');
+        const on = favorites.has(String(skuAttr));
+        btn.textContent = on ? '★' : '☆';
+        btn.title = on ? 'Unfavorite' : 'Favorite';
+      });
+    }
+  };
+
+  window.restockToggleOnlyFavorites = function(flag){
+    state.onlyFavorites = !!flag;
+    state.page = 1;
+    let rows = applyStatusFilter(state.allRows);
+    rows = applyFavoritesFilter(rows);
     const arranged = stableSortByBusinessRules(rows);
     let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
     if (state.onlyNeedsAdjustment) {
@@ -607,6 +704,17 @@
         if (insErr) throw insErr;
       }
 
+      // Insert/update sentinel row with last import timestamp
+      try{
+        const nowIso = new Date().toISOString();
+        const sentinel = { sku: '__last_report__', product: '__meta__', location: nowIso, on_hand: 0 };
+        const { error: metaErr } = await window.supabase.from('restock_report').insert(sentinel);
+        if (metaErr) {
+          // If insert conflict due to PK, try upsert
+          await window.supabase.from('restock_report').upsert(sentinel, { onConflict: 'sku' });
+        }
+      } catch {}
+
       // Close modal and refresh list
       if (typeof window.closeImportModal === 'function') window.closeImportModal();
       window.__restock_import_preview = null;
@@ -614,19 +722,7 @@
       confirmImportBtn.disabled = true;
       // Set Last report timestamp on successful import
       try{
-        const stampEl = document.getElementById('lastReportStamp');
-        if (stampEl) {
-          const d = new Date();
-          const pad = (n)=> String(n).padStart(2,'0');
-          const dd = pad(d.getDate());
-          const mm = pad(d.getMonth()+1);
-          const yyyy = d.getFullYear();
-          const hh = pad(d.getHours());
-          const mi = pad(d.getMinutes());
-          const stamp = `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
-          stampEl.textContent = `Last report: ${stamp}`;
-          try{ localStorage.setItem('restock_last_report', stamp); } catch{}
-        }
+        setLastReportStampText(formatStampFromDate(new Date()));
       } catch{}
       fetchData();
     } catch(e){
