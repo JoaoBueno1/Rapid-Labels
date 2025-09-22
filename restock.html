@@ -61,6 +61,10 @@
           <input type="checkbox" id="toggleOnlyFavorites" onchange="toggleOnlyFavorites(this.checked)" />
           Only favorites
         </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;margin-left:6px">
+          <input type="checkbox" id="toggleOnlyReserveInfo" onchange="toggleOnlyReserveInfo(this.checked)" />
+          Clear locations (i)
+        </label>
         <div style="flex:1"></div>
         <div style="display:flex;align-items:center;gap:10px">
           <span id="lastReportStamp" class="small-note">Last report: —</span>
@@ -359,6 +363,26 @@
   /* Pager */
   .pager button[disabled]{ opacity:.5; cursor: not-allowed }
   @media print{ .pager{ display:none !important } }
+  /* Reserve info badge and tooltip */
+  .reserve-cell{ display:inline-flex; align-items:center; gap:6px; position:relative }
+  .info-badge{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:12px; height:12px; border-radius:999px;
+    background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%) !important;
+    color:#b45309 !important; border:1px solid #fde68a !important;
+    box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 0 0 2px rgba(245,158,11,.25);
+    font-weight:800; font-size:9px; cursor:pointer; padding:0; line-height:1;
+    user-select:none; -webkit-user-select:none; -webkit-font-smoothing:antialiased;
+    -webkit-appearance:none; appearance:none;
+  }
+  .info-badge:hover, .info-badge:focus-visible{
+    background: linear-gradient(180deg, #fde68a 0%, #fcd34d 100%) !important;
+    box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 0 0 3px rgba(245,158,11,.35);
+    outline: none;
+  }
+  .reserve-pop{ position:absolute; bottom:calc(100% + 6px); right:0; background:#fff; color:#0f172a; border:1px solid var(--border,#cbd5e1); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:6px 8px; font-size:11px; white-space:nowrap; display:none; z-index:1200 }
+  .reserve-cell:hover .reserve-pop, .reserve-cell.show .reserve-pop{ display:block }
+  .reserve-pop .line{ display:block; margin:2px 0 }
   /* Print helpers */
   tr.print-break{ display:none }
   .print-header{ display:none }
@@ -380,6 +404,7 @@
   .print-header{ display:block; font-size:12px; color:#0f172a; font-weight:600; margin: 0 0 6px; text-align:center; }
   /* Make status badges monochrome-friendly */
   .status-badge { background: transparent !important; border-color: #999 !important; color:#111 !important; }
+  .info-badge, .reserve-pop { display:none !important; }
   }
   @page { size: A4 landscape; margin: 12mm }
       `;
@@ -450,6 +475,7 @@
   function toggleHideNoReserve(flag){ if (window.restockToggleHideNoReserve){ window.restockToggleHideNoReserve(flag); } }
   function toggleOnlyNeedsAdjustment(flag){ if (window.restockToggleOnlyNeedsAdjustment){ window.restockToggleOnlyNeedsAdjustment(flag); } }
   function toggleOnlyFavorites(flag){ if (window.restockToggleOnlyFavorites){ window.restockToggleOnlyFavorites(flag); } }
+  function toggleOnlyReserveInfo(flag){ if (window.restockToggleOnlyReserveInfo){ window.restockToggleOnlyReserveInfo(flag); } }
     // Default filter state
     window.addEventListener('DOMContentLoaded', ()=>{
       const allBtn = document.querySelector('#restockFilters .chip[data-status-filter="ALL"]');

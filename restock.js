@@ -21,6 +21,7 @@
     hideNoReserve: false,
   onlyNeedsAdjustment: false, // new: show only rows where on_hand == 0 and reserve > 0
   onlyFavorites: false, // show only favorited items
+     onlyReserveInfo: false, // show only rows where the (i) info badge would appear
   page: 1,
   perPage: 30,
   };
@@ -110,6 +111,32 @@
   const status = escapeHtml((r.__norm_status || r.status || 'configure').toLowerCase());
         const reserveQty = Number(r.__reserve_total ?? 0);
         const restock = r.restock_qty ?? '';
+        let reserveCellHtml = formatReserveCell(reserveQty);
+        const restockNum = Number(restock);
+        const showInfo = Number.isFinite(restockNum) && reserveQty > 1 && reserveQty < restockNum;
+        if (showInfo) {
+          const locs = (Array.isArray(r.__reserve_locations) ? r.__reserve_locations : [])
+            .filter(x => x && x.location && Number(x.qty) > 0)
+            .map(x => ({ location: String(x.location), qty: Number(x.qty) }));
+          let chosen = [];
+          const exact = locs.find(x => x.qty === restockNum);
+          if (exact) {
+            chosen = [exact];
+          } else {
+            locs.sort((a,b)=> b.qty - a.qty);
+            let sum = 0;
+            for (const x of locs){
+              if (sum + x.qty <= restockNum){ chosen.push(x); sum += x.qty; }
+            }
+            if (chosen.length === 0) {
+              const under = locs.filter(x => x.qty < restockNum).sort((a,b)=> b.qty - a.qty)[0];
+              if (under) chosen = [under];
+            }
+          }
+          const lines = chosen.map(x => `SKU: ${sku} — Product: ${product} — Location: ${escapeHtml(x.location)} — QTY: ${escapeHtml(x.qty)}`);
+          const popHtml = lines.length ? `<div class="reserve-pop">${lines.map(l=>`<span class="line">${l}</span>`).join('')}</div>` : '';
+          reserveCellHtml = `<span class="reserve-cell">${reserveCellHtml}<button type="button" class="info-badge" aria-label="Reserve locations" onclick="restockToggleReserveInfo(this)">i</button>${popHtml}</span>`;
+        }
         const favOn = favorites.has(String(r.sku));
         const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${sku}" onclick="restockToggleFavorite('${sku}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
         return `
@@ -121,7 +148,7 @@
             <td>${onHand}</td>
             <td>${capacity}</td>
             <td>${statusChip(status)}</td>
-            <td>${formatReserveCell(reserveQty)}</td>
+            <td>${reserveCellHtml}</td>
             <td>${restock}</td>
           </tr>`;
       }).join('');
@@ -149,6 +176,17 @@
     if (!state.onlyFavorites) return rows;
     return rows.filter(r => favorites.has(String(r.sku)));
   }
+
+    function hasReserveInfoBadge(r) {
+      const reserveQty = Number(r.__reserve_total || 0);
+      const restock = Number(r.restock_qty);
+      return Number.isFinite(restock) && reserveQty > 1 && reserveQty < restock;
+    }
+
+    function applyOnlyReserveInfoFilter(rows){
+      if (!state.onlyReserveInfo) return rows;
+      return rows.filter(hasReserveInfoBadge);
+    }
 
   function stableSortByBusinessRules(rows) {
     const order = {
@@ -207,14 +245,15 @@
         skuSet.add(r.sku);
       }
       const skuList = Array.from(skuSet);
-      if (skuList.length === 0) return {};
+      if (skuList.length === 0) return { totals: {}, bySkuLocations: {} };
       const { data, error } = await window.supabase
         .from('restock_report')
         .select('sku, location, on_hand')
         .in('sku', skuList)
-        .limit(10000);
+        .limit(20000);
       if (error) throw error;
       const totals = {};
+      const bySkuLocations = {};
       for (const rec of data || []){
         const sku = rec.sku;
         const loc = rec.location;
@@ -222,22 +261,24 @@
         if (!sku || !Number.isFinite(oh)) continue;
         if (loc === mapPick[sku]) continue; // exclude pickface
         totals[sku] = (totals[sku] || 0) + oh;
+        if (!bySkuLocations[sku]) bySkuLocations[sku] = [];
+        bySkuLocations[sku].push({ location: loc, qty: oh });
       }
-      return totals;
+      return { totals, bySkuLocations };
     } catch(e){
       console.warn('reserve totals error', e);
-      return {};
+      return { totals: {}, bySkuLocations: {} };
     }
   }
 
   async function fetchData() {
     if (!window.supabase || !window.supabaseReady) {
-      setTbody('<tr><td colspan="8" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>');
+      setTbody('<tr><td colspan="9" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>');
       return;
     }
 
     state.loading = true;
-    setTbody('<tr><td colspan="8" style="text-align:center;opacity:.7">Loading…</td></tr>');
+  setTbody('<tr><td colspan="9" style="text-align:center;opacity:.7">Loading…</td></tr>');
 
     try {
       await window.supabaseReady;
@@ -293,13 +334,17 @@
         else r.__norm_status = 'CONFIGURE';
       }
   // Compute reserve totals and annotate
-  const reserveTotals = await computeReserveTotals(rows);
-  rows.forEach(r => { r.__reserve_total = reserveTotals[r.sku] || 0; });
+  const reserveCtx = await computeReserveTotals(rows);
+  rows.forEach(r => {
+    r.__reserve_total = (reserveCtx.totals && reserveCtx.totals[r.sku]) || 0;
+    r.__reserve_locations = (reserveCtx.bySkuLocations && reserveCtx.bySkuLocations[r.sku]) || [];
+  });
   // Save annotated rows
   state.allRows = rows.slice();
   // Apply current filters locally now
   let filtered = applyStatusFilter(rows);
   filtered = applyFavoritesFilter(filtered);
+    filtered = applyOnlyReserveInfoFilter(filtered);
   const arranged = stableSortByBusinessRules(filtered);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
   if (state.onlyNeedsAdjustment) {
@@ -309,8 +354,8 @@
   state.page = 1;
   render(visible);
     } catch (e) {
-      console.error('restock fetch error', e);
-      setTbody('<tr><td colspan="8" style="text-align:center;color:#b91c1c">Failed to load data</td></tr>');
+  console.error('restock fetch error', e);
+  setTbody('<tr><td colspan="9" style="text-align:center;color:#b91c1c">Failed to load data</td></tr>');
     } finally {
       state.loading = false;
     }
@@ -387,6 +432,7 @@
   state.page = 1;
   let rows = applyStatusFilter(state.allRows);
   rows = applyFavoritesFilter(rows);
+    rows = applyOnlyReserveInfoFilter(rows);
   const arranged = stableSortByBusinessRules(rows);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
   if (state.onlyNeedsAdjustment) {
@@ -400,6 +446,7 @@
   state.page = 1;
   let rows = applyStatusFilter(state.allRows);
   rows = applyFavoritesFilter(rows);
+    rows = applyOnlyReserveInfoFilter(rows);
   const arranged = stableSortByBusinessRules(rows);
   let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
   if (state.onlyNeedsAdjustment) {
@@ -416,6 +463,7 @@
     state.page = 1;
     let rows = applyStatusFilter(state.allRows);
     rows = applyFavoritesFilter(rows);
+    rows = applyOnlyReserveInfoFilter(rows);
     const arranged = stableSortByBusinessRules(rows);
     let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
     if (state.onlyNeedsAdjustment) {
@@ -435,6 +483,7 @@
       state.page = 1;
       let rows = applyStatusFilter(state.allRows);
       rows = applyFavoritesFilter(rows);
+      rows = applyOnlyReserveInfoFilter(rows);
       const arranged = stableSortByBusinessRules(rows);
       let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
       if (state.onlyNeedsAdjustment) {
@@ -460,6 +509,7 @@
     state.page = 1;
     let rows = applyStatusFilter(state.allRows);
     rows = applyFavoritesFilter(rows);
+    rows = applyOnlyReserveInfoFilter(rows);
     const arranged = stableSortByBusinessRules(rows);
     let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
     if (state.onlyNeedsAdjustment) {
@@ -468,6 +518,31 @@
     state.rows = visible;
     render(visible);
   };
+
+  // Toggle small tooltip on the reserve info badge
+  window.restockToggleReserveInfo = function(btn){
+    try{
+      const wrap = btn && btn.closest('.reserve-cell');
+      if (!wrap) return;
+      wrap.classList.toggle('show');
+    } catch {}
+  };
+
+    // Toggle Only opportunities (i)
+    window.restockToggleOnlyReserveInfo = function(flag){
+      state.onlyReserveInfo = !!flag;
+      state.page = 1;
+      let rows = applyStatusFilter(state.allRows);
+      rows = applyFavoritesFilter(rows);
+      rows = applyOnlyReserveInfoFilter(rows);
+      const arranged = stableSortByBusinessRules(rows);
+      let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
+      if (state.onlyNeedsAdjustment) {
+        visible = visible.filter(r => (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0));
+      }
+      state.rows = visible;
+      render(visible);
+    };
 
   // Import workflow
   const importFileInput = document.getElementById('importFile');
