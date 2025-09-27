@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoicing Monitor</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="../logistics/logistics.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <main class="main-container wide-container">
+  <div class="log-container">
+    <div class="log-breadcrumb">Home / Logistics / Invoicing Monitor</div>
+    <h1 class="log-page-title">Invoicing Monitor</h1>
+
+    <div class="page-header">
+      <div class="filters-inline" role="group" aria-label="Filters">
+        <input type="date" id="fromDate" aria-label="From date" />
+        <input type="date" id="toDate" aria-label="To date" />
+        <select id="status" aria-label="Status">
+          <option value="">All Status</option>
+          <option>Draft</option>
+          <option>Issued</option>
+          <option>Paid</option>
+          <option>Overdue</option>
+          <option>Canceled</option>
+        </select>
+        <input type="text" id="customer" placeholder="Customer" aria-label="Customer" />
+        <input type="text" id="currency" placeholder="Currency" aria-label="Currency" />
+        <input type="text" id="terms" placeholder="Payment Terms" aria-label="Payment terms" />
+        <input type="text" id="channel" placeholder="Sales Channel" aria-label="Sales channel" />
+        <input type="text" id="rep" placeholder="Sales Rep" aria-label="Sales rep" />
+      </div>
+      <div class="header-actions">
+        <button id="applyFilters" class="search-btn-small">Apply</button>
+        <button id="clearFilters" class="search-btn-small secondary">Clear</button>
+      </div>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi green"><div class="label">Orders invoiced same day (D+0)</div><div class="value" id="kpiD0">—</div></div>
+      <div class="kpi red"><div class="label">Uninvoiced orders yesterday</div><div class="value" id="kpiYesterday">—</div></div>
+      <div class="kpi yellow"><div class="label">Uninvoiced orders last week</div><div class="value" id="kpiWeek">—</div></div>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="label">Average time to invoice (days)</div><div class="value" id="kpiAvg">—</div></div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="log-card chart-card"><h3>% of Invoiced Orders (Weekly Trend)</h3><canvas id="chartWeeklyPct"></canvas></div>
+      <div class="log-card chart-card"><h3>Uninvoiced Orders by Sales Rep</h3><canvas id="chartByRep"></canvas></div>
+    </div>
+
+    <div class="section">
+      <div class="section-note">Click on "Uninvoiced orders" to view details of each pending order, including Order ID, Customer, Order Date, and Sales Rep.</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Uninvoiced Orders Details</div>
+      <div class="log-card">
+        <div class="section-note">When clicking on the KPI Uninvoiced Orders Last Week (156), the dashboard displays a detailed table with information about each pending order. This view allows identifying bottlenecks in the invoicing process and prioritizing actions.</div>
+        <div class="filters-chips" style="margin:8px 0;">
+          <button class="chip active" data-bucket="All">All</button>
+          <button class="chip" data-bucket="D+1">D+1</button>
+          <button class="chip" data-bucket="D+2">D+2</button>
+          <button class="chip" data-bucket="D+3">D+3</button>
+        </div>
+        <div class="table-wrapper">
+          <table class="app-table" id="uninvoicedTable">
+            <thead>
+              <tr>
+                <th>Order</th><th>Customer</th><th>Order Date</th><th class="num">Days Pending</th><th>Sales Rep</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="section-note" style="margin-top:8px;">In an interactive dashboard, you could sort this table by any column, filter by sales rep or status, and export the data for follow-up. Orders with delays greater than 3 days are automatically highlighted for priority action.</div>
+      </div>
+    </div>
+  </div>
+  </main>
+
+  <script type="module" src="./invoicing-monitor.js"></script>
+</body>
+</html>

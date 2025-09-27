@@ -1,0 +1,257 @@
+.modal #gwRegDate{
+  height: 42px;
+  min-width: 200px;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--log-text);
+  border: 1px solid var(--log-border);
+  border-radius: 10px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.modal #gwRegDate:hover{ border-color: #cbd5e1; }
+.modal #gwRegDate:focus{ outline:none; border-color: var(--log-blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+.modal #gwRegDate::-webkit-calendar-picker-indicator{ cursor:pointer; filter: opacity(0.8); }
+/* Feature-scoped styles for logistics dashboards.
+   Goal: follow the app design tokens from styles.css (surface, text, border, tables).
+   Do not override global table styles; reuse .table-wrapper and .app-table. */
+
+:root{
+  --log-gap: 12px;
+  --log-card-radius: 12px;
+  /* Color tokens sourced from global variables when available */
+  --log-surface: var(--surface, #ffffff);
+  --log-text: var(--text, #0f172a);
+  --log-muted: var(--muted, #64748b);
+  --log-border: var(--border, #e2e8f0);
+  --log-green: #16a34a;  /* app green */
+  --log-red: #dc2626;    /* app red */
+  --log-yellow: #eab308; /* app amber */
+  --log-blue: var(--primary-600, #2563eb);
+}
+
+/* Container sits inside .main-container from global CSS */
+.log-container{ padding: 4px; text-align: left; }
+
+/* Make the logistics pages use full width and align left, overriding the globally centered app shell */
+.main-container.wide-container{
+  max-width: none !important;
+  width: 100% !important;
+  text-align: left !important;
+  align-self: stretch !important; /* when body is flex-centered */
+}
+
+.log-breadcrumb{ color: var(--log-muted); font-size: 12px; margin-bottom: 8px; }
+.log-page-title{ color: var(--log-text); font-size: 22px; font-weight: 800; margin: 8px 0 12px; }
+
+.log-toolbar{ display:flex; gap: var(--log-gap); align-items:center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; }
+.log-toolbar .filters{ display:flex; gap: var(--log-gap); flex-wrap: wrap; }
+.log-toolbar .actions{ margin-left:auto; }
+
+.log-card{ background: var(--log-surface); border: 1px solid var(--log-border); border-radius: var(--log-card-radius); padding: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+.log-card h3{ margin: 0 0 8px; font-size: 14px; color: var(--log-muted); font-weight: 800; }
+
+.kpi-row{ display:grid; grid-template-columns: repeat(3, 1fr); gap: var(--log-gap); margin: 12px 0; }
+.kpi-row.four{ grid-template-columns: repeat(4, 1fr); }
+.kpi-row.two{ grid-template-columns: repeat(2, 1fr); }
+.kpi{ padding: 12px; border-radius: var(--log-card-radius); border: 1px solid var(--log-border); background: var(--log-surface); box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+.kpi .label{ font-size: 12px; color: var(--log-muted); font-weight: 800; }
+.kpi .value{ font-size: 22px; font-weight: 800; color: var(--log-text); }
+.kpi.green .value{ color: var(--log-green); }
+.kpi.red .value{ color: var(--log-red); }
+.kpi.yellow .value{ color: var(--log-yellow); }
+
+.charts-grid{ display:grid; grid-template-columns: repeat(2, 1fr); gap: var(--log-gap); margin: 12px 0; align-items: stretch; }
+.charts-grid.single{ grid-template-columns: 1fr; }
+.chart-card{ height: 360px; overflow: hidden; display:flex; flex-direction: column; }
+.chart-card h3{ flex: 0 0 auto; margin-bottom: 8px; }
+.chart-card canvas{ flex: 1 1 auto; width: 100% !important; height: auto !important; display:block; }
+
+/* Smaller All-time totals card with internal scroll */
+.totals-card{ height: 360px; overflow: visible; }
+.totals-card .table-wrapper{ flex: 1 1 auto; overflow: auto; max-height: none; }
+.totals-card table.app-table{ font-size: 12px; }
+.totals-card .app-table th, .totals-card .app-table td{ padding: 6px 8px; }
+
+
+.section{ margin: 18px 0; display:flex; flex-direction: column; gap: 8px; }
+.section.two-col{ display:grid; grid-template-columns: 1fr 1fr; gap: var(--log-gap); align-items: start; }
+.section .section-title{ font-weight:800; color: var(--log-text); }
+.section .section-note{ color: var(--log-muted); font-size: 12px; }
+
+/* Reuse global .table-wrapper and .app-table; only add tiny helpers */
+.highlight{ background: rgba(220,38,38,0.08); }
+.app-table thead th.num, .app-table tbody td.num { text-align: center; }
+
+.filters-chips{ display:flex; gap:8px; flex-wrap: wrap; }
+.chip{ padding:6px 10px; border-radius:999px; border:1px solid var(--log-border); background:#fff; color:var(--log-text); cursor:pointer; font-weight:700; }
+.chip.active{ background: var(--log-blue); border-color: var(--log-blue); color: #fff; }
+.chip.disabled{ opacity: 0.5; cursor: not-allowed; }
+input[type="date"].disabled{ opacity: 0.6; pointer-events: none; }
+
+/* Year chips optional styling */
+#yearChips .chip{ background:#f8fafc; }
+/* Match active state blue with other primary buttons */
+#yearChips .chip.active{ background: var(--log-blue); border-color: var(--log-blue); color:#fff; }
+
+/* Header alignment utilities */
+.page-header{ display:flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.page-header, .page-header > .filters-inline, .page-header > .types-row{
+  align-self: stretch;
+}
+.header-actions{ display:flex; flex-direction: column; gap: 6px; }
+.filters-inline{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-start; width: 100%; margin-left: 0 !important; margin-right: auto !important; }
+.controls-row{ display:flex; align-items:center; gap: 8px; flex-wrap: wrap; }
+.controls-spacer{ flex:1 1 auto; }
+.chips-scroll, #courierChips{ display:flex; gap:8px; overflow-x: auto; padding-bottom: 4px; }
+.chips-scroll::-webkit-scrollbar{ height: 6px; }
+.chips-scroll::-webkit-scrollbar-thumb{ background: var(--log-border); border-radius: 8px; }
+
+/* Non-wrapping row for types selector at the top */
+.types-row{ display:flex; align-items:center; gap:8px; flex-wrap: nowrap; overflow-x:auto; white-space: nowrap; justify-content:flex-start; width: 100%; margin-left: 0 !important; margin-right: auto !important; }
+#courierChips{ flex: 1 1 auto; white-space: nowrap; flex-wrap: nowrap; }
+.types-row #typesApply{ display: inline-flex; margin-left: 8px; }
+.types-row .sep{ color: var(--log-muted); user-select:none; }
+
+/* Gateway filter row spacing */
+.gw-filters{ margin-bottom: 8px; gap: 8px; }
+
+/* Smart selector (dropdown of chips) */
+.smart-selector{ position: relative; }
+.smart-selector .smart-panel{
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  min-width: 280px;
+  max-width: min(95vw, 480px);
+  background: var(--log-surface);
+  border: 1px solid var(--log-border);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+  padding: 10px;
+  display: none;
+  z-index: 10;
+}
+.smart-selector.open .smart-panel{ display: block; }
+
+/* Prevent right-edge overflow for the All-time Years selector panel by right-aligning it */
+#allYearSelector .smart-panel{
+  left: auto;
+  right: 0;
+}
+
+.modal{ position: fixed; inset: 0; align-items:center; justify-content:center; background: rgba(0,0,0,0.5); }
+.modal:not(.open){ display: none !important; }
+.modal.open{ display:flex !important; }
+.modal .modal-content{ width: min(1200px, 98vw); background: var(--log-surface); border:1px solid var(--log-border); border-radius: var(--log-card-radius); padding: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.16); }
+.modal .modal-header{ display:flex; align-items:center; justify-content: space-between; }
+.modal .close{ cursor:pointer; color: var(--log-muted); }
+
+/* Register modal input sizing for better usability */
+.modal #regTable input.reg-input{
+  width: 11ch; /* fits 'Type here' comfortably */
+  height: 40px;
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid var(--log-border);
+  border-radius: 8px;
+  box-sizing: border-box; /* include padding in width */
+}
+.modal #regTable input.reg-input::placeholder{
+  color: var(--log-muted);
+  opacity: 1; /* ensure visible on Safari */
+}
+/* Remove numeric arrows/spinners in number inputs */
+.modal #regTable input[type=number]::-webkit-outer-spin-button,
+.modal #regTable input[type=number]::-webkit-inner-spin-button{
+  -webkit-appearance: none;
+  margin: 0;
+}
+.modal #regTable input[type=number]{
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+/* Keep Type column on a single line */
+.modal #regTable td:first-child,
+.modal #regTable th:first-child{
+  white-space: nowrap;
+}
+
+/* Make the Register modal date picker bigger and nicer */
+.modal #regDate{
+  height: 42px;
+  min-width: 200px;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--log-text);
+  border: 1px solid var(--log-border);
+  border-radius: 10px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.modal #regDate:hover{
+  border-color: #cbd5e1; /* slate-300 */
+}
+.modal #regDate:focus{
+  outline: none;
+  border-color: var(--log-blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15); /* blue-600 @ 15% */
+}
+.modal #regDate::-webkit-calendar-picker-indicator{
+  cursor: pointer;
+  filter: opacity(0.8);
+}
+
+/* Warning text for date requirement in Register modal */
+.modal .warn-text{
+  color: #dc2626; /* red-600 */
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Types Details table controls */
+.table-controls{ display:flex; align-items:center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.table-controls .right{ margin-left:auto; display:flex; align-items:center; gap:8px; }
+#typeTableFrom, #typeTableTo{ height: 32px; padding: 4px 8px; border: 1px solid var(--log-border); border-radius: 8px; }
+
+/* Readonly look for computed total on Gateway modal */
+.modal input.readonly[readonly]{
+  background: #f5f7fb;
+  color: var(--log-text);
+  cursor: default;
+  pointer-events: none;
+}
+.modal #gwRegTable input.reg-input{
+  width: 11ch;
+  height: 40px;
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid var(--log-border);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.modal #gwRegTable input.reg-input::placeholder{
+  color: var(--log-muted);
+  opacity: 1; /* ensure visible on Safari */
+}
+
+@media (max-width: 900px){
+  .kpi-row{ grid-template-columns: 1fr; }
+  .kpi-row.two{ grid-template-columns: 1fr; }
+  .kpi-row.four{ grid-template-columns: 1fr; }
+  .charts-grid{ grid-template-columns: 1fr; }
+  .section.two-col{ grid-template-columns: 1fr; }
+  .chart-card{ height: 300px; }
+  .totals-card{ width: 100%; }
+}
+
+/* Responsive tweak: on narrower screens, gently reduce input width to avoid horizontal scroll */
+@media (max-width: 1100px){
+  .modal #regTable input.reg-input{ width: 10ch; }
+}
+
+/* Sticky table headers inside scroll containers */
+.table-wrapper thead th{ position: sticky; top: 0; z-index: 1; background: var(--log-surface); box-shadow: 0 1px 0 var(--log-border); }

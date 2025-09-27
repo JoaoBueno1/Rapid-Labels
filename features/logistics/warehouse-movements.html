@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Warehouse Movements</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="../logistics/logistics.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <main class="main-container wide-container">
+  <div class="log-container">
+    <div class="log-breadcrumb">Home / Logistics / Warehouse Movements</div>
+    <h1 class="log-page-title">Warehouse Movements</h1>
+
+    <div class="page-header">
+      <div class="filters-inline" role="group" aria-label="Filters">
+        <input type="date" id="fromDate" aria-label="From date" />
+        <input type="date" id="toDate" aria-label="To date" />
+        <select id="warehouse" aria-label="Warehouse"><option value="">All Warehouses</option></select>
+        <select id="movementType" aria-label="Movement type">
+          <option value="">All Types</option>
+          <option>Inbound</option>
+          <option>Outbound</option>
+          <option>Transfer</option>
+          <option>Adjustment</option>
+        </select>
+        <select id="status" aria-label="Status">
+          <option value="">All Status</option>
+          <option>Pending</option>
+          <option>Completed</option>
+          <option>Exception</option>
+        </select>
+        <input type="text" id="sku" placeholder="SKU" aria-label="SKU" />
+        <input type="text" id="reason" placeholder="Reason code" aria-label="Reason code" />
+        <input type="text" id="picker" placeholder="Picker/Operator" aria-label="Picker or Operator" />
+      </div>
+      <div class="header-actions">
+        <button id="applyFilters" class="search-btn-small">Apply</button>
+        <button id="clearFilters" class="search-btn-small secondary">Clear</button>
+  <a id="importBtn" class="search-btn-small" href="#import" role="button">Import Movements</a>
+      </div>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi green" id="kpi-correct">
+        <div class="label">Correct Orders (%)</div>
+        <div class="value" id="kpiCorrectValue">—</div>
+      </div>
+      <div class="kpi red" id="kpi-errors">
+        <div class="label">Orders with Errors (%)</div>
+        <div class="value" id="kpiErrorsValue">—</div>
+      </div>
+      <div class="kpi yellow" id="kpi-osk">
+        <div class="label">SKUs Out of Stock Locator (count)</div>
+        <div class="value" id="kpiOskValue">—</div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="log-card chart-card"><h3>Weekly Evolution of % Orders with Errors</h3><canvas id="chartWeekly"></canvas></div>
+      <div class="log-card chart-card"><h3>Errors by Picker (Week)</h3><canvas id="chartPicker"></canvas></div>
+      <div class="log-card chart-card"><h3>Errors by Location (Heatmap)</h3><canvas id="chartHeatmap"></canvas></div>
+      <div class="log-card chart-card"><h3>Error Type Distribution</h3><canvas id="chartTypes"></canvas></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Order Error Details</div>
+      <div class="log-card">
+        <div class="section-note">When clicking on the KPI 5.8% Orders with Errors, the dashboard displays a detailed table with information about each order that had issues. This functionality allows identifying patterns and taking specific corrective actions.</div>
+        <div class="table-wrapper" style="margin-top:8px;">
+          <table class="app-table" id="errorsTable">
+            <thead>
+              <tr>
+                <th>Sales Order</th><th>Customer</th><th>Date</th><th>Used Location</th><th>Correct Stock Locator</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  </main>
+
+  
+
+  <script type="module" src="./warehouse-movements.js"></script>
+</body>
+</html>

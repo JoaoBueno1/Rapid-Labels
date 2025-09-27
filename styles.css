@@ -919,3 +919,14 @@ h2 { color: var(--text); margin-bottom: 18px; font-size: 1.4rem; font-weight: 80
 /* Force required field messages to stay red (override any later color rules) */
 .field-error-msg, .small-note.field-error-msg { color:#dc2626 !important; }
 input.error { border-color:#dc2626 !important; }
+
+/* Globally remove spinner arrows on number inputs (Chrome/Safari/Edge + Firefox) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}

@@ -126,19 +126,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Temporary Analytics placeholder
-function openAnalyticsNotice(){
-    try {
-        if (typeof toast === 'function') {
-            toast('Analytics: coming soon...','warn');
-        } else {
-            // Minimal non-blocking fallback
-            const box=document.createElement('div');
-            box.textContent='Analytics: coming soon...';
-            Object.assign(box.style,{position:'fixed',right:'16px',bottom:'16px',background:'#fff',color:'#0f172a',padding:'10px 14px',border:'1px solid #cbd5e1',borderRadius:'10px',fontSize:'14px',fontWeight:'600',zIndex:3000,boxShadow:'0 4px 16px rgba(0,0,0,.12)'});
-            document.body.appendChild(box);
-            setTimeout(()=>{ try{ box.remove(); }catch(e){} },2200);
-        }
-    } catch(e){ /* ignore */ }
+function openAnalyticsAndRegisters(){
+  try { window.location.href = 'features/logistics/deliveries-couriers.html'; } catch(e){}
 }
 
 // Debounce function to limit API calls

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gateway</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="../logistics/logistics.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/supabase-config.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="deliveries-couriers.html" class="nav-link">Deliveries & Couriers</a>
+        <a href="gateway.html" class="nav-link active">Gateway</a>
+      </nav>
+    </div>
+  </header>
+  <main class="main-container wide-container">
+  <div class="log-container">
+    <div class="title-row" style="display:flex; align-items:center; gap:8px; justify-content:space-between;">
+      <h1 class="log-page-title" style="margin: 0;">Gateway</h1>
+      <button id="openGwRegister" class="search-btn-small">Register</button>
+    </div>
+
+    <div class="section">
+      <div class="log-card">
+        <div class="controls-row gw-filters" role="group" aria-label="Gateway filters">
+          <button class="chip" id="gwWeek">Week</button>
+          <button class="chip" id="gwMonth">Month</button>
+          <input type="date" id="gwFrom" aria-label="Gateway from" />
+          <input type="date" id="gwTo" aria-label="Gateway to" />
+          <button class="chip" id="gwClearDates" title="Clear dates">Clear</button>
+          <div class="smart-selector" id="gwYearSelector" style="margin-left:8px;">
+            <button class="chip" id="gwYearSelectorBtn" aria-haspopup="true" aria-expanded="false">Years</button>
+            <div class="smart-panel" id="gwYearSelectorPanel" role="menu" aria-label="Select years (Gateway)">
+              <div class="filters-chips" id="gwYearChips"></div>
+              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+                <button class="chip" id="gwYearClear">Clear Years</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi"><div class="label">Total (period)</div><div class="value" id="gwTotal">—</div></div>
+          <div class="kpi"><div class="label">Trend</div><div class="value" id="gwTrend">—</div></div>
+          <div class="kpi"><div class="label" id="gwAvgLabel">Avg (period)</div><div class="value" id="gwAvg">—</div></div>
+        </div>
+        <div class="charts-grid">
+          <div class="log-card chart-card"><h3>Gateway Transfers (Gateway VS Main Warehouse)</h3><canvas id="chartGateway"></canvas></div>
+          <div class="log-card chart-card"><h3>Gateway Movement</h3><canvas id="chartGatewayTrend"></canvas></div>
+        </div>
+      </div>
+      <div class="log-card" style="margin-top:12px;" id="gwDetailWrapper">
+        <div class="section-title" style="margin:0 0 8px 0; font-size:14px;">Gateway Transfers — Detail <span id="gwDetailGran" class="section-note" style="font-weight:400; color:#64748b;">(Daily)</span></div>
+        <div id="gatewayTableWrapper" class="table-wrapper" style="max-height: 520px; overflow:auto;">
+          <table class="app-table" id="gatewayTable">
+            <thead>
+              <tr>
+                <th>Date</th><th class="num">Pallets ToGateway</th><th class="num">Pallets ToMain</th><th class="num">Total Gateway + Main Warehouse</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  </main>
+
+  <!-- Gateway Register modal (copied) -->
+  <div class="modal" id="gwRegisterModal" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Register gateway movements</h3>
+        <span class="close" id="closeGwRegister">✕</span>
+      </div>
+      <div>
+        <div class="reg-date-row" style="display:flex; align-items:center; gap:8px; margin: 8px 0 4px;">
+          <input type="date" id="gwRegDate" />
+          <span class="section-note" id="gwRegDateInfo">Not able to select days that already have records.</span>
+        </div>
+        <div id="gwRegDateWarn" class="warn-text" style="margin: 0 0 8px 0;">Please select a date before entering values.</div>
+
+        <div class="table-wrapper" style="max-height:none; overflow:visible;">
+          <table class="app-table" id="gwRegTable">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th class="num">Pallets ToGateway</th>
+                <th class="num">Pallets ToMain warehouse</th>
+                <th class="num">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="white-space:nowrap;">Gateway</td>
+                <td class="num"><input id="gwRegToGateway" class="reg-input" type="number" inputmode="numeric" pattern="\\d*" placeholder="Type here" disabled /></td>
+                <td class="num"><input id="gwRegToMain" class="reg-input" type="number" inputmode="numeric" pattern="\\d*" placeholder="Type here" disabled /></td>
+                <td class="num"><span id="gwRegTotal">0</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:12px;">
+          <span class="section-note">If you need to register or alter data on dates that already have records, please contact the admin.</span>
+          <div style="display:flex; gap:8px;">
+            <button class="chip" id="cancelGwRegister">Cancel</button>
+            <button class="search-btn-small" id="saveGwRegister">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./gateway.js"></script>
+</body>
+</html>
