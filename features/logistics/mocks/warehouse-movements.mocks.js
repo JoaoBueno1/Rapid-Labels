@@ -8,23 +8,19 @@ export function getWarehouseKpis(filters){
 }
 
 export function getWarehouseCharts(filters){
-  // Return datasets ready for Chart.js
-  const labels = ['W-1','W-2','W-3','W-4','W-5'];
+  // Return datasets ready for Chart.js aligned with production keys
+  const labels = ['2025-08-28','2025-08-29','2025-08-30','2025-08-31','2025-09-01'];
   return Promise.resolve({
-    weeklyErrorsPct: { labels, data: [4.1,5.3,5.8,6.2,5.8] },
-    errorsByPicker: { labels: ['Ana','Bruno','Carla','Diego'], data: [12,8,16,7] },
-    errorsByLocationHeatmap: {
-      xLabels: ['Mon','Tue','Wed','Thu','Fri'],
-      yLabels: ['A1','A2','B1','B2','C1'],
-      values: [
-        [2,1,0,0,3],
-        [1,0,1,2,1],
-        [0,3,2,1,0],
-        [2,2,1,3,1],
-        [0,1,0,2,2]
-      ]
-    },
-    errorTypeDistribution: { labels: ['Wrong Locator','Qty Mismatch','Missing Item','Other'], data: [45,30,15,10] }
+    dailyErrorsPct: { labels, data: [4.1,5.3,5.8,6.2,5.8] },
+    errorsByType: { labels: ['Wrong Locator','Qty Mismatch','Missing Item','Other'], data: [45,30,15,10] },
+    topLocationsWithErrors: [
+      { label: 'A1-01 / B1-01', count: 12 },
+      { label: 'B2-03 / B2-01', count: 9 }
+    ],
+    topSkusWithErrors: [
+      { label: 'SKU-123', count: 7 },
+      { label: 'SKU-987', count: 5 }
+    ]
   });
 }
 

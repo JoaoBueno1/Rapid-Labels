@@ -68,6 +68,31 @@
 .chart-card h3{ flex: 0 0 auto; margin-bottom: 8px; }
 .chart-card canvas{ flex: 1 1 auto; width: 100% !important; height: auto !important; display:block; }
 
+/* Aging KPI card equalize layout to chart card height */
+#agingCard{ display:flex; flex-direction: column; }
+#agingCard #agingKpiRow{
+  display:grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--log-gap);
+  margin-top: 8px;
+  flex: 1 1 auto; /* expand to fill card */
+  align-items: stretch;
+}
+#agingCard #agingKpiRow .kpi{
+  display:flex; flex-direction: column; align-items:center; justify-content:center;
+  height: 100%;
+}
+#agingCard #agingKpiRow .kpi .label{ font-size: 12px; }
+#agingCard #agingKpiRow .kpi .value{ font-size: 28px; }
+
+/* Professional list styling for Top lists */
+.top-list{ list-style: none; margin: 0; padding: 0; }
+.top-list li{ display:flex; justify-content:space-between; align-items:center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--log-border); }
+.top-list li:last-child{ border-bottom: none; }
+.top-list .label{ color: var(--log-text); font-weight: 600; }
+.top-list .count{ color: var(--log-muted); font-weight: 800; }
+.muted{ color: var(--log-muted); }
+
 /* Smaller All-time totals card with internal scroll */
 .totals-card{ height: 360px; overflow: visible; }
 .totals-card .table-wrapper{ flex: 1 1 auto; overflow: auto; max-height: none; }
@@ -83,12 +108,32 @@
 /* Reuse global .table-wrapper and .app-table; only add tiny helpers */
 .highlight{ background: rgba(220,38,38,0.08); }
 .app-table thead th.num, .app-table tbody td.num { text-align: center; }
+/* Yellow highlight for error rows in the table */
+tr.error-row td{ background: #fff7cc; }
 
 .filters-chips{ display:flex; gap:8px; flex-wrap: wrap; }
+.table-pagination{ display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
 .chip{ padding:6px 10px; border-radius:999px; border:1px solid var(--log-border); background:#fff; color:var(--log-text); cursor:pointer; font-weight:700; }
 .chip.active{ background: var(--log-blue); border-color: var(--log-blue); color: #fff; }
 .chip.disabled{ opacity: 0.5; cursor: not-allowed; }
 input[type="date"].disabled{ opacity: 0.6; pointer-events: none; }
+
+/* Chip-like select (for inline filters aligned with chips) */
+.chip-select{
+  height: 32px;
+  min-width: 160px;
+  padding: 6px 12px;
+  border: 1px solid var(--log-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--log-text);
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.chip-select:hover{ border-color: #cbd5e1; }
+.chip-select:focus{ outline: none; border-color: var(--log-blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
 
 /* Year chips optional styling */
 #yearChips .chip{ background:#f8fafc; }
@@ -255,3 +300,8 @@ input[type="date"].disabled{ opacity: 0.6; pointer-events: none; }
 
 /* Sticky table headers inside scroll containers */
 .table-wrapper thead th{ position: sticky; top: 0; z-index: 1; background: var(--log-surface); box-shadow: 0 1px 0 var(--log-border); }
+
+  #agingCard #agingKpiRow{ grid-template-columns: 1fr; }
+  #agingCard #agingKpiRow .kpi .value{ font-size: 24px; }
+/* Warn highlight for non-invoiced D+1+ rows */
+tr.warn td { background: #fef9c3; }

@@ -741,6 +741,7 @@ body {
 .site-nav { display: flex; gap: 6px; }
 .nav-link { color: var(--header-text); text-decoration: none; padding: 8px 10px; border-radius: 8px; opacity: .9; }
 .nav-link:hover { background: rgba(255,255,255,.08); opacity: 1; }
+.nav-link.active { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18); opacity: 1; }
 
 .site-footer { margin-top: auto; background: var(--header); color: var(--header-text); border-top: 1px solid rgba(255,255,255,0.08); }
 .footer-inner { max-width: none; width: 100%; margin: 0; padding: 14px 16px; text-align: center; }

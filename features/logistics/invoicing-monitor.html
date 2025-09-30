@@ -7,48 +7,56 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/supabase-config.js"></script>
 </head>
 <body>
-  <main class="main-container wide-container">
-  <div class="log-container">
-    <div class="log-breadcrumb">Home / Logistics / Invoicing Monitor</div>
-    <h1 class="log-page-title">Invoicing Monitor</h1>
-
-    <div class="page-header">
-      <div class="filters-inline" role="group" aria-label="Filters">
-        <input type="date" id="fromDate" aria-label="From date" />
-        <input type="date" id="toDate" aria-label="To date" />
-        <select id="status" aria-label="Status">
-          <option value="">All Status</option>
-          <option>Draft</option>
-          <option>Issued</option>
-          <option>Paid</option>
-          <option>Overdue</option>
-          <option>Canceled</option>
-        </select>
-        <input type="text" id="customer" placeholder="Customer" aria-label="Customer" />
-        <input type="text" id="currency" placeholder="Currency" aria-label="Currency" />
-        <input type="text" id="terms" placeholder="Payment Terms" aria-label="Payment terms" />
-        <input type="text" id="channel" placeholder="Sales Channel" aria-label="Sales channel" />
-        <input type="text" id="rep" placeholder="Sales Rep" aria-label="Sales rep" />
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
       </div>
-      <div class="header-actions">
-        <button id="applyFilters" class="search-btn-small">Apply</button>
-        <button id="clearFilters" class="search-btn-small secondary">Clear</button>
+      <nav class="site-nav">
+        <a href="deliveries-couriers.html" class="nav-link">Deliveries & Couriers</a>
+        <a href="gateway.html" class="nav-link">Gateway</a>
+        <a href="warehouse-movements.html" class="nav-link">Warehouse Movements</a>
+        <a href="invoicing-monitor.html" class="nav-link active">Invoicing Monitor</a>
+      </nav>
+    </div>
+  </header>
+    <main class="main-container wide-container">
+    <div class="log-container">
+      <div class="title-row" style="display:flex; align-items:center; gap:8px; justify-content:space-between;">
+        <h1 class="log-page-title" style="margin: 0;">Invoicing Monitor</h1>
+        <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+          <span id="invRangeBadge" class="chip" title="Range covered by reports">Range: — → —</span>
+          <span id="invLastReportBadge" class="chip" title="Last daily report date">Last report: —</span>
+          <button id="openInvReport" type="button" class="search-btn-small" onclick="openInvReportModal()">Report</button>
+        </div>
       </div>
-    </div>
 
-    <div class="kpi-row">
-      <div class="kpi green"><div class="label">Orders invoiced same day (D+0)</div><div class="value" id="kpiD0">—</div></div>
-      <div class="kpi red"><div class="label">Uninvoiced orders yesterday</div><div class="value" id="kpiYesterday">—</div></div>
-      <div class="kpi yellow"><div class="label">Uninvoiced orders last week</div><div class="value" id="kpiWeek">—</div></div>
-    </div>
-    <div class="kpi-row">
-      <div class="kpi"><div class="label">Average time to invoice (days)</div><div class="value" id="kpiAvg">—</div></div>
-    </div>
+      <div class="page-header" style="display:flex; flex-direction:column; gap:8px; align-items:flex-start; width:100%;">
+        <div class="filters-inline" role="group" aria-label="Filters" style="flex-wrap:wrap; gap:8px; justify-content:flex-start; width:100%;">
+          <select id="location" aria-label="Location" class="chip-select" title="Filter by location">
+            <option>All</option>
+            <option>Main Warehouse</option>
+          </select>
+        </div>
+      </div>
+
+    <!-- Top KPI row removed (values now inside the Uninvoiced Aging card) -->
 
     <div class="charts-grid">
-      <div class="log-card chart-card"><h3>% of Invoiced Orders (Weekly Trend)</h3><canvas id="chartWeeklyPct"></canvas></div>
+      <div class="log-card chart-card" id="agingCard">
+        <h3>Uninvoiced Aging</h3>
+        <div id="agingKpiRow" class="kpi-row">
+          <div class="kpi yellow"><div class="label">D+1</div><div class="value" id="kpiD1Card">—</div></div>
+          <div class="kpi yellow"><div class="label">D+2</div><div class="value" id="kpiD2Card">—</div></div>
+          <div class="kpi yellow"><div class="label">D+3</div><div class="value" id="kpiD3Card">—</div></div>
+          <div class="kpi yellow"><div class="label">D+4</div><div class="value" id="kpiD4Card">—</div></div>
+          <div class="kpi yellow"><div class="label">&gt; 1 week</div><div class="value" id="kpiWeekCard" style="color:#ef4444">—</div></div>
+        </div>
+      </div>
       <div class="log-card chart-card"><h3>Uninvoiced Orders by Sales Rep</h3><canvas id="chartByRep"></canvas></div>
     </div>
 
@@ -59,28 +67,471 @@
     <div class="section">
       <div class="section-title">Uninvoiced Orders Details</div>
       <div class="log-card">
-        <div class="section-note">When clicking on the KPI Uninvoiced Orders Last Week (156), the dashboard displays a detailed table with information about each pending order. This view allows identifying bottlenecks in the invoicing process and prioritizing actions.</div>
-        <div class="filters-chips" style="margin:8px 0;">
-          <button class="chip active" data-bucket="All">All</button>
-          <button class="chip" data-bucket="D+1">D+1</button>
-          <button class="chip" data-bucket="D+2">D+2</button>
-          <button class="chip" data-bucket="D+3">D+3</button>
+        <div class="filters-chips" style="margin:8px 0; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:10px; flex:1 1 420px; min-width:320px; flex-wrap:wrap;">
+            <input id="invSearch" type="search" placeholder="Search: order #, customer, or order date (YYYY-MM-DD)" style="flex:1 1 280px; min-width:240px; max-width:420px; padding:8px 10px; border:1px solid var(--border,#cbd5e1); border-radius:8px; font-size:14px;" />
+            <div id="invAgingChips" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="chip" id="invBucketD1" title="Show only D+1">D+1</button>
+              <button type="button" class="chip" id="invBucketD2" title="Show only D+2">D+2</button>
+              <button type="button" class="chip" id="invBucketD3" title="Show only D+3">D+3</button>
+              <button type="button" class="chip" id="invBucketD4" title="Show only D+4">D+4</button>
+              <button type="button" class="chip" id="invBucketWk" title="> 1 week">&gt; 1 week</button>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <select id="repTable" class="chip-select">
+                <option value="">All Reps</option>
+              </select>
+            </div>
+            <label for="invIncludeInvoiced" style="display:flex; align-items:center; gap:6px; font-size:12px; color:#475569; font-weight:700;">
+              <input type="checkbox" id="invIncludeInvoiced" />
+              Show invoiced (OK)
+            </label>
+            <button id="invResetHidden" type="button" class="chip" title="Show orders removed from view">Reset hidden</button>
+          </div>
         </div>
         <div class="table-wrapper">
           <table class="app-table" id="uninvoicedTable">
             <thead>
               <tr>
-                <th>Order</th><th>Customer</th><th>Order Date</th><th class="num">Days Pending</th><th>Sales Rep</th><th>Status</th>
+                <th>Order</th>
+                <th>Customer</th>
+                <th>Order Date</th>
+                <th>Invoice Date</th>
+                <th>Invoice #</th>
+                <th>Invoice Status</th>
+                <th class="num">Days Pending</th>
+                <th>Sales Rep</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th class="num">Total</th>
+                <th>Remove</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
-        <div class="section-note" style="margin-top:8px;">In an interactive dashboard, you could sort this table by any column, filter by sales rep or status, and export the data for follow-up. Orders with delays greater than 3 days are automatically highlighted for priority action.</div>
+        <div id="uninvoicedPagination" class="table-pagination" style="margin-top:8px; display:flex; justify-content:center; gap:6px; flex-wrap:wrap;"></div>
       </div>
     </div>
   </div>
   </main>
+
+  <!-- Remove confirmation modal -->
+  <div id="invRemoveModal" class="modal" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="invRemoveTitle">
+      <span class="close" onclick="(function(){document.getElementById('invRemoveModal').classList.remove('open');})()" aria-label="Close">&times;</span>
+      <h2 id="invRemoveTitle">Remove order</h2>
+      <p id="invRemoveText" style="margin:8px 0 16px; color:#334155;">Are you sure you want to hide order <strong id="invRemoveOrder"></strong> from this table?</p>
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <button class="search-btn-small secondary" onclick="(function(){document.getElementById('invRemoveModal').classList.remove('open');})()">Cancel</button>
+        <button id="invRemoveConfirm" class="search-btn-small">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report Modal (based on Re-Stock report modal layout) -->
+  <div id="invReportModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeInvReportModal()">&times;</span>
+      <h2>📝 Report</h2>
+      <div style="display:flex;flex-direction:column;gap:10px;margin:8px 0">
+        <ol style="margin:0 0 12px 18px;color:#334155">
+          <li>
+            Columns to include in the report:
+            <ul style="margin:6px 0 0 16px">
+              <li><strong>Order #</strong></li>
+              <li><strong>Order date</strong></li>
+              <li><strong>Customer</strong></li>
+              <li><strong>Invoice #</strong></li>
+              <li><strong>Invoice date</strong></li>
+              <li><strong>Invoice status</strong></li>
+              <li><strong>Sales representative</strong></li>
+              <li><strong>Status</strong></li>
+              <li><strong>Location</strong></li>
+              <li><strong>Total Total</strong></li>
+            </ul>
+          </li>
+        </ol>
+        <!-- Drop zone + file picker (like Re-Stock) -->
+        <input type="file" id="invImportFile" accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" />
+        <div id="invDropZone" style="border:3px dashed #6366f1;border-radius:14px;padding:22px;min-height:150px;display:flex;align-items:center;justify-content:center;gap:10px;color:#3730a3;background:#eef2ff;cursor:pointer;font-size:14px;font-weight:600;text-align:center" onclick="invTriggerImportFile()" aria-label="Drop Excel or click here">
+          <span>Drop Excel or click here</span>
+        </div>
+        <div id="invImportSummary" style="color:#475569" aria-live="polite"></div>
+        <div id="invImportPreview" style="max-height:180px;overflow:auto;border:1px solid var(--border,#cbd5e1);border-radius:8px;display:none">
+          <table class="app-table" style="margin:0">
+            <thead>
+              <tr>
+                <th>Order #</th><th>Order date</th><th>Customer</th><th>Invoice #</th><th>Invoice date</th><th>Invoice status</th><th>Sales representative</th><th>Status</th><th>Location</th><th>Total Total</th>
+              </tr>
+            </thead>
+            <tbody id="invImportPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+        <button class="search-btn-small secondary" onclick="closeInvReportModal()">Cancel</button>
+        <button id="sendInvReportBtn" class="search-btn-small" onclick="sendInvReport()" disabled>Send</button>
+      </div>
+    </div>
+  </div>
+  <!-- SheetJS for Excel parsing (needed for validation like Re-Stock) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    // Helpers for parsing Excel-like values
+    function invParseExcelDate(v){
+      // Treat empty-ish values as null
+      const emptyTokens = new Set(['', '-', '—', 'n/a', 'na', 'null', 'undefined', '0']);
+      if (v == null) return null;
+      if (v instanceof Date && !isNaN(v)) return v;
+      if (typeof v === 'number'){
+        // Excel serial (days since 1899-12-30). Guard 0 or negative and absurd old dates
+        if (v <= 0) return null;
+        const base = new Date(Date.UTC(1899, 11, 30));
+        const dt = new Date(base.getTime() + v * 86400000);
+        // If it resolves to pre-1900, ignore
+        if (dt.getUTCFullYear() < 1900) return null;
+        return dt;
+      }
+      const s = String(v).trim().toLowerCase();
+      if (emptyTokens.has(s)) return null;
+      // dd/mm/yyyy
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if (m){
+        const dd = Number(m[1]); const mm = Number(m[2]) - 1; const yyRaw = Number(m[3]);
+        const yy = yyRaw < 100 ? (2000 + yyRaw) : yyRaw;
+        const dt = new Date(yy, mm, dd);
+        return isNaN(dt) ? null : dt;
+      }
+      // ISO or numeric-string fallback
+      const dt = new Date(s);
+      if (isNaN(dt)) return null;
+      // Avoid 1970-01-01 (numeric "0" or bad parse) and very old years
+      if (dt.getUTCFullYear() < 1900) return null;
+      return dt;
+    }
+    function invNormalizeText(v){
+      if (v == null) return null;
+      const s = String(v).trim();
+      if (!s) return null;
+      const lowered = s.toLowerCase();
+      if (['-', '—', 'n/a', 'na', 'null', 'undefined', '0'].includes(lowered)) return null;
+      return s;
+    }
+    function invParseMoney(v){
+      if (v == null || v === '') return null;
+      if (typeof v === 'number') return v;
+      const s = String(v).replace(/[^0-9,.-]/g,'').replace(/,/g,'');
+      const n = parseFloat(s);
+      return isNaN(n) ? null : n;
+    }
+    // Serialize Date -> 'YYYY-MM-DD' (UTC-based, safe for PostgREST)
+    function invToISODateStr(dt){
+      if (!dt || isNaN(dt)) return null;
+      const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+      return d.toISOString().slice(0,10);
+    }
+    window.openInvReportModal = function(){
+      const m = document.getElementById('invReportModal');
+      if (m) m.classList.add('open');
+      // Reset UI state each time modal opens
+      try{
+        const dz = document.getElementById('invDropZone');
+        const sum = document.getElementById('invImportSummary');
+        const prev = document.getElementById('invImportPreview');
+        const btn = document.getElementById('sendInvReportBtn');
+        window.__inv_report_rows = null;
+        window.__inv_report_ok = false;
+        if (btn) btn.disabled = true;
+        if (sum) sum.textContent = '';
+        if (prev) prev.style.display = 'none';
+        invResetDropZoneDefault();
+      } catch(_){ }
+    };
+    window.closeInvReportModal = function(){
+      const m = document.getElementById('invReportModal');
+      if (m) m.classList.remove('open');
+    };
+    window.sendInvReport = async function(){
+      try {
+        if (!window.__inv_report_ok || !Array.isArray(window.__inv_report_rows) || window.__inv_report_rows.length===0){
+          const sum = document.getElementById('invImportSummary');
+          if (sum) sum.textContent = 'Please select a valid report file with all required columns.';
+          invSetDropZoneError('Invalid or incomplete file');
+          return; // do not finalize
+        }
+        const btn = document.getElementById('sendInvReportBtn');
+        if (btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+        // Ensure supabase is ready
+        try { await (window.supabaseReady || Promise.resolve()); } catch(_) {}
+        const supabase = (window.supabaseSearch && window.supabaseSearch.client) || window.supabase;
+        if (!supabase) throw new Error('Supabase client not available');
+
+        // Prepare payload (report_date = today)
+        const today = new Date();
+        const reportDate = new Date(today.getTime() - (today.getTimezoneOffset()*60000)).toISOString().split('T')[0];
+        const mapped = window.__inv_report_rows.map(r=>{
+          const od = invParseExcelDate(r.order_date);
+          const id = invParseExcelDate(r.invoice_date);
+          const orderNo = invNormalizeText(r.order);
+          return {
+            report_date: reportDate,
+            order_no: orderNo || '',
+            order_date: invToISODateStr(od),
+            customer: invNormalizeText(r.customer),
+            invoice_no: invNormalizeText(r.invoice_no),
+            invoice_date: invToISODateStr(id),
+            invoice_status: invNormalizeText(r.invoice_status),
+            sales_rep: invNormalizeText(r.sales_rep),
+            status: invNormalizeText(r.status),
+            location: invNormalizeText(r.location),
+            total_total: invParseMoney(r.total_total)
+          };
+        }).filter(x=> x.order_no);
+
+        if (!mapped.length) throw new Error('No rows to send');
+
+        // Deduplicate by (report_date, order_no) to avoid multiple conflicts in one upsert
+        const preferB = (a,b)=>({
+          report_date: a.report_date,
+          order_no: a.order_no,
+          order_date: b.order_date ?? a.order_date,
+          customer: b.customer ?? a.customer,
+          invoice_no: (b.invoice_no && b.invoice_no.length ? b.invoice_no : a.invoice_no),
+          invoice_date: b.invoice_date ?? a.invoice_date,
+          invoice_status: b.invoice_status ?? a.invoice_status,
+          sales_rep: b.sales_rep ?? a.sales_rep,
+          status: b.status ?? a.status,
+          location: b.location ?? a.location,
+          total_total: (b.total_total != null ? b.total_total : a.total_total)
+        });
+        const map = new Map();
+        for (const row of mapped){
+          const key = `${row.report_date}::${row.order_no}`;
+          if (!map.has(key)) map.set(key, row);
+          else map.set(key, preferB(map.get(key), row));
+        }
+        const rows = Array.from(map.values());
+
+        // Upsert in chunks to avoid payload limits
+        const chunk = async (arr, size)=>{
+          for (let i=0;i<arr.length;i+=size){
+            const part = arr.slice(i, i+size);
+            const { error } = await supabase
+              .from('invoicing_monitor')
+              .upsert(part, { onConflict: 'report_date,order_no' });
+            if (error) throw new Error(error.message);
+          }
+        };
+        await chunk(rows, 500);
+
+        const sum = document.getElementById('invImportSummary');
+        if (sum) sum.textContent = `Sent ${rows.length} rows successfully.`;
+
+        // Close and refresh dashboard
+        window.closeInvReportModal();
+        if (typeof window.invMonReload === 'function'){
+          setTimeout(()=> window.invMonReload(), 50);
+        }
+      } catch(err) {
+        const sum = document.getElementById('invImportSummary');
+        if (sum) sum.textContent = `Error sending report: ${err.message || err}`;
+        invSetDropZoneError('Send failed');
+      } finally {
+        const btn = document.getElementById('sendInvReportBtn');
+        if (btn){ btn.disabled = false; btn.textContent = 'Send'; }
+      }
+    };
+    // File drop/pick behavior
+    window.invTriggerImportFile = function(){ document.getElementById('invImportFile')?.click(); };
+    window.invHandleFile = async function(file){
+      try {
+        window.__invReportFile = file;
+        const { wb } = await invParseExcel(file);
+        invHandleWorkbook(wb, file.name);
+      } catch(err){
+        const sum = document.getElementById('invImportSummary');
+        if (sum) sum.textContent = `Error: ${err.message || err}`;
+        const btn = document.getElementById('sendInvReportBtn');
+        if (btn) btn.disabled = true;
+        window.__inv_report_rows = null;
+        window.__inv_report_ok = false;
+        invSetDropZoneError('Error reading file');
+      }
+    };
+
+    // Helpers for validation like Re-Stock
+    function invResetDropZoneDefault(){
+      const dz = document.getElementById('invDropZone');
+      if (!dz) return;
+      dz.style.borderColor = '#6366f1';
+      dz.style.background = '#eef2ff';
+      dz.dataset.state = '';
+      dz.title = 'Drop Excel or click here';
+      dz.innerHTML = '<span>Drop Excel or click here</span>';
+    }
+    function invSetDropZoneOk(fileName, rowsCount){
+      const dz = document.getElementById('invDropZone');
+      if (!dz) return;
+      dz.style.borderColor = '#16a34a';
+      dz.style.background = '#ecfdf5';
+      dz.dataset.state = 'ok';
+      dz.title = 'File OK';
+      const safe = (s)=> String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+      dz.innerHTML = `<span style="color:#166534">✅ File OK: ${safe(fileName)} — ${rowsCount} rows</span>`;
+    }
+    function invSetDropZoneError(msg){
+      const dz = document.getElementById('invDropZone');
+      if (!dz) return;
+      dz.style.borderColor = '#dc2626';
+      dz.style.background = '#fef2f2';
+      dz.dataset.state = 'error';
+      dz.title = msg || 'Invalid file';
+      const safe = (s)=> String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+      dz.innerHTML = `<span style="color:#991b1b">❌ ${safe(msg||'Invalid file')}</span>`;
+    }
+
+    function invParseExcel(file){
+      return new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onerror = (e)=> reject(new Error('Failed to read file'));
+        reader.onload = ()=>{
+          try{
+            const data = new Uint8Array(reader.result);
+            const wb = XLSX.read(data, { type:'array' });
+            resolve({ wb });
+          } catch(err){ reject(err); }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function invLoadSheet(wb, fileName){
+      const required = ['order #','order date','customer','invoice #','invoice date','invoice status','sales representative','status','location','total total'];
+      const sum = document.getElementById('invImportSummary');
+      const prevWrap = document.getElementById('invImportPreview');
+      const prevBody = document.getElementById('invImportPreviewBody');
+      const sendBtn = document.getElementById('sendInvReportBtn');
+      try{
+        const name = (wb.SheetNames||[])[0];
+        if (!name) throw new Error('No worksheet found');
+        const ws = wb.Sheets[name];
+        const json = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        // Ignore the first 4 lines; headers are on the 5th line, data starts after that
+        const HEADER_OFFSET = 4; // 0-based index; 4 => 5th row
+        if (!json[HEADER_OFFSET]){
+          if (sum) sum.textContent = 'Missing header row (expected on line 5).';
+          if (sendBtn) sendBtn.disabled = true;
+          window.__inv_report_rows = null;
+          window.__inv_report_ok = false;
+          if (prevWrap) prevWrap.style.display='none';
+          invSetDropZoneError('Invalid headers');
+          return;
+        }
+        const headers = (json[HEADER_OFFSET]||[]).map(h=> String(h).trim().toLowerCase());
+        const rows = (json.slice(HEADER_OFFSET+1)||[]).filter(r => Array.isArray(r) && r.some(v => String(v).trim().length));
+        // Validate headers
+        const lowerToIndex = Object.fromEntries(headers.map((h,i)=>[h,i]));
+        const missing = required.filter(h=> lowerToIndex[h] === undefined);
+        if (missing.length){
+          if (sum) sum.textContent = 'Missing columns: ' + missing.join(', ');
+          if (sendBtn) sendBtn.disabled = true;
+          window.__inv_report_rows = null;
+          window.__inv_report_ok = false;
+          if (prevWrap) prevWrap.style.display='none';
+          invSetDropZoneError('Invalid headers');
+          return;
+        }
+        const idx = Object.fromEntries(required.map(h=>[h, lowerToIndex[h]]));
+        // Map rows
+        const mapped = rows.map(r=>({
+          order: r[idx['order #']] ?? '',
+          order_date: r[idx['order date']] ?? '',
+          customer: r[idx['customer']] ?? '',
+          invoice_no: r[idx['invoice #']] ?? '',
+          invoice_date: r[idx['invoice date']] ?? '',
+          invoice_status: r[idx['invoice status']] ?? '',
+          sales_rep: r[idx['sales representative']] ?? '',
+          status: r[idx['status']] ?? '',
+          location: r[idx['location']] ?? '',
+          total_total: r[idx['total total']] ?? '',
+        })).filter(o=> Object.values(o).some(v=> String(v).trim().length));
+        if (!mapped.length){
+          if (sum) sum.textContent = 'No valid rows found';
+          if (sendBtn) sendBtn.disabled = true;
+          window.__inv_report_rows = null;
+          window.__inv_report_ok = false;
+          if (prevWrap) prevWrap.style.display='none';
+          invSetDropZoneError('No valid rows');
+          return;
+        }
+        // Preview top 10
+        if (prevWrap && prevBody){
+          prevWrap.style.display = 'block';
+          prevBody.innerHTML = mapped.slice(0,10).map(r=>
+            `<tr><td>${escapeHtml(String(r.order))}</td><td>${escapeHtml(String(r.order_date))}</td><td>${escapeHtml(String(r.customer))}</td><td>${escapeHtml(String(r.invoice_no))}</td><td>${escapeHtml(String(r.invoice_date))}</td><td>${escapeHtml(String(r.invoice_status))}</td><td>${escapeHtml(String(r.sales_rep))}</td><td>${escapeHtml(String(r.status))}</td><td>${escapeHtml(String(r.location))}</td><td>${escapeHtml(String(r.total_total))}</td></tr>`
+          ).join('');
+        }
+        if (sum) sum.textContent = `${mapped.length} rows ready to send`;
+        if (sendBtn) sendBtn.disabled = false;
+        window.__inv_report_rows = mapped;
+        window.__inv_report_ok = true;
+        invSetDropZoneOk(fileName || 'selected.xlsx', mapped.length);
+      } catch(err){
+        if (sum) sum.textContent = `Error: ${err.message || err}`;
+        if (sendBtn) sendBtn.disabled = true;
+        window.__inv_report_rows = null;
+        window.__inv_report_ok = false;
+        if (prevWrap) prevWrap.style.display='none';
+        invSetDropZoneError('Error reading file');
+      }
+    }
+
+    async function invHandleWorkbook(wb, fileName){
+      invLoadSheet(wb, fileName);
+    }
+    window.addEventListener('DOMContentLoaded', () => {
+      const dz = document.getElementById('invDropZone');
+      const fi = document.getElementById('invImportFile');
+      if (dz){
+        const stop = (e)=>{ e.preventDefault(); e.stopPropagation(); };
+        ['dragenter','dragover','dragleave','drop'].forEach(ev=> dz.addEventListener(ev, stop));
+        dz.addEventListener('dragover', ()=>{ dz.style.background = '#e0e7ff'; dz.style.borderColor = '#4f46e5'; });
+        dz.addEventListener('dragleave', ()=>{ dz.style.background = '#eef2ff'; dz.style.borderColor = '#6366f1'; });
+        dz.addEventListener('drop', async (e)=>{
+          dz.style.background = '#eef2ff'; dz.style.borderColor = '#6366f1';
+          const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+          if (!f) return;
+          await window.invHandleFile(f);
+        });
+      }
+      if (fi){
+        fi.addEventListener('change', async (e)=>{
+          const f = e.target && e.target.files && e.target.files[0];
+          if (!f){
+            const sum = document.getElementById('invImportSummary');
+            const btn = document.getElementById('sendInvReportBtn');
+            if (sum) sum.textContent='';
+            if (btn) btn.disabled=true;
+            window.__inv_report_rows = null;
+            window.__inv_report_ok = false;
+            const prev = document.getElementById('invImportPreview');
+            if (prev) prev.style.display='none';
+            invResetDropZoneDefault();
+            return;
+          }
+          await window.invHandleFile(f);
+        });
+      }
+    });
+
+    // Escape helper used in preview HTML
+    function escapeHtml(s){
+      return String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    }
+  </script>
 
   <script type="module" src="./invoicing-monitor.js"></script>
 </body>

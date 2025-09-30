@@ -7,40 +7,36 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/supabase-config.js"></script>
 </head>
 <body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="deliveries-couriers.html" class="nav-link">Deliveries & Couriers</a>
+        <a href="gateway.html" class="nav-link">Gateway</a>
+        <a href="warehouse-movements.html" class="nav-link active">Warehouse Movements</a>
+        <a href="invoicing-monitor.html" class="nav-link">Invoicing Monitor</a>
+      </nav>
+    </div>
+  </header>
   <main class="main-container wide-container">
   <div class="log-container">
     <div class="log-breadcrumb">Home / Logistics / Warehouse Movements</div>
-    <h1 class="log-page-title">Warehouse Movements</h1>
-
-    <div class="page-header">
-      <div class="filters-inline" role="group" aria-label="Filters">
-        <input type="date" id="fromDate" aria-label="From date" />
-        <input type="date" id="toDate" aria-label="To date" />
-        <select id="warehouse" aria-label="Warehouse"><option value="">All Warehouses</option></select>
-        <select id="movementType" aria-label="Movement type">
-          <option value="">All Types</option>
-          <option>Inbound</option>
-          <option>Outbound</option>
-          <option>Transfer</option>
-          <option>Adjustment</option>
-        </select>
-        <select id="status" aria-label="Status">
-          <option value="">All Status</option>
-          <option>Pending</option>
-          <option>Completed</option>
-          <option>Exception</option>
-        </select>
-        <input type="text" id="sku" placeholder="SKU" aria-label="SKU" />
-        <input type="text" id="reason" placeholder="Reason code" aria-label="Reason code" />
-        <input type="text" id="picker" placeholder="Picker/Operator" aria-label="Picker or Operator" />
+    <div class="title-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap;">
+      <h1 class="log-page-title" style="margin:0;">Warehouse Movements</h1>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;">
+  <span id="wmRangeBadge" class="chip" title="Range covered by reports">Range: — → —</span>
+  <span id="wmLastReportBadge" class="chip" title="Last daily report date">Last report: —</span>
+        <button id="openWmReport" type="button" class="search-btn-small" onclick="openWmReportModal()">Report</button>
       </div>
-      <div class="header-actions">
-        <button id="applyFilters" class="search-btn-small">Apply</button>
-        <button id="clearFilters" class="search-btn-small secondary">Clear</button>
-  <a id="importBtn" class="search-btn-small" href="#import" role="button">Import Movements</a>
-      </div>
+    </div>
+    <div class="section-note" style="margin: 0 0 10px 0; color:#334155;">
+      Tip: submit reports for up to two days at a time (recommended), or use the range above to fill any missing dates. Re-sending an existing date will safely overwrite the previous data.
     </div>
 
     <div class="kpi-row">
@@ -53,36 +49,472 @@
         <div class="value" id="kpiErrorsValue">—</div>
       </div>
       <div class="kpi yellow" id="kpi-osk">
-        <div class="label">SKUs Out of Stock Locator (count)</div>
+        <div class="label">SKUs with Errors (count)</div>
         <div class="value" id="kpiOskValue">—</div>
       </div>
     </div>
 
     <div class="charts-grid">
-      <div class="log-card chart-card"><h3>Weekly Evolution of % Orders with Errors</h3><canvas id="chartWeekly"></canvas></div>
-      <div class="log-card chart-card"><h3>Errors by Picker (Week)</h3><canvas id="chartPicker"></canvas></div>
-      <div class="log-card chart-card"><h3>Errors by Location (Heatmap)</h3><canvas id="chartHeatmap"></canvas></div>
-      <div class="log-card chart-card"><h3>Error Type Distribution</h3><canvas id="chartTypes"></canvas></div>
+  <div class="log-card chart-card"><h3 id="chartWeeklyTitle">Daily % Orders with Errors</h3><canvas id="chartWeekly"></canvas></div>
+  <div class="log-card chart-card"><h3>Errors by Reference Type</h3><canvas id="chartPicker"></canvas></div>
+  <div class="log-card chart-card"><h3>Top Locations with Errors</h3><div id="listTopLocations" style="padding:8px 12px; font-size:14px; color:#0f172a"></div></div>
+  <div class="log-card chart-card"><h3>Top SKUs with Errors</h3><div id="listTopSkus" style="padding:8px 12px; font-size:14px; color:#0f172a"></div></div>
     </div>
 
     <div class="section">
       <div class="section-title">Order Error Details</div>
       <div class="log-card">
-        <div class="section-note">When clicking on the KPI 5.8% Orders with Errors, the dashboard displays a detailed table with information about each order that had issues. This functionality allows identifying patterns and taking specific corrective actions.</div>
+        <div class="section-note">The table below lists orders with picking errors to help you identify patterns and take corrective actions.</div>
+        <div class="table-controls" style="justify-content:flex-end; gap:10px; margin-top:6px;">
+          <label for="wmOnlyErrors" style="display:flex; align-items:center; gap:6px; font-size:12px; color:#475569; font-weight:700;">
+            <input type="checkbox" id="wmOnlyErrors" checked />
+            Show only errors (table)
+          </label>
+        </div>
         <div class="table-wrapper" style="margin-top:8px;">
           <table class="app-table" id="errorsTable">
             <thead>
               <tr>
-                <th>Sales Order</th><th>Customer</th><th>Date</th><th>Used Location</th><th>Correct Stock Locator</th>
+                <th>Transaction number</th><th>Type</th><th>Date</th><th>SKU</th><th>Used Location</th><th>Correct Stock Locator</th><th>QTY Out</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
+        <div class="table-pagination" style="display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:8px">
+          <button id="wmPrevPage" class="search-btn-small secondary" type="button">Prev</button>
+          <span id="wmTablePageLabel" style="color:#475569">Page 1 / 1</span>
+          <button id="wmNextPage" class="search-btn-small" type="button">Next</button>
+        </div>
       </div>
     </div>
   </div>
   </main>
+
+  <!-- Report Modal (similar scheme to Invoicing Monitor) -->
+  <div id="wmReportModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeWmReportModal()" aria-label="Close">&times;</span>
+      <h2>📝 Warehouse Movements Report</h2>
+      <div style="display:flex;flex-direction:column;gap:10px;margin:8px 0">
+        <ol style="margin:0 0 12px 18px;color:#334155">
+          <li>
+            Ignore the first 5 lines. The header is on line 6 with the exact columns below (in this order):
+            <ul style="margin:6px 0 0 16px">
+              <li><strong>Date</strong></li>
+              <li><strong>SKU</strong></li>
+              <li><strong>Reference type</strong></li>
+              <li><strong>Reference</strong></li>
+              <li><strong>Stock locator</strong></li>
+              <li><strong>Bin</strong></li>
+              <li><strong>Quantity in</strong></li>
+              <li><strong>Quantity out</strong></li>
+            </ul>
+          </li>
+        </ol>
+        <!-- Drop zone + file picker -->
+        <input type="file" id="wmImportFile" accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" />
+        <div id="wmDropZone" style="border:3px dashed #6366f1;border-radius:14px;padding:22px;min-height:150px;display:flex;align-items:center;justify-content:center;gap:10px;color:#3730a3;background:#eef2ff;cursor:pointer;font-size:14px;font-weight:600;text-align:center" onclick="wmTriggerImportFile()" aria-label="Drop Excel or click here">
+          <span>Drop Excel or click here</span>
+        </div>
+        <div id="wmImportSummary" style="color:#475569" aria-live="polite"></div>
+        <div id="wmImportPreview" style="max-height:180px;overflow:auto;border:1px solid var(--border,#cbd5e1);border-radius:8px;display:none">
+          <table class="app-table" style="margin:0">
+            <thead>
+              <tr id="wmImportPreviewHead"></tr>
+            </thead>
+            <tbody id="wmImportPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+        <button class="search-btn-small secondary" onclick="closeWmReportModal()">Cancel</button>
+        <button id="sendWmReportBtn" class="search-btn-small" onclick="sendWmReport()" disabled>Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SheetJS for Excel parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    // Supabase helpers
+    async function wmEnsureClient(){
+      try { await (window.supabaseReady || Promise.resolve()); } catch(_) {}
+      const sb = (window.supabaseSearch && window.supabaseSearch.client) || window.supabase;
+      if (!sb) throw new Error('Supabase client not available');
+      return sb;
+    }
+    function wmFmtDate(d){ if (!d) return ''; const x=new Date(d); if (isNaN(x)) return ''; return x.toISOString().slice(0,10); }
+    async function wmRefreshBadges(){
+      try{
+        const sb = await wmEnsureClient();
+        // min report_date
+        const { data: d1, error: e1 } = await sb.from('warehouse_movements').select('report_date').order('report_date', { ascending:true }).limit(1);
+        // max report_date
+        const { data: d2, error: e2 } = await sb.from('warehouse_movements').select('report_date').order('report_date', { ascending:false }).limit(1);
+        if (e1||e2){ console.error('range fetch error', e1||e2); }
+        const start = d1 && d1[0] && d1[0].report_date ? wmFmtDate(d1[0].report_date) : '—';
+        const end = d2 && d2[0] && d2[0].report_date ? wmFmtDate(d2[0].report_date) : '—';
+        const rangeBadge = document.getElementById('wmRangeBadge');
+        const lastBadge = document.getElementById('wmLastReportBadge');
+        if (rangeBadge) rangeBadge.textContent = `Range: ${start} → ${end}`;
+        if (lastBadge) lastBadge.textContent = `Last report: ${end}`;
+      } catch(err){ console.warn('wmRefreshBadges', err); }
+    }
+    // Basic helpers (similar to invoicing page)
+    function wmParseExcelDate(v){
+      const empty = new Set(['', '-', '—', 'n/a', 'na', 'null', 'undefined', '0']);
+      if (v == null) return null;
+      if (v instanceof Date && !isNaN(v)) return v;
+      if (typeof v === 'number'){
+        if (v <= 0) return null;
+        const base = new Date(Date.UTC(1899, 11, 30));
+        const dt = new Date(base.getTime() + v * 86400000);
+        return dt.getUTCFullYear() < 1900 ? null : dt;
+      }
+      const s = String(v).trim();
+      if (!s || empty.has(s.toLowerCase())) return null;
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if (m){
+        const dd = Number(m[1]); const mm = Number(m[2]) - 1; const yyRaw = Number(m[3]);
+        const yy = yyRaw < 100 ? (2000 + yyRaw) : yyRaw;
+        const dt = new Date(yy, mm, dd);
+        return isNaN(dt) || dt.getUTCFullYear()<1900 ? null : dt;
+      }
+      const dt = new Date(s);
+      return isNaN(dt) || dt.getUTCFullYear()<1900 ? null : dt;
+    }
+    function wmNormalizeText(v){
+      if (v == null) return null;
+      const s = String(v).trim(); if (!s) return null;
+      const l = s.toLowerCase(); if (['-', '—', 'n/a', 'na', 'null', 'undefined', '0'].includes(l)) return null;
+      return s;
+    }
+    function wmParseNumber(v){
+      if (v == null || v === '') return null;
+      if (typeof v === 'number') return v;
+      const s = String(v).replace(/[^0-9,.-]/g,'').replace(/,/g,'');
+      const n = parseFloat(s);
+      return isNaN(n) ? null : n;
+    }
+    function wmToISODateStr(dt){
+      if (!dt || isNaN(dt)) return null;
+      const d = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+      return d.toISOString().slice(0,10);
+    }
+
+    window.openWmReportModal = function(){
+      const m = document.getElementById('wmReportModal');
+      if (m) m.classList.add('open');
+      try{
+        document.getElementById('wmImportSummary').textContent = '';
+        document.getElementById('wmImportPreview').style.display = 'none';
+        document.getElementById('sendWmReportBtn').disabled = true;
+        wmResetDropZoneDefault();
+        window.__wm_report_rows = null;
+        window.__wm_report_ok = false;
+      } catch(_){ }
+    };
+    window.closeWmReportModal = function(){
+      const m = document.getElementById('wmReportModal');
+      if (m) m.classList.remove('open');
+    };
+
+    function wmResetDropZoneDefault(){
+      const dz = document.getElementById('wmDropZone'); if (!dz) return;
+      dz.style.borderColor = '#6366f1'; dz.style.background = '#eef2ff'; dz.dataset.state = '';
+      dz.title = 'Drop Excel or click here'; dz.innerHTML = '<span>Drop Excel or click here</span>';
+    }
+    function wmSetDropZoneOk(fileName, rowsCount){
+      const dz = document.getElementById('wmDropZone'); if (!dz) return;
+      dz.style.borderColor = '#16a34a'; dz.style.background = '#ecfdf5'; dz.dataset.state='ok'; dz.title = 'File OK';
+      const safe = (s)=> String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+      dz.innerHTML = `<span style="color:#166534">✅ File OK: ${safe(fileName)} — ${rowsCount} rows</span>`;
+    }
+    function wmSetDropZoneError(msg){
+      const dz = document.getElementById('wmDropZone'); if (!dz) return;
+      dz.style.borderColor = '#dc2626'; dz.style.background = '#fef2f2'; dz.dataset.state='error'; dz.title = msg || 'Invalid file';
+      const safe = (s)=> String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+      dz.innerHTML = `<span style="color:#991b1b">❌ ${safe(msg||'Invalid file')}</span>`;
+    }
+
+    function wmParseExcel(file){
+      return new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onerror = ()=> reject(new Error('Failed to read file'));
+        reader.onload = ()=>{
+          try{
+            const data = new Uint8Array(reader.result);
+            const wb = XLSX.read(data, { type:'array' });
+            resolve({ wb });
+          } catch(err){ reject(err); }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    window.wmTriggerImportFile = function(){ document.getElementById('wmImportFile')?.click(); };
+    window.wmHandleFile = async function(file){
+      try{
+        const { wb } = await wmParseExcel(file);
+        wmHandleWorkbook(wb, file.name);
+      } catch(err){
+        const sum = document.getElementById('wmImportSummary');
+        if (sum) sum.textContent = `Error: ${err.message || err}`;
+        document.getElementById('sendWmReportBtn').disabled = true;
+        window.__wm_report_rows = null; window.__wm_report_ok = false;
+        document.getElementById('wmImportPreview').style.display='none';
+        wmSetDropZoneError('Error reading file');
+      }
+    };
+
+    function wmLoadSheet(wb, fileName){
+      const sum = document.getElementById('wmImportSummary');
+      const prevWrap = document.getElementById('wmImportPreview');
+      const prevHead = document.getElementById('wmImportPreviewHead');
+      const prevBody = document.getElementById('wmImportPreviewBody');
+      const sendBtn = document.getElementById('sendWmReportBtn');
+      try{
+        const name = (wb.SheetNames||[])[0];
+        if (!name) throw new Error('No worksheet found');
+        const ws = wb.Sheets[name];
+        const json = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        // Expected header at line 6 (0-based index 5). Ignore lines 1-5.
+        let headerRowIndex = 5; // default -> Excel line 6
+        const required = [
+          'Date','SKU','Reference type','Reference','Stock locator','Bin','Quantity in','Quantity out'
+        ];
+        const norm = s=> String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+
+        function hasRequiredColumns(row){
+          if (!row) return false;
+          const lower = row.map(h=> norm(String(h)));
+          return required.every(r => lower.includes(norm(r)));
+        }
+
+        // If the expected row is missing or invalid, auto-detect within the first 15 lines
+        if (!json[headerRowIndex] || !hasRequiredColumns(json[headerRowIndex])){
+          let found = -1;
+          const limit = Math.min(15, json.length);
+          for (let i=0;i<limit;i++){
+            const row = json[i];
+            if (hasRequiredColumns(row)){ found = i; break; }
+          }
+          if (found >= 0){
+            headerRowIndex = found;
+          } else {
+            if (sum) sum.textContent = 'Missing header row (expected on line 6 or auto-detect failed).';
+            if (sendBtn) sendBtn.disabled = true;
+            window.__wm_report_rows = null; window.__wm_report_ok = false;
+            if (prevWrap) prevWrap.style.display='none';
+            wmSetDropZoneError('Invalid headers');
+            return;
+          }
+        }
+
+        const headerRow = (json[headerRowIndex]||[]);
+        const headers = headerRow.map(h=> String(h).trim());
+        const lowerHeaders = headers.map(h=> norm(h));
+        const missing = required.filter(r=> !lowerHeaders.includes(norm(r)) );
+        if (missing.length){
+          if (sum) sum.textContent = 'Missing columns: ' + missing.join(', ');
+          if (sendBtn) sendBtn.disabled = true;
+          window.__wm_report_rows = null; window.__wm_report_ok = false;
+          if (prevWrap) prevWrap.style.display='none';
+          wmSetDropZoneError('Invalid headers');
+          return;
+        }
+        // Data rows start after header
+  const rows = (json.slice(headerRowIndex+1)||[]).filter(r => Array.isArray(r) && r.some(v => String(v).trim().length));
+
+        // Map rows to normalized objects
+        const indexOf = (label)=> lowerHeaders.indexOf(norm(label));
+        const idx = Object.fromEntries(required.map(h=> [h, indexOf(h)]));
+        let invalidDateCount = 0;
+        const mapped = rows.map(r=>{
+          const dt = wmParseExcelDate(r[idx['Date']]);
+          const iso = wmToISODateStr(dt);
+          if (!iso) invalidDateCount++;
+          return {
+            date: iso || null,
+            sku: r[idx['SKU']] ?? '',
+            reference_type: r[idx['Reference type']] ?? '',
+            reference: r[idx['Reference']] ?? '',
+            stock_locator: r[idx['Stock locator']] ?? '',
+            bin: r[idx['Bin']] ?? '',
+            qty_in: wmParseNumber(r[idx['Quantity in']]),
+            qty_out: wmParseNumber(r[idx['Quantity out']]),
+          };
+        }).filter(o=> Object.values(o).some(v=> String(v??'').trim().length));
+
+        // Exclude rows by Reference type (normalized)
+        const normKey = (s)=> String(s||'').toLowerCase().replace(/[\s\-_]/g,'');
+        const excludeRefTypes = new Set([
+          'disassembly','purchase','purchaseadvanced','stockadjustment','stocktake','writeoff','stocktransfer','billofmaterial'
+        ]);
+        let excludedByRefType = 0;
+        const filteredMapped = mapped.filter(o=>{
+          const key = normKey(o.reference_type);
+          const keep = !excludeRefTypes.has(key);
+          if (!keep) excludedByRefType++;
+          return keep;
+        });
+        if (!mapped.length){
+          if (sum) sum.textContent = 'No valid rows found';
+          if (sendBtn) sendBtn.disabled = true;
+          window.__wm_report_rows = null; window.__wm_report_ok = false;
+          if (prevWrap) prevWrap.style.display='none';
+          wmSetDropZoneError('No valid rows');
+          return;
+        }
+        // Preview top 10
+        if (prevWrap && prevHead && prevBody){
+          prevWrap.style.display='block';
+          const previewOrder = required; // show in the required order
+          prevHead.innerHTML = previewOrder.map(h=>`<th>${escapeHtml(h)}</th>`).join('');
+          prevBody.innerHTML = filteredMapped.slice(0,10).map(o=>{
+            return `<tr>${[
+              escapeHtml(String(o.date||'')),
+              escapeHtml(String(o.sku||'')),
+              escapeHtml(String(o.reference_type||'')),
+              escapeHtml(String(o.reference||'')),
+              escapeHtml(String(o.stock_locator||'')),
+              escapeHtml(String(o.bin||'')),
+              escapeHtml(String(o.qty_in??'')),
+              escapeHtml(String(o.qty_out??'')),
+            ].map(td=>`<td>${td}</td>`).join('')}</tr>`;
+          }).join('');
+        }
+        if (sum) {
+          const parts = [];
+          parts.push(`${filteredMapped.length} rows ready to send`);
+          if (invalidDateCount) parts.push(`${invalidDateCount} rows had invalid Date and will be rejected`);
+          if (excludedByRefType) parts.push(`${excludedByRefType} rows skipped by Reference type filter`);
+          sum.textContent = parts.join(' · ');
+        }
+        if (sendBtn) sendBtn.disabled = false;
+        window.__wm_report_rows = filteredMapped; window.__wm_report_ok = true;
+        wmSetDropZoneOk(fileName || 'selected.xlsx', filteredMapped.length);
+      } catch(err){
+        if (sum) sum.textContent = `Error: ${err.message || err}`;
+        if (sendBtn) sendBtn.disabled = true;
+        window.__wm_report_rows = null; window.__wm_report_ok = false;
+        if (prevWrap) prevWrap.style.display='none';
+        wmSetDropZoneError('Error reading file');
+      }
+    }
+
+    async function wmHandleWorkbook(wb, fileName){ wmLoadSheet(wb, fileName); }
+    window.addEventListener('DOMContentLoaded', () => {
+      const dz = document.getElementById('wmDropZone');
+      const fi = document.getElementById('wmImportFile');
+      if (dz){
+        const stop = (e)=>{ e.preventDefault(); e.stopPropagation(); };
+        ['dragenter','dragover','dragleave','drop'].forEach(ev=> dz.addEventListener(ev, stop));
+        dz.addEventListener('dragover', ()=>{ dz.style.background = '#e0e7ff'; dz.style.borderColor = '#4f46e5'; });
+        dz.addEventListener('dragleave', ()=>{ dz.style.background = '#eef2ff'; dz.style.borderColor = '#6366f1'; });
+        dz.addEventListener('drop', async (e)=>{
+          dz.style.background = '#eef2ff'; dz.style.borderColor = '#6366f1';
+          const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+          if (!f) return;
+          await window.wmHandleFile(f);
+        });
+      }
+      if (fi){
+        fi.addEventListener('change', async (e)=>{
+          const f = e.target && e.target.files && e.target.files[0];
+          if (!f){
+            const sum = document.getElementById('wmImportSummary');
+            const btn = document.getElementById('sendWmReportBtn');
+            if (sum) sum.textContent='';
+            if (btn) btn.disabled=true;
+            window.__wm_report_rows = null; window.__wm_report_ok = false;
+            const prev = document.getElementById('wmImportPreview'); if (prev) prev.style.display='none';
+            wmResetDropZoneDefault();
+            return;
+          }
+          await window.wmHandleFile(f);
+        });
+      }
+    });
+
+    function escapeHtml(s){
+      return String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+    }
+
+    window.sendWmReport = async function(){
+      const sum = document.getElementById('wmImportSummary');
+      const btn = document.getElementById('sendWmReportBtn');
+      try{
+        if (!window.__wm_report_ok || !Array.isArray(window.__wm_report_rows) || window.__wm_report_rows.length===0){
+          if (sum) sum.textContent = 'Please select a valid report file with headers and rows.';
+          wmSetDropZoneError('Invalid or incomplete file');
+          return;
+        }
+        if (btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+        // Map to DB payload using per-row Date from the file
+        const rows = window.__wm_report_rows.map(r=>({
+          report_date: r.date || null,
+          sku: wmNormalizeText(r.sku) || '',
+          reference_type: wmNormalizeText(r.reference_type) || '',
+          reference: wmNormalizeText(r.reference) || '',
+          stock_locator: wmNormalizeText(r.stock_locator) || '',
+          bin: wmNormalizeText(r.bin) || '',
+          quantity_in: wmParseNumber(r.qty_in) ?? 0,
+          quantity_out: wmParseNumber(r.qty_out) ?? 0,
+        })).filter(x=> x.sku && x.report_date);
+
+        // Deduplicate within one upload by composite key
+  const makeKey = (o)=> [o.report_date,o.sku,o.reference||'',o.stock_locator||'',o.bin||''].join('::');
+        const map = new Map();
+        for (const r of rows){
+          const k = makeKey(r);
+          map.set(k, r); // prefer last occurrence
+        }
+        const deduped = Array.from(map.values());
+
+        // Preflight: ensure table exists and is accessible
+        const sb = await wmEnsureClient();
+        {
+          const { error: preErr } = await sb
+            .from('warehouse_movements')
+            .select('report_date', { head: true, count: 'exact' })
+            .limit(0);
+          if (preErr){
+            throw new Error(`Table check failed: ${preErr.message}`);
+          }
+        }
+        // Upsert in chunks
+        const chunk = async (arr, size)=>{
+          for (let i=0;i<arr.length;i+=size){
+            const part = arr.slice(i, i+size);
+            const { error } = await sb.from('warehouse_movements').upsert(part, { onConflict: 'report_date,sku,reference,stock_locator,bin' });
+            if (error){
+              throw new Error(error.message || 'Upsert failed');
+            }
+          }
+        };
+        await chunk(deduped, 500);
+
+        if (sum) sum.textContent = `Sent ${deduped.length} rows successfully.`;
+        // Close modal only on success
+        window.closeWmReportModal();
+        // Refresh badges
+        setTimeout(()=> wmRefreshBadges(), 50);
+      } catch(err){
+        console.error('sendWmReport error:', err);
+        if (sum){
+          const hint = ' Tip: ensure the table public.warehouse_movements exists and has a unique key/PK on (report_date, sku, reference, stock_locator, bin).';
+          sum.textContent = `Error sending report: ${err.message || err}.${hint}`;
+        }
+        wmSetDropZoneError('Sending failed');
+      } finally {
+        if (btn){ btn.disabled = false; btn.textContent = 'Send'; }
+      }
+    }
+    // Initial badges load
+    window.addEventListener('DOMContentLoaded', wmRefreshBadges);
+  </script>
 
   
 
