@@ -6,6 +6,7 @@
   <title>Warehouse Movements</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
+  <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="/supabase-config.js"></script>
 </head>
@@ -26,7 +27,7 @@
   </header>
   <main class="main-container wide-container">
   <div class="log-container">
-    <div class="log-breadcrumb">Home / Logistics / Warehouse Movements</div>
+    
     <div class="title-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap;">
       <h1 class="log-page-title" style="margin:0;">Warehouse Movements</h1>
       <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;">
@@ -35,11 +36,13 @@
         <button id="openWmReport" type="button" class="search-btn-small" onclick="openWmReportModal()">Report</button>
       </div>
     </div>
-    <div class="section-note" style="margin: 0 0 10px 0; color:#334155;">
-      Tip: submit reports for up to two days at a time (recommended), or use the range above to fill any missing dates. Re-sending an existing date will safely overwrite the previous data.
-    </div>
+    
 
-    <div class="kpi-row">
+    <div class="kpi-row six">
+      <div class="kpi gray" id="kpi-trend" title="ΔQI = (100 − ErrorRate%) last 28 days vs previous 28 days.">
+        <div class="label">Trend (28d)</div>
+        <div class="value"><span id="kpiTrendArrow">≈</span> <span id="kpiTrendDelta">—</span></div>
+      </div>
       <div class="kpi green" id="kpi-correct">
         <div class="label">Correct Orders (%)</div>
         <div class="value" id="kpiCorrectValue">—</div>
@@ -47,6 +50,14 @@
       <div class="kpi red" id="kpi-errors">
         <div class="label">Orders with Errors (%)</div>
         <div class="value" id="kpiErrorsValue">—</div>
+      </div>
+      <div class="kpi" id="kpi-total-orders">
+        <div class="label">Orders (count)</div>
+        <div class="value" id="kpiTotalOrdersValue">—</div>
+      </div>
+      <div class="kpi red" id="kpi-orders-err">
+        <div class="label">Orders with Errors (count)</div>
+        <div class="value" id="kpiOrdersErrValue">—</div>
       </div>
       <div class="kpi yellow" id="kpi-osk">
         <div class="label">SKUs with Errors (count)</div>

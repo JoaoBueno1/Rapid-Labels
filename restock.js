@@ -88,7 +88,7 @@
 
   function render(rows) {
     if (!rows || rows.length === 0) {
-      setTbody('<tr><td colspan="9" style="text-align:center;opacity:.7">No results</td></tr>');
+      setTbody('<tr><td colspan="10" style="text-align:center;opacity:.7">No results</td></tr>');
       updatePager(0);
       // Apply styling hook if present
       if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
@@ -137,6 +137,11 @@
           const popHtml = lines.length ? `<div class="reserve-pop">${lines.map(l=>`<span class="line">${l}</span>`).join('')}</div>` : '';
           reserveCellHtml = `<span class="reserve-cell">${reserveCellHtml}<button type="button" class="info-badge" aria-label="Reserve locations" onclick="restockToggleReserveInfo(this)">i</button>${popHtml}</span>`;
         }
+        // Compute up to two nearest reserve locations and format lines with QTY
+        const nearestLines = computeNearestReserveLines(r.stock_locator, r.__reserve_locations);
+        const nearestHtml = nearestLines.length
+          ? nearestLines.map(l => `<div>${escapeHtml(l)}</div>`).join('')
+          : '';
         const favOn = favorites.has(String(r.sku));
         const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${sku}" onclick="restockToggleFavorite('${sku}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
         return `
@@ -150,17 +155,84 @@
             <td>${statusChip(status)}</td>
             <td>${reserveCellHtml}</td>
             <td>${restock}</td>
+            <td class="print-only">${nearestHtml}</td>
           </tr>`;
       }).join('');
       chunks.push(rowsHtml);
       if (i + 30 < limited.length) {
-        chunks.push('<tr class="print-break"><td colspan="9"></td></tr>');
+        chunks.push('<tr class="print-break"><td colspan="10"></td></tr>');
       }
     }
     const html = chunks.join('');
 
     setTbody(html);
     if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
+  }
+
+  // Parse location codes like MA-A-01-L1 or MA-B-08-L2-P1 into comparable parts
+  function parseLocation(code){
+    if (!code) return null;
+    const s = String(code).trim();
+    // Pattern: SITE-AREA-ROW-LLEVEL(-Ppos)? e.g., MA-A-01-L1-P1
+    const m = s.match(/^([A-Z]{2})-([A-Z])-([0-9]{2})-L(\d)(?:-P(\d))?$/i);
+    if (!m) return null;
+    return {
+      site: m[1].toUpperCase(),
+      area: m[2].toUpperCase(),
+      row: parseInt(m[3], 10),
+      level: parseInt(m[4], 10),
+      pos: m[5] ? parseInt(m[5], 10) : 0,
+      raw: s,
+    };
+  }
+
+  // Heuristic distance between two parsed locations: prioritize area match, then row diff, level diff, pos diff
+  function locationDistance(a, b){
+    if (!a || !b) return Infinity;
+    if (a.site !== b.site) return 100000; // different site very far
+    let score = 0;
+    if (a.area !== b.area) score += 10000; // different area is far
+    score += Math.abs(a.row - b.row) * 100; // each row ~100
+    score += Math.abs(a.level - b.level) * 10; // level less weight
+    score += Math.abs(a.pos - b.pos);
+    return score;
+  }
+
+  // Compute up to three nearest reserve locations; also append any from MA-RETURNS, MA-GA, MA-SAMPLES, MA-DOCK; show only '(Same Lane)' when applicable
+  function computeNearestReserveLines(pickface, reserveLocs){
+    const p = parseLocation(pickface);
+    if (!p || !Array.isArray(reserveLocs) || reserveLocs.length === 0) return [];
+    const scored = [];
+    for (const r of reserveLocs){
+      if (!r || !r.location || !Number.isFinite(r.qty) || r.qty <= 0) continue;
+      const q = parseLocation(r.location);
+      if (!q) continue;
+      const dist = locationDistance(p, q);
+      const sameLane = (p.site === q.site && p.area === q.area && p.row === q.row);
+      scored.push({ location: String(r.location), qty: r.qty, dist, sameLane });
+    }
+    scored.sort((a,b)=> a.dist - b.dist);
+    const top = scored.slice(0, 3);
+
+    // Append special zones if present (case-insensitive), keeping uniqueness
+    const specials = ['MA-RETURNS','MA-GA','MA-SAMPLES','MA-DOCK'];
+    const setIncluded = new Set(top.map(x => x.location.toUpperCase()));
+    const extras = [];
+    for (const zone of specials){
+      const found = scored.filter(x => x.location.toUpperCase().startsWith(zone));
+      // Keep order by distance within zone
+      found.sort((a,b)=> a.dist - b.dist);
+      for (const f of found){
+        const key = f.location.toUpperCase();
+        if (!setIncluded.has(key)){
+          extras.push(f);
+          setIncluded.add(key);
+        }
+      }
+    }
+
+    const combined = top.concat(extras);
+    return combined.map(item => `${item.location}${item.sameLane ? ' (Same Lane)' : ''}  •  QTY = ${item.qty}`);
   }
 
   // Apply status filter only; other toggles handled separately
@@ -212,8 +284,17 @@
   const hasReserve = Number(r.__reserve_total || 0) > 0;
         (hasReserve ? withReserve : noReserve).push(r);
       }
-      // Secondary sort by restock desc then SKU
+      // Sort within each bucket by Pickface (site, area, row, level, pos),
+      // then by Restock desc, and finally by SKU as tiebreaker
       const sortInner = (a, b) => {
+        const pa = parseLocation(a.stock_locator) || { site:'', area:'', row:0, level:0, pos:0, raw: String(a.stock_locator||'') };
+        const pb = parseLocation(b.stock_locator) || { site:'', area:'', row:0, level:0, pos:0, raw: String(b.stock_locator||'') };
+        if (pa.site !== pb.site) return pa.site.localeCompare(pb.site);
+        if (pa.area !== pb.area) return pa.area.localeCompare(pb.area);
+        if (pa.row !== pb.row) return pa.row - pb.row;
+        if (pa.level !== pb.level) return pa.level - pb.level;
+        if (pa.pos !== pb.pos) return pa.pos - pb.pos;
+        // If pickface equal, sort by restock desc
         const ra = Number.isFinite(a.restock_qty) ? a.restock_qty : -Infinity;
         const rb = Number.isFinite(b.restock_qty) ? b.restock_qty : -Infinity;
         if (rb !== ra) return rb - ra;
@@ -424,6 +505,46 @@
   // Pager controls
   window.restockPrevPage = function(){ if (state.page > 1) { state.page -= 1; render(state.rows); } };
   window.restockNextPage = function(){ const totalPages = Math.max(1, Math.ceil(state.rows.length / state.perPage)); if (state.page < totalPages) { state.page += 1; render(state.rows); } };
+
+  // Print tweaks: sort by Pickface only the current page and restore after
+  let __beforePrintCache = null;
+  window.restockPreparePrintView = function(){
+    try{
+      // Cache current rows and pagination
+      __beforePrintCache = { rows: state.rows.slice(), page: state.page, perPage: state.perPage };
+      // Current page slice
+      const start = (state.page - 1) * state.perPage;
+      const end = start + state.perPage;
+      const subset = state.rows.slice(start, end);
+      // Sort by pickface logical order: site, area, row, level, pos
+      const sorter = (a, b) => {
+        const pa = parseLocation(a.stock_locator) || {site:'',area:'',row:0,level:0,pos:0};
+        const pb = parseLocation(b.stock_locator) || {site:'',area:'',row:0,level:0,pos:0};
+        if (pa.site !== pb.site) return pa.site.localeCompare(pb.site);
+        if (pa.area !== pb.area) return pa.area.localeCompare(pb.area);
+        if (pa.row !== pb.row) return pa.row - pb.row;
+        if (pa.level !== pb.level) return pa.level - pb.level;
+        return pa.pos - pb.pos;
+      };
+      const sortedSubset = subset.slice().sort(sorter);
+      const prevPerPage = state.perPage;
+      state.page = 1;
+      state.perPage = sortedSubset.length; // ensure we print exactly this page
+      render(sortedSubset);
+      // Restore perPage immediately so afterprint we can render normally
+      state.perPage = prevPerPage;
+    } catch{}
+  };
+  window.restockRestoreView = function(){
+    try{
+      if (__beforePrintCache){
+        state.page = __beforePrintCache.page;
+        state.perPage = __beforePrintCache.perPage;
+        render(__beforePrintCache.rows);
+      }
+      __beforePrintCache = null;
+    } catch{}
+  };
 
   // Expose filter controls for HTML buttons
   window.restockSetStatusFilter = function(val){

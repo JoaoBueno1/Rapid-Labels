@@ -4,6 +4,7 @@ window.FEATURE_LOGISTICS_DASHBOARDS_V1 = true;
 // Local state and cache
 const state = { filters: { from:'', to:'', status:'', customer:'', terms:'', rep:'', location: 'All', search: '' }, pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 }, bucket: 'All', includeInvoiced: false, dataRange: { start: null, end: null, reportStart: null, reportEnd: null, lastReport: null } };
 const cache = { rows: [], rowsAll: [] };
+let __inv_rows_cache = null; // session cache for raw rows
 const HIDDEN_KEY = 'invmon_hidden_orders';
 function getHiddenSet(){
   try{ const raw = localStorage.getItem(HIDDEN_KEY); if (!raw) return new Set(); const arr = JSON.parse(raw); return new Set(Array.isArray(arr)?arr:[]); } catch(_) { return new Set(); }
@@ -232,6 +233,10 @@ function computeKpisAndCharts(rows){
 }
 
 async function fetchRows(){
+  if (Array.isArray(__inv_rows_cache) && __inv_rows_cache.length){
+    try { console.debug('[INV] using cached rows=', __inv_rows_cache.length); } catch(_){ }
+    return __inv_rows_cache;
+  }
   const sb = await ensureClient();
   // Fetch entire range in pages to avoid truncation
   const fields = 'order_no, order_date, customer, invoice_no, invoice_date, invoice_status, sales_rep, status, location, total_total, report_date';
@@ -261,7 +266,9 @@ async function fetchRows(){
     // Safety: prevent runaway
     if (from > 1_000_000) break;
   }
-  return all;
+  __inv_rows_cache = all;
+  try { console.debug('[INV] cache ready, rows=', __inv_rows_cache.length); } catch(_){ }
+  return __inv_rows_cache;
 }
 
 async function load(){

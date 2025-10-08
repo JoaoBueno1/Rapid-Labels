@@ -11,11 +11,19 @@ function qs(id){ return document.getElementById(id); }
 function on(el, evt, handler){ if (el) el.addEventListener(evt, handler); }
 function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 
+// Normalize a location by stripping trailing position suffix like -P1 or -P2
+function normPos(code){
+  const s = String(code||'').trim();
+  return s.replace(/-P\d+$/i, '');
+}
+
 function setKpis(data){
   const safe = (n, d=1)=> (Number.isFinite(n)? n : 0).toFixed(d);
   const a = qs('kpiCorrectValue'); if (a) a.textContent = `${safe(data.correctOrdersPct)}%`;
   const b = qs('kpiErrorsValue'); if (b) b.textContent = `${safe(data.ordersWithErrorsPct)}%`;
   const c = qs('kpiOskValue'); if (c) c.textContent = `${Number.isFinite(data.skusOutOfStockLocator)? data.skusOutOfStockLocator : 0}`;
+  const t = qs('kpiTotalOrdersValue'); if (t) t.textContent = `${Number.isFinite(data.totalOrders)? data.totalOrders : 0}`;
+  const e = qs('kpiOrdersErrValue'); if (e) e.textContent = `${Number.isFinite(data.ordersWithErrorsCount)? data.ordersWithErrorsCount : 0}`;
 }
 
 let chartWeekly, chartPicker;
@@ -67,9 +75,69 @@ function renderCharts(d){
     const items = d.topSkusWithErrors.map((e,i)=> `<li><span class="label">${i+1}. ${escapeHtml(e.label)}</span><span class="count">${e.count}</span></li>`).join('');
     listSku.innerHTML = items ? `<ul class="top-list">${items}</ul>` : '<div class="muted">No data</div>';
   }
+
+  // Compute Trend (28d) KPI using dailyErrorsPct if available
+  try{
+    const arrowEl = document.getElementById('kpiTrendArrow');
+    const deltaEl = document.getElementById('kpiTrendDelta');
+    const cardEl = document.getElementById('kpi-trend');
+    const sparkEl = document.getElementById('kpiTrendSpark');
+    if (arrowEl && deltaEl && cardEl){
+      const labels = (d.dailyErrorsPct && Array.isArray(d.dailyErrorsPct.labels)) ? d.dailyErrorsPct.labels : [];
+      const vals = (d.dailyErrorsPct && Array.isArray(d.dailyErrorsPct.data)) ? d.dailyErrorsPct.data : [];
+      // Build recent series (last 56 days), aligned by the end
+      const n = labels.length;
+      const take = Math.min(56, n);
+      const endIdx = n;
+      const startIdx = Math.max(0, n - take);
+      const recent = vals.slice(startIdx, endIdx).filter(v=> Number.isFinite(v)); // ErrorRate% per day
+      // Low volume check: require at least 50 orders in each period
+      // Approximate with count of days having data; if exact daily order counts are needed, integrate counts in dataset
+      const half = Math.floor(recent.length / 2);
+      const curArr = recent.slice(-28);
+      const prevArr = recent.slice(-56, -28);
+      const hasEnough = (curArr.length >= 20) && (prevArr.length >= 20); // proxy for volume; stricter would use actual order counts
+      if (!hasEnough){
+        deltaEl.textContent = '—';
+        arrowEl.textContent = '≈';
+        cardEl.classList.remove('green','red'); cardEl.classList.add('gray');
+        if (sparkEl) sparkEl.innerHTML = '';
+      } else {
+        const avg = (arr)=> arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+        const curErr = avg(curArr);
+        const prevErr = avg(prevArr);
+        const curQI = 100 - curErr;
+        const prevQI = 100 - prevErr;
+        const delta = curQI - prevQI;
+        const shown = (delta >= 0 ? '+' : '') + (Math.round(delta*100)/100).toFixed(2);
+        deltaEl.textContent = shown;
+        // status
+        cardEl.classList.remove('green','red','gray');
+        if (delta > 0.30){ arrowEl.textContent = '↑'; cardEl.classList.add('green'); }
+        else if (delta < -0.30){ arrowEl.textContent = '↓'; cardEl.classList.add('red'); }
+        else { arrowEl.textContent = '≈'; cardEl.classList.add('gray'); }
+        // Optional sparkline for last 28 days QI
+        if (sparkEl){
+          const qi = curArr.map(v=> 100 - v);
+          const w = 80, h = 24;
+          const min = Math.min(...qi), max = Math.max(...qi);
+          const range = (max - min) || 1;
+          const step = qi.length > 1 ? (w / (qi.length - 1)) : w;
+          const pts = qi.map((v,i)=>{
+            const x = Math.round(i * step);
+            const y = Math.round(h - ((v - min) / range) * h);
+            return `${x},${y}`;
+          }).join(' ');
+          sparkEl.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline fill="none" stroke="currentColor" stroke-width="1" points="${pts}"/></svg>`;
+        }
+      }
+    }
+  } catch(_){ }
 }
 
 async function load(){
+  // Warm-up: fetch and cache all required rows once to avoid multiple full scans
+  try { await fetchWarehouseRowsAll(); } catch(err){ console.warn('Warm-up load rows error', err); }
   try {
     await updateCoverageBadges();
   } catch(err){ console.error('Coverage badges update error', err); }
@@ -120,7 +188,7 @@ async function loadTable(){
 
 function bind(){
   // Disable KPI click actions completely
-  ['kpi-correct','kpi-errors','kpi-osk'].forEach((id)=>{
+  ['kpi-correct','kpi-errors','kpi-osk','kpi-total-orders','kpi-orders-err'].forEach((id)=>{
     const el = document.getElementById(id);
     if (el) el.style.cursor = 'default';
   });
@@ -155,7 +223,6 @@ function bind(){
       load();
     });
   }
-  // Pagination controls
   const prev = document.getElementById('wmPrevPage');
   const next = document.getElementById('wmNextPage');
   on(prev, 'click', async ()=>{
@@ -175,7 +242,6 @@ function bind(){
   // Table-only filter: show only errors
   const onlyErr = document.getElementById('wmOnlyErrors');
   if (onlyErr){
-    // sync default state
     onlyErr.checked = !!state.tableOnlyErrors;
     on(onlyErr, 'change', async (e)=>{
       state.tableOnlyErrors = !!e.target.checked;
@@ -212,29 +278,13 @@ function toISO(d){
 }
 
 async function getWarehouseKpis(filters){
-  const sb = await ensureSb();
-  const pageSize = 1000; // Supabase max per request
-  let fromIdx = 0;
-  const rows = [];
-  while (true){
-    const { data, error } = await sb
-      .from('warehouse_movements')
-      .select('report_date, quantity_out, sku, stock_locator, bin, reference, reference_type')
-      .order('report_date', { ascending: true })
-      .range(fromIdx, fromIdx + pageSize - 1);
-    if (error){ console.warn('getWarehouseKpis error', error); break; }
-    const batch = data || [];
-    rows.push(...batch);
-    if (batch.length < pageSize) break;
-    fromIdx += pageSize;
-    if (rows.length > 200000) break; // safety cap
-  }
-  try { console.debug('[WM][KPIs] loaded rows=', rows.length); } catch(_){}
+  const rows = await fetchWarehouseRowsAll();
+  try { console.debug('[WM][KPIs] rows (cached)=', rows.length); } catch(_){ }
   const norm = (s)=> String(s||'').trim().toUpperCase();
   const normKey = (s)=> String(s||'').toLowerCase().replace(/\s|\-|_/g,'');
   const EXCLUDE_LOC = new Set(['MA-DOCK','MA-GA']);
   // Normalize and apply base filters
-  const base = rows.filter(r=> Number(r.quantity_out||0) > 0)
+  const base = rows.filter(r=> Number(r.qty_out||0) > 0)
     .map(r=> ({
       date: toISO(r.report_date),
       bin: norm(r.bin),
@@ -242,26 +292,27 @@ async function getWarehouseKpis(filters){
       sku: norm(r.sku),
       reference: String(r.reference||'').trim(),
       refKey: normKey(r.reference_type),
-      qty_out: Number(r.quantity_out||0),
+      qty_out: Number(r.qty_out||0),
     }))
     .filter(r=> r.stock_locator !== '' && !EXCLUDE_LOC.has(r.stock_locator) && !r.stock_locator.includes('BOM') && r.refKey !== 'billofmaterial' && r.refKey !== 'stocktransfer');
-  // Agrupar como na tabela: (date, reference, sku) -> used bins set, correct locator, qtyOut
+  // Agrupar como na tabela: (date, reference, sku) -> used bins set (normalized), correct locator (normalized), qtyOut
   const byTxSku = new Map();
   for (const r of base){
     const key = `${r.date||''}::${r.reference||''}::${r.sku||''}`;
-    const usedBin = String(r.bin||'').trim();
-    const g = byTxSku.get(key) || { date: r.date, reference: r.reference, sku: r.sku, used: new Set(), correct: r.stock_locator, qtyOut: 0 };
-    if (usedBin) g.used.add(usedBin);
+    const usedBinNorm = normPos(String(r.bin||'').trim());
+    const correctNorm = normPos(String(r.stock_locator||'').trim());
+    const g = byTxSku.get(key) || { date: r.date, reference: r.reference, sku: r.sku, used: new Set(), correct: correctNorm, qtyOut: 0 };
+    if (usedBinNorm) g.used.add(usedBinNorm);
     g.qtyOut += r.qty_out;
-    // keep last correct locator if varies
-    g.correct = r.stock_locator || g.correct;
+    // keep last correct locator (normalized) if varies
+    g.correct = correctNorm || g.correct;
     byTxSku.set(key, g);
   }
   // Derivar por pedido (date,reference)
   const perOrder = new Map();
   for (const g of byTxSku.values()){
-    const okUsed = Array.from(g.used);
-    const isErr = okUsed.length > 0 && !okUsed.includes((g.correct||'').trim());
+  const okUsed = Array.from(g.used);
+  const isErr = okUsed.length > 0 && !okUsed.includes((g.correct||'').trim());
     // Avoid collapsing when reference is missing: fallback to per-SKU pseudo order
     const refKey = (g.reference && g.reference.trim()) ? g.reference.trim() : `REF_MISSING__${g.sku||''}`;
     const key = `${g.date||''}::${refKey}`;
@@ -273,61 +324,33 @@ async function getWarehouseKpis(filters){
   // Debug: log KPI coverage
   try { console.debug('[WM][KPIs] perOrder=', perOrder.size); } catch(_){}
   const values = Array.from(perOrder.values());
-  const denom = values.filter(v=> v.hasOut).length || 1;
-  const numErr = values.filter(v=> v.hasErr).length;
-  const pctErrors = (numErr/denom)*100;
+  const denom = values.filter(v=> v.hasOut).length; // total orders
+  const numErr = values.filter(v=> v.hasErr).length; // orders with errors
+  const pctErrors = denom > 0 ? (numErr/denom)*100 : 0;
   const skusWithErrors = new Set(Array.from(byTxSku.values()).filter(g=> (Array.from(g.used).length>0 && !Array.from(g.used).includes((g.correct||'').trim()))).map(g=> g.sku)).size;
   return {
     correctOrdersPct: Math.max(0, Math.min(100, 100 - pctErrors)),
     ordersWithErrorsPct: Math.max(0, Math.min(100, pctErrors)),
     skusOutOfStockLocator: skusWithErrors,
+    totalOrders: denom,
+    ordersWithErrorsCount: numErr,
   };
 }
 
 async function getWarehouseCharts(filters){
-  const sb = await ensureSb();
-  // Determine full coverage range directly from DB (independent of other filters)
-  let minDateStr = null, maxDateStr = null;
-  try {
-    const minQ = sb.from('warehouse_movements').select('report_date').order('report_date', { ascending: true }).limit(1);
-    const maxQ = sb.from('warehouse_movements').select('report_date').order('report_date', { ascending: false }).limit(1);
-    const [{ data: minD }, { data: maxD }] = await Promise.all([minQ, maxQ]);
-    minDateStr = minD && minD[0] ? toISO(minD[0].report_date) : null;
-    maxDateStr = maxD && maxD[0] ? toISO(maxD[0].report_date) : null;
-  } catch(err){ console.warn('getWarehouseCharts range fetch error', err); }
-  const pageSize = 1000; // Supabase max per request
-  let fromIdx = 0;
-  const rowsRaw = [];
-  while (true){
-    const { data, error } = await sb
-      .from('warehouse_movements')
-      .select('report_date, quantity_out, reference_type, stock_locator, bin, sku, reference')
-      .order('report_date', { ascending: true })
-      .range(fromIdx, fromIdx + pageSize - 1);
-    if (error){ console.warn('getWarehouseCharts error', error); break; }
-    const batch = data || [];
-    rowsRaw.push(...batch);
-    if (batch.length < pageSize) break;
-    fromIdx += pageSize;
-    if (rowsRaw.length > 200000) break; // safety cap
-  }
-  try { console.debug('[WM][Charts] loaded rows=', rowsRaw.length); } catch(_){}
+  const rowsAll = await fetchWarehouseRowsAll();
+  try { console.debug('[WM][Charts] rows (cached)=', rowsAll.length); } catch(_){ }
   const norm = (s)=> String(s||'').trim().toUpperCase();
-  const normKey = (s)=> String(s||'').toLowerCase().replace(/\s|\-|_/g,'');
   const EXCLUDE_LOC = new Set(['MA-DOCK','MA-GA']);
-  const rowsAll = (rowsRaw||[]).map(r=>({
-    report_date: toISO(r.report_date),
-    qty_out: Number(r.quantity_out||0),
-    reference_type: String(r.reference_type||'').trim(),
-    stock_locator: norm(r.stock_locator),
-    bin: norm(r.bin),
-    sku: String(r.sku||'').trim(),
-    reference: String(r.reference||'').trim(),
-    refKey: normKey(r.reference_type),
-  })).filter(r=> r.qty_out > 0 && r.stock_locator !== '' && !EXCLUDE_LOC.has(r.stock_locator) && !r.stock_locator.includes('BOM') && r.refKey !== 'billofmaterial' && r.refKey !== 'stocktransfer');
+  // Already normalized by fetchWarehouseRowsAll; apply final filters
+  const rowsAllFiltered = (rowsAll||[]).filter(r=> r.qty_out > 0 && r.stock_locator !== '' && !EXCLUDE_LOC.has(r.stock_locator) && !r.stock_locator.includes('BOM') && r.refKey !== 'billofmaterial' && r.refKey !== 'stocktransfer');
   // Full-period: use all rows
-  const rows = rowsAll;
-  const isErr = (r)=> (r.bin === '' || r.bin !== r.stock_locator);
+  const rows = rowsAllFiltered;
+  const isErr = (r)=> {
+    const binN = normPos(r.bin||'');
+    const locN = normPos(r.stock_locator||'');
+    return (r.bin === '' || binN !== locN);
+  };
   if (!rows.length){
     const titleEl = document.getElementById('chartWeeklyTitle');
     if (titleEl){ titleEl.textContent = 'Daily % Orders with Errors'; }
@@ -337,17 +360,18 @@ async function getWarehouseCharts(filters){
   const byTxSku = new Map();
   for (const r of rows){
     const key = `${r.report_date||''}::${r.reference||''}::${r.sku||''}`;
-    const usedBin = String(r.bin||'').trim();
-    const g = byTxSku.get(key) || { date: r.report_date, reference: r.reference, sku: r.sku, used: new Set(), correct: r.stock_locator };
-    if (usedBin) g.used.add(usedBin);
-    g.correct = r.stock_locator || g.correct;
+    const usedBinNorm = normPos(String(r.bin||'').trim());
+    const correctNorm = normPos(String(r.stock_locator||'').trim());
+    const g = byTxSku.get(key) || { date: r.report_date, reference: r.reference, sku: r.sku, used: new Set(), correct: correctNorm };
+    if (usedBinNorm) g.used.add(usedBinNorm);
+    g.correct = correctNorm || g.correct;
     byTxSku.set(key, g);
   }
   // Per-order rollup
   const perOrder = new Map();
   for (const g of byTxSku.values()){
-    const used = Array.from(g.used);
-    const isErrGroup = used.length > 0 && !used.includes((g.correct||'').trim());
+  const used = Array.from(g.used);
+  const isErrGroup = used.length > 0 && !used.includes((g.correct||'').trim());
     // Avoid collapsing when reference is missing: fallback to per-SKU pseudo order
     const refKey = (g.reference && g.reference.trim()) ? g.reference.trim() : `REF_MISSING__${g.sku||''}`;
     const key = `${g.date||''}::${refKey}`;
@@ -357,9 +381,9 @@ async function getWarehouseCharts(filters){
   }
   try { console.debug('[WM][Charts] perOrder=', perOrder.size); } catch(_){}
   const orderList = Array.from(perOrder.values()).sort((a,b)=> a.date.localeCompare(b.date));
-  // Determine full date range prioritizing DB min/max; fallback to dataset if needed
-  const minStrEff = minDateStr || rowsAll[0]?.report_date || orderList[0]?.date || rows[0]?.report_date;
-  const maxStrEff = maxDateStr || rowsAll[rowsAll.length - 1]?.report_date || orderList[orderList.length - 1]?.date || rows[rows.length - 1]?.report_date;
+  // Determine full date range from dataset (cached full coverage)
+  const minStrEff = rowsAll[0]?.report_date || orderList[0]?.date || rows[0]?.report_date;
+  const maxStrEff = rowsAll[rowsAll.length - 1]?.report_date || orderList[orderList.length - 1]?.date || rows[rows.length - 1]?.report_date;
   const startRange = new Date(minStrEff + 'T00:00:00Z');
   const endRange = new Date(maxStrEff + 'T00:00:00Z');
   startRange.setUTCHours(0,0,0,0);
@@ -416,28 +440,10 @@ function emptyCharts(){
 // isoWeek helper removed as charts are now daily across full period
 
 async function getWarehouseErrorsTable(params, pagination, onlyErrors){
-  const sb = await ensureSb();
   const limit = pagination?.limit || 20;
   const page = pagination?.page || 1;
   const pageStart = (page - 1) * limit;
-  // Fetch movements in pages and aggregate errors client-side for correct pagination
-  const pageSize = 1000;
-  let from = 0;
-  const rows = [];
-  while (true){
-    const { data, error } = await sb
-      .from('warehouse_movements')
-      .select('report_date, reference, reference_type, stock_locator, bin, quantity_out, sku')
-      .gt('quantity_out', 0)
-      .order('report_date', { ascending:false })
-      .range(from, from + pageSize - 1);
-    if (error){ console.warn('getWarehouseErrorsTable error', error); break; }
-    const batch = data || [];
-    rows.push(...batch);
-    if (batch.length < pageSize) break;
-    from += batch.length;
-    if (rows.length > 20000) break; // safety cap
-  }
+  const rows = await fetchWarehouseRowsAll();
 
   // normalize + filter dataset
   const norm = (s)=> String(s||'').trim().toUpperCase();
@@ -449,7 +455,7 @@ async function getWarehouseErrorsTable(params, pagination, onlyErrors){
     reference_type: r.reference_type,
     stock_locator: norm(r.stock_locator),
     bin: norm(r.bin),
-    quantity_out: r.quantity_out,
+    quantity_out: r.qty_out,
     sku: r.sku,
     refKey: normKey(r.reference_type),
   })).filter(r=> r.stock_locator !== '' && !EXCLUDE_LOC.has(r.stock_locator) && !r.stock_locator.includes('BOM') && r.refKey !== 'billofmaterial' && r.refKey !== 'stocktransfer');
@@ -485,10 +491,13 @@ async function getWarehouseErrorsTable(params, pagination, onlyErrors){
     const date = toISO(r.report_date);
     const key = `${date}::${r.reference||''}::${r.sku||''}`;
     const correct = String(r.stock_locator||'').trim();
+    const correctNorm = normPos(correct);
     const usedBin = String(r.bin||'').trim();
-    const g = byTxSku.get(key) || { date, reference: r.reference||'-', type: r.reference_type||'-', sku: r.sku||'', used: new Set(), correct, qtyOut: 0 };
+    const usedNorm = normPos(usedBin);
+    const g = byTxSku.get(key) || { date, reference: r.reference||'-', type: r.reference_type||'-', sku: r.sku||'', usedRaw: new Set(), usedNorm: new Set(), correct, correctNorm, qtyOut: 0 };
     // always collect used bin if present to include correct rows too
-    if (usedBin){ g.used.add(usedBin); }
+    if (usedBin){ g.usedRaw.add(usedBin); }
+    if (usedNorm){ g.usedNorm.add(usedNorm); }
     g.qtyOut += Number(r.quantity_out||0);
     byTxSku.set(key, g);
   }
@@ -500,10 +509,10 @@ async function getWarehouseErrorsTable(params, pagination, onlyErrors){
       customer: x.type, // renamed to Type in header
       date: x.date,
       sku: x.sku,
-      usedLocation: Array.from(x.used).join(', ') || '-',
+      usedLocation: Array.from(x.usedRaw||[]).join(', ') || '-',
       correctLocator: x.correct || '-',
       qtyOut: x.qtyOut,
-      isError: (Array.from(x.used).length > 0) && !Array.from(x.used).includes((x.correct||'').trim())
+      isError: (Array.from(x.usedNorm||[]).length > 0) && !Array.from(x.usedNorm||[]).includes((x.correctNorm||'').trim())
     }));
   const allItems = onlyErrors ? allItemsRaw.filter(r=> r.isError) : allItemsRaw;
   const total = allItems.length;
@@ -511,4 +520,42 @@ async function getWarehouseErrorsTable(params, pagination, onlyErrors){
   const paged = allItems.slice(pageStart, pageStart + limit);
   state.pagination.totalPages = totalPages;
   return { items: paged, totalPages };
+}
+
+// ---- Shared rows cache for warehouse_movements ----
+let __wm_rows_cache = null;
+async function fetchWarehouseRowsAll(){
+  if (Array.isArray(__wm_rows_cache) && __wm_rows_cache.length) return __wm_rows_cache;
+  const sb = await ensureSb();
+  const pageSize = 1000;
+  let fromIdx = 0;
+  const rowsRaw = [];
+  while (true){
+    const { data, error } = await sb
+      .from('warehouse_movements')
+      .select('report_date, quantity_out, reference_type, stock_locator, bin, sku, reference')
+      .order('report_date', { ascending: true })
+      .range(fromIdx, fromIdx + pageSize - 1);
+    if (error){ console.warn('fetchWarehouseRowsAll error', error); break; }
+    const batch = data || [];
+    rowsRaw.push(...batch);
+    if (batch.length < pageSize) break;
+    fromIdx += batch.length;
+    if (rowsRaw.length > 200000) break; // safety cap
+  }
+  // Normalize once
+  const norm = (s)=> String(s||'').trim().toUpperCase();
+  const normKey = (s)=> String(s||'').toLowerCase().replace(/\s|\-|_/g,'');
+  __wm_rows_cache = (rowsRaw||[]).map(r=>({
+    report_date: toISO(r.report_date),
+    qty_out: Number(r.quantity_out||0),
+    reference_type: String(r.reference_type||'').trim(),
+    stock_locator: norm(r.stock_locator),
+    bin: norm(r.bin),
+    sku: String(r.sku||'').trim(),
+    reference: String(r.reference||'').trim(),
+    refKey: normKey(r.reference_type),
+  }));
+  try { console.debug('[WM] cache ready, rows=', __wm_rows_cache.length); } catch(_){ }
+  return __wm_rows_cache;
 }

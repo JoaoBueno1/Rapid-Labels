@@ -79,10 +79,19 @@
       <table class="app-table" id="restockTable">
         <thead>
           <tr>
-            <th style="width:36px">★</th><th>SKU</th><th>Product</th><th>Pickface</th><th>On Hand</th><th>Capacity</th><th>Status</th><th>Reserve</th><th>Restock</th>
+            <th style="width:36px">★</th>
+            <th>SKU</th>
+            <th>Product</th>
+            <th>Pickface</th>
+            <th>On Hand</th>
+            <th>Capacity</th>
+            <th>Status</th>
+            <th>Reserve</th>
+            <th>Restock</th>
+            <th class="print-only">Nearest Reserve</th>
           </tr>
         </thead>
-  <tbody id="restockTbody"><tr><td colspan="9" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
+  <tbody id="restockTbody"><tr><td colspan="10" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
       </table>
     </div>
     <div id="restockPagination" class="pager" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
@@ -365,6 +374,8 @@
   @media print{ .pager{ display:none !important } }
   /* Reserve info badge and tooltip */
   .reserve-cell{ display:inline-flex; align-items:center; gap:6px; position:relative }
+  /* Elements only visible in print */
+  .print-only{ display:none }
   .info-badge{
     display:inline-flex; align-items:center; justify-content:center;
     width:12px; height:12px; border-radius:999px;
@@ -405,6 +416,10 @@
   /* Make status badges monochrome-friendly */
   .status-badge { background: transparent !important; border-color: #999 !important; color:#111 !important; }
   .info-badge, .reserve-pop { display:none !important; }
+  /* Hide favorites column (first column) on print */
+  #restockTable th:first-child, #restockTable td:first-child { display: none !important; }
+  /* Show print-only cells/headers during print */
+  .print-only{ display: table-cell !important; }
   }
   @page { size: A4 landscape; margin: 12mm }
       `;
@@ -460,7 +475,12 @@
       // Set a clean document.title so 'Save as PDF' suggests a good filename
       const prevTitle = document.title;
       document.title = `Re-Stock ${formatNowForFile()}`;
-      const restore = ()=>{ document.title = prevTitle; window.removeEventListener('afterprint', restore); };
+      try { if (window.restockPreparePrintView) window.restockPreparePrintView(); } catch {}
+      const restore = ()=>{
+        try { if (window.restockRestoreView) window.restockRestoreView(); } catch {}
+        document.title = prevTitle;
+        window.removeEventListener('afterprint', restore);
+      };
       window.addEventListener('afterprint', restore);
       // yield to DOM then print
       setTimeout(()=> window.print(), 0);
