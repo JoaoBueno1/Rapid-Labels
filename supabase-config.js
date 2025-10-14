@@ -47,16 +47,21 @@ window.supabaseReady = (async () => {
                 .from('Products')
                 .select('*')
                 .eq('SKU', sku)
-                .single();
-            if (!error && data) {
-                console.log('✅ SKU found:', data);
+                .limit(50);
+            if (error) {
+                console.error('❌ SKU query error:', error);
+                return { success: false, error: error.message || 'SKU query failed' };
+            }
+            if (Array.isArray(data) && data.length > 0) {
+                const row = data[0]; // pick first when duplicates exist
+                console.log('✅ SKU found (first match):', row);
                 return {
                     success: true,
                     product: {
-                        sku: data.SKU || '',
-                        code: data.Code || '',
-                        name: data.name || data.nome || data.Name || data.Nome || 'Product Name',
-                        description: data.description || data.descricao || data.Description || data.Descricao || 'Product Description'
+                        sku: row.SKU || '',
+                        code: row.Code || '',
+                        name: row.name || row.nome || row.Name || row.Nome || 'Product Name',
+                        description: row.description || row.descricao || row.Description || row.Descricao || 'Product Description'
                     }
                 };
             }
@@ -75,16 +80,21 @@ window.supabaseReady = (async () => {
                 .from('Products')
                 .select('*')
                 .eq('Code', code)
-                .single();
-            if (!error && data) {
-                console.log('✅ Code found:', data);
+                .limit(50);
+            if (error) {
+                console.error('❌ Code query error:', error);
+                return { success:false, error: error.message || 'Code query failed' };
+            }
+            if (Array.isArray(data) && data.length > 0) {
+                const row = data[0]; // pick first when duplicates exist
+                console.log('✅ Code found (first match):', row);
                 return {
                     success: true,
                     product: {
-                        sku: data.SKU || '',
-                        code: data.Code || '',
-                        name: data.name || data.nome || data.Name || data.Nome || 'Product Name',
-                        description: data.description || data.descricao || data.Description || data.Descricao || 'Product Description'
+                        sku: row.SKU || '',
+                        code: row.Code || '',
+                        name: row.name || row.nome || row.Name || row.Nome || 'Product Name',
+                        description: row.description || row.descricao || row.Description || row.Descricao || 'Product Description'
                     }
                 };
             }
@@ -111,18 +121,26 @@ window.supabaseReady = (async () => {
         } catch(e){ return { success:false, error: e.message }; }
     }
 
-    // Search in Barcodes table for Product & Manual modes (SKU/Product/Barcode)
+    // Search in Barcodes table for Product & Manual modes (sku/product/barcode), aligned with provided schema
     async function searchBarcodes(term){
         const q = String(term||'').trim();
-        try{
+        if (!q) return { success:true, items: [] };
+        try {
+            const pattern = `%${q}%`;
+            // Columns per schema: sku text, product text, barcode text (lowercase)
             const { data, error } = await supabaseClient
                 .from('Barcodes')
-                .select('id, sku, product, barcode')
-                .or(`sku.ilike.%${q}%,product.ilike.%${q}%,barcode.ilike.%${q}%`)
-                .limit(30);
+                .select('sku, product, barcode')
+                .or(
+                    `sku.ilike.${pattern},product.ilike.${pattern},barcode.ilike.${pattern}`
+                )
+                .limit(50);
             if (error) return { success:false, error: error.message };
-            return { success:true, items: data||[] };
-        } catch(e){ return { success:false, error: e.message }; }
+            const items = Array.isArray(data) ? data : [];
+            return { success:true, items };
+        } catch(e){
+            return { success:false, error: e.message };
+        }
     }
 
     async function discoverTableStructure() {

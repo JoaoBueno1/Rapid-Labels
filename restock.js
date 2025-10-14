@@ -214,18 +214,30 @@
     scored.sort((a,b)=> a.dist - b.dist);
     const top = scored.slice(0, 3);
 
-    // Append special zones if present (case-insensitive), keeping uniqueness
+    // Append special zones (case-insensitive) directly from original reserveLocs, even if code doesn't match parse pattern
     const specials = ['MA-RETURNS','MA-GA','MA-SAMPLES','MA-DOCK'];
     const setIncluded = new Set(top.map(x => x.location.toUpperCase()));
     const extras = [];
+    // Group extras by zone to keep a stable order within each group; sort by qty desc
     for (const zone of specials){
-      const found = scored.filter(x => x.location.toUpperCase().startsWith(zone));
-      // Keep order by distance within zone
-      found.sort((a,b)=> a.dist - b.dist);
-      for (const f of found){
-        const key = f.location.toUpperCase();
+      const zoneUpper = zone.toUpperCase();
+      const candidates = [];
+      for (const r of reserveLocs){
+        if (!r || !r.location || !Number.isFinite(r.qty) || r.qty <= 0) continue;
+        const locUp = String(r.location).toUpperCase();
+        if (locUp.startsWith(zoneUpper)){
+          const key = locUp;
+          if (setIncluded.has(key)) continue; // already in top
+          candidates.push({ location: String(r.location), qty: Number(r.qty), dist: Number.MAX_SAFE_INTEGER, sameLane: false });
+        }
+      }
+      // Prefer higher qty first if multiple in the same zone
+      candidates.sort((a,b)=> b.qty - a.qty);
+      for (const c of candidates){
+        if (extras.length >= 50) break; // safety cap
+        const key = c.location.toUpperCase();
         if (!setIncluded.has(key)){
-          extras.push(f);
+          extras.push(c);
           setIncluded.add(key);
         }
       }

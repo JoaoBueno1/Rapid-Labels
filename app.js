@@ -252,25 +252,16 @@ async function performSearch() {
 }
 
 function printBarcodes3Up(){
-    // Business rules enforcement: 
-    // - SKU must be exactly 5 digits for product & manual (if provided / required)
-    // - Product prints only if product (by SKU) exists in DB
-    // - Location prints only if location exists in DB
-    // - Manual: must have 5-digit code (SKU field) AND EAN-13 exactly 13 digits to print; manual ignores DB existence for product but still validates lengths
-    // - EAN-13 fields (product/manual) only valid with length 13 numeric; otherwise ignored or block if mandatory scenario.
+    // Business rules enforcement:
+    // - Product mode: do NOT check DB. Allow print when either SKU is exactly 5 digits OR EAN-13 is valid (13 digits). Name is optional and printed as title.
+    // - Location mode: must exist in DB (kept, as locations are more constrained operationally).
+    // - Manual mode: must have 5-digit code AND a valid 13-digit EAN-13.
+    // - EAN-13 fields (product/manual) are valid only with 13 numeric digits; otherwise ignored (Product) or blocked (Manual) per above.
     try {
         const skuRegex = /^\d{5}$/;
         const eanRegex = /^\d{13}$/;
         const getMode = (name)=> document.querySelector(`input[name="${name}"]:checked`)?.value || 'product';
 
-        const checkProductInDB = async (sku)=>{
-            if(!skuRegex.test(sku)) return false;
-            if(!window.supabaseSearch || !window.supabaseSearch.searchBySKU) return false; // fail closed
-            try {
-                const res = await window.supabaseSearch.searchBySKU(sku);
-                return !!(res && res.success && res.product);
-            } catch(e){ return false; }
-        };
         const checkLocationInDB = async (loc)=>{
             if(!loc) return false;
             if(!window.supabaseSearch || !window.supabaseSearch.searchLocation) return false;
@@ -301,15 +292,8 @@ function printBarcodes3Up(){
         const finalSections = [];
         const errors = [];
 
-        const productCache = new Map();
         const locationCache = new Map();
 
-        const ensureProduct = async (sku)=>{
-            if(productCache.has(sku)) return productCache.get(sku);
-            const ok = await checkProductInDB(sku);
-            productCache.set(sku, ok);
-            return ok;
-        };
         const ensureLocation = async (code)=>{
             if(locationCache.has(code)) return locationCache.get(code);
             const ok = await checkLocationInDB(code);
@@ -321,11 +305,13 @@ function printBarcodes3Up(){
             const i = idx+1;
             if(r.mode === 'product'){
                 const { sku, name, ean13 } = r.product;
-                if(!skuRegex.test(sku)) { if(sku||name||ean13) errors.push(`Section ${i} (Product): SKU must be exactly 5 digits.`); return; }
-                const exists = await ensureProduct(sku);
-                if(!exists){ errors.push(`Section ${i} (Product): SKU not found in database.`); return; }
-                const eanValid = ean13 && eanRegex.test(ean13);
-                finalSections.push({ mode:'product', sku, name, ean13: eanValid ? ean13 : '' });
+                const hasSku = sku && skuRegex.test(sku);
+                const hasEan = ean13 && eanRegex.test(ean13);
+                // If nothing filled in this section, skip silently
+                if(!(sku||name||ean13)) { return; }
+                // Require at least a barcodable identifier: EAN-13 or 5-digit SKU
+                if(!hasSku && !hasEan){ errors.push(`Section ${i} (Product): provide a 5-digit SKU or a valid EAN-13.`); return; }
+                finalSections.push({ mode:'product', sku: hasSku ? sku : '', name, ean13: hasEan ? ean13 : '' });
             } else if(r.mode === 'location') {
                 const { code } = r.location;
                 if(!code){ return; }
