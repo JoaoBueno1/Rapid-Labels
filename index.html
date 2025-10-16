@@ -94,6 +94,14 @@
                             <input type="date" id="editDate">
                         </div>
                     </div>
+                    <!-- Paper size selection (required) -->
+                    <div class="size-selection">
+                        <label>Paper size: *</label>
+                        <div class="size-buttons">
+                            <button type="button" class="size-btn" data-size="A4" onclick="selectSize('A4')" aria-pressed="false">A4</button>
+                            <button type="button" class="size-btn" data-size="A3" onclick="selectSize('A3')" aria-pressed="false">A3</button>
+                        </div>
+                    </div>
                     <div class="pages-selection">
                         <label>Number of pages: *</label>
                         <div class="pages-input">
@@ -146,6 +154,14 @@
                 </div>
 
 
+                <!-- Paper size selection (required) -->
+                <div class="size-selection">
+                    <label>Paper size: *</label>
+                    <div class="size-buttons">
+                        <button type="button" class="size-btn" data-size="A4" onclick="selectManualSize('A4')" aria-pressed="false">A4</button>
+                        <button type="button" class="size-btn" data-size="A3" onclick="selectManualSize('A3')" aria-pressed="false">A3</button>
+                    </div>
+                </div>
                 <div class="pages-selection">
                     <label>Number of pages: *</label>
                     <div class="pages-input">

@@ -51,6 +51,33 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     } catch (_) { }
+
+    // Global hash routing for modals across all pages
+    function handleHashRouting(){
+        const h = (location.hash || '').toLowerCase();
+        if (h === '#search') { try { openSearchModal(); } catch(_){} }
+        else if (h === '#manual') { try { openManualModal(); } catch(_){} }
+        else if (h === '#barcodes') { try { openBarcodesModal(); } catch(_){} }
+    }
+    try {
+        // Open on initial load if hash is present
+        handleHashRouting();
+        // React to hash changes
+        window.addEventListener('hashchange', handleHashRouting);
+        // Also bind clicks to ensure opening even if hash doesn't change
+        document.querySelectorAll('a[href="#search"], a[href="#manual"], a[href="#barcodes"]').forEach(a => {
+            a.addEventListener('click', (e)=>{
+                e.preventDefault();
+                const href = a.getAttribute('href') || '';
+                if (location.hash !== href) {
+                    location.hash = href;
+                } else {
+                    // If hash is already the same, still trigger routing
+                    handleHashRouting();
+                }
+            });
+        });
+    } catch(_){}
     
     // Event listener for real-time search (guard missing performSearch to avoid breaking other inits)
     const searchInput = document.getElementById('productSearch');
@@ -489,8 +516,10 @@ function updateSizeButtons(modal) {
     
     document.querySelectorAll(`#${modal}Modal .size-btn`).forEach(btn => {
         btn.classList.remove('selected');
+        btn.setAttribute('aria-pressed', 'false');
         if (btn.dataset.size === selectedSize) {
             btn.classList.add('selected');
+            btn.setAttribute('aria-pressed', 'true');
         }
     });
 }
@@ -604,8 +633,9 @@ function validateField(fieldId) {
 }
 
 function validateSearchForm() {
-    // Allow printing even if qty is 0/empty and no paper size is selected; only require a selected product
+    // Require a selected product and paper size
     if (!selectedProduct) return false;
+    if (!selectedSearchSize) return false;
     return true;
 }
 
@@ -619,7 +649,8 @@ function validateManualForm() {
         }
     });
     
-    // Paper size selection is optional; chosen in printer dialog
+    // Require paper size selection for proper formatting
+    if (!selectedManualSize) isValid = false;
     // manualQty can be 0 or empty
     
     return isValid;

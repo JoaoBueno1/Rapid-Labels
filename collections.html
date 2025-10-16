@@ -4,7 +4,7 @@
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Collections - Rapid Label</title>
-	<link rel="stylesheet" href="styles.css?v=7" />
+	<link rel="stylesheet" href="styles.css?v=8" />
 	<link rel="icon" type="image/svg+xml" href="icon-192.svg">
 	<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 	<meta name="x-build" content="2025-09-09T00:00:00Z-v3" />
@@ -18,9 +18,9 @@
 			</div>
 			<nav class="site-nav">
 				<a href="index.html" class="nav-link">Home</a>
-				<a href="#" class="nav-link" onclick="openSearchModal();return false;">Search Product Label</a>
-				<a href="#" class="nav-link" onclick="openManualModal();return false;">Manual Label</a>
-				<a href="#" class="nav-link" onclick="openBarcodesModal();return false;">Barcodes</a>
+				<a href="#search" class="nav-link">Search Product Label</a>
+				<a href="#manual" class="nav-link">Manual Label</a>
+				<a href="#barcodes" class="nav-link">Barcodes</a>
 				<a href="collections.html" class="nav-link">Collections</a>
 				<a href="collections-history.html" class="nav-link">Collections History</a>
 				<a href="restock.html" class="nav-link">Re-Stock</a>
@@ -231,6 +231,14 @@
 							<input type="date" id="editDate" />
 						</div>
 					</div>
+					<!-- Paper size selection (required) -->
+					<div class="size-selection">
+						<label>Paper size: *</label>
+						<div class="size-buttons">
+							<button type="button" class="size-btn" data-size="A4" onclick="selectSize('A4')" aria-pressed="false">A4</button>
+							<button type="button" class="size-btn" data-size="A3" onclick="selectSize('A3')" aria-pressed="false">A3</button>
+						</div>
+					</div>
 					<div class="pages-selection">
 						<label>Number of pages: *</label>
 						<div class="pages-input">
@@ -274,6 +282,14 @@
 							<label for="manualDate">Date:</label>
 							<input type="date" id="manualDate" />
 						</div>
+					</div>
+				</div>
+				<!-- Paper size selection (required) -->
+				<div class="size-selection">
+					<label>Paper size: *</label>
+					<div class="size-buttons">
+						<button type="button" class="size-btn" data-size="A4" onclick="selectManualSize('A4')" aria-pressed="false">A4</button>
+						<button type="button" class="size-btn" data-size="A3" onclick="selectManualSize('A3')" aria-pressed="false">A3</button>
 					</div>
 				</div>
 				<div class="pages-selection">
