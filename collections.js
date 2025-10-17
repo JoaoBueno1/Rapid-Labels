@@ -511,6 +511,15 @@ function sanitizeText(str, maxLen){
   return s;
 }
 
+// Date helpers: always compute local YYYY-MM-DD (avoid UTC off-by-one via toISOString)
+function getTodayLocalYMD(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
 // Accept any non ord_ id as server (uuid or numeric)
 function isServerId(v){
   if (v == null) return false;
@@ -661,7 +670,7 @@ async function refreshCollections(silent = false){
     bindOperatorTypeAhead();
     enhanceOperatorSelect();
   }
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = getTodayLocalYMD();
   const orderDate = document.getElementById('orderDate'); if (orderDate) orderDate.value = todayStr;
   const cDate = document.getElementById('collectionDate'); if (cDate) cDate.value = todayStr;
   const cTime = document.getElementById('collectionTime'); if (cTime) cTime.value = new Date().toTimeString().slice(0,5);
@@ -724,8 +733,8 @@ function openAddOrderModal(){
       if(el.id !== 'parcelDraftList') el.remove();
     });
   }
-  const today = new Date().toISOString().slice(0,10);
-  const dateEl = document.getElementById('orderDate'); if (dateEl) dateEl.value = today;
+  // Always set to today's local date on open (prevents UTC/offset showing yesterday)
+  const dateEl = document.getElementById('orderDate'); if (dateEl) dateEl.value = getTodayLocalYMD();
   // Re-render parcel UI after a tick (ensures DOM ready)
   setTimeout(()=>{ try { updateParcelDraftUI(); } catch(e){ console.error('[AddOrder] updateParcelDraftUI after open failed', e); } }, 0);
 }
@@ -1156,7 +1165,8 @@ async function saveEditOrder(){
 function openConfirmCollect(id){
   pendingCollectId=id;
   const today=new Date();
-  document.getElementById('collectionDate').value=today.toISOString().slice(0,10);
+  // Set local date (not UTC) to avoid off-by-one
+  document.getElementById('collectionDate').value=getTodayLocalYMD();
   document.getElementById('collectionTime').value=today.toTimeString().slice(0,5);
   // Clear collectedBy field
   const cb = document.getElementById('collectedBy'); if (cb){ cb.value = ''; cb.classList.remove('error'); cb.removeAttribute('aria-invalid'); }
