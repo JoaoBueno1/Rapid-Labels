@@ -55,8 +55,26 @@
       .replace(/'/g, '&#039;');
   }
 
-  function statusChip(status) {
+  function statusChip(status, setupInfo = null) {
     const s = String(status || '').toLowerCase();
+    
+    // For configure status, add tooltip with diagnostic info
+    if (s === 'configure' && setupInfo) {
+      const { sku, hasSetup, min, med, max } = setupInfo;
+      let tooltip = 'Needs setup: ';
+      if (!hasSetup) {
+        tooltip += 'No configuration found for this SKU';
+      } else {
+        const issues = [];
+        if (!Number.isFinite(min)) issues.push('min capacity not set');
+        if (!Number.isFinite(med)) issues.push('med capacity not set');
+        if (!Number.isFinite(max)) issues.push('max capacity not set');
+        tooltip += issues.length > 0 ? issues.join(', ') : 'Invalid capacity values';
+      }
+      
+      return `<span title="${escapeHtml(tooltip)}" style="cursor: help; border-bottom: 1px dotted #999">${escapeHtml(s)}</span>`;
+    }
+    
     return `<span>${escapeHtml(s)}</span>`; // styled later by styleRestockStatuses
   }
 
@@ -108,7 +126,7 @@
         const pickface = escapeHtml(r.stock_locator);
   const onHand = r.on_hand ?? '';
         const capacity = r.pickface_space ?? '';
-  const status = escapeHtml((r.__norm_status || r.status || 'configure').toLowerCase());
+  const status = (r.__norm_status || r.status || 'configure').toLowerCase();
         const reserveQty = Number(r.__reserve_total ?? 0);
         const restock = r.restock_qty ?? '';
         let reserveCellHtml = formatReserveCell(reserveQty);
@@ -152,7 +170,7 @@
             <td>${pickface}</td>
             <td>${onHand}</td>
             <td>${capacity}</td>
-            <td>${statusChip(status)}</td>
+            <td>${statusChip(status, r.__setup_info)}</td>
             <td>${reserveCellHtml}</td>
             <td>${restock}</td>
             <td class="print-only">${nearestHtml}</td>
@@ -327,6 +345,197 @@
       );
   }
 
+  // Debug function to check reserve calculation for a SKU
+  window.debugSkuReserve = function(sku) {
+    console.log(`=== DEBUG SKU ${sku} RESERVE CALCULATION ===`);
+    
+    // Find the row
+    const row = state.allRows.find(r => String(r.sku) === String(sku));
+    if (!row) {
+      console.log('SKU not found');
+      return;
+    }
+    
+    console.log('Row data:', {
+      sku: row.sku,
+      pickface: row.stock_locator,
+      on_hand: row.on_hand,
+      reserve_total: row.__reserve_total,
+      reserve_locations: row.__reserve_locations
+    });
+    
+    // Check raw data from restock_report for this SKU
+    window.supabase
+      .from('restock_report')
+      .select('sku, location, on_hand')
+      .eq('sku', sku)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching raw data:', error);
+          return;
+        }
+        
+        console.log(`Raw data from restock_report for SKU ${sku}:`);
+        data?.forEach((rec, i) => {
+          console.log(`  Record ${i+1}:`, {
+            location: rec.location,
+            on_hand: rec.on_hand,
+            is_pickface: rec.location === row.stock_locator,
+            normalized_pickface: normalizeLocation(rec.location),
+            normalized_row_pickface: normalizeLocation(row.stock_locator),
+            matches_pickface: normalizeLocation(rec.location) === normalizeLocation(row.stock_locator)
+          });
+        });
+        
+        // Manual reserve calculation
+        const pickfaceNormalized = normalizeLocation(row.stock_locator);
+        let manualTotal = 0;
+        const manualLocations = [];
+        
+        data?.forEach(rec => {
+          const oh = Number(rec.on_hand) || 0;
+          if (normalizeLocation(rec.location) !== pickfaceNormalized) {
+            manualTotal += oh;
+            if (oh > 0) {
+              manualLocations.push({ location: rec.location, qty: oh });
+            }
+          }
+        });
+        
+        console.log('Manual calculation:', {
+          total: manualTotal,
+          locations: manualLocations,
+          system_total: row.__reserve_total,
+          system_locations: row.__reserve_locations
+        });
+      });
+    
+    return row;
+  };
+  window.debugSkuLocations = function(sku) {
+    console.log(`=== DEBUG SKU ${sku} LOCATIONS ===`);
+    
+    // Check in current allRows
+    const rows = state.allRows.filter(r => String(r.sku) === String(sku));
+    console.log(`Found ${rows.length} rows for SKU ${sku}:`);
+    rows.forEach((row, i) => {
+      console.log(`  Row ${i+1}:`, {
+        sku: row.sku,
+        product: row.product,
+        location: row.stock_locator,
+        on_hand: row.on_hand,
+        status: row.__norm_status || row.status
+      });
+    });
+    
+    return rows;
+  };
+
+  // Debug function to investigate why a SKU has "needs setup" status
+  window.debugSkuStatus = function(sku) {
+    console.log(`=== DEBUG SKU ${sku} ===`);
+    
+    // Find the row in current data
+    const row = state.allRows.find(r => String(r.sku) === String(sku));
+    if (!row) {
+      console.log('SKU not found in current data');
+      return;
+    }
+    
+    console.log('Row data:', {
+      sku: row.sku,
+      product: row.product,
+      stock_locator: row.stock_locator,
+      on_hand: row.on_hand,
+      pickface_space: row.pickface_space,
+      status: row.status,
+      __norm_status: row.__norm_status,
+      __setup_info: row.__setup_info
+    });
+    
+    // Check setup info if available
+    if (row.__setup_info) {
+      console.log('Setup diagnostic:', row.__setup_info);
+    }
+    
+    return row;
+  };
+
+  // New function to analyze all "needs setup" cases
+  window.analyzeNeedsSetup = function() {
+    console.log('=== ANALYZING ALL NEEDS SETUP CASES ===');
+    
+    const needsSetup = state.allRows.filter(r => 
+      (r.__norm_status || '').toLowerCase() === 'configure'
+    );
+    
+    console.log(`Total "needs setup" items: ${needsSetup.length}`);
+    
+    // Group by reason
+    const reasons = {
+      noSetupRecord: 0,
+      invalidMin: 0,
+      invalidMed: 0,
+      invalidMax: 0,
+      allInvalid: 0
+    };
+    
+    const samples = {
+      noSetupRecord: [],
+      invalidValues: []
+    };
+    
+    needsSetup.forEach(row => {
+      const info = row.__setup_info;
+      if (!info) return;
+      
+      if (!info.hasSetup) {
+        reasons.noSetupRecord++;
+        if (samples.noSetupRecord.length < 5) {
+          samples.noSetupRecord.push({
+            sku: row.sku,
+            product: row.product
+          });
+        }
+      } else {
+        // Has setup record but values are invalid
+        if (!Number.isFinite(info.min)) reasons.invalidMin++;
+        if (!Number.isFinite(info.med)) reasons.invalidMed++;
+        if (!Number.isFinite(info.max)) reasons.invalidMax++;
+        
+        if (samples.invalidValues.length < 5) {
+          samples.invalidValues.push({
+            sku: row.sku,
+            product: row.product,
+            min: info.min,
+            med: info.med,
+            max: info.max
+          });
+        }
+      }
+    });
+    
+    console.log('Breakdown of issues:');
+    console.log('- No setup record:', reasons.noSetupRecord);
+    console.log('- Invalid min values:', reasons.invalidMin);
+    console.log('- Invalid med values:', reasons.invalidMed);
+    console.log('- Invalid max values:', reasons.invalidMax);
+    
+    console.log('\nSample SKUs with no setup record:', samples.noSetupRecord);
+    console.log('Sample SKUs with invalid values:', samples.invalidValues);
+    
+    return {
+      total: needsSetup.length,
+      reasons,
+      samples
+    };
+  };
+
+  // Helper function to normalize location strings for comparison (ignore spaces, case)
+  function normalizeLocation(loc) {
+    return String(loc || '').replace(/\s+/g, '').toUpperCase();
+  }
+
   async function computeReserveTotals(rows){
     try{
       await window.supabaseReady;
@@ -334,17 +543,46 @@
       const skuSet = new Set();
       for (const r of rows){
         if (!r || !r.sku) continue;
-        if (!(r.sku in mapPick)) mapPick[r.sku] = r.stock_locator || '';
+        if (!(r.sku in mapPick)) mapPick[r.sku] = normalizeLocation(r.stock_locator);
         skuSet.add(r.sku);
       }
       const skuList = Array.from(skuSet);
       if (skuList.length === 0) return { totals: {}, bySkuLocations: {} };
-      const { data, error } = await window.supabase
-        .from('restock_report')
-        .select('sku, location, on_hand')
-        .in('sku', skuList)
-        .limit(20000);
-      if (error) throw error;
+      
+      console.log('=== COMPUTE RESERVE TOTALS DEBUG ===');
+      console.log('SKUs to lookup:', skuList.length);
+      console.log('33994 pickface mapping:', mapPick['33994']);
+      console.log('SKU list sample:', skuList.slice(0, 10));
+      console.log('SKU 33994 in list?:', skuList.includes('33994'));
+      console.log('SKU 33994 position in list:', skuList.indexOf('33994'));
+      console.log('Processing SKUs in chunks of 500...');
+      console.log('SKU types in list:', skuList.slice(0, 5).map(s => typeof s + ':' + s));
+      
+      // Process SKUs in chunks to avoid Supabase .in() limits
+      const chunkSize = 500;
+      const allData = [];
+      
+      for (let i = 0; i < skuList.length; i += chunkSize) {
+        const chunk = skuList.slice(i, i + chunkSize);
+        console.log(`Fetching chunk ${Math.floor(i/chunkSize) + 1}/${Math.ceil(skuList.length/chunkSize)}: ${chunk.length} SKUs`);
+        
+        const { data: chunkData, error: chunkError } = await window.supabase
+          .from('restock_report')
+          .select('sku, location, on_hand')
+          .in('sku', chunk);
+          
+        if (chunkError) {
+          console.error('Chunk error:', chunkError);
+          continue;
+        }
+        
+        allData.push(...(chunkData || []));
+      }
+      
+      const data = allData;
+      
+      console.log('Total raw data received:', data?.length || 0);
+      
       const totals = {};
       const bySkuLocations = {};
       for (const rec of data || []){
@@ -352,11 +590,16 @@
         const loc = rec.location;
         const oh = Number(rec.on_hand) || 0;
         if (!sku || !Number.isFinite(oh)) continue;
-        if (loc === mapPick[sku]) continue; // exclude pickface
+        
+        // Compare normalized locations to ignore spaces and case differences
+        if (normalizeLocation(loc) === mapPick[sku]) continue; // exclude pickface
         totals[sku] = (totals[sku] || 0) + oh;
         if (!bySkuLocations[sku]) bySkuLocations[sku] = [];
         bySkuLocations[sku].push({ location: loc, qty: oh });
       }
+      
+      console.log('Reserve calculation completed successfully');
+      
       return { totals, bySkuLocations };
     } catch(e){
       console.warn('reserve totals error', e);
@@ -377,54 +620,181 @@
       await window.supabaseReady;
 
   // Base query
-      // Join setup to compute thresholds client-side
-      let qView = window.supabase
-        .from('restock_view')
-        .select('sku, product, stock_locator, on_hand, pickface_space, status, restock_qty');
-      let qSetup = window.supabase
-        .from('restock_setup')
-        .select('sku, cap_min, cap_med, cap_max');
+  // Join setup to compute thresholds client-side
+  let qSetup = window.supabase
+    .from('restock_setup')
+    .select('sku, cap_min, cap_med, cap_max')
+    .order('sku')
+    .limit(10000); // Force high limit to get all records
+
+  // Build view query
+  let qView = window.supabase
+    .from('restock_view')
+    .select('sku, product, stock_locator, on_hand, pickface_space, restock_qty')
+    .order('sku');
 
   const q = (state.q || '').trim();
-      if (q) {
-        // Case-insensitive partial match on common columns
-        // Use ilike for text fields; allow searching numbers as text too
-        const pattern = `%${q}%`;
-        qView = qView.or(
-          [
-            `sku.ilike.${pattern}`,
-            `product.ilike.${pattern}`,
-            `stock_locator.ilike.${pattern}`,
-          ].join(',')
-        );
-      }
+  if (q) {
+    // Case-insensitive partial match on common columns
+    const pattern = `%${q}%`;
+    qView = qView.or(
+      [
+        `sku.ilike.${pattern}`,
+        `product.ilike.${pattern}`,
+        `stock_locator.ilike.${pattern}`,
+      ].join(',')
+    );
+  }
 
-  // Fetch view and setup in parallel
-  const [{ data: viewRows, error: vErr }, { data: setupRows, error: sErr }] = await Promise.all([
-        qView.limit(1000),
-        qSetup.limit(10000)
-      ]);
+  // Apply search filter if exists
+  if (state.searchTerm && state.searchTerm.trim()) {
+    const searchTerm = state.searchTerm.trim();
+    if (/^\d+$/.test(searchTerm)) {
+      qView = qView.eq('sku', searchTerm);
+    } else {
+      qView = qView.or(
+        `product.ilike.%${searchTerm}%,sku.ilike.%${searchTerm}%`
+      );
+    }
+  }
+  
+  const viewPromise = qView.limit(5000); // Increased limit
+  
+  // Fetch setup data in chunks to avoid Supabase limits
+  console.log('Fetching setup data in chunks...');
+  const allSetupData = [];
+  const setupChunkSize = 1000;
+  let setupOffset = 0;
+  
+  while (true) {
+    console.log(`Fetching setup chunk starting at ${setupOffset}...`);
+    const { data: setupChunk, error: setupChunkError } = await window.supabase
+      .from('restock_setup')
+      .select('sku, cap_min, cap_med, cap_max')
+      .order('sku')
+      .range(setupOffset, setupOffset + setupChunkSize - 1);
+    
+    if (setupChunkError) {
+      console.error('Setup chunk error:', setupChunkError);
+      break;
+    }
+    
+    if (!setupChunk || setupChunk.length === 0) {
+      console.log('No more setup data, stopping...');
+      break;
+    }
+    
+    console.log(`Loaded ${setupChunk.length} setup records from chunk`);
+    allSetupData.push(...setupChunk);
+    
+    if (setupChunk.length < setupChunkSize) {
+      console.log('Last chunk (partial), stopping...');
+      break;
+    }
+    
+    setupOffset += setupChunkSize;
+  }
+  
+  console.log(`Total setup records loaded: ${allSetupData.length}`);
+  const [{ data: viewRows, error: vErr }] = await Promise.all([viewPromise]);
+  const setupRows = allSetupData;
+  const sErr = null;
       if (vErr) throw vErr;
       if (sErr) throw sErr;
 
       let rows = Array.isArray(viewRows) ? viewRows.slice() : [];
       const setupBySku = Object.create(null);
+      
+      console.log('=== SETUP DATA DEBUG ===');
+      console.log('Setup rows received:', setupRows?.length || 0);
+      
+      // Check if we're hitting limits
+      if (setupRows?.length === 1000) {
+        console.warn('⚠️ Setup data may be truncated at 1000 rows - some SKUs might be missing');
+      }
+      
       for (const s of setupRows || []){
         setupBySku[s.sku] = { min: Number(s.cap_min), med: Number(s.cap_med), max: Number(s.cap_max) };
+        
+        // Debug specific SKUs
+        if (String(s.sku) === '31328' || String(s.sku) === '41161') {
+          console.log(`Setup data for SKU ${s.sku}:`, {
+            sku: s.sku,
+            cap_min: s.cap_min,
+            cap_med: s.cap_med,
+            cap_max: s.cap_max,
+            converted: setupBySku[s.sku]
+          });
+        }
       }
+      
+      // Make available for debugging
+      window.debugSetupBySku = setupBySku;
+      window.debugViewRows = rows;
+      
+      console.log('Setup lookup map size:', Object.keys(setupBySku).length);
+      console.log('31328 in setupBySku?:', '31328' in setupBySku, setupBySku['31328']);
+      console.log('41161 in setupBySku?:', '41161' in setupBySku, setupBySku['41161']);
+      
+      // Show some examples of what's in the setup map
+      const setupSamples = Object.keys(setupBySku).slice(0, 10);
+      console.log('Sample SKUs in setup map:', setupSamples);
+      setupSamples.forEach(sku => {
+        console.log(`  ${sku}:`, setupBySku[sku]);
+      });
+      
+      // Debug types immediately
+      console.log('=== TYPE DEBUGGING ===');
+      console.log('Setup map keys sample types:', Object.keys(setupBySku).slice(0,5).map(k => typeof k + ':' + k));
+      console.log('View data SKUs sample types:', rows.slice(0,5).map(r => typeof r.sku + ':' + r.sku));
   // Compute normalized status based on thresholds for all rows
   for (const r of rows){
         const t = setupBySku[r.sku];
+        const isDebugSku = String(r.sku) === '31328';
+        
+        if (isDebugSku) {
+          console.log(`=== DEBUG SKU 31328 Status Calculation ===`);
+          console.log('r.sku:', r.sku, typeof r.sku);
+          console.log('Lookup result t:', t);
+          console.log('Direct lookup test:', setupBySku['31328']);
+          console.log('Row data:', { sku: r.sku, on_hand: r.on_hand, pickface_space: r.pickface_space });
+        }
+        
         if (!t || !Number.isFinite(t.min) || !Number.isFinite(t.med) || !Number.isFinite(t.max)){
           r.__norm_status = 'CONFIGURE';
+          // Store setup diagnostics for tooltip
+          r.__setup_info = {
+            sku: r.sku,
+            hasSetup: !!t,
+            min: t ? t.min : undefined,
+            med: t ? t.med : undefined,
+            max: t ? t.max : undefined
+          };
+          if (isDebugSku) {
+            console.log('31328 set to CONFIGURE due to missing/invalid setup:', {
+              t_exists: !!t,
+              t_value: t,
+              min_finite: t ? Number.isFinite(t.min) : false,
+              med_finite: t ? Number.isFinite(t.med) : false,
+              max_finite: t ? Number.isFinite(t.max) : false,
+              setup_info: r.__setup_info
+            });
+          }
           continue;
         }
         const on = Number(r.on_hand) || 0;
+        if (isDebugSku) {
+          console.log('31328 thresholds:', { min: t.min, med: t.med, max: t.max, on_hand: on });
+        }
         if (on < t.min) r.__norm_status = 'LOW';
         else if (on >= t.min && on < t.med) r.__norm_status = 'MEDIUM';
         else if (on >= t.med && on <= t.max) r.__norm_status = 'FULL';
         else if (on > t.max) r.__norm_status = 'OVER';
         else r.__norm_status = 'CONFIGURE';
+        
+        if (isDebugSku) {
+          console.log('31328 final status:', r.__norm_status);
+        }
       }
   // Compute reserve totals and annotate
   const reserveCtx = await computeReserveTotals(rows);
@@ -574,6 +944,11 @@
   state.rows = visible;
   render(visible);
   };
+
+  // Helper function for locations modal
+  window.restockGetAllRows = function(){
+    return state.allRows || [];
+  };
   window.restockToggleHideNoReserve = function(flag){
     state.hideNoReserve = !!flag;
   state.page = 1;
@@ -600,7 +975,12 @@
     const arranged = stableSortByBusinessRules(rows);
     let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
     if (state.onlyNeedsAdjustment) {
-      visible = visible.filter(r => (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0));
+      visible = visible.filter(r => {
+        // Include items that need adjustment: zero on hand with reserve OR needs config
+        const needsAdjustment = (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0);
+        const needsConfig = (r.__norm_status || r.status || '').toLowerCase() === 'configure';
+        return needsAdjustment || needsConfig;
+      });
     }
     state.rows = visible;
     render(visible);
@@ -711,7 +1091,7 @@
 
     // New required headers per user: "Product additional attribute 1", "SKU", "Bin", "Main Warehouse"
     const idx = {
-      prod_attr_1: find('product additional attribute 1'), // SKU 5 dígitos
+      prod_attr_1: find('product additional attribute 1'), // 5-digit SKU
       product_name: find('sku'), // product name column per user text
       bin: find('bin'), // location
       main_wh: find('main warehouse'), // on hand

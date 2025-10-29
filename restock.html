@@ -40,35 +40,42 @@
       </div>
     </div>
     <div style="margin-top:8px">
-      <div id="restockFilters" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-weight:600;color:#475569">Status:</span>
-          <button class="chip" data-status-filter="ALL" onclick="setStatusFilter('ALL', this)">All</button>
-      <button class="chip" data-status-filter="LOW" onclick="setStatusFilter('LOW', this)">Low</button>
-      <button class="chip" data-status-filter="MEDIUM" onclick="setStatusFilter('MEDIUM', this)">Medium</button>
-      <button class="chip" data-status-filter="FULL" onclick="setStatusFilter('FULL', this)">Full</button>
-      <button class="chip" data-status-filter="OVER" onclick="setStatusFilter('OVER', this)">Over</button>
+      <div id="restockFilters" style="display:flex;flex-direction:column;gap:8px">
+        <!-- First row: Last report (right aligned) -->
+        <div style="display:flex;align-items:center;justify-content:flex-end">
+          <span id="lastReportStamp" class="small-note">Last report: 28/10/2025 15:23</span>
         </div>
-        <label style="display:inline-flex;align-items:center;gap:6px;margin-left:10px">
-          <input type="checkbox" id="toggleHideNoReserve" onchange="toggleHideNoReserve(this.checked)" />
-          Hide "No reserve"
-        </label>
-        <label style="display:inline-flex;align-items:center;gap:6px;margin-left:6px">
-          <input type="checkbox" id="toggleOnlyNeedsAdjustment" onchange="toggleOnlyNeedsAdjustment(this.checked)" />
-          Only needs adjustment
-        </label>
-        <label style="display:inline-flex;align-items:center;gap:6px;margin-left:6px">
-          <input type="checkbox" id="toggleOnlyFavorites" onchange="toggleOnlyFavorites(this.checked)" />
-          Only favorites
-        </label>
-        <label style="display:inline-flex;align-items:center;gap:6px;margin-left:6px">
-          <input type="checkbox" id="toggleOnlyReserveInfo" onchange="toggleOnlyReserveInfo(this.checked)" />
-          Clear locations (i)
-        </label>
-        <div style="flex:1"></div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <span id="lastReportStamp" class="small-note">Last report: —</span>
-          <button class="search-btn-small" type="button" onclick="printRestock()">Print</button>
+        <!-- Segunda linha: All filters and action buttons -->
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-weight:600;color:#475569">Status:</span>
+            <button class="chip" data-status-filter="ALL" onclick="setStatusFilter('ALL', this)">All</button>
+            <button class="chip" data-status-filter="LOW" onclick="setStatusFilter('LOW', this)">Low</button>
+            <button class="chip" data-status-filter="MEDIUM" onclick="setStatusFilter('MEDIUM', this)">Medium</button>
+            <button class="chip" data-status-filter="FULL" onclick="setStatusFilter('FULL', this)">Full</button>
+            <button class="chip" data-status-filter="OVER" onclick="setStatusFilter('OVER', this)">Over</button>
+          </div>
+          <label style="display:inline-flex;align-items:center;gap:6px;margin-left:15px">
+            <input type="checkbox" id="toggleHideNoReserve" onchange="toggleHideNoReserve(this.checked)" />
+            Hide "No reserve"
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px">
+            <input type="checkbox" id="toggleOnlyFavorites" onchange="toggleOnlyFavorites(this.checked)" />
+            Only favorites
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px">
+            <input type="checkbox" id="toggleOnlyNeedsAdjustment" onchange="toggleOnlyNeedsAdjustment(this.checked)" />
+            Only needs adjustment
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px">
+            <input type="checkbox" id="toggleOnlyReserveInfo" onchange="toggleOnlyReserveInfo(this.checked)" />
+            Clear locations (i)
+          </label>
+          <div style="flex:1"></div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="search-btn-small" type="button" onclick="openLocationsPrintModal()">Print Locations</button>
+            <button class="search-btn-small" type="button" onclick="printRestock()">Print</button>
+          </div>
         </div>
       </div>
     </div>
@@ -457,7 +464,7 @@
         const cls = map[val];
         if (!cls) return;
         span.className = 'status-badge ' + cls;
-        span.textContent = (val === 'configure') ? 'precisa configurar' : val;
+        span.textContent = (val === 'configure') ? 'needs setup' : val;
         statusTd.appendChild(span);
       });
     }
@@ -505,7 +512,7 @@
     function setStatusFilter(val, el){
       if (window.restockSetStatusFilter){ window.restockSetStatusFilter(val); }
       // Toggle active visual
-      document.querySelectorAll('#restockFilters .chip').forEach(btn=>btn.classList.remove('active'));
+      document.querySelectorAll('#restockFilters .chip[data-status-filter]').forEach(btn=>btn.classList.remove('active'));
       if (el) el.classList.add('active');
     }
   function toggleHideNoReserve(flag){ if (window.restockToggleHideNoReserve){ window.restockToggleHideNoReserve(flag); } }
@@ -566,6 +573,395 @@
   </script>
   <!-- SheetJS for Excel parsing -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Locations Print Modal -->
+  <div id="locationsPrintModal" class="modal hidden">
+    <div class="modal-content" style="max-width: 800px">
+      <span class="close" onclick="closeLocationsPrintModal()">&times;</span>
+      <h2>📍 Print Locations</h2>
+      
+      <div style="margin-bottom: 20px">
+        <h3 style="margin-bottom: 10px; color: #475569">Select Locations:</h3>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; background: #f8fafc">
+            <input type="checkbox" id="locMA-RETURNS" value="MA-RETURNS" onchange="updateLocationsPrint()">
+            <span style="color: #991b1b; font-weight: 600">MA-RETURNS</span>
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; background: #f8fafc">
+            <input type="checkbox" id="locMA-GA" value="MA-GA" onchange="updateLocationsPrint()">
+            <span style="color: #0369a1; font-weight: 600">MA-GA</span>
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; background: #f8fafc">
+            <input type="checkbox" id="locMA-DOCK" value="MA-DOCK" onchange="updateLocationsPrint()">
+            <span style="color: #166534; font-weight: 600">MA-DOCK</span>
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; background: #f8fafc">
+            <input type="checkbox" id="locMA-SAMPLES" value="MA-SAMPLES" onchange="updateLocationsPrint()">
+            <span style="color: #a16207; font-weight: 600">MA-SAMPLES</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="locationsPreview" style="display: none; margin-bottom: 20px">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
+          <h3 style="margin: 0; color: #475569">Preview:</h3>
+          <span id="locationsCount" style="font-size: 14px; color: #64748b"></span>
+        </div>
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px">
+          <table class="app-table" style="margin: 0; font-size: 12px">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Product</th>
+                <th>Pickface</th>
+                <th>Reserve</th>
+              </tr>
+            </thead>
+            <tbody id="locationsPreviewBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: flex-end">
+        <button class="search-btn-small secondary" onclick="closeLocationsPrintModal()">Cancel</button>
+        <button id="printLocationsBtn" class="search-btn-small" onclick="printSelectedLocations()" disabled style="opacity: 0.5">Print Selected</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Locations Print Modal Functions
+    let locationsModalData = [];
+    
+    function openLocationsPrintModal() {
+      document.getElementById('locationsPrintModal')?.classList.remove('hidden');
+      // Clear all selections
+      document.querySelectorAll('#locationsPrintModal input[type="checkbox"]').forEach(cb => cb.checked = false);
+      updateLocationsPrint();
+    }
+    
+    function closeLocationsPrintModal() {
+      document.getElementById('locationsPrintModal')?.classList.add('hidden');
+    }
+    
+    function updateLocationsPrint() {
+      const selectedLocations = [];
+      document.querySelectorAll('#locationsPrintModal input[type="checkbox"]:checked').forEach(cb => {
+        selectedLocations.push(cb.value);
+      });
+      
+      const printBtn = document.getElementById('printLocationsBtn');
+      const preview = document.getElementById('locationsPreview');
+      
+      if (selectedLocations.length === 0) {
+        printBtn.disabled = true;
+        printBtn.style.opacity = '0.5';
+        preview.style.display = 'none';
+        return;
+      }
+      
+      // Enable print button
+      printBtn.disabled = false;
+      printBtn.style.opacity = '1';
+      
+      // Get filtered data from restock
+      if (window.restockGetAllRows) {
+        const allRows = window.restockGetAllRows();
+        console.log('=== LOCATIONS MODAL DEBUG ===');
+        console.log('Total rows from restock:', allRows.length);
+        console.log('Selected locations:', selectedLocations);
+        
+        // Count products with reserve in selected locations
+        let withReserveCount = 0;
+        let withoutPickfaceCount = 0;
+        
+        const filteredRows = allRows.filter(row => {
+          // Include products with reserve in selected locations
+          if (Array.isArray(row.__reserve_locations)) {
+            const hasReserveInLocation = row.__reserve_locations.some(loc => {
+              if (!loc || !loc.location) return false;
+              const locStr = String(loc.location).toUpperCase();
+              return selectedLocations.some(selectedLoc => 
+                locStr.startsWith(selectedLoc.toUpperCase()) && Number(loc.qty) > 0
+              );
+            });
+            if (hasReserveInLocation) {
+              withReserveCount++;
+              return true;
+            }
+          }
+          
+          // Also include products without pickface configuration (needs setup)
+          const hasPickface = row.stock_locator && String(row.stock_locator).trim() !== '';
+          if (!hasPickface) {
+            withoutPickfaceCount++;
+            return true;
+          }
+          
+          return false;
+        });
+        
+        console.log('Products with reserve in selected locations:', withReserveCount);
+        console.log('Products without pickface:', withoutPickfaceCount);
+        console.log('Total filtered products:', filteredRows.length);
+        
+        // Let's check MA-SAMPLES specifically
+        if (selectedLocations.includes('MA-SAMPLES')) {
+          const maSamplesProducts = filteredRows.filter(row => {
+            if (!Array.isArray(row.__reserve_locations)) return false;
+            return row.__reserve_locations.some(loc => {
+              if (!loc || !loc.location) return false;
+              const locStr = String(loc.location).toUpperCase();
+              return locStr.startsWith('MA-SAMPLES') && Number(loc.qty) > 0;
+            });
+          });
+          console.log('Products with MA-SAMPLES reserve:', maSamplesProducts.length);
+          console.log('Sample MA-SAMPLES products:', maSamplesProducts.slice(0, 3).map(p => ({
+            sku: p.sku,
+            locations: p.__reserve_locations?.filter(l => String(l.location).toUpperCase().startsWith('MA-SAMPLES'))
+          })));
+        }
+        
+        locationsModalData = filteredRows;
+        
+        // Update preview
+        const previewBody = document.getElementById('locationsPreviewBody');
+        const countSpan = document.getElementById('locationsCount');
+        
+        if (filteredRows.length === 0) {
+          previewBody.innerHTML = '<tr><td colspan="4" style="text-align: center; opacity: 0.7">No items found</td></tr>';
+          countSpan.textContent = '0 items';
+        } else {
+          // Show preview (limit to first 10 rows)
+          const previewRows = filteredRows.slice(0, 10);
+          previewBody.innerHTML = previewRows.map(row => {
+            const sku = String(row.sku || '');
+            const product = String(row.product || '');
+            const rawPickface = String(row.stock_locator || '').trim();
+            const pickface = rawPickface || 'Not configured';
+            
+            // Filter and sort reserve to show only selected locations
+            const relevantReserves = (row.__reserve_locations || [])
+              .filter(loc => {
+                if (!loc || !loc.location) return false;
+                const locStr = String(loc.location).toUpperCase();
+                return selectedLocations.some(selectedLoc => 
+                  locStr.startsWith(selectedLoc.toUpperCase()) && Number(loc.qty) > 0
+                );
+              })
+              .sort((a, b) => {
+                // Sort by selected locations order first (MA-RETURNS, MA-GA, MA-DOCK, MA-SAMPLES)
+                const locationOrder = ['MA-RETURNS', 'MA-GA', 'MA-DOCK', 'MA-SAMPLES'];
+                const locAUpper = String(a.location).toUpperCase();
+                const locBUpper = String(b.location).toUpperCase();
+                
+                const getLocationPriority = (loc) => {
+                  for (let i = 0; i < locationOrder.length; i++) {
+                    if (loc.startsWith(locationOrder[i])) return i;
+                  }
+                  return 999; // fallback for unknown locations
+                };
+                
+                const priorityA = getLocationPriority(locAUpper);
+                const priorityB = getLocationPriority(locBUpper);
+                
+                if (priorityA !== priorityB) return priorityA - priorityB;
+                
+                // If same location type, sort alphabetically then by quantity desc
+                if (locAUpper !== locBUpper) return locAUpper.localeCompare(locBUpper);
+                return Number(b.qty) - Number(a.qty);
+              })
+              .map(loc => `${loc.location}: ${loc.qty}`)
+              .join(', ');
+            
+            // If no reserve in selected locations but product has no pickface, show that info
+            const reserveDisplay = relevantReserves || (rawPickface ? 'No reserve' : 'Needs pickface setup');
+            
+            return `
+              <tr>
+                <td>${sku}</td>
+                <td>${product}</td>
+                <td>${pickface}</td>
+                <td>${reserveDisplay}</td>
+              </tr>
+            `;
+          }).join('');
+          
+          countSpan.textContent = `${filteredRows.length} items${filteredRows.length > 10 ? ' (showing first 10)' : ''}`;
+        }
+        
+        preview.style.display = 'block';
+      }
+    }
+    
+    function printSelectedLocations() {
+      if (locationsModalData.length === 0) return;
+      
+      const selectedLocations = [];
+      document.querySelectorAll('#locationsPrintModal input[type="checkbox"]:checked').forEach(cb => {
+        selectedLocations.push(cb.value);
+      });
+      
+      // Create print window
+      const printWindow = window.open('', '_blank');
+      const now = new Date();
+      const stamp = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Locations Report - ${selectedLocations.join(', ')}</title>
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+              margin: 0; 
+              padding: 20px; 
+              color: #0f172a; 
+              background: #fff;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .print-header { 
+              text-align: center; 
+              margin-bottom: 20px; 
+              font-size: 16px; 
+              font-weight: 600; 
+              color: #0f172a; 
+            }
+            .print-subtitle { 
+              text-align: center; 
+              margin-bottom: 24px; 
+              font-size: 12px; 
+              color: #64748b; 
+            }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              font-size: 11px; 
+              background: #fff; 
+              margin: 0 auto;
+            }
+            th, td { 
+              border: 1px solid #334155; 
+              padding: 8px 10px; 
+              text-align: left; 
+              vertical-align: top;
+            }
+            th { 
+              background: #f1f5f9; 
+              color: #0f172a; 
+              font-weight: 600; 
+              border-color: #334155;
+            }
+            tr:nth-child(even) { 
+              background: #f8fafc; 
+            }
+            td:first-child {
+              font-weight: 600;
+              font-variant-numeric: tabular-nums;
+            }
+            .reserve-cell {
+              font-size: 10px;
+              line-height: 1.3;
+            }
+            @page { 
+              size: A4 landscape; 
+              margin: 12mm; 
+            }
+            @media print { 
+              body { 
+                margin: 0; 
+                padding: 8mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-header">Locations Report - ${selectedLocations.join(', ')}</div>
+          <div class="print-subtitle">${stamp} • ${locationsModalData.length} items</div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 80px">SKU</th>
+                <th>Product</th>
+                <th style="width: 120px">Pickface</th>
+                <th style="width: 200px">Reserve</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${locationsModalData.map(row => {
+                const sku = String(row.sku || '');
+                const product = String(row.product || '');
+                const rawPickface = String(row.stock_locator || '').trim();
+                const pickface = rawPickface || 'Not configured';
+                
+                // Filter and sort reserve to show only selected locations
+                const relevantReserves = (row.__reserve_locations || [])
+                  .filter(loc => {
+                    if (!loc || !loc.location) return false;
+                    const locStr = String(loc.location).toUpperCase();
+                    return selectedLocations.some(selectedLoc => 
+                      locStr.startsWith(selectedLoc.toUpperCase()) && Number(loc.qty) > 0
+                    );
+                  })
+                  .sort((a, b) => {
+                    // Sort by selected locations order first (MA-RETURNS, MA-GA, MA-DOCK, MA-SAMPLES)
+                    const locationOrder = ['MA-RETURNS', 'MA-GA', 'MA-DOCK', 'MA-SAMPLES'];
+                    const locAUpper = String(a.location).toUpperCase();
+                    const locBUpper = String(b.location).toUpperCase();
+                    
+                    const getLocationPriority = (loc) => {
+                      for (let i = 0; i < locationOrder.length; i++) {
+                        if (loc.startsWith(locationOrder[i])) return i;
+                      }
+                      return 999; // fallback for unknown locations
+                    };
+                    
+                    const priorityA = getLocationPriority(locAUpper);
+                    const priorityB = getLocationPriority(locBUpper);
+                    
+                    if (priorityA !== priorityB) return priorityA - priorityB;
+                    
+                    // If same location type, sort alphabetically then by quantity desc
+                    if (locAUpper !== locBUpper) return locAUpper.localeCompare(locBUpper);
+                    return Number(b.qty) - Number(a.qty);
+                  })
+                  .map(loc => `${loc.location}: ${loc.qty}`)
+                  .join('<br>');
+                
+                // If no reserve in selected locations but product has no pickface, show that info
+                const reserveDisplay = relevantReserves || (rawPickface ? 'No reserve' : 'Needs pickface setup');
+                
+                return `
+                  <tr>
+                    <td>${sku}</td>
+                    <td>${product}</td>
+                    <td>${pickface}</td>
+                    <td class="reserve-cell">${reserveDisplay}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </body>
+        </html>
+      `;
+      
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      
+      // Wait for content to load then print
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+      
+      closeLocationsPrintModal();
+    }
+  </script>
+
   <script src="restock.js"></script>
 </body>
 </html>
