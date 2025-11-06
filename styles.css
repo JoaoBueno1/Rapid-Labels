@@ -597,7 +597,495 @@ td.actions-col .action-buttons { justify-content:flex-end; }
 .btn-blue { background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%); }
 .parcel-tag { display:inline-block; margin:3px 6px 0 0; padding:4px 8px; background:#fff; border:1px solid #dee2e6; border-radius:999px; font-weight:600; }
 
-/* Responsive */
+/* ==================== RESPONSIVE DESIGN ==================== */
+
+/* Small phones (up to 480px) */
+@media (max-width: 480px) {
+    .main-container {
+        padding: 16px 12px;
+        max-width: 100%;
+        width: 100%;
+    }
+    
+    /* Header adjustments for mobile */
+    .page-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+    
+    .page-header > div:first-child {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .page-header h1 {
+        font-size: 1.8rem;
+        margin: 0;
+    }
+    
+    .page-header .search-btn-small {
+        font-size: 0.9rem;
+        padding: 8px 12px;
+        min-width: auto;
+    }
+    
+    /* Header actions stack vertically */
+    .header-actions {
+        flex-direction: column;
+        width: 100%;
+        gap: 12px;
+    }
+    
+    .search-input-group {
+        width: 100%;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .search-input-group input {
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+    
+    /* Table adjustments */
+    .app-table {
+        font-size: 0.8rem;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+    
+    .app-table th,
+    .app-table td {
+        padding: 6px 4px;
+        min-width: 60px;
+    }
+    
+    /* Hide less important columns on small screens */
+    .app-table th:nth-child(6), /* Capacity */
+    .app-table td:nth-child(6),
+    .app-table th:nth-child(8), /* Reserve */
+    .app-table td:nth-child(8) {
+        display: none;
+    }
+    
+    /* Action buttons smaller */
+    .action-btn {
+        font-size: 9px !important;
+        padding: 4px 8px !important;
+        min-width: 40px !important;
+        height: 24px !important;
+    }
+    
+    /* Modal adjustments */
+    .modal-content {
+        width: 95%;
+        max-width: 95%;
+        padding: 16px;
+        margin: 20px auto;
+    }
+    
+    .field-group {
+        margin-bottom: 12px;
+    }
+    
+    .field-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    /* Filter adjustments */
+    #restockFilters {
+        gap: 12px;
+    }
+    
+    #restockFilters > div {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+    
+    .filters-inline {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+}
+
+/* Tablets and small laptops (481px to 768px) */
+@media (min-width: 481px) and (max-width: 768px) {
+    .main-container {
+        padding: 20px 16px;
+        max-width: 95%;
+    }
+    
+    .page-header {
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+    
+    .page-header > div:first-child {
+        gap: 16px;
+    }
+    
+    .header-actions {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    
+    .search-input-group input {
+        min-width: 280px !important;
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+    
+    .app-table {
+        font-size: 0.9rem;
+    }
+    
+    .app-table th,
+    .app-table td {
+        padding: 8px 6px;
+    }
+    
+    /* Hide capacity column on tablets */
+    .app-table th:nth-child(6),
+    .app-table td:nth-child(6) {
+        display: none;
+    }
+    
+    .action-btn {
+        font-size: 10px !important;
+        padding: 5px 10px !important;
+        min-width: 45px !important;
+        height: 26px !important;
+    }
+    
+    .modal-content {
+        width: 90%;
+        max-width: 500px;
+        padding: 20px;
+    }
+}
+
+/* iPads and larger tablets (769px to 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .main-container {
+        padding: 24px 20px;
+        max-width: 98%;
+    }
+    
+    .search-input-group input {
+        min-width: 350px !important;
+    }
+    
+    .app-table {
+        font-size: 0.95rem;
+    }
+    
+    .modal-content {
+        width: 80%;
+        max-width: 600px;
+    }
+}
+
+/* Large screens (1025px and up) */
+@media (min-width: 1025px) {
+    .main-container {
+        max-width: 1400px;
+        width: 98%;
+    }
+}
+
+/* Touch-friendly improvements for all mobile devices */
+@media (max-width: 1024px) {
+    /* Larger touch targets */
+    button, .btn, .search-btn-small {
+        min-height: 44px;
+        min-width: 44px;
+        touch-action: manipulation;
+    }
+    
+    /* Improve input touch targets */
+    input[type="text"],
+    input[type="search"],
+    input[type="number"],
+    select {
+        min-height: 44px;
+        font-size: 16px; /* Prevents zoom on iOS */
+        padding: 12px;
+    }
+    
+    /* Better checkbox and radio buttons */
+    input[type="checkbox"],
+    input[type="radio"] {
+        min-width: 20px;
+        min-height: 20px;
+        transform: scale(1.2);
+    }
+    
+    /* Improved modal for touch */
+    .modal {
+        padding: 20px;
+    }
+    
+    .modal-content {
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Better spacing for touch interfaces */
+    .chip {
+        padding: 8px 12px;
+        margin: 4px;
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+    }
+    
+    /* Improve table scrolling on touch devices */
+    .app-table {
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Better favorite star buttons */
+    .fav-btn {
+        font-size: 20px !important;
+        min-width: 44px !important;
+        min-height: 44px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+}
+
+/* Landscape orientation adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+    .page-header {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    
+    .header-actions {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    
+    .search-input-group {
+        flex-direction: row;
+    }
+}
+
+/* ==================== MOBILE-SPECIFIC IMPROVEMENTS ==================== */
+
+/* Mobile table improvements */
+@media (max-width: 768px) {
+    /* Better table layout for mobile */
+    .app-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .app-table thead {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: white;
+    }
+    
+    .app-table th {
+        font-weight: 600;
+        text-align: center;
+        padding: 12px 8px;
+        font-size: 0.8rem;
+        border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .app-table td {
+        padding: 12px 8px;
+        vertical-align: middle;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .app-table tbody tr:hover {
+        background-color: #f8fafc;
+    }
+    
+    /* Mobile-friendly search */
+    .page-header input[type="text"] {
+        border-radius: 12px;
+        border: 2px solid #e5e7eb;
+        transition: all 0.3s ease;
+    }
+    
+    .page-header input[type="text"]:focus {
+        border-color: #4f46e5;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        outline: none;
+    }
+    
+    /* Mobile filters */
+    .chip {
+        border-radius: 20px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    
+    .chip.active {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: white;
+        transform: scale(1.05);
+    }
+    
+    /* Mobile modals */
+    .modal {
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        animation: modalSlideUp 0.3s ease-out;
+    }
+    
+    @keyframes modalSlideUp {
+        from {
+            opacity: 0;
+            transform: translateY(50px) scale(0.9);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+    
+    /* Mobile buttons */
+    .search-btn-small {
+        border-radius: 12px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .search-btn-small:active {
+        transform: scale(0.98);
+    }
+    
+    /* Mobile status indicators */
+    .status-chip {
+        border-radius: 16px;
+        font-weight: 600;
+        font-size: 0.75rem;
+        padding: 4px 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Improved mobile scrolling */
+    .main-container {
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+    }
+    
+    /* Mobile-friendly pagination */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin: 20px 0;
+        flex-wrap: wrap;
+    }
+    
+    .pagination button {
+        min-width: 44px;
+        min-height: 44px;
+        border-radius: 12px;
+        border: 2px solid #e5e7eb;
+        background: white;
+        color: #374151;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .pagination button:hover,
+    .pagination button.active {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: white;
+        border-color: transparent;
+    }
+}
+
+/* Tablet-specific improvements */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .app-table th,
+    .app-table td {
+        padding: 10px 8px;
+    }
+    
+    .action-buttons {
+        gap: 6px;
+    }
+    
+    .search-input-group {
+        gap: 10px;
+    }
+}
+
+/* Dark mode support for mobile */
+@media (prefers-color-scheme: dark) and (max-width: 768px) {
+    .app-table {
+        background-color: #1f2937;
+        color: #f9fafb;
+    }
+    
+    .app-table th {
+        background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
+    }
+    
+    .app-table td {
+        border-bottom-color: #374151;
+    }
+    
+    .app-table tbody tr:hover {
+        background-color: #374151;
+    }
+    
+    .modal-content {
+        background-color: #1f2937;
+        color: #f9fafb;
+    }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+    .page-header input[type="text"] {
+        -webkit-appearance: none;
+        appearance: none;
+        border-radius: 12px;
+    }
+    
+    .search-btn-small {
+        -webkit-appearance: none;
+        appearance: none;
+        border-radius: 12px;
+    }
+    
+    /* Fix iOS zoom on inputs */
+    input[type="text"],
+    input[type="search"],
+    input[type="number"],
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+}
 @media (max-width: 768px) {
     .main-container {
         padding: 30px 20px;
