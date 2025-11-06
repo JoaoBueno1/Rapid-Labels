@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Favorites Table</title>
+</head>
+<body>
+    <h1>Test Favorites Database</h1>
+    <div id="status">Testing...</div>
+    <button onclick="testMigration()" id="testBtn">Test Migration</button>
+    <div id="results"></div>
+
+    <script src="supabase-config.js"></script>
+    <script src="favorites-migration.js"></script>
+    <script>
+        async function testConnection() {
+            const statusDiv = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
+            
+            try {
+                await window.supabaseReady;
+                statusDiv.innerHTML = '✅ Connected to Supabase';
+                
+                // Test if favorites table exists
+                const { data, error } = await window.supabase
+                    .from('user_favorites')
+                    .select('sku')
+                    .limit(1);
+                    
+                if (error) {
+                    if (error.code === 'PGRST116') {
+                        resultsDiv.innerHTML = `
+                            <h3>❌ Favorites table does not exist</h3>
+                            <p>Please execute the SQL in <code>create-favorites-table.sql</code> in your Supabase dashboard.</p>
+                            <ol>
+                                <li>Go to <a href="https://iaqnxamnjftwqdbsnfyl.supabase.co/project/_/sql" target="_blank">Supabase SQL Editor</a></li>
+                                <li>Copy and paste the contents of <code>create-favorites-table.sql</code></li>
+                                <li>Click "Run" to execute the SQL</li>
+                                <li>Refresh this page to test again</li>
+                            </ol>
+                        `;
+                    } else {
+                        resultsDiv.innerHTML = `<h3>❌ Database Error:</h3><p>${error.message}</p>`;
+                    }
+                } else {
+                    resultsDiv.innerHTML = `
+                        <h3>✅ Favorites table exists!</h3>
+                        <p>Found ${data ? data.length : 0} favorites in database.</p>
+                        <p>You can now test the migration by clicking "Test Migration" button.</p>
+                    `;
+                }
+                
+            } catch (error) {
+                statusDiv.innerHTML = '❌ Connection failed: ' + error.message;
+            }
+        }
+        
+        async function testMigration() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>🔄 Running migration test...</p>';
+            
+            try {
+                const result = await window.favoritesMigration.runMigration();
+                if (result) {
+                    resultsDiv.innerHTML = '<h3>✅ Migration completed successfully!</h3>';
+                } else {
+                    resultsDiv.innerHTML = '<h3>❌ Migration failed. Check console for details.</h3>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = '<h3>❌ Migration error:</h3><p>' + error.message + '</p>';
+            }
+        }
+        
+        // Test on page load
+        window.addEventListener('DOMContentLoaded', testConnection);
+    </script>
+</body>
+</html>

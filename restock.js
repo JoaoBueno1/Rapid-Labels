@@ -26,16 +26,122 @@
   perPage: 30,
   };
 
-  // Favorites persistence (by SKU)
+  // Favorites persistence (by SKU) - Now using Supabase database
   const FAVORITES_KEY = 'restock_favorites_skus';
   const favorites = new Set();
-  try {
-    const raw = localStorage.getItem(FAVORITES_KEY);
-    if (raw) JSON.parse(raw).forEach((s) => favorites.add(String(s)));
-  } catch {}
 
-  function persistFavorites() {
-    try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favorites))); } catch {}
+  // Load favorites from database
+  async function loadFavoritesFromDB() {
+    try {
+      await window.supabaseReady;
+      
+      const { data, error } = await window.supabase
+        .from('user_favorites')
+        .select('sku');
+        
+      if (error) {
+        console.error('❌ Error loading favorites from database:', error);
+        // Fallback to localStorage
+        return loadFavoritesFromLocalStorage();
+      }
+      
+      favorites.clear();
+      if (data) {
+        data.forEach(row => favorites.add(String(row.sku)));
+      }
+      
+      console.log(`✅ Loaded ${favorites.size} favorites from database`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error loading favorites:', error);
+      // Fallback to localStorage
+      return loadFavoritesFromLocalStorage();
+    }
+  }
+
+  // Fallback: Load from localStorage
+  function loadFavoritesFromLocalStorage() {
+    try {
+      const raw = localStorage.getItem(FAVORITES_KEY);
+      if (raw) {
+        JSON.parse(raw).forEach((s) => favorites.add(String(s)));
+        console.log(`ℹ️ Loaded ${favorites.size} favorites from localStorage (fallback)`);
+      }
+      return true;
+    } catch (error) {
+      console.error('❌ Error loading from localStorage:', error);
+      return false;
+    }
+  }
+
+  // Save favorite to database
+  async function addFavoriteToDB(sku) {
+    try {
+      await window.supabaseReady;
+      
+      const { error } = await window.supabase
+        .from('user_favorites')
+        .upsert(
+          { sku: String(sku) },
+          { onConflict: 'sku' }
+        );
+        
+      if (error) {
+        console.error('❌ Error adding favorite to database:', error);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error adding favorite:', error);
+      return false;
+    }
+  }
+
+  // Remove favorite from database
+  async function removeFavoriteFromDB(sku) {
+    try {
+      await window.supabaseReady;
+      
+      const { error } = await window.supabase
+        .from('user_favorites')
+        .delete()
+        .eq('sku', String(sku));
+        
+      if (error) {
+        console.error('❌ Error removing favorite from database:', error);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error removing favorite:', error);
+      return false;
+    }
+  }
+
+  // Persist favorites to database and localStorage backup
+  async function persistFavorites(sku, isAdding) {
+    try {
+      // Save to database
+      const dbSuccess = isAdding ? 
+        await addFavoriteToDB(sku) : 
+        await removeFavoriteFromDB(sku);
+      
+      // Always save to localStorage as backup
+      try { 
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favorites))); 
+      } catch {}
+      
+      return dbSuccess;
+    } catch (error) {
+      console.error('❌ Error persisting favorite:', error);
+      // Save to localStorage even if DB fails
+      try { 
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favorites))); 
+      } catch {}
+      return false;
+    }
   }
 
   const tbody = document.getElementById('restockTbody');
@@ -106,7 +212,7 @@
 
   function render(rows) {
     if (!rows || rows.length === 0) {
-      setTbody('<tr><td colspan="10" style="text-align:center;opacity:.7">No results</td></tr>');
+      setTbody('<tr><td colspan="11" style="text-align:center;opacity:.7">No results</td></tr>');
       updatePager(0);
       // Apply styling hook if present
       if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
@@ -162,6 +268,16 @@
           : '';
         const favOn = favorites.has(String(r.sku));
         const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${sku}" onclick="restockToggleFavorite('${sku}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
+        
+        // Action buttons for edit and delete
+        const escapedSku = escapeHtml(r.sku);
+        const actionButtons = `
+          <div class="action-buttons">
+            <button type="button" class="action-btn edit" onclick="openEditProductModal('${escapedSku}')" title="Edit product" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; min-width: 50px; height: 28px; display: inline-flex; align-items: center; justify-content: center; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15); transition: all 0.3s ease;">Edit</button>
+            <button type="button" class="action-btn delete" onclick="openDeleteConfirmModal('${escapedSku}')" title="Delete product" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; min-width: 50px; height: 28px; display: inline-flex; align-items: center; justify-content: center; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15); transition: all 0.3s ease;">Delete</button>
+          </div>
+        `;
+        
         return `
           <tr>
             <td>${star}</td>
@@ -174,11 +290,12 @@
             <td>${reserveCellHtml}</td>
             <td>${restock}</td>
             <td class="print-only">${nearestHtml}</td>
+            <td class="no-print">${actionButtons}</td>
           </tr>`;
       }).join('');
       chunks.push(rowsHtml);
       if (i + 30 < limited.length) {
-        chunks.push('<tr class="print-break"><td colspan="10"></td></tr>');
+        chunks.push('<tr class="print-break"><td colspan="11"></td></tr>');
       }
     }
     const html = chunks.join('');
@@ -609,12 +726,12 @@
 
   async function fetchData() {
     if (!window.supabase || !window.supabaseReady) {
-      setTbody('<tr><td colspan="9" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>');
+      setTbody('<tr><td colspan="11" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>');
       return;
     }
 
     state.loading = true;
-  setTbody('<tr><td colspan="9" style="text-align:center;opacity:.7">Loading…</td></tr>');
+  setTbody('<tr><td colspan="11" style="text-align:center;opacity:.7">Loading…</td></tr>');
 
     try {
       await window.supabaseReady;
@@ -818,7 +935,7 @@
   render(visible);
     } catch (e) {
   console.error('restock fetch error', e);
-  setTbody('<tr><td colspan="9" style="text-align:center;color:#b91c1c">Failed to load data</td></tr>');
+  setTbody('<tr><td colspan="11" style="text-align:center;color:#b91c1c">Failed to load data</td></tr>');
     } finally {
       state.loading = false;
     }
@@ -847,6 +964,54 @@
 
   // Initial load
   fetchData();
+  
+  // Initialize favorites from database
+  (async function initializeFavorites() {
+    try {
+      await loadFavoritesFromDB();
+      console.log('✅ Favorites initialized successfully');
+      
+      // Re-render if favorites filter is active
+      if (state.onlyFavorites) {
+        render(state.rows);
+      }
+    } catch (error) {
+      console.error('❌ Error initializing favorites:', error);
+    }
+  })();
+
+  // Console helpers for testing favorites
+  window.favoritesDebug = {
+    async listAll() {
+      await window.supabaseReady;
+      const { data, error } = await window.supabase.from('user_favorites').select('*').order('created_at', { ascending: false });
+      if (error) {
+        console.error('❌ Error loading favorites:', error);
+        return;
+      }
+      console.table(data);
+      return data;
+    },
+    
+    async addTest(sku) {
+      await restockToggleFavorite(sku);
+      console.log(`✅ Added test favorite: ${sku}`);
+    },
+    
+    async clearAll() {
+      await window.supabaseReady;
+      const { error } = await window.supabase.from('user_favorites').delete().neq('sku', '__never_match__');
+      if (error) {
+        console.error('❌ Error clearing favorites:', error);
+        return;
+      }
+      favorites.clear();
+      updateFavoriteStars();
+      console.log('✅ All favorites cleared');
+    }
+  };
+  
+  console.log('🌟 Favorites system loaded. Use window.favoritesDebug for testing.');
   // Helpers to manage Last report stamp
   function setLastReportStampText(stamp){
     const el = document.getElementById('lastReportStamp');
@@ -987,11 +1152,34 @@
   };
 
   // Favorites APIs
-  window.restockToggleFavorite = function(sku){
+  window.restockToggleFavorite = async function(sku){
     const key = String(sku);
-    if (favorites.has(key)) favorites.delete(key); else favorites.add(key);
-    persistFavorites();
-    // If filtering by favorites, re-apply; otherwise update stars only
+    const isAdding = !favorites.has(key);
+    
+    // Update local state immediately for responsive UI
+    if (isAdding) {
+      favorites.add(key);
+    } else {
+      favorites.delete(key);
+    }
+    
+    // Update UI immediately
+    updateFavoriteStars();
+    
+    // Persist to database and localStorage in background
+    try {
+      const success = await persistFavorites(key, isAdding);
+      
+      if (success) {
+        console.log(`✅ Favorite ${sku} saved to database`);
+      } else {
+        console.warn(`⚠️ Failed to save favorite ${sku} to database. Saved locally only.`);
+      }
+    } catch (error) {
+      console.error(`❌ Error saving favorite ${sku}:`, error);
+    }
+    
+    // Re-render if favorites filter is active
     if (state.onlyFavorites) {
       state.page = 1;
       let rows = applyStatusFilter(state.allRows);
@@ -1004,18 +1192,21 @@
       }
       state.rows = visible;
       render(visible);
-    } else {
-      // Update stars in-place
-      const tbody = document.getElementById('restockTbody');
-      if (!tbody) return;
-      [...tbody.querySelectorAll('button.fav-btn')].forEach(btn => {
-        const skuAttr = btn.getAttribute('data-sku');
-        const on = favorites.has(String(skuAttr));
-        btn.textContent = on ? '★' : '☆';
-        btn.title = on ? 'Unfavorite' : 'Favorite';
-      });
     }
   };
+
+  // Helper function to update star buttons
+  function updateFavoriteStars() {
+    const tbody = document.getElementById('restockTbody');
+    if (!tbody) return;
+    
+    [...tbody.querySelectorAll('button.fav-btn')].forEach(btn => {
+      const skuAttr = btn.getAttribute('data-sku');
+      const on = favorites.has(String(skuAttr));
+      btn.textContent = on ? '★' : '☆';
+      btn.title = on ? 'Unfavorite' : 'Favorite';
+    });
+  }
 
   window.restockToggleOnlyFavorites = function(flag){
     state.onlyFavorites = !!flag;
@@ -1316,5 +1507,402 @@
     } catch(e){
       importSummary.textContent = `Error importing: ${e.message || e}`;
     }
+  };
+
+  // === CRUD Operations for Products ===
+  // 
+  // Funcionalidades implementadas:
+  // 1. Botão "Add Product" no header da página
+  // 2. Coluna "Actions" na tabela com botões de editar e apagar
+  // 3. Modal para adicionar novos produtos
+  // 4. Modal para editar produtos existentes (SKU fica readonly)
+  // 5. Modal de confirmação para apagar produtos
+  // 6. Validação de formulário com mensagens de erro
+  // 7. Verificação de SKU duplicado ao adicionar
+  // 8. Integração com a tabela restock_setup do Supabase
+  // 9. Sistema de toast para feedback ao usuário
+  // 10. Atualização automática da tabela após operações CRUD
+  
+  let currentEditingSku = null;
+
+  // Modal management functions
+  window.openAddProductModal = function() {
+    currentEditingSku = null;
+    document.getElementById('addEditProductTitle').textContent = 'Add Product';
+    document.getElementById('addEditProductForm').reset();
+    
+    // Make sure SKU field is editable
+    const skuField = document.getElementById('productSku');
+    skuField.readOnly = false;
+    skuField.style.backgroundColor = '';
+    
+    // Initialize Max Capacity field as readonly
+    const maxCapField = document.getElementById('productCapMax');
+    maxCapField.readOnly = true;
+    maxCapField.style.backgroundColor = '#f3f4f6';
+    maxCapField.style.cursor = 'not-allowed';
+    
+    clearFormErrors();
+    document.getElementById('addEditProductModal').classList.remove('hidden');
+  };
+
+  window.openEditProductModal = function(sku) {
+    currentEditingSku = sku;
+    document.getElementById('addEditProductTitle').textContent = 'Edit Product';
+    
+    // Find the product data in current state
+    const product = state.allRows.find(r => String(r.sku) === String(sku));
+    if (product) {
+      // Load current values into form
+      const skuField = document.getElementById('productSku');
+      skuField.value = product.sku || '';
+      skuField.readOnly = true; // Make SKU readonly in edit mode
+      skuField.style.backgroundColor = '#f8f9fa';
+      
+      document.getElementById('productName').value = product.product || '';
+      document.getElementById('productPickface').value = product.stock_locator || '';
+      // These values come from the setup, we need to fetch them
+      loadProductSetupData(sku);
+    }
+    
+    clearFormErrors();
+    document.getElementById('addEditProductModal').classList.remove('hidden');
+  };
+
+  window.closeAddEditProductModal = function() {
+    document.getElementById('addEditProductModal').classList.add('hidden');
+    currentEditingSku = null;
+  };
+
+  window.openDeleteConfirmModal = function(sku) {
+    const product = state.allRows.find(r => String(r.sku) === String(sku));
+    const productName = product ? product.product : 'this product';
+    document.getElementById('deleteConfirmText').textContent = 
+      `Are you sure you want to delete "${productName}" (SKU: ${sku})? This action cannot be undone.`;
+    document.getElementById('confirmDeleteBtn').dataset.sku = sku;
+    document.getElementById('deleteConfirmModal').classList.remove('hidden');
+  };
+
+  window.closeDeleteConfirmModal = function() {
+    document.getElementById('deleteConfirmModal').classList.add('hidden');
+  };
+
+  window.confirmDelete = async function() {
+    const sku = document.getElementById('confirmDeleteBtn').dataset.sku;
+    if (!sku) return;
+    
+    try {
+      await window.supabaseReady;
+      
+      // Delete from restock_setup table
+      const { error } = await window.supabase
+        .from('restock_setup')
+        .delete()
+        .eq('sku', sku);
+      
+      if (error) {
+        showToast('Error deleting product: ' + error.message, 'error');
+        return;
+      }
+      
+      showToast('Product deleted successfully', 'success');
+      closeDeleteConfirmModal();
+      fetchData(); // Refresh the table
+      
+    } catch (e) {
+      console.error('Delete error:', e);
+      showToast('Error deleting product: ' + e.message, 'error');
+    }
+  };
+
+  // Load existing setup data for editing
+  async function loadProductSetupData(sku) {
+    try {
+      await window.supabaseReady;
+      
+      const { data, error } = await window.supabase
+        .from('restock_setup')
+        .select('pickface_qty, cap_min, cap_med, cap_max')
+        .eq('sku', sku)
+        .single();
+      
+      if (!error && data) {
+        document.getElementById('productPickfaceQty').value = data.pickface_qty || '';
+        document.getElementById('productCapMin').value = data.cap_min || '';
+        document.getElementById('productCapMed').value = data.cap_med || '';
+        document.getElementById('productCapMax').value = data.cap_max || '';
+        
+        // Trigger validation after loading data
+        updateMaxCapacity();
+        validateCapacities();
+      }
+    } catch (e) {
+      console.warn('Could not load setup data for SKU:', sku, e);
+    }
+  }
+
+  // Form submission handler
+  document.getElementById('addEditProductForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = {
+      sku: document.getElementById('productSku').value.trim(),
+      product: document.getElementById('productName').value.trim(),
+      pickface_location: document.getElementById('productPickface').value.trim(),
+      pickface_qty: parseInt(document.getElementById('productPickfaceQty').value) || 0,
+      cap_min: parseInt(document.getElementById('productCapMin').value) || 0,
+      cap_med: parseInt(document.getElementById('productCapMed').value) || 0,
+      cap_max: parseInt(document.getElementById('productCapMax').value) || 0
+    };
+
+    // Validate form
+    if (!validateProductForm(formData)) {
+      return;
+    }
+
+    try {
+      await window.supabaseReady;
+      
+      if (currentEditingSku) {
+        // Update existing product
+        const { error } = await window.supabase
+          .from('restock_setup')
+          .update({
+            product: formData.product,
+            pickface_location: formData.pickface_location,
+            pickface_qty: formData.pickface_qty,
+            cap_min: formData.cap_min,
+            cap_med: formData.cap_med,
+            cap_max: formData.cap_max
+          })
+          .eq('sku', currentEditingSku);
+        
+        if (error) {
+          showToast('Error updating product: ' + error.message, 'error');
+          return;
+        }
+        
+        showToast('Product updated successfully', 'success');
+      } else {
+        // Check if SKU already exists
+        const { data: existing, error: checkError } = await window.supabase
+          .from('restock_setup')
+          .select('sku')
+          .eq('sku', formData.sku)
+          .single();
+        
+        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found
+          showToast('Error checking SKU: ' + checkError.message, 'error');
+          return;
+        }
+        
+        if (existing) {
+          showToast('A product with this SKU already exists', 'error');
+          return;
+        }
+        
+        // Insert new product
+        const { error } = await window.supabase
+          .from('restock_setup')
+          .insert([formData]);
+        
+        if (error) {
+          showToast('Error adding product: ' + error.message, 'error');
+          return;
+        }
+        
+        showToast('Product added successfully', 'success');
+      }
+      
+      closeAddEditProductModal();
+      fetchData(); // Refresh the table
+      
+    } catch (e) {
+      console.error('Save error:', e);
+      showToast('Error saving product: ' + e.message, 'error');
+    }
+  });
+
+  // Form validation
+  function validateProductForm(data) {
+    clearFormErrors();
+    let isValid = true;
+
+    if (!data.sku) {
+      showFieldError('productSkuError', 'SKU is required');
+      isValid = false;
+    }
+
+    if (!data.product) {
+      showFieldError('productNameError', 'Product name is required');
+      isValid = false;
+    }
+
+    if (!data.pickface_location) {
+      showFieldError('productPickfaceError', 'Pickface location is required');
+      isValid = false;
+    }
+
+    if (data.pickface_qty < 0) {
+      showFieldError('productPickfaceQtyError', 'Pickface quantity must be 0 or greater');
+      isValid = false;
+    }
+
+    if (data.cap_min < 0) {
+      showFieldError('productCapMinError', 'Min capacity must be 0 or greater');
+      isValid = false;
+    }
+
+    if (data.cap_med < 0) {
+      showFieldError('productCapMedError', 'Med capacity must be 0 or greater');
+      isValid = false;
+    }
+
+    if (data.cap_max < 0) {
+      showFieldError('productCapMaxError', 'Max capacity must be 0 or greater');
+      isValid = false;
+    }
+
+    // Enhanced capacity validations
+    if (data.cap_min > data.cap_med) {
+      showFieldError('productCapMinError', 'Min capacity cannot be greater than Med capacity');
+      isValid = false;
+    }
+
+    if (data.cap_med > data.cap_max) {
+      showFieldError('productCapMedError', 'Med capacity cannot be greater than Max capacity');
+      isValid = false;
+    }
+
+    if (data.cap_min > data.cap_max) {
+      showFieldError('productCapMinError', 'Min capacity cannot be greater than Max capacity');
+      isValid = false;
+    }
+
+    // Validate that max capacity matches pickface qty
+    if (data.cap_max !== data.pickface_qty) {
+      showFieldError('productCapMaxError', 'Max capacity must match Pickface capacity');
+      isValid = false;
+    }
+
+    return isValid;
+  }
+
+  // Utility functions
+  function clearFormErrors() {
+    const errorElements = document.querySelectorAll('#addEditProductModal .error');
+    errorElements.forEach(el => el.textContent = '');
+    
+    // Reset input field styles
+    const inputElements = document.querySelectorAll('#addEditProductModal input[type="text"], #addEditProductModal input[type="number"]');
+    inputElements.forEach(input => {
+      input.style.borderColor = '';
+      if (input.id === 'productCapMax') {
+        input.style.backgroundColor = '#f3f4f6'; // Keep readonly style
+      } else {
+        input.style.backgroundColor = '';
+      }
+    });
+  }
+
+  function showFieldError(elementId, message) {
+    const element = document.getElementById(elementId);
+    if (element) {
+      element.textContent = message;
+    }
+  }
+
+  function showToast(message, type = 'info') {
+    // Create toast container if it doesn't exist
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+
+    // Add to container
+    container.appendChild(toast);
+
+    // Remove after 5 seconds
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 5000);
+  }
+
+  // === Auto-fill and Validation Functions ===
+  
+  // Auto-fill Max Capacity when Pickface Qty changes
+  window.updateMaxCapacity = function() {
+    const pickfaceQty = document.getElementById('productPickfaceQty').value;
+    const maxCapacityField = document.getElementById('productCapMax');
+    
+    if (pickfaceQty && !isNaN(pickfaceQty)) {
+      maxCapacityField.value = pickfaceQty;
+    } else {
+      maxCapacityField.value = '';
+    }
+    
+    // Trigger validation after updating max capacity
+    validateCapacities();
+  };
+
+  // Real-time validation for capacity fields
+  window.validateCapacities = function() {
+    const minValue = document.getElementById('productCapMin').value;
+    const medValue = document.getElementById('productCapMed').value;
+    const maxValue = document.getElementById('productCapMax').value;
+    
+    const min = minValue ? parseInt(minValue) : 0;
+    const med = medValue ? parseInt(medValue) : 0;
+    const max = maxValue ? parseInt(maxValue) : 0;
+    
+    // Clear all capacity errors first
+    document.getElementById('productCapMinError').textContent = '';
+    document.getElementById('productCapMedError').textContent = '';
+    document.getElementById('productCapMaxError').textContent = '';
+    
+    // Reset input styles
+    ['productCapMin', 'productCapMed', 'productCapMax'].forEach(id => {
+      const field = document.getElementById(id);
+      field.style.borderColor = '';
+      field.style.backgroundColor = id === 'productCapMax' ? '#f3f4f6' : '';
+    });
+
+    // Only validate if values are provided
+    if (minValue && medValue && min > med) {
+      showFieldError('productCapMinError', 'Min capacity cannot be greater than Med capacity');
+      document.getElementById('productCapMin').style.borderColor = '#dc2626';
+      return false;
+    }
+    
+    if (medValue && maxValue && med > max) {
+      showFieldError('productCapMedError', 'Med capacity cannot be greater than Max capacity');
+      document.getElementById('productCapMed').style.borderColor = '#dc2626';
+      return false;
+    }
+    
+    if (minValue && maxValue && min > max) {
+      showFieldError('productCapMinError', 'Min capacity cannot be greater than Max capacity');
+      document.getElementById('productCapMin').style.borderColor = '#dc2626';
+      return false;
+    }
+
+    // Visual feedback for valid ranges
+    if (minValue && medValue && maxValue && min <= med && med <= max) {
+      // Add green border for valid configuration
+      ['productCapMin', 'productCapMed'].forEach(id => {
+        document.getElementById(id).style.borderColor = '#10b981';
+      });
+    }
+
+    return true;
   };
 })();
