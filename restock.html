@@ -53,11 +53,21 @@
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:6px">
             <span style="font-weight:600;color:#475569">Status:</span>
-            <button class="chip" data-status-filter="ALL" onclick="setStatusFilter('ALL', this)">All</button>
-            <button class="chip" data-status-filter="LOW" onclick="setStatusFilter('LOW', this)">Low</button>
-            <button class="chip" data-status-filter="MEDIUM" onclick="setStatusFilter('MEDIUM', this)">Medium</button>
-            <button class="chip" data-status-filter="FULL" onclick="setStatusFilter('FULL', this)">Full</button>
-            <button class="chip" data-status-filter="OVER" onclick="setStatusFilter('OVER', this)">Over</button>
+            <button class="chip" data-status-filter="ALL" onclick="setStatusFilter('ALL', this)">
+              All <span id="countAll" class="status-count">0</span>
+            </button>
+            <button class="chip" data-status-filter="LOW" onclick="setStatusFilter('LOW', this)">
+              Low <span id="countLow" class="status-count">0</span>
+            </button>
+            <button class="chip" data-status-filter="MEDIUM" onclick="setStatusFilter('MEDIUM', this)">
+              Medium <span id="countMedium" class="status-count">0</span>
+            </button>
+            <button class="chip" data-status-filter="FULL" onclick="setStatusFilter('FULL', this)">
+              Full <span id="countFull" class="status-count">0</span>
+            </button>
+            <button class="chip" data-status-filter="OVER" onclick="setStatusFilter('OVER', this)">
+              Over <span id="countOver" class="status-count">0</span>
+            </button>
           </div>
           <label style="display:inline-flex;align-items:center;gap:6px;margin-left:15px">
             <input type="checkbox" id="toggleHideNoReserve" onchange="toggleHideNoReserve(this.checked)" />
@@ -378,15 +388,20 @@
     // Scoped styles for filters and reserve labels
     (function(){
   const css = `
-      .chip{padding:4px 10px;border:1px solid var(--border,#cbd5e1);border-radius:999px;background:#fff;color:#0f172a;font-size:12px;cursor:pointer}
+      .chip{padding:4px 10px;border:1px solid var(--border,#cbd5e1);border-radius:999px;background:#fff;color:#0f172a;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s ease;opacity:1}
+  /* Status count badge styling */
+  .status-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 5px;border-radius:999px;font-size:10px;font-weight:700;line-height:1;background:rgba(0,0,0,0.15);color:currentColor}
   /* Color the status chips */
   #restockFilters .chip[data-status-filter="ALL"]{ background:#e2e8f0; color:#334155; border-color:#cbd5e1 }
   #restockFilters .chip[data-status-filter="LOW"]{ background:#fee2e2; color:#b91c1c; border-color:#fecaca }
   #restockFilters .chip[data-status-filter="MEDIUM"]{ background:#fef3c7; color:#b45309; border-color:#fde68a }
   #restockFilters .chip[data-status-filter="FULL"]{ background:#dcfce7; color:#15803d; border-color:#bbf7d0 }
   #restockFilters .chip[data-status-filter="OVER"]{ background:#dbeafe; color:#1d4ed8; border-color:#bfdbfe }
-  /* Active should not override color; just emphasize */
-  .chip.active{ background:inherit; color:inherit; border-color:currentColor; border-width:2px }
+  /* Inactive chips (when another is active) */
+  #restockFilters.has-active .chip:not(.active){ opacity:0.35; filter:grayscale(0.6); transform:scale(0.96) }
+  #restockFilters.has-active .chip:not(.active):hover{ opacity:0.6; filter:grayscale(0.3); transform:scale(1) }
+  /* Active chip - more prominent */
+  .chip.active{ border-width:2px; font-weight:700; transform:scale(1.05); box-shadow:0 2px 8px rgba(0,0,0,0.15) }
       .reserve-none{color:#64748b;opacity:.8;font-style:italic}
       .restock-strong{font-weight:700;color:#0f172a}
   #restockTable th, #restockTable td{ text-align:center }
@@ -519,8 +534,17 @@
     function setStatusFilter(val, el){
       if (window.restockSetStatusFilter){ window.restockSetStatusFilter(val); }
       // Toggle active visual
+      const filterContainer = document.getElementById('restockFilters');
       document.querySelectorAll('#restockFilters .chip[data-status-filter]').forEach(btn=>btn.classList.remove('active'));
-      if (el) el.classList.add('active');
+      if (el) {
+        el.classList.add('active');
+        // Add "has-active" class if not "ALL" to gray out others
+        if (val && val !== 'ALL') {
+          filterContainer?.classList.add('has-active');
+        } else {
+          filterContainer?.classList.remove('has-active');
+        }
+      }
     }
   function toggleHideNoReserve(flag){ if (window.restockToggleHideNoReserve){ window.restockToggleHideNoReserve(flag); } }
   function toggleOnlyNeedsAdjustment(flag){ if (window.restockToggleOnlyNeedsAdjustment){ window.restockToggleOnlyNeedsAdjustment(flag); } }

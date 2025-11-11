@@ -304,6 +304,40 @@
     if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
   }
 
+  // Update status counters in filter buttons
+  function updateStatusCounters() {
+    const allRows = state.allRows || [];
+    
+    // Count by status
+    const counts = {
+      all: allRows.length,
+      low: 0,
+      medium: 0,
+      full: 0,
+      over: 0
+    };
+    
+    allRows.forEach(row => {
+      const status = String(row.__norm_status || row.status || '').toUpperCase();
+      if (status === 'LOW') counts.low++;
+      else if (status === 'MEDIUM') counts.medium++;
+      else if (status === 'FULL' || status === 'OK') counts.full++;
+      else if (status === 'OVER') counts.over++;
+    });
+    
+    // Update status filter badges
+    const updateBadge = (id, count) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = count;
+    };
+    
+    updateBadge('countAll', counts.all);
+    updateBadge('countLow', counts.low);
+    updateBadge('countMedium', counts.medium);
+    updateBadge('countFull', counts.full);
+    updateBadge('countOver', counts.over);
+  }
+
   // Parse location codes like MA-A-01-L1 or MA-B-08-L2-P1 into comparable parts
   function parseLocation(code){
     if (!code) return null;
@@ -921,6 +955,8 @@
   });
   // Save annotated rows
   state.allRows = rows.slice();
+  // Update status counters in UI
+  updateStatusCounters();
   // Apply current filters locally now
   let filtered = applyStatusFilter(rows);
   filtered = applyFavoritesFilter(filtered);
