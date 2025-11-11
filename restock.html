@@ -78,10 +78,6 @@
             Only favorites
           </label>
           <label style="display:inline-flex;align-items:center;gap:6px">
-            <input type="checkbox" id="toggleOnlyNeedsAdjustment" onchange="toggleOnlyNeedsAdjustment(this.checked)" />
-            Only needs adjustment
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px">
             <input type="checkbox" id="toggleOnlyReserveInfo" onchange="toggleOnlyReserveInfo(this.checked)" />
             Clear locations (i)
           </label>
@@ -531,7 +527,7 @@
       setTimeout(()=> window.print(), 0);
     }
     // Filter helpers exposed for restock.js
-    function setStatusFilter(val, el){
+    window.setStatusFilter = function setStatusFilter(val, el){
       if (window.restockSetStatusFilter){ window.restockSetStatusFilter(val); }
       // Toggle active visual
       const filterContainer = document.getElementById('restockFilters');
@@ -545,9 +541,8 @@
           filterContainer?.classList.remove('has-active');
         }
       }
-    }
+    };
   function toggleHideNoReserve(flag){ if (window.restockToggleHideNoReserve){ window.restockToggleHideNoReserve(flag); } }
-  function toggleOnlyNeedsAdjustment(flag){ if (window.restockToggleOnlyNeedsAdjustment){ window.restockToggleOnlyNeedsAdjustment(flag); } }
   function toggleOnlyFavorites(flag){ if (window.restockToggleOnlyFavorites){ window.restockToggleOnlyFavorites(flag); } }
   function toggleOnlyReserveInfo(flag){ if (window.restockToggleOnlyReserveInfo){ window.restockToggleOnlyReserveInfo(flag); } }
     // Default filter state

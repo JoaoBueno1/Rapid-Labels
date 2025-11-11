@@ -809,7 +809,69 @@
     }
   }
   
-  const viewPromise = qView.limit(5000); // Increased limit
+  // Fetch view data in chunks to avoid Supabase limits
+  console.log('Fetching view data in chunks...');
+  const allViewData = [];
+  const viewChunkSize = 1000;
+  let viewOffset = 0;
+  
+  while (true) {
+    console.log(`Fetching view chunk starting at ${viewOffset}...`);
+    
+    // Clone the query for each chunk
+    let chunkQuery = window.supabase
+      .from('restock_view')
+      .select('sku, product, stock_locator, on_hand, pickface_space, restock_qty')
+      .order('sku')
+      .range(viewOffset, viewOffset + viewChunkSize - 1);
+    
+    // Apply search filters to chunk query if they exist
+    if (q) {
+      const pattern = `%${q}%`;
+      chunkQuery = chunkQuery.or(
+        [
+          `sku.ilike.${pattern}`,
+          `product.ilike.${pattern}`,
+          `stock_locator.ilike.${pattern}`,
+        ].join(',')
+      );
+    }
+    
+    if (state.searchTerm && state.searchTerm.trim()) {
+      const searchTerm = state.searchTerm.trim();
+      if (/^\d+$/.test(searchTerm)) {
+        chunkQuery = chunkQuery.eq('sku', searchTerm);
+      } else {
+        chunkQuery = chunkQuery.or(
+          `product.ilike.%${searchTerm}%,sku.ilike.%${searchTerm}%`
+        );
+      }
+    }
+    
+    const { data: viewChunk, error: viewChunkError } = await chunkQuery;
+    
+    if (viewChunkError) {
+      console.error('View chunk error:', viewChunkError);
+      break;
+    }
+    
+    if (!viewChunk || viewChunk.length === 0) {
+      console.log('No more view data, stopping...');
+      break;
+    }
+    
+    console.log(`Loaded ${viewChunk.length} view records from chunk`);
+    allViewData.push(...viewChunk);
+    
+    if (viewChunk.length < viewChunkSize) {
+      console.log('Last chunk (partial), stopping...');
+      break;
+    }
+    
+    viewOffset += viewChunkSize;
+  }
+  
+  console.log(`Total view records loaded: ${allViewData.length}`);
   
   // Fetch setup data in chunks to avoid Supabase limits
   console.log('Fetching setup data in chunks...');
@@ -847,8 +909,10 @@
   }
   
   console.log(`Total setup records loaded: ${allSetupData.length}`);
-  const [{ data: viewRows, error: vErr }] = await Promise.all([viewPromise]);
+  
+  const viewRows = allViewData;
   const setupRows = allSetupData;
+  const vErr = null;
   const sErr = null;
       if (vErr) throw vErr;
       if (sErr) throw sErr;
@@ -955,6 +1019,13 @@
   });
   // Save annotated rows
   state.allRows = rows.slice();
+  
+  // Log total products count
+  console.log('📊 === TOTAL PRODUCTS IN TABLE ===');
+  console.log('Total products loaded:', rows.length);
+  console.log('Products with setup:', Object.keys(setupBySku).length);
+  console.log('Products from view:', rows.length);
+  
   // Update status counters in UI
   updateStatusCounters();
   // Apply current filters locally now
@@ -979,9 +1050,99 @@
 
   // Expose search trigger for the button
   window.runRestockSearch = function runRestockSearch() {
-    state.q = (input && input.value) || '';
+    const searchTerm = (input && input.value) || '';
+    const searchLower = searchTerm.trim().toLowerCase();
+    
+    // Detect special keywords
+    const keywords = {
+      'adjustment': 'needs-adjustment',
+      'adjustments': 'needs-adjustment',
+      'needs adjustment': 'needs-adjustment',
+      'needs adjustments': 'needs-adjustment',
+      'favorites': 'favorites',
+      'favourite': 'favorites',
+      'favourites': 'favorites',
+      'low': 'status-low',
+      'medium': 'status-medium',
+      'full': 'status-full',
+      'over': 'status-over',
+      'clear locations': 'reserve-info'
+    };
+    
+    const matchedKeyword = keywords[searchLower];
+    
+    if (matchedKeyword) {
+      // Handle keyword-based filtering
+      handleKeywordFilter(matchedKeyword);
+      return;
+    }
+    
+    // Normal search - reset special filters
+    state.onlyNeedsAdjustment = false;
+    state.q = searchTerm;
     fetchData();
   };
+  
+  // Handle keyword-based filters without fetching from DB
+  function handleKeywordFilter(keyword) {
+    // Clear search term
+    state.q = '';
+    
+    // Reset all special filters
+    state.onlyNeedsAdjustment = false;
+    state.onlyFavorites = false;
+    state.onlyReserveInfo = false;
+    state.statusFilter = 'ALL';
+    
+    // Apply the matched keyword filter
+    switch(keyword) {
+      case 'needs-adjustment':
+        state.onlyNeedsAdjustment = true;
+        break;
+      case 'favorites':
+        state.onlyFavorites = true;
+        const favCheckbox = document.getElementById('toggleOnlyFavorites');
+        if (favCheckbox) favCheckbox.checked = true;
+        break;
+      case 'status-low':
+        state.statusFilter = 'LOW';
+        window.setStatusFilter('LOW', document.querySelector('[data-status-filter="LOW"]'));
+        break;
+      case 'status-medium':
+        state.statusFilter = 'MEDIUM';
+        window.setStatusFilter('MEDIUM', document.querySelector('[data-status-filter="MEDIUM"]'));
+        break;
+      case 'status-full':
+        state.statusFilter = 'FULL';
+        window.setStatusFilter('FULL', document.querySelector('[data-status-filter="FULL"]'));
+        break;
+      case 'status-over':
+        state.statusFilter = 'OVER';
+        window.setStatusFilter('OVER', document.querySelector('[data-status-filter="OVER"]'));
+        break;
+      case 'reserve-info':
+        state.onlyReserveInfo = true;
+        const reserveCheckbox = document.getElementById('toggleOnlyReserveInfo');
+        if (reserveCheckbox) reserveCheckbox.checked = true;
+        break;
+    }
+    
+    // Apply filters to already loaded data
+    state.page = 1;
+    let rows = applyStatusFilter(state.allRows);
+    rows = applyFavoritesFilter(rows);
+    rows = applyOnlyReserveInfoFilter(rows);
+    const arranged = stableSortByBusinessRules(rows);
+    let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
+    
+    // Apply needs adjustment filter if active
+    if (state.onlyNeedsAdjustment) {
+      visible = visible.filter(r => (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0));
+    }
+    
+    state.rows = visible;
+    render(visible);
+  }
 
   const onInput = debounce(() => {
     state.q = (input && input.value) || '';
@@ -1048,6 +1209,30 @@
   };
   
   console.log('🌟 Favorites system loaded. Use window.favoritesDebug for testing.');
+  
+  // Helper to check total products
+  window.getTotalProducts = function() {
+    console.log('📊 === PRODUCTS SUMMARY ===');
+    console.log('Total products in state.allRows:', state.allRows?.length || 0);
+    console.log('Total products currently visible:', state.rows?.length || 0);
+    console.log('Current page:', state.page);
+    console.log('Items per page:', state.perPage);
+    console.log('\nBy Status:');
+    const counts = {};
+    state.allRows?.forEach(row => {
+      const status = row.__norm_status || 'UNKNOWN';
+      counts[status] = (counts[status] || 0) + 1;
+    });
+    console.table(counts);
+    return {
+      total: state.allRows?.length || 0,
+      visible: state.rows?.length || 0,
+      byStatus: counts
+    };
+  };
+  
+  console.log('💡 Use window.getTotalProducts() to see product statistics');
+  
   // Helpers to manage Last report stamp
   function setLastReportStampText(stamp){
     const el = document.getElementById('lastReportStamp');
