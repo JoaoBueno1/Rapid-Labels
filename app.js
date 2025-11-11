@@ -5,6 +5,16 @@ let searchPages = 1;
 let manualPages = 1;
 let selectedProduct = null;
 
+// Helper function: Get today's date in local timezone (YYYY-MM-DD)
+// Avoids UTC timezone issues that cause wrong date display
+function getTodayLocalYMD() {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 // Page load initialization
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Page loading...');
@@ -21,8 +31,8 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Code field:', manualCode ? '✅ Found' : '❌ Not found');
     console.log('Qty field:', manualQty ? '✅ Found' : '❌ Not found');
     
-    // Set current date as default
-    const today = new Date().toISOString().split('T')[0];
+    // Set current date as default (using local timezone)
+    const today = getTodayLocalYMD();
     const editDateInput = document.getElementById('editDate');
     const manualDateInput = document.getElementById('manualDate');
     
@@ -211,7 +221,7 @@ function resetSearchModal() {
         if (qty) qty.value = '';
         const dateEl = document.getElementById('editDate');
         if (dateEl) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getTodayLocalYMD();
             dateEl.value = today;
         }
         selectedProduct = null;
@@ -408,8 +418,8 @@ function displaySearchResults(results) {
 // Select a product from search results
 async function selectProduct(sku, code) {
     try {
-        // Get complete product details
-        const result = await window.supabaseSearch.searchBySKU(sku);
+        // Get complete product details using both SKU and Code to identify the correct product
+        const result = await window.supabaseSearch.searchBySKUAndCode(sku, code);
         
         if (!result.success) {
             document.getElementById('searchError').textContent = result.error || '❌ Product not found';
@@ -484,8 +494,8 @@ function closeManualModal() {
 function resetManualModal() {
     document.getElementById('manualForm').reset();
     
-    // Reset data para hoje
-    const today = new Date().toISOString().split('T')[0];
+    // Reset data para hoje (using local timezone)
+    const today = getTodayLocalYMD();
     document.getElementById('manualDate').value = today;
     
     selectedManualSize = null;

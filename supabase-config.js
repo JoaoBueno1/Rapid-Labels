@@ -73,6 +73,40 @@ window.supabaseReady = (async () => {
         }
     }
 
+    async function searchBySKUAndCode(sku, code) {
+        console.log('🔍 Searching by SKU and Code:', sku, code);
+        try {
+            const { data, error } = await supabaseClient
+                .from('Products')
+                .select('*')
+                .eq('SKU', sku)
+                .eq('Code', code)
+                .limit(1);
+            if (error) {
+                console.error('❌ SKU+Code query error:', error);
+                return { success: false, error: error.message || 'Product query failed' };
+            }
+            if (Array.isArray(data) && data.length > 0) {
+                const row = data[0];
+                console.log('✅ Product found by SKU+Code:', row);
+                return {
+                    success: true,
+                    product: {
+                        sku: row.SKU || '',
+                        code: row.Code || '',
+                        name: row.name || row.nome || row.Name || row.Nome || 'Product Name',
+                        description: row.description || row.descricao || row.Description || row.Descricao || 'Product Description'
+                    }
+                };
+            }
+            console.log('❌ Product not found with SKU+Code combination');
+            return { success: false, error: 'Product not found' };
+        } catch (error) {
+            console.error('❌ Error searching by SKU and Code:', error);
+            return { success: false, error: `Product search failed: ${error.message}` };
+        }
+    }
+
     async function searchByCode(code) {
         console.log('🔍 Searching by Code:', code);
         try {
@@ -172,6 +206,7 @@ window.supabaseReady = (async () => {
     window.supabaseSearch = {
         searchProduct,
         searchBySKU,
+        searchBySKUAndCode,
         searchByCode,
         searchLocation,
     searchBarcodes,
