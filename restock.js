@@ -24,6 +24,14 @@
      onlyReserveInfo: false, // show only rows where the (i) info badge would appear
   page: 1,
   perPage: 30,
+    // Hide specific locations
+    hideLocations: {
+      'MA-GA': false,
+      'MA-PRODUCTION': false,
+      'MA-SAMPLES': false,
+      'MA-DOCK': false,
+      'MA-RETURNS': false
+    }
   };
 
   // Favorites persistence (by SKU) - Now using Supabase database
@@ -440,6 +448,44 @@
       if (!state.onlyReserveInfo) return rows;
       return rows.filter(hasReserveInfoBadge);
     }
+
+  /**
+   * Apply location filters to rows
+   * If a product has multiple locations and some are hidden:
+   *   - Keep the product but filter out hidden locations
+   *   - Recalculate reserve total
+   * If a product has ONLY hidden locations:
+   *   - Remove the product from the list
+   */
+  function applyLocationFilters(rows) {
+    const hideList = Object.keys(state.hideLocations).filter(loc => state.hideLocations[loc]);
+    if (hideList.length === 0) return rows;
+
+    const filtered = [];
+    
+    for (const row of rows) {
+      const locations = row.__reserve_locations || [];
+      
+      // Filter out hidden locations
+      const visibleLocations = locations.filter(loc => {
+        const locName = String(loc.location || '').toUpperCase();
+        return !hideList.some(hidden => locName.includes(hidden));
+      });
+      
+      // If NO visible locations remain, skip this product entirely
+      if (locations.length > 0 && visibleLocations.length === 0) {
+        continue;
+      }
+      
+      // Update row with filtered locations and recalculated total
+      row.__reserve_locations = visibleLocations;
+      row.__reserve_total = visibleLocations.reduce((sum, loc) => sum + (Number(loc.qty) || 0), 0);
+      
+      filtered.push(row);
+    }
+    
+    return filtered;
+  }
 
   function stableSortByBusinessRules(rows) {
     const order = {
@@ -1017,8 +1063,11 @@
     r.__reserve_total = (reserveCtx.totals && reserveCtx.totals[r.sku]) || 0;
     r.__reserve_locations = (reserveCtx.bySkuLocations && reserveCtx.bySkuLocations[r.sku]) || [];
   });
-  // Save annotated rows
+  // Save annotated rows BEFORE applying location filters
   state.allRows = rows.slice();
+  
+  // Apply location filters
+  rows = applyLocationFilters(rows);
   
   // Log total products count
   console.log('📊 === TOTAL PRODUCTS IN TABLE ===');
@@ -1129,7 +1178,8 @@
     
     // Apply filters to already loaded data
     state.page = 1;
-    let rows = applyStatusFilter(state.allRows);
+    let rows = applyLocationFilters(state.allRows.slice());
+    rows = applyStatusFilter(rows);
     rows = applyFavoritesFilter(rows);
     rows = applyOnlyReserveInfoFilter(rows);
     const arranged = stableSortByBusinessRules(rows);
@@ -1319,7 +1369,8 @@
     state.statusFilter = String(val||'ALL').toUpperCase();
   // Rebuild view from annotated allRows
   state.page = 1;
-  let rows = applyStatusFilter(state.allRows);
+  let rows = applyLocationFilters(state.allRows.slice());
+  rows = applyStatusFilter(rows);
   rows = applyFavoritesFilter(rows);
     rows = applyOnlyReserveInfoFilter(rows);
   const arranged = stableSortByBusinessRules(rows);
@@ -1338,7 +1389,8 @@
   window.restockToggleHideNoReserve = function(flag){
     state.hideNoReserve = !!flag;
   state.page = 1;
-  let rows = applyStatusFilter(state.allRows);
+  let rows = applyLocationFilters(state.allRows.slice());
+  rows = applyStatusFilter(rows);
   rows = applyFavoritesFilter(rows);
     rows = applyOnlyReserveInfoFilter(rows);
   const arranged = stableSortByBusinessRules(rows);
@@ -1355,7 +1407,8 @@
     state.onlyNeedsAdjustment = !!flag;
     // Reset to page 1 for clarity
     state.page = 1;
-    let rows = applyStatusFilter(state.allRows);
+    let rows = applyLocationFilters(state.allRows.slice());
+    rows = applyStatusFilter(rows);
     rows = applyFavoritesFilter(rows);
     rows = applyOnlyReserveInfoFilter(rows);
     const arranged = stableSortByBusinessRules(rows);
@@ -1403,7 +1456,8 @@
     // Re-render if favorites filter is active
     if (state.onlyFavorites) {
       state.page = 1;
-      let rows = applyStatusFilter(state.allRows);
+      let rows = applyLocationFilters(state.allRows.slice());
+      rows = applyStatusFilter(rows);
       rows = applyFavoritesFilter(rows);
       rows = applyOnlyReserveInfoFilter(rows);
       const arranged = stableSortByBusinessRules(rows);
@@ -1432,7 +1486,8 @@
   window.restockToggleOnlyFavorites = function(flag){
     state.onlyFavorites = !!flag;
     state.page = 1;
-    let rows = applyStatusFilter(state.allRows);
+    let rows = applyLocationFilters(state.allRows.slice());
+    rows = applyStatusFilter(rows);
     rows = applyFavoritesFilter(rows);
     rows = applyOnlyReserveInfoFilter(rows);
     const arranged = stableSortByBusinessRules(rows);
@@ -1457,7 +1512,8 @@
     window.restockToggleOnlyReserveInfo = function(flag){
       state.onlyReserveInfo = !!flag;
       state.page = 1;
-      let rows = applyStatusFilter(state.allRows);
+      let rows = applyLocationFilters(state.allRows.slice());
+      rows = applyStatusFilter(rows);
       rows = applyFavoritesFilter(rows);
       rows = applyOnlyReserveInfoFilter(rows);
       const arranged = stableSortByBusinessRules(rows);
@@ -1468,6 +1524,27 @@
       state.rows = visible;
       render(visible);
     };
+
+  // Toggle hide location filters
+  window.restockToggleHideLocation = function(location, flag) {
+    state.hideLocations[location] = !!flag;
+    state.page = 1;
+    
+    // Re-apply filters to existing data
+    let rows = applyLocationFilters(state.allRows.slice());
+    rows = applyStatusFilter(rows);
+    rows = applyFavoritesFilter(rows);
+    rows = applyOnlyReserveInfoFilter(rows);
+    const arranged = stableSortByBusinessRules(rows);
+    let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total||0) > 0) : arranged;
+    
+    if (state.onlyNeedsAdjustment) {
+      visible = visible.filter(r => (Number(r.on_hand) === 0) && (Number(r.__reserve_total || 0) > 0));
+    }
+    
+    state.rows = visible;
+    render(visible);
+  };
 
   // Import workflow
   const importFileInput = document.getElementById('importFile');

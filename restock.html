@@ -81,6 +81,27 @@
             <input type="checkbox" id="toggleOnlyReserveInfo" onchange="toggleOnlyReserveInfo(this.checked)" />
             Clear locations (i)
           </label>
+          <div style="width:1px;height:20px;background:#ddd;margin:0 8px"></div>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
+            <input type="checkbox" id="hideMAGA" onchange="restockToggleHideLocation('MA-GA', this.checked)" />
+            Hide MA-GA
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
+            <input type="checkbox" id="hideMAPRODUCTION" onchange="restockToggleHideLocation('MA-PRODUCTION', this.checked)" />
+            Hide MA-PRODUCTION
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
+            <input type="checkbox" id="hideMASAMPLES" onchange="restockToggleHideLocation('MA-SAMPLES', this.checked)" />
+            Hide MA-SAMPLES
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
+            <input type="checkbox" id="hideMADOCK" onchange="restockToggleHideLocation('MA-DOCK', this.checked)" />
+            Hide MA-DOCK
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
+            <input type="checkbox" id="hideMAR​ETURNS" onchange="restockToggleHideLocation('MA-RETURNS', this.checked)" />
+            Hide MA-RETURNS
+          </label>
           <div style="flex:1"></div>
           <div style="display:flex;align-items:center;gap:10px">
             <button class="search-btn-small" type="button" onclick="openLocationsPrintModal()">Print Locations</button>
