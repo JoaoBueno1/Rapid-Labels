@@ -48,9 +48,8 @@
         </main>
 
             // Proactively update SW (v3) and reload if a new controller takes over
-            if ('serviceWorker' in navigator){
-                navigator.serviceWorker.addEventListener('controllerchange', () => { try { if (!window.__reloaded){ window.__reloaded = true; location.reload(); } } catch(e){} });
-                navigator.serviceWorker.getRegistration().then(r=>{ if(r){ r.update().catch(()=>{}); } });
+            // Service worker disabled } catch(e){} });
+                 } });
             }
     <!-- Modal Search Product -->
     <div id="searchModal" class="modal hidden">
@@ -331,17 +330,14 @@
     <script src="scanner.js"></script>
     <script src="app.js"></script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('service-worker.js');
+        // Service worker disabled for production stability
+        
+        // Open modals via hash shortcuts (from secondary pages)
+        document.addEventListener('DOMContentLoaded', () => {
+            if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
+            if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
+            if (location.hash === '#barcodes') { try { openBarcodesModal(); } catch(e){} }
         });
-      }
-            // Open modals via hash shortcuts (from secondary pages)
-            document.addEventListener('DOMContentLoaded', () => {
-                if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
-                if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
-                if (location.hash === '#barcodes') { try { openBarcodesModal(); } catch(e){} }
-            });
     </script>
 </body>
 </html>
