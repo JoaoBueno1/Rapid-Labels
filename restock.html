@@ -127,7 +127,7 @@
             <th>Reserve</th>
             <th>Restock</th>
             <th class="print-only">Nearest Reserve</th>
-            <th class="print-only">Notes</th>
+            <th class="print-only" style="width: 80px; max-width: 80px;">Notes</th>
             <th style="width:120px" class="no-print">Actions</th>
           </tr>
         </thead>
@@ -1066,8 +1066,9 @@
             </div>
           </div>
           <div class="field-group" style="margin-top: 16px;">
-            <label for="productNotes">Notes: <span style="font-weight: normal; color: #6b7280;">(optional - will appear on print)</span></label>
-            <textarea id="productNotes" placeholder="Add notes for this product (e.g., special handling, location details)" rows="2" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; resize: vertical;"></textarea>
+            <label for="productNotes">Notes: <span style="font-weight: normal; color: #6b7280;">(max 40 chars - will appear on print)</span></label>
+            <textarea id="productNotes" placeholder="Add notes for this product" rows="2" maxlength="40" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; resize: none;" oninput="document.getElementById('notesCharCount').textContent = this.value.length"></textarea>
+            <div style="text-align: right; font-size: 11px; color: #9ca3af; margin-top: 2px;"><span id="notesCharCount">0</span>/40</div>
           </div>
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">

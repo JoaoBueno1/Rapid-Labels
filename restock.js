@@ -286,8 +286,17 @@
           </div>
         `;
         
-        // Notes column
-        const notesHtml = r.__notes ? escapeHtml(r.__notes) : '';
+        // Notes column - word wrap every 10 chars for print
+        const wrapText = (text, chunkSize) => {
+          if (!text) return '';
+          const escaped = escapeHtml(text);
+          const chunks = [];
+          for (let i = 0; i < escaped.length; i += chunkSize) {
+            chunks.push(escaped.substring(i, i + chunkSize));
+          }
+          return chunks.join('<br>');
+        };
+        const notesHtml = r.__notes ? wrapText(r.__notes, 10) : '';
         
         return `
           <tr>
@@ -396,7 +405,7 @@
     const top = scored.slice(0, 3);
 
     // Append special zones (case-insensitive) directly from original reserveLocs, even if code doesn't match parse pattern
-    const specials = ['MA-RETURNS','MA-GA','MA-SAMPLES','MA-DOCK'];
+    const specials = ['MA-RETURNS','MA-GA','MA-SAMPLES','MA-DOCK','MA-PRODUCTION'];
     const setIncluded = new Set(top.map(x => x.location.toUpperCase()));
     const extras = [];
     // Group extras by zone to keep a stable order within each group; sort by qty desc
@@ -1836,6 +1845,7 @@
     currentEditingSku = null;
     document.getElementById('addEditProductTitle').textContent = 'Add Product';
     document.getElementById('addEditProductForm').reset();
+    document.getElementById('notesCharCount').textContent = '0';
     
     // Make sure SKU field is editable
     const skuField = document.getElementById('productSku');
@@ -1937,7 +1947,9 @@
         document.getElementById('productCapMin').value = data.cap_min || '';
         document.getElementById('productCapMed').value = data.cap_med || '';
         document.getElementById('productCapMax').value = data.cap_max || '';
-        document.getElementById('productNotes').value = data.notes || '';
+        const notesValue = data.notes || '';
+        document.getElementById('productNotes').value = notesValue;
+        document.getElementById('notesCharCount').textContent = notesValue.length;
         
         // Trigger validation after loading data
         updateMaxCapacity();
