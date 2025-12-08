@@ -286,6 +286,9 @@
           </div>
         `;
         
+        // Notes column
+        const notesHtml = r.__notes ? escapeHtml(r.__notes) : '';
+        
         return `
           <tr>
             <td>${star}</td>
@@ -298,12 +301,13 @@
             <td>${reserveCellHtml}</td>
             <td>${restock}</td>
             <td class="print-only">${nearestHtml}</td>
+            <td class="print-only">${notesHtml}</td>
             <td class="no-print">${actionButtons}</td>
           </tr>`;
       }).join('');
       chunks.push(rowsHtml);
       if (i + 30 < limited.length) {
-        chunks.push('<tr class="print-break"><td colspan="11"></td></tr>');
+        chunks.push('<tr class="print-break"><td colspan="12"></td></tr>');
       }
     }
     const html = chunks.join('');
@@ -811,7 +815,7 @@
     }
 
     state.loading = true;
-  setTbody('<tr><td colspan="11" style="text-align:center;opacity:.7">Loading…</td></tr>');
+  setTbody('<tr><td colspan="12" style="text-align:center;opacity:.7">Loading…</td></tr>');
 
     try {
       await window.supabaseReady;
@@ -929,7 +933,7 @@
     console.log(`Fetching setup chunk starting at ${setupOffset}...`);
     const { data: setupChunk, error: setupChunkError } = await window.supabase
       .from('restock_setup')
-      .select('sku, cap_min, cap_med, cap_max')
+      .select('sku, cap_min, cap_med, cap_max, notes')
       .order('sku')
       .range(setupOffset, setupOffset + setupChunkSize - 1);
     
@@ -975,7 +979,7 @@
       }
       
       for (const s of setupRows || []){
-        setupBySku[s.sku] = { min: Number(s.cap_min), med: Number(s.cap_med), max: Number(s.cap_max) };
+        setupBySku[s.sku] = { min: Number(s.cap_min), med: Number(s.cap_med), max: Number(s.cap_max), notes: s.notes || '' };
         
         // Debug specific SKUs
         if (String(s.sku) === '31328' || String(s.sku) === '41161') {
@@ -984,6 +988,7 @@
             cap_min: s.cap_min,
             cap_med: s.cap_med,
             cap_max: s.cap_max,
+            notes: s.notes,
             converted: setupBySku[s.sku]
           });
         }
@@ -1012,6 +1017,9 @@
   for (const r of rows){
         const t = setupBySku[r.sku];
         const isDebugSku = String(r.sku) === '31328';
+        
+        // Attach notes from setup
+        r.__notes = t ? (t.notes || '') : '';
         
         if (isDebugSku) {
           console.log(`=== DEBUG SKU 31328 Status Calculation ===`);
@@ -1091,7 +1099,7 @@
   render(visible);
     } catch (e) {
   console.error('restock fetch error', e);
-  setTbody('<tr><td colspan="11" style="text-align:center;color:#b91c1c">Failed to load data</td></tr>');
+  setTbody('<tr><td colspan="12" style="text-align:center;color:#b91c1c">Failed to load data</td></tr>');
     } finally {
       state.loading = false;
     }
@@ -1920,7 +1928,7 @@
       
       const { data, error } = await window.supabase
         .from('restock_setup')
-        .select('pickface_qty, cap_min, cap_med, cap_max')
+        .select('pickface_qty, cap_min, cap_med, cap_max, notes')
         .eq('sku', sku)
         .single();
       
@@ -1929,6 +1937,7 @@
         document.getElementById('productCapMin').value = data.cap_min || '';
         document.getElementById('productCapMed').value = data.cap_med || '';
         document.getElementById('productCapMax').value = data.cap_max || '';
+        document.getElementById('productNotes').value = data.notes || '';
         
         // Trigger validation after loading data
         updateMaxCapacity();
@@ -1950,7 +1959,8 @@
       pickface_qty: parseInt(document.getElementById('productPickfaceQty').value) || 0,
       cap_min: parseInt(document.getElementById('productCapMin').value) || 0,
       cap_med: parseInt(document.getElementById('productCapMed').value) || 0,
-      cap_max: parseInt(document.getElementById('productCapMax').value) || 0
+      cap_max: parseInt(document.getElementById('productCapMax').value) || 0,
+      notes: document.getElementById('productNotes').value.trim()
     };
 
     // Validate form
@@ -1971,7 +1981,8 @@
             pickface_qty: formData.pickface_qty,
             cap_min: formData.cap_min,
             cap_med: formData.cap_med,
-            cap_max: formData.cap_max
+            cap_max: formData.cap_max,
+            notes: formData.notes
           })
           .eq('sku', currentEditingSku);
         
