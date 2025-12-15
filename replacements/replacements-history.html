@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Replacements History - Rapid Label</title>
+  <link rel="stylesheet" href="../styles.css?v=9" />
+  <link rel="icon" type="image/svg+xml" href="../icon-192.svg">
+  <meta name="x-build" content="2025-12-15T00:00:00Z-v1" />
+  <style>
+    /* Replacements-specific styles */
+    .legend-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .status-chip {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-chip.confirmed { background: #dcfce7; color: #166534; }
+    .status-chip.cancelled { background: #fee2e2; color: #dc2626; }
+    .action-btn {
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .action-btn.print { 
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); 
+      color: white; 
+    }
+    .action-btn.print:hover { 
+      box-shadow: 0 3px 10px rgba(99, 102, 241, 0.4); 
+    }
+    .req-number {
+      font-weight: 700;
+      font-family: monospace;
+      color: #1e40af;
+    }
+    .products-summary {
+      font-size: 12px;
+      color: #64748b;
+      max-width: 150px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .products-summary:hover {
+      white-space: normal;
+      overflow: visible;
+      position: relative;
+      z-index: 10;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="replacements.html">← Back</a>
+        <a class="brand" href="../index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="../index.html" class="nav-link">Home</a>
+        <a href="replacements.html" class="nav-link">Replacements</a>
+        <a href="replacements-history.html" class="nav-link" style="font-weight:600">History</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="main-container wide-container">
+    <div class="page-header">
+      <h1>📁 Replacements History</h1>
+      <div class="header-actions">
+        <div class="search-input-group">
+          <input type="text" id="historySearch" style="min-width: 380px;" placeholder="Search: Request #, Customer, Courier, Consignment, Sales Order..." oninput="filterHistory()" />
+          <button class="search-btn-small" onclick="filterHistory()">Search</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <div class="small-note">Confirmed and cancelled replacement requests</div>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Request #</th>
+            <th>Customer</th>
+            <th>Reason</th>
+            <th>Type</th>
+            <th>Courier</th>
+            <th>Consignment</th>
+            <th>$ (AUD)</th>
+            <th>Sales Order</th>
+            <th>Products</th>
+            <th>Received</th>
+            <th>Confirmed By</th>
+            <th>Action Taken</th>
+            <th>Status</th>
+            <th class="actions-col" style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="historyTbody">
+          <tr><td colspan="14" style="text-align:center;opacity:.7">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
+  </footer>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="../supabase-config.js"></script>
+  <script src="replacements-history.js"></script>
+</body>
+</html>

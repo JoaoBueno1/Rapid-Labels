@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Replacements - Rapid Label</title>
+  <link rel="stylesheet" href="../styles.css?v=9" />
+  <link rel="icon" type="image/svg+xml" href="../icon-192.svg">
+  <meta name="x-build" content="2025-12-15T00:00:00Z-v1" />
+  <style>
+    /* Replacements-specific styles */
+    .legend-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .legend-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .products-summary {
+      font-size: 12px;
+      color: #64748b;
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .products-summary:hover {
+      white-space: normal;
+      overflow: visible;
+      position: relative;
+      z-index: 10;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .status-chip {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-chip.active { background: #dbeafe; color: #1d4ed8; }
+    .status-chip.confirmed { background: #dcfce7; color: #166534; }
+    .status-chip.cancelled { background: #fee2e2; color: #dc2626; }
+    .action-btn {
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .action-btn.print { 
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); 
+      color: white; 
+    }
+    .action-btn.print:hover { 
+      box-shadow: 0 3px 10px rgba(99, 102, 241, 0.4); 
+    }
+    .action-btn.confirm { 
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); 
+      color: white; 
+    }
+    .action-btn.confirm:hover { 
+      box-shadow: 0 3px 10px rgba(34, 197, 94, 0.4); 
+    }
+    .action-btn.cancel { 
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); 
+      color: white; 
+    }
+    .action-btn.cancel:hover { 
+      box-shadow: 0 3px 10px rgba(239, 68, 68, 0.4); 
+    }
+    .action-btn.primary { 
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); 
+      color: white; 
+      border: none;
+    }
+    .action-btn.primary:hover { 
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); 
+    }
+    .req-number {
+      font-weight: 700;
+      font-family: monospace;
+      color: #1e40af;
+    }
+    /* Product lines in modal */
+    .product-lines {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid var(--border, #e2e8f0);
+      border-radius: 8px;
+      margin-top: 8px;
+    }
+    .product-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+    }
+    .product-line:last-child { border-bottom: none; }
+    .product-line .code { font-weight: 600; color: #1e40af; min-width: 60px; }
+    .product-line .sku { flex: 1; color: #334155; }
+    .product-line .qty { font-weight: 600; min-width: 40px; text-align: center; }
+    .product-line .remove-btn {
+      background: none;
+      border: none;
+      color: #dc2626;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 2px 6px;
+    }
+    .product-line .remove-btn:hover { background: #fee2e2; border-radius: 4px; }
+    .empty-products {
+      text-align: center;
+      padding: 20px;
+      color: #94a3b8;
+      font-style: italic;
+    }
+    /* Autocomplete dropdown */
+    .ac-panel {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 100%;
+      background: #fff;
+      border: 1px solid var(--border, #cbd5e1);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      z-index: 3000;
+      max-height: 150px;
+      overflow-y: auto;
+      margin-top: 4px;
+      padding: 4px 0;
+      display: none;
+    }
+    .ac-item {
+      padding: 8px 10px;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .ac-item:hover { background: #f1f5f9; }
+    .ac-left { font-weight: 600; color: #0f172a; }
+    .ac-right { color: #475569; }
+    .field-group.has-autocomplete { position: relative; }
+    /* Fix select heights */
+    .manual-fields select {
+      height: 42px;
+      padding: 8px 12px;
+    }
+    .manual-fields input,
+    .manual-fields select,
+    .manual-fields textarea {
+      box-sizing: border-box;
+      width: 100%;
+      font-size: 14px;
+    }
+    .manual-fields input::placeholder {
+      color: #94a3b8;
+      font-size: 13px;
+    }
+    .manual-fields .field-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .manual-fields .field-group {
+      flex: 1;
+      min-width: 0;
+    }
+    .manual-fields .field-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 4px;
+    }
+    .manual-fields .field-group input,
+    .manual-fields .field-group select {
+      height: 40px;
+      padding: 0 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .manual-fields .field-group input:focus,
+    .manual-fields .field-group select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    .manual-fields .field-group.small {
+      flex: 0 0 120px;
+    }
+    .manual-fields .field-group.medium {
+      flex: 0 0 150px;
+    }
+    /* Currency input styling */
+    .currency-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+    .currency-input-wrapper .currency-symbol {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #64748b;
+      font-weight: 600;
+      font-size: 14px;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .currency-input-wrapper input {
+      padding-left: 28px !important;
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="../index.html">← Back</a>
+        <a class="brand" href="../index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="../index.html" class="nav-link">Home</a>
+        <a href="replacements.html" class="nav-link" style="font-weight:600">Replacements</a>
+        <a href="replacements-history.html" class="nav-link">History</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="main-container wide-container">
+    <div class="page-header">
+      <h1>🔄 Replacements</h1>
+      <div class="header-actions">
+        <div class="search-input-group">
+          <input type="text" id="activeSearch" style="min-width: 380px;" placeholder="Search: Request #, Customer, Courier, Consignment, Sales Order..." oninput="filterActive()" />
+          <button class="search-btn-small" onclick="filterActive()">Search</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <div class="small-note">Active replacement requests</div>
+      <div class="legend-actions">
+        <button class="search-btn-small" onclick="openAddModal()">Add Replacement</button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Request #</th>
+            <th>Customer</th>
+            <th>Reason</th>
+            <th>Type</th>
+            <th>Courier</th>
+            <th>Consignment</th>
+            <th>$ (AUD)</th>
+            <th>Sales Order</th>
+            <th>Products</th>
+            <th>Date</th>
+            <th class="actions-col" style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="activeTbody">
+          <tr><td colspan="11" style="text-align:center;opacity:.7">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
+  </footer>
+
+  <!-- Add/Edit Replacement Modal -->
+  <div id="addModal" class="modal hidden">
+    <div class="modal-content" style="max-width: 600px;">
+      <span class="close" onclick="closeAddModal()">&times;</span>
+      <h2 id="addModalTitle">➕ Add Replacement Request</h2>
+      
+      <div class="manual-fields">
+        <!-- Row 1: Date + Customer -->
+        <div class="field-row">
+          <div class="field-group small">
+            <label for="reqDate">Date *</label>
+            <input id="reqDate" type="date" required />
+          </div>
+          <div class="field-group">
+            <label for="reqCustomer">Customer *</label>
+            <input id="reqCustomer" type="text" placeholder="Customer name" required />
+          </div>
+        </div>
+        <!-- Row 2: Reason + Resolution Type -->
+        <div class="field-row">
+          <div class="field-group">
+            <label for="reqReason">Reason for Return</label>
+            <select id="reqReason">
+              <option value="">Select reason...</option>
+              <option value="Defective">Defective</option>
+              <option value="Wrong Item">Wrong Item</option>
+              <option value="Damaged">Damaged</option>
+              <option value="Customer Changed Mind">Customer Changed Mind</option>
+              <option value="Quality Issue">Quality Issue</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="reqType">Resolution Type</label>
+            <select id="reqType">
+              <option value="">Select type...</option>
+              <option value="Refund">Refund</option>
+              <option value="Exchange">Exchange</option>
+              <option value="Credit Note">Credit Note</option>
+              <option value="Stock Return">Stock Return</option>
+            </select>
+          </div>
+        </div>
+        <!-- Row 3: Courier + Consignment -->
+        <div class="field-row">
+          <div class="field-group">
+            <label for="reqCourier">Courier</label>
+            <input id="reqCourier" type="text" placeholder="FedEx, AusPost..." />
+          </div>
+          <div class="field-group">
+            <label for="reqConsignment">Consignment (CN)</label>
+            <input id="reqConsignment" type="text" placeholder="CN number" />
+          </div>
+          <div class="field-group medium">
+            <label for="reqValue">Value (AUD)</label>
+            <div class="currency-input-wrapper">
+              <span class="currency-symbol">$</span>
+              <input id="reqValue" type="text" inputmode="numeric" placeholder="0.00" />
+            </div>
+          </div>
+        </div>
+        <!-- Row 4: Sales Order + Reference -->
+        <div class="field-row">
+          <div class="field-group">
+            <label for="reqSalesOrder">Sales Order</label>
+            <input id="reqSalesOrder" type="text" placeholder="SO-123456" />
+          </div>
+          <div class="field-group">
+            <label for="reqSalesOrderRef">SO Reference</label>
+            <input id="reqSalesOrderRef" type="text" placeholder="Reference #" />
+          </div>
+        </div>
+        <!-- Row 5: Comments -->
+        <div class="field-group">
+          <label for="reqComments">Comments</label>
+          <textarea id="reqComments" rows="2" placeholder="Additional notes..." style="width: 100%; resize: vertical; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;"></textarea>
+        </div>
+      </div>
+
+      <!-- Products Section -->
+      <div style="margin-top: 16px; border-top: 1px solid var(--border, #e2e8f0); padding-top: 16px;">
+        <label style="font-weight: 600; margin-bottom: 8px; display: block;">Products *</label>
+        <div class="field-row" style="align-items: flex-end;">
+          <div class="field-group has-autocomplete" style="flex: 0 0 100px;">
+            <label for="prodCode">Code</label>
+            <input id="prodCode" type="text" placeholder="5-digit" maxlength="5" autocomplete="off" />
+            <div id="prodCodeAC" class="ac-panel"></div>
+          </div>
+          <div class="field-group has-autocomplete" style="flex: 1;">
+            <label for="prodSku">Product / SKU</label>
+            <input id="prodSku" type="text" placeholder="Product name or SKU" autocomplete="off" />
+            <div id="prodSkuAC" class="ac-panel"></div>
+          </div>
+          <div class="field-group" style="flex: 0 0 70px;">
+            <label for="prodQty">Qty</label>
+            <input id="prodQty" type="number" min="1" placeholder="Qty" />
+          </div>
+          <button type="button" class="search-btn-small" style="margin-bottom: 0;" onclick="addProductLine()">Add</button>
+        </div>
+        <div id="productLines" class="product-lines">
+          <div class="empty-products">No products added yet</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+        <button class="search-btn-small secondary" onclick="closeAddModal()">Cancel</button>
+        <button class="search-btn-small" style="background:#334155" onclick="saveReplacement(false)">Save</button>
+        <button class="search-btn-small" onclick="saveReplacement(true)">Save & Print</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirmModal" class="modal hidden">
+    <div class="modal-content" style="max-width: 450px;">
+      <span class="close" onclick="closeConfirmModal()">&times;</span>
+      <h2>✅ Confirm Replacement</h2>
+      <div class="small-note" style="margin:6px 0 12px">Request: <strong id="confirmReqNumber">—</strong></div>
+      
+      <div class="manual-fields">
+        <div class="field-group">
+          <label for="confirmReceivedDate">Received Date *</label>
+          <input id="confirmReceivedDate" type="date" required />
+        </div>
+        <div class="field-group">
+          <label for="confirmBy">Confirmed By *</label>
+          <select id="confirmBy" required>
+            <option value="">Select operator...</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="confirmAction">Action Taken</label>
+          <textarea id="confirmAction" rows="3" placeholder="e.g. Put back on shelf, Stock adjusted in Cin7..." style="width: 100%; resize: vertical;"></textarea>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="search-btn-small secondary" onclick="closeConfirmModal()">Cancel</button>
+        <button class="search-btn-small" onclick="submitConfirm()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancel Confirmation Modal -->
+  <div id="cancelModal" class="modal hidden">
+    <div class="modal-content" style="max-width: 400px;">
+      <span class="close" onclick="closeCancelModal()">&times;</span>
+      <h2>🗑️ Cancel Replacement</h2>
+      <p id="cancelMessage">Are you sure you want to cancel this replacement request?</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="search-btn-small secondary" onclick="closeCancelModal()">No, Keep It</button>
+        <button class="search-btn-small" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);" onclick="submitCancel()">Yes, Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="../supabase-config.js"></script>
+  <script src="replacements.js"></script>
+</body>
+</html>
