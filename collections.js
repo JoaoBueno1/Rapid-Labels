@@ -735,6 +735,16 @@ function openAddOrderModal(){
   }
   // Always set to today's local date on open (prevents UTC/offset showing yesterday)
   const dateEl = document.getElementById('orderDate'); if (dateEl) dateEl.value = getTodayLocalYMD();
+  
+  // Auto-focus on Reference field (Sales Order) for quick scanning
+  setTimeout(() => {
+    const refInput = document.getElementById('orderReference');
+    if (refInput) {
+      refInput.focus();
+      refInput.select();
+    }
+  }, 100);
+  
   // Re-render parcel UI after a tick (ensures DOM ready)
   setTimeout(()=>{ try { updateParcelDraftUI(); } catch(e){ console.error('[AddOrder] updateParcelDraftUI after open failed', e); } }, 0);
 }
@@ -750,6 +760,184 @@ function closeAddOrderModal(){
     }
   } catch(e){ /* noop */ }
 }
+
+// ================= Cin7 Integration =================
+async function lookupCin7Order() {
+  const refInput = document.getElementById('orderReference');
+  const statusDiv = document.getElementById('cin7Status');
+  const fetchBtn = document.getElementById('cin7LookupBtn');
+  
+  if (!refInput) return;
+  
+  let reference = refInput.value.trim().toUpperCase();
+  
+  if (!reference) {
+    showCin7Status('⚠️ Please enter a reference number', 'warning');
+    refInput.focus();
+    return;
+  }
+  
+  // Auto-add SO- prefix if missing
+  if (!reference.startsWith('SO-')) {
+    reference = 'SO-' + reference.replace(/^SO/, '');
+    refInput.value = reference;
+  }
+  
+  // Show loading state
+  const startTime = performance.now();
+  if (fetchBtn) {
+    fetchBtn.disabled = true;
+    fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  }
+  showCin7Status('🔍 Looking up...', 'info');
+  
+  try {
+    const result = await cin7Service.lookupOrder(reference);
+    const elapsed = Math.round(performance.now() - startTime);
+    
+    if (result.success) {
+      // Populate form fields
+      populateFromCin7(result);
+      
+      // Track request in integration monitor
+      if (window.cin7TrackRequest) {
+        window.cin7TrackRequest(reference, result.customer_name || 'Unknown', elapsed);
+      }
+      
+      // Show success feedback
+      const source = result.source === 'cache' ? '⚡ CACHE' : '☁️ API';
+      showCin7Status(`✓ ${source} (${elapsed}ms) - ${result.customer_name || reference}`, 'success');
+      
+      // Focus on next field (customer or contact)
+      const customerInput = document.getElementById('orderCustomer');
+      if (customerInput) customerInput.focus();
+    } else {
+      showCin7Status(`❌ ${result.error || 'Could not fetch order'}`, 'error');
+    }
+  } catch (error) {
+    console.error('[Cin7] Lookup error:', error);
+    showCin7Status('❌ Error fetching order', 'error');
+  } finally {
+    if (fetchBtn) {
+      fetchBtn.disabled = false;
+      fetchBtn.innerHTML = '<i class="fas fa-search"></i>';
+    }
+  }
+}
+
+function populateFromCin7(data) {
+  try {
+    // Customer info
+    if (data.customer_name) {
+      document.getElementById('orderCustomer').value = data.customer_name;
+    }
+    
+    // Contact info
+    if (data.contact_name) {
+      document.getElementById('orderContactName').value = data.contact_name;
+    }
+    
+    if (data.phone) {
+      document.getElementById('orderContactNumber').value = data.phone;
+    }
+    
+    if (data.email) {
+      document.getElementById('orderEmail').value = data.email;
+    }
+    
+    // Sales Rep - populate if field exists
+    if (data.sales_rep) {
+      const salesRepInput = document.getElementById('orderSalesRep');
+      if (salesRepInput) {
+        salesRepInput.value = data.sales_rep;
+      }
+    }
+    
+    // Invoice Number - Direct API fetch (fresh data)
+    if (data.invoice_number) {
+      const invoiceInput = document.getElementById('orderInvoice');
+      if (invoiceInput) {
+        invoiceInput.value = data.invoice_number;
+      }
+    }
+    
+    // Trigger customer autocomplete to update
+    const customerInput = document.getElementById('orderCustomer');
+    if (customerInput && data.customer_name) {
+      customerInput.dispatchEvent(new Event('input', {bubbles: true}));
+    }
+    
+    console.log('[Cin7] Form populated:', {
+      customer: data.customer_name,
+      contact: data.contact_name,
+      email: data.email,
+      salesRep: data.sales_rep,
+      invoice: data.invoice_number,
+      invoice: data.invoice_number
+    });
+  } catch (error) {
+    console.error('[Cin7] Error populating form:', error);
+  }
+}
+
+function showCin7Status(message, type) {
+  const statusDiv = document.getElementById('cin7Status');
+  if (!statusDiv) return;
+  
+  const colors = {
+    info: '#3b82f6',
+    success: '#16a34a',
+    warning: '#f59e0b',
+    error: '#dc2626'
+  };
+  
+  statusDiv.textContent = message;
+  statusDiv.style.color = colors[type] || colors.info;
+  statusDiv.style.fontWeight = type === 'error' || type === 'warning' ? '600' : '400';
+}
+
+// Auto-lookup on Enter key in reference field
+// Also auto-lookup when barcode scanner fills the field
+document.addEventListener('DOMContentLoaded', () => {
+  const refInput = document.getElementById('orderReference');
+  if (refInput) {
+    let scanTimer = null;
+    let lastValue = '';
+    
+    // Enter key trigger
+    refInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        lookupCin7Order();
+      }
+    });
+    
+    // Auto-trigger after barcode scan (fast typing followed by pause)
+    refInput.addEventListener('input', (e) => {
+      const currentValue = e.target.value.trim();
+      
+      // Clear previous timer
+      if (scanTimer) clearTimeout(scanTimer);
+      
+      // If value changed significantly and looks like an order number
+      if (currentValue && currentValue !== lastValue) {
+        // Check if it looks like an order number (SO-XXXXX or just numbers)
+        const looksLikeOrder = /^(SO-?\d+|\d+)$/i.test(currentValue);
+        
+        if (looksLikeOrder) {
+          // Wait 300ms after last input, then auto-lookup
+          // Barcode scanners type fast and finish quickly
+          scanTimer = setTimeout(() => {
+            console.log('[Cin7] Auto-triggering lookup after scan');
+            lookupCin7Order();
+          }, 300);
+        }
+      }
+      
+      lastValue = currentValue;
+    });
+  }
+});
 
 function showModal(id){ const el=document.getElementById(id); if(el) el.classList.remove('hidden'); }
 function hideModal(id){ const el=document.getElementById(id); if(el) el.classList.add('hidden'); }

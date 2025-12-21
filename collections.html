@@ -6,6 +6,7 @@
 		<title>Collections - Rapid Label</title>
 	<link rel="stylesheet" href="styles.css?v=8" />
 	<link rel="icon" type="image/svg+xml" href="icon-192.svg">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 	<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 	<meta name="x-build" content="2025-09-09T00:00:00Z-v3" />
 </head>
@@ -24,6 +25,7 @@
 				<a href="collections.html" class="nav-link">Collections</a>
 				<a href="collections-history.html" class="nav-link">Collections History</a>
 				<a href="restock.html" class="nav-link">Re-Stock</a>
+				<a href="features/analytics/integrations.html" class="nav-link" style="color: #667eea; font-weight: 600;">🔌 Integrations</a>
 			</nav>
 		</div>
 	</header>
@@ -86,7 +88,13 @@
 							</div>
 							<div class="field-group">
 								<label for="orderReference">Reference</label>
-								<input id="orderReference" type="text" placeholder="Sales Order / Reference" />
+								<div style="display: flex; gap: 6px; align-items: stretch;">
+									<input id="orderReference" type="text" placeholder="📦 Scan or type Sales Order (SO-xxxxx)" style="flex: 1;" autofocus />
+									<button id="cin7LookupBtn" type="button" class="search-btn-small" onclick="lookupCin7Order()" style="padding: 0 12px; white-space: nowrap;" title="Lookup from Cin7">
+										<i class="fas fa-search"></i>
+									</button>
+								</div>
+								<div id="cin7Status" style="font-size: 11px; margin-top: 4px; min-height: 16px;"></div>
 							</div>
 							</div>
 							<div class="field-row">
@@ -134,8 +142,8 @@
 								<label for="parcelQty">Quantity</label>
 								<input id="parcelQty" type="number" min="1" placeholder="e.g. 3" />
 							</div>
-							<div class="field-group" style="display:flex;align-items:flex-end">
-								<button id="addParcelBtn" class="search-btn-small" onclick="addParcelToDraft()">Add</button>
+						<div class="field-group" style="display:flex;align-items:flex-end;padding-bottom:0">
+							<button id="addParcelBtn" class="search-btn-small" onclick="addParcelToDraft()" style="margin-bottom:0">Add</button>
 							</div>
 						</div>
 				<div id="parcelDraftList" class="small-note" style="margin-top:8px">No parcels added yet.</div>
@@ -418,9 +426,13 @@
 
 			<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 			<script src="supabase-config.js"></script>
+	<!-- Cin7 Integration - Direct API (Simple Method) -->
+	<script src="cin7-config.js"></script>
+	<script src="cin7-client.js"></script>
+	<script src="cin7-service.js"></script>
 		<script src="scanner.js"></script>
 			<script src="app.js"></script>
-			<script src="collections.js?v=6"></script>
+			<script src="collections.js?v=7"></script>
 	<script>
 // Force reload if new service worker version (v3) installed
 if ('serviceWorker' in navigator) {
