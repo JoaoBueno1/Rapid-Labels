@@ -945,11 +945,12 @@ function hideModal(id){ const el=document.getElementById(id); if(el) el.classLis
 function addParcelToDraft(){
   console.log('[AddOrder] addParcelToDraft click');
   const type = document.getElementById('parcelType').value;
-  const qty = parseInt(document.getElementById('parcelQty').value||'0',10);
+  const qtyInput = document.getElementById('parcelQty');
+  const qty = parseInt(qtyInput.value||'0',10);
   if(!qty||qty<1){ toast('Enter a valid quantity','error'); return; }
   draftParcels.push({type,qty});
   console.log('[AddOrder] parcels now:', draftParcels);
-  document.getElementById('parcelQty').value='';
+  qtyInput.value='1'; // Reset to 1 instead of empty
   updateParcelDraftUI();
 }
 
