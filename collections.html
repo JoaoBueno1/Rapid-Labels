@@ -25,7 +25,6 @@
 				<a href="collections.html" class="nav-link">Collections</a>
 				<a href="collections-history.html" class="nav-link">Collections History</a>
 				<a href="restock.html" class="nav-link">Re-Stock</a>
-				<a href="features/analytics/integrations.html" class="nav-link" style="color: #667eea; font-weight: 600;">🔌 Integrations</a>
 			</nav>
 		</div>
 	</header>
@@ -80,72 +79,71 @@
 		<div class="modal-content">
 			<span class="close" onclick="closeAddOrderModal()">&times;</span>
 			<h2>➕ Add Collection Order</h2>
-					<div class="manual-fields">
-						<div class="field-row">
-							<div class="field-group">
-								<label for="orderCustomer">Customer</label>
-								<input id="orderCustomer" type="text" placeholder="Customer name" />
-							</div>
-							<div class="field-group">
-								<label for="orderReference">Reference</label>
-								<div style="display: flex; gap: 6px; align-items: stretch;">
-									<input id="orderReference" type="text" placeholder="📦 Scan or type Sales Order (SO-xxxxx)" style="flex: 1;" autofocus />
-									<button id="cin7LookupBtn" type="button" class="search-btn-small" onclick="lookupCin7Order()" style="padding: 0 12px; white-space: nowrap;" title="Lookup from Cin7">
-										<i class="fas fa-search"></i>
-									</button>
-								</div>
-								<div id="cin7Status" style="font-size: 11px; margin-top: 4px; min-height: 16px;"></div>
-							</div>
-							</div>
-							<div class="field-row">
-								<div class="field-group">
-									<label for="orderSalesRep">Sales Rep</label>
-									<input id="orderSalesRep" type="text" placeholder="Sales Rep" />
-								</div>
-								<div class="field-group">
-									<label for="orderInvoice">Invoice N.</label>
-									<input id="orderInvoice" type="text" placeholder="Invoice number" />
-								</div>
-						</div>
-						<div class="field-row">
-							<div class="field-group">
-								<label for="orderContactName">Contact name</label>
-								<input id="orderContactName" type="text" placeholder="Contact person" />
-							</div>
-							<div class="field-group">
-								<label for="orderContactNumber">Contact number</label>
-								<input id="orderContactNumber" type="tel" placeholder="Phone" />
-							</div>
-						</div>
-						<div class="field-group">
-							<label for="orderEmail">Email (optional)</label>
-							<input id="orderEmail" type="email" placeholder="email@example.com" />
-						</div>
-						<div class="field-group">
-							<label for="orderDate">Date</label>
-							<input id="orderDate" type="date" />
-						</div>
+			<div class="manual-fields">
+				<!-- Search Sales Order - Top section -->
+				<div class="field-group" style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border, #e2e8f0);">
+					<label for="searchSalesOrder" style="font-weight: 600;">🔍 Search Sales Order</label>
+					<div style="display: flex; gap: 6px; align-items: stretch;">
+						<input id="searchSalesOrder" type="text" placeholder="Scan or type SO number" style="flex: 1;" autofocus />
+						<button id="cin7LookupBtn" type="button" class="search-btn-small" onclick="lookupCin7Order()" style="padding: 0 12px; white-space: nowrap;" title="Lookup from Cin7">
+							<i class="fas fa-search"></i>
+						</button>
 					</div>
+					<div id="cin7Status" style="font-size: 11px; margin-top: 4px; min-height: 16px;"></div>
+				</div>
+				
+				<!-- Customer & Reference Row -->
+				<div class="field-row">
+					<div class="field-group">
+						<label for="orderCustomer">Customer</label>
+						<input id="orderCustomer" type="text" placeholder="Customer name" />
+					</div>
+					<div class="field-group">
+						<label for="orderReference">Reference</label>
+						<input id="orderReference" type="text" placeholder="SO-XXXXXX" readonly style="background-color: #f3f4f6;" />
+					</div>
+				</div>
+				<!-- Sales Rep & Invoice Row -->
+				<div class="field-row">
+					<div class="field-group">
+						<label for="orderSalesRep">Sales Rep</label>
+						<input id="orderSalesRep" type="text" placeholder="Sales Rep" readonly style="background-color: #f3f4f6;" />
+					</div>
+					<div class="field-group">
+						<label for="orderInvoice">Invoice N.</label>
+						<input id="orderInvoice" type="text" placeholder="Invoice number" />
+					</div>
+				</div>
+				<div class="field-group">
+					<label for="orderDate">Date</label>
+					<input id="orderDate" type="date" />
+				</div>
+				<!-- Contact fields hidden but functional -->
+				<input id="orderContactName" type="hidden" />
+				<input id="orderContactNumber" type="hidden" />
+				<!-- Email hidden but functional -->
+				<input id="orderEmail" type="hidden" />
+			</div>
 
 			<div class="size-selection">
 				<label>Add parcels</label>
-						<div class="field-row">
-							<div class="field-group">
-								<label for="parcelType">Type</label>
-								<select id="parcelType">
-									<option value="carton">Carton</option>
-									<option value="pallet">Pallet</option>
-									<option value="tube">Tube</option>
-								</select>
-							</div>
-							<div class="field-group">
-								<label for="parcelQty">Quantity</label>
-							<input id="parcelQty" type="number" min="1" value="1" placeholder="e.g. 3" />
-							</div>
-						<div class="field-group" style="display:flex;align-items:flex-end;padding-bottom:0">
-						<button id="addParcelBtn" class="search-btn-small" style="margin-bottom:0">Add</button>
-							</div>
-						</div>
+				<div class="field-row" style="align-items: flex-end;">
+					<div class="field-group">
+						<label for="parcelType">Type</label>
+						<select id="parcelType">
+							<option value="carton">Carton</option>
+							<option value="pallet">Pallet</option>
+							<option value="tube">Tube</option>
+						</select>
+					</div>
+					<div class="field-group">
+						<label for="parcelQty">Quantity</label>
+						<input id="parcelQty" type="number" min="1" value="1" placeholder="e.g. 3" />
+					</div>
+					<div class="field-group" style="flex: 0 0 auto;">
+						<button id="addParcelBtn" class="search-btn-small">Add</button>
+					</div>
+				</div>
 				<div id="parcelDraftList" class="small-note" style="margin-top:8px">No parcels added yet.</div>
 			</div>
 
@@ -426,13 +424,16 @@
 
 			<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 			<script src="supabase-config.js"></script>
-	<!-- Cin7 Integration - Direct API (Simple Method) -->
+	<!-- RapidExpress Cache API (Fast lookups) -->
+	<script src="rapidexpress-config.js"></script>
+	<script src="rapidexpress-cache.js"></script>
+	<!-- Cin7 Integration - Direct API (Fallback) -->
 	<script src="cin7-config.js"></script>
 	<script src="cin7-client.js"></script>
 	<script src="cin7-service.js"></script>
 		<script src="scanner.js"></script>
 			<script src="app.js"></script>
-			<script src="collections.js?v=7"></script>
+			<script src="collections.js?v=8"></script>
 	<script>
 // Force reload if new service worker version (v3) installed
 if ('serviceWorker' in navigator) {

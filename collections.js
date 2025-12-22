@@ -736,12 +736,12 @@ function openAddOrderModal(){
   // Always set to today's local date on open (prevents UTC/offset showing yesterday)
   const dateEl = document.getElementById('orderDate'); if (dateEl) dateEl.value = getTodayLocalYMD();
   
-  // Auto-focus on Reference field (Sales Order) for quick scanning
+  // Auto-focus on Search Sales Order field for quick scanning
   setTimeout(() => {
-    const refInput = document.getElementById('orderReference');
-    if (refInput) {
-      refInput.focus();
-      refInput.select();
+    const searchInput = document.getElementById('searchSalesOrder');
+    if (searchInput) {
+      searchInput.focus();
+      searchInput.select();
     }
   }, 100);
   
@@ -762,25 +762,36 @@ function closeAddOrderModal(){
 }
 
 // ================= Cin7 Integration =================
+// Uses RapidExpress cache first (fast), falls back to direct Cin7 API
+
 async function lookupCin7Order() {
+  const searchInput = document.getElementById('searchSalesOrder');
   const refInput = document.getElementById('orderReference');
   const statusDiv = document.getElementById('cin7Status');
   const fetchBtn = document.getElementById('cin7LookupBtn');
   
-  if (!refInput) return;
+  if (!searchInput) return;
   
-  let reference = refInput.value.trim().toUpperCase();
+  let reference = searchInput.value.trim().toUpperCase();
   
   if (!reference) {
-    showCin7Status('⚠️ Please enter a reference number', 'warning');
-    refInput.focus();
+    showCin7Status('⚠️ Please enter a Sales Order number', 'warning');
+    searchInput.focus();
+    return;
+  }
+  
+  // Extract digits and validate minimum 6 digits
+  const digitsOnly = reference.replace(/\D/g, '');
+  if (digitsOnly.length < 6) {
+    showCin7Status('⚠️ Enter at least 6 digits (e.g., SO-237087)', 'warning');
+    searchInput.focus();
     return;
   }
   
   // Auto-add SO- prefix if missing
   if (!reference.startsWith('SO-')) {
     reference = 'SO-' + reference.replace(/^SO/, '');
-    refInput.value = reference;
+    searchInput.value = reference;
   }
   
   // Show loading state
@@ -792,11 +803,37 @@ async function lookupCin7Order() {
   showCin7Status('🔍 Looking up...', 'info');
   
   try {
-    const result = await cin7Service.lookupOrder(reference);
+    let result = null;
+    let source = 'unknown';
+    
+    // STEP 1: Try RapidExpress cache first (fast ~50ms)
+    if (typeof rapidExpressCache !== 'undefined' && rapidExpressCache.enabled) {
+      result = await rapidExpressCache.lookupOrder(reference);
+      if (result.success) {
+        source = '⚡ CACHE';
+      }
+    }
+    
+    // STEP 2: Fallback to direct Cin7 API (slow ~9s)
+    if (!result || !result.success) {
+      if (typeof cin7Service !== 'undefined' && cin7Service.isEnabled()) {
+        // No message change - just keep "Looking up..."
+        result = await cin7Service.lookupOrder(reference);
+        if (result.success) {
+          source = '☁️ CIN7';
+        }
+      }
+    }
+    
     const elapsed = Math.round(performance.now() - startTime);
     
-    if (result.success) {
-      // Populate form fields
+    if (result && result.success) {
+      // Fill the Reference field with the SO number
+      if (refInput) {
+        refInput.value = reference;
+      }
+      
+      // Populate other form fields (except Invoice - always manual)
       populateFromCin7(result);
       
       // Track request in integration monitor
@@ -804,15 +841,19 @@ async function lookupCin7Order() {
         window.cin7TrackRequest(reference, result.customer_name || 'Unknown', elapsed);
       }
       
-      // Show success feedback
-      const source = result.source === 'cache' ? '⚡ CACHE' : '☁️ API';
-      showCin7Status(`✓ ${source} (${elapsed}ms) - ${result.customer_name || reference}`, 'success');
+      // Show simple success feedback (customer name only)
+      showCin7Status(`✓ ${result.customer_name || reference}`, 'success');
       
-      // Focus on next field (customer or contact)
-      const customerInput = document.getElementById('orderCustomer');
-      if (customerInput) customerInput.focus();
+      // Focus on Invoice field (user needs to enter manually)
+      setTimeout(() => {
+        const invoiceInput = document.getElementById('orderInvoice');
+        if (invoiceInput) {
+          invoiceInput.focus();
+          invoiceInput.select();
+        }
+      }, 50);
     } else {
-      showCin7Status(`❌ ${result.error || 'Could not fetch order'}`, 'error');
+      showCin7Status(`❌ ${result?.error || 'Order not found'}`, 'error');
     }
   } catch (error) {
     console.error('[Cin7] Lookup error:', error);
@@ -820,7 +861,7 @@ async function lookupCin7Order() {
   } finally {
     if (fetchBtn) {
       fetchBtn.disabled = false;
-      fetchBtn.innerHTML = '<i class="fas fa-search"></i>';
+      fetchBtn.innerHTML = '<i class="fas fa-search"></i> Search';
     }
   }
 }
@@ -845,7 +886,7 @@ function populateFromCin7(data) {
       document.getElementById('orderEmail').value = data.email;
     }
     
-    // Sales Rep - populate if field exists
+    // Sales Rep
     if (data.sales_rep) {
       const salesRepInput = document.getElementById('orderSalesRep');
       if (salesRepInput) {
@@ -853,13 +894,9 @@ function populateFromCin7(data) {
       }
     }
     
-    // Invoice Number - Direct API fetch (fresh data)
-    if (data.invoice_number) {
-      const invoiceInput = document.getElementById('orderInvoice');
-      if (invoiceInput) {
-        invoiceInput.value = data.invoice_number;
-      }
-    }
+    // NOTE: Invoice Number is NOT auto-populated!
+    // Invoice is updated when order is scanned/invoiced, so cache data would be stale.
+    // User must enter invoice number manually or scan it.
     
     // Trigger customer autocomplete to update
     const customerInput = document.getElementById('orderCustomer');
@@ -872,8 +909,7 @@ function populateFromCin7(data) {
       contact: data.contact_name,
       email: data.email,
       salesRep: data.sales_rep,
-      invoice: data.invoice_number,
-      invoice: data.invoice_number
+      source: data.source || 'unknown'
     });
   } catch (error) {
     console.error('[Cin7] Error populating form:', error);
@@ -896,45 +932,55 @@ function showCin7Status(message, type) {
   statusDiv.style.fontWeight = type === 'error' || type === 'warning' ? '600' : '400';
 }
 
-// Auto-lookup on Enter key in reference field
+// Auto-lookup on Enter key in search field
 // Also auto-lookup when barcode scanner fills the field
+// Uses same detection logic as dispatch_center
+
+// Scanner detection constants
+const CIN7_SCANNER_THRESHOLD = 50; // ms between keystrokes for scanner detection
+const CIN7_MIN_DIGITS = 6; // Minimum 6 digits (237087 = 6 numbers)
+let cin7LookupTimeout = null;
+let cin7LastInputTime = 0;
+
 document.addEventListener('DOMContentLoaded', () => {
-  const refInput = document.getElementById('orderReference');
-  if (refInput) {
-    let scanTimer = null;
-    let lastValue = '';
-    
+  const searchInput = document.getElementById('searchSalesOrder');
+  if (searchInput) {
     // Enter key trigger
-    refInput.addEventListener('keydown', (e) => {
+    searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
+        clearTimeout(cin7LookupTimeout);
         lookupCin7Order();
       }
     });
     
-    // Auto-trigger after barcode scan (fast typing followed by pause)
-    refInput.addEventListener('input', (e) => {
-      const currentValue = e.target.value.trim();
+    // Auto-lookup with scanner detection (same as dispatch_center)
+    searchInput.addEventListener('input', (e) => {
+      const now = Date.now();
+      const timeSinceLastInput = now - cin7LastInputTime;
+      cin7LastInputTime = now;
       
-      // Clear previous timer
-      if (scanTimer) clearTimeout(scanTimer);
+      const value = e.target.value.trim();
       
-      // If value changed significantly and looks like an order number
-      if (currentValue && currentValue !== lastValue) {
-        // Check if it looks like an order number (SO-XXXXX or just numbers)
-        const looksLikeOrder = /^(SO-?\d+|\d+)$/i.test(currentValue);
-        
-        if (looksLikeOrder) {
-          // Wait 300ms after last input, then auto-lookup
-          // Barcode scanners type fast and finish quickly
-          scanTimer = setTimeout(() => {
-            console.log('[Cin7] Auto-triggering lookup after scan');
+      // Extract only digits to validate length
+      const digitsOnly = value.replace(/\D/g, '');
+      
+      // Clear previous timeout
+      clearTimeout(cin7LookupTimeout);
+      
+      // SCANNER DETECTED: fast inputs (< 50ms) + minimum 6 digits
+      if (timeSinceLastInput < CIN7_SCANNER_THRESHOLD && digitsOnly.length >= CIN7_MIN_DIGITS) {
+        // Scanner detected - wait 150ms to finish then AUTO LOOKUP
+        cin7LookupTimeout = setTimeout(() => {
+          const currentDigits = searchInput.value.trim().replace(/\D/g, '');
+          if (currentDigits.length >= CIN7_MIN_DIGITS) {
+            console.log('[Cin7] Scanner detected - auto-triggering lookup');
             lookupCin7Order();
-          }, 300);
-        }
+          }
+        }, 150); // Short delay for scanner to finish
       }
-      
-      lastValue = currentValue;
+      // MANUAL TYPING: NO auto-lookup
+      // User must press ENTER or click Search button
     });
   }
 });

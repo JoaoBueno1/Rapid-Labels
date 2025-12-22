@@ -12,7 +12,7 @@ class Cin7Config {
         this.apiKey = '55c70204-619a-5286-ae1d-593493533cb9';
         this.baseUrl = 'https://inventory.dearsystems.com';
         this.apiPrefix = '/ExternalApi/v2';
-        this.timeout = 8000; // 8 seconds - rápido
+        this.timeout = 15000; // 15 seconds - Cin7 API can be slow
         
         // Initialize stats tracking
         this.initStats();
