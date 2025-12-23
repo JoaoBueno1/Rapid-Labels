@@ -736,9 +736,17 @@ function openAddOrderModal(){
   // Always set to today's local date on open (prevents UTC/offset showing yesterday)
   const dateEl = document.getElementById('orderDate'); if (dateEl) dateEl.value = getTodayLocalYMD();
   
+  // Limpar status anterior e campos
+  const statusDiv = document.getElementById('cin7Status');
+  if (statusDiv) {
+    statusDiv.textContent = '';
+    statusDiv.style.color = '';
+  }
+  const searchInput = document.getElementById('searchSalesOrder');
+  if (searchInput) searchInput.value = '';
+  
   // Auto-focus on Search Sales Order field for quick scanning
   setTimeout(() => {
-    const searchInput = document.getElementById('searchSalesOrder');
     if (searchInput) {
       searchInput.focus();
       searchInput.select();
@@ -748,9 +756,32 @@ function openAddOrderModal(){
   // Re-render parcel UI after a tick (ensures DOM ready)
   setTimeout(()=>{ try { updateParcelDraftUI(); } catch(e){ console.error('[AddOrder] updateParcelDraftUI after open failed', e); } }, 0);
 }
+
+function clearOrderFormFields() {
+  // Limpa todos os campos do formulário (evita dados antigos quando busca novo pedido)
+  document.getElementById('orderCustomer').value = '';
+  document.getElementById('orderReference').value = '';
+  document.getElementById('orderSalesRep').value = '';
+  document.getElementById('orderInvoice').value = '';
+  document.getElementById('orderContactName').value = '';
+  document.getElementById('orderContactNumber').value = '';
+  document.getElementById('orderEmail').value = '';
+  console.log('[Collections] Campos do formulário limpos');
+}
+
 function closeAddOrderModal(){
   const modal = document.getElementById('addOrderModal');
   if(modal) modal.classList.add('hidden');
+  
+  // Limpar status e campos
+  const statusDiv = document.getElementById('cin7Status');
+  if (statusDiv) {
+    statusDiv.textContent = '';
+    statusDiv.style.color = '';
+  }
+  const searchInput = document.getElementById('searchSalesOrder');
+  if (searchInput) searchInput.value = '';
+  
   // Garantir remoção do overlay de sugestões (evita "fantasma" no meio da página)
   try {
     if(customerSugPanel){
@@ -762,7 +793,7 @@ function closeAddOrderModal(){
 }
 
 // ================= Cin7 Integration =================
-// Uses RapidExpress cache first (fast), falls back to direct Cin7 API
+// Uses Supabase cache first (fast), falls back to direct Cin7 API
 
 async function lookupCin7Order() {
   const searchInput = document.getElementById('searchSalesOrder');
@@ -775,7 +806,7 @@ async function lookupCin7Order() {
   let reference = searchInput.value.trim().toUpperCase();
   
   if (!reference) {
-    showCin7Status('⚠️ Please enter a Sales Order number', 'warning');
+    showCin7Status('Enter order number', 'warning');
     searchInput.focus();
     return;
   }
@@ -783,7 +814,7 @@ async function lookupCin7Order() {
   // Extract digits and validate minimum 6 digits
   const digitsOnly = reference.replace(/\D/g, '');
   if (digitsOnly.length < 6) {
-    showCin7Status('⚠️ Enter at least 6 digits (e.g., SO-237087)', 'warning');
+    showCin7Status('Minimum 6 digits required', 'warning');
     searchInput.focus();
     return;
   }
@@ -800,26 +831,31 @@ async function lookupCin7Order() {
     fetchBtn.disabled = true;
     fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
   }
-  showCin7Status('🔍 Looking up...', 'info');
+  showCin7Status('Searching...', 'info');
+  
+  // LIMPAR todos os campos antes de buscar (evita dados antigos misturados)
+  clearOrderFormFields();
   
   try {
     let result = null;
     let source = 'unknown';
     
-    // STEP 1: Try RapidExpress cache first (fast ~50ms)
-    if (typeof rapidExpressCache !== 'undefined' && rapidExpressCache.enabled) {
-      result = await rapidExpressCache.lookupOrder(reference);
-      if (result.success) {
-        source = '⚡ CACHE';
-      }
-    }
+    console.log('[Collections] lookupCin7Order - checking cin7SimpleCache:', typeof cin7SimpleCache);
     
-    // STEP 2: Fallback to direct Cin7 API (slow ~9s)
-    if (!result || !result.success) {
+    // Use simple cache (Supabase direto) com fallback automático
+    if (typeof cin7SimpleCache !== 'undefined') {
+      console.log('[Collections] Using cin7SimpleCache for lookup:', reference);
+      result = await cin7SimpleCache.lookupOrder(reference);
+      console.log('[Collections] cin7SimpleCache result:', result);
+      if (result && result.success) {
+        source = result.source === 'cache' ? '⚡ CACHE' : '☁️ CIN7';
+      }
+    } else {
+      console.warn('[Collections] cin7SimpleCache not available - using legacy fallback');
+      // Legacy fallback (if cin7SimpleCache not loaded)
       if (typeof cin7Service !== 'undefined' && cin7Service.isEnabled()) {
-        // No message change - just keep "Looking up..."
-        result = await cin7Service.lookupOrder(reference);
-        if (result.success) {
+        result = await cin7Service.getSalesOrder(reference);
+        if (result && result.success) {
           source = '☁️ CIN7';
         }
       }
@@ -836,13 +872,16 @@ async function lookupCin7Order() {
       // Populate other form fields (except Invoice - always manual)
       populateFromCin7(result);
       
+      // Limpar status IMEDIATAMENTE após preencher
+      if (statusDiv) {
+        statusDiv.textContent = '';
+        statusDiv.style.color = '';
+      }
+      
       // Track request in integration monitor
       if (window.cin7TrackRequest) {
         window.cin7TrackRequest(reference, result.customer_name || 'Unknown', elapsed);
       }
-      
-      // Show simple success feedback (customer name only)
-      showCin7Status(`✓ ${result.customer_name || reference}`, 'success');
       
       // Focus on Invoice field (user needs to enter manually)
       setTimeout(() => {
@@ -853,11 +892,11 @@ async function lookupCin7Order() {
         }
       }, 50);
     } else {
-      showCin7Status(`❌ ${result?.error || 'Order not found'}`, 'error');
+      showCin7Status(result?.error || 'Not found', 'error');
     }
   } catch (error) {
     console.error('[Cin7] Lookup error:', error);
-    showCin7Status('❌ Error fetching order', 'error');
+    showCin7Status('Error', 'error');
   } finally {
     if (fetchBtn) {
       fetchBtn.disabled = false;
@@ -954,6 +993,16 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
     
+    // Paste detection (Ctrl+V)
+    searchInput.addEventListener('paste', (e) => {
+      setTimeout(() => {
+        const value = searchInput.value.trim().replace(/\D/g, '');
+        if (value.length >= CIN7_MIN_DIGITS) {
+          lookupCin7Order();
+        }
+      }, 50);
+    });
+    
     // Auto-lookup with scanner detection (same as dispatch_center)
     searchInput.addEventListener('input', (e) => {
       const now = Date.now();
@@ -970,14 +1019,13 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // SCANNER DETECTED: fast inputs (< 50ms) + minimum 6 digits
       if (timeSinceLastInput < CIN7_SCANNER_THRESHOLD && digitsOnly.length >= CIN7_MIN_DIGITS) {
-        // Scanner detected - wait 150ms to finish then AUTO LOOKUP
+        // Scanner detected - wait 50ms to finish then AUTO LOOKUP
         cin7LookupTimeout = setTimeout(() => {
           const currentDigits = searchInput.value.trim().replace(/\D/g, '');
           if (currentDigits.length >= CIN7_MIN_DIGITS) {
-            console.log('[Cin7] Scanner detected - auto-triggering lookup');
             lookupCin7Order();
           }
-        }, 150); // Short delay for scanner to finish
+        }, 50);
       }
       // MANUAL TYPING: NO auto-lookup
       // User must press ENTER or click Search button

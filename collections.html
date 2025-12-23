@@ -100,14 +100,14 @@
 					</div>
 					<div class="field-group">
 						<label for="orderReference">Reference</label>
-						<input id="orderReference" type="text" placeholder="SO-XXXXXX" readonly style="background-color: #f3f4f6;" />
+					<input id="orderReference" type="text" placeholder="SO-XXXXXX" />
 					</div>
 				</div>
 				<!-- Sales Rep & Invoice Row -->
 				<div class="field-row">
 					<div class="field-group">
 						<label for="orderSalesRep">Sales Rep</label>
-						<input id="orderSalesRep" type="text" placeholder="Sales Rep" readonly style="background-color: #f3f4f6;" />
+					<input id="orderSalesRep" type="text" placeholder="Sales Rep" />
 					</div>
 					<div class="field-group">
 						<label for="orderInvoice">Invoice N.</label>
@@ -422,18 +422,21 @@
 		</div>
 	</div>
 
-			<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-			<script src="supabase-config.js"></script>
-	<!-- RapidExpress Cache API (Fast lookups) -->
-	<script src="rapidexpress-config.js"></script>
-	<script src="rapidexpress-cache.js"></script>
-	<!-- Cin7 Integration - Direct API (Fallback) -->
-	<script src="cin7-config.js"></script>
-	<script src="cin7-client.js"></script>
-	<script src="cin7-service.js"></script>
-		<script src="scanner.js"></script>
-			<script src="app.js"></script>
-			<script src="collections.js?v=8"></script>
+	<!-- Supabase Client -->
+	<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+	<script src="supabase-config.js"></script>
+	
+	<!-- Cin7 Integration - Cache via Backend + API Fallback -->
+	<script src="cin7-config.js?v=8"></script>
+	<script src="cin7-client.js?v=8"></script>
+	<script src="cin7-service.js?v=8"></script>
+	<script src="cin7-simple-cache.js?v=8"></script>
+	
+	<!-- Main Scripts -->
+	<script src="collections.js?v=17"></script>
+	<script src="app.js"></script>
+	<script src="collections.js?v=15"></script>
+	
 	<script>
 // Force reload if new service worker version (v3) installed
 if ('serviceWorker' in navigator) {

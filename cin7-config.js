@@ -115,5 +115,6 @@ class Cin7Config {
     }
 }
 
-// Create singleton instance
+// Create singleton instance and export to window
 const cin7Config = new Cin7Config();
+window.cin7Config = cin7Config;

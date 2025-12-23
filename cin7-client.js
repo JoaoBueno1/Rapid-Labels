@@ -213,5 +213,6 @@ class Cin7Client {
     }
 }
 
-// Create singleton instance
+// Create singleton instance and export to window
 const cin7Client = new Cin7Client();
+window.cin7Client = cin7Client;

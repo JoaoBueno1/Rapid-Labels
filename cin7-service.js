@@ -151,5 +151,6 @@ class Cin7Service {
     }
 }
 
-// Create singleton instance
+// Create singleton instance and export to window
 const cin7Service = new Cin7Service();
+window.cin7Service = cin7Service;
