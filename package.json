@@ -6,7 +6,20 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node server.js"
+    "cache": "node cin7-cache-server.js",
+    "test": "node server.js",
+    "audit": "node run-audit.js",
+    "audit:test": "node run-audit.js --test",
+    "setup:products": "node setup-products.js",
+    "scheduler": "node scheduler.js",
+    "sync": "node cin7-stock-sync/sync-service.js",
+    "sync:stock": "node cin7-stock-sync/sync-service.js --stock-only",
+    "sync:products": "node cin7-stock-sync/sync-service.js --products-only",
+    "sync:dry": "node cin7-stock-sync/sync-service.js --dry-run --verbose",
+    "sync:schedule": "node cin7-stock-sync/sync-service.js --schedule",
+    "sync:verify": "node cin7-stock-sync/verify-sync.js",
+    "sync:verify:quick": "node cin7-stock-sync/verify-sync.js --quick",
+    "sync:verify:compat": "node cin7-stock-sync/verify-compatibility.js"
   },
   "keywords": [
     "label",
@@ -23,8 +36,13 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.50.3",
     "compression": "^1.7.4",
+    "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "express-rate-limit": "^7.4.0",
-    "helmet": "^7.1.0"
+    "helmet": "^7.1.0",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.18.0",
+    "xlsx": "^0.18.5"
   }
 }

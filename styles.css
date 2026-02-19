@@ -371,6 +371,7 @@ h2 {
 }
 
 .field-row { display:flex; gap:10px; }
+.field-row[style*="align-items: flex-end"] .field-group { margin-bottom: 0; }
 
 .field-group {
     flex: 1;

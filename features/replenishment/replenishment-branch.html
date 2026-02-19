@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Branch Plan</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <link rel="manifest" href="../../manifest.json">
+  <meta name="theme-color" content="#232946">
+  <link rel="icon" type="image/svg+xml" href="../../icon-192.svg">
+  <style>
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-badge.draft { background: #fef3c7; color: #92400e; }
+    .status-badge.approved { background: #d1fae5; color: #065f46; }
+    .status-badge.sent { background: #dbeafe; color: #1e40af; }
+    .status-badge.no_plan { background: #f1f5f9; color: #64748b; }
+    
+    .snapshot-info {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border: 1px solid #7dd3fc;
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+    
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .alert.warning {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+    }
+    .alert.success {
+      background: #d1fae5;
+      border: 1px solid #6ee7b7;
+      color: #065f46;
+    }
+    .alert.info {
+      background: #dbeafe;
+      border: 1px solid #93c5fd;
+      color: #1e40af;
+    }
+    
+    .missing-avg-badge {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    
+    .input-approved {
+      width: 70px;
+      padding: 4px 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      text-align: right;
+      font-size: 13px;
+    }
+    .input-approved:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+    .input-approved:disabled {
+      background: #f8fafc;
+      color: #64748b;
+    }
+    
+    .summary-cards {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+    .summary-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 14px 20px;
+      min-width: 120px;
+    }
+    .summary-card .value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .summary-card .label {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 500;
+    }
+    
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 12px 0;
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+    }
+    
+    .highlight-row {
+      background: #fef3c7 !important;
+    }
+    
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    
+    .positive { color: #059669; }
+    .negative { color: #dc2626; }
+    .zero { color: #9ca3af; }
+    
+    /* Table alignment */
+    #planTable th,
+    #planTable td {
+      vertical-align: middle;
+      padding: 10px 12px;
+    }
+    #planTable th {
+      text-align: center;
+      white-space: nowrap;
+    }
+    #planTable th:first-child {
+      text-align: left;
+    }
+    #planTable td {
+      text-align: center;
+    }
+    #planTable td:first-child {
+      text-align: left;
+    }
+    
+    /* AVG cells - smaller, subtle */
+    .avg-cell {
+      color: #64748b;
+      font-size: 12px;
+      background: #f8fafc;
+    }
+    #planTable th:nth-child(3),
+    #planTable th:nth-child(5) {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 500;
+    }
+    
+    /* Cover Days styling */
+    .cover-critical { color: #dc2626; font-weight: 600; }
+    .cover-warning { color: #f59e0b; font-weight: 500; }
+    .cover-ok { color: #059669; }
+    
+    /* Conflict indicator */
+    .conflict-badge {
+      display: inline-block;
+      background: #fef3c7;
+      color: #92400e;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 4px;
+      cursor: help;
+    }
+    
+    /* Conflict summary alert */
+    .conflict-alert {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="brand" href="../../index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="../../index.html" class="nav-link">Home</a>
+        <a href="../../restock.html" class="nav-link">Re-Stock</a>
+        <a href="../../stock-anomalies.html" class="nav-link">Anomalies</a>
+        <a href="replenishment.html" class="nav-link">Replenishment</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- Header -->
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+      <div>
+        <a href="replenishment.html" style="font-size:13px;color:#6366f1;text-decoration:none">&larr; Back to Branches</a>
+        <h1 style="margin:8px 0 0 0;font-size:24px;color:#1e293b">
+          <span id="branchName">Loading...</span>
+          <span id="branchCode" style="font-size:14px;color:#64748b;font-weight:400;margin-left:8px"></span>
+        </h1>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div class="snapshot-info">
+          <span>Snapshot:</span>
+          <strong id="snapshotDate">-</strong>
+        </div>
+        <span id="planStatusBadge" class="status-badge no_plan">No Plan</span>
+      </div>
+    </div>
+
+    <!-- Alerts -->
+    <div id="alertContainer"></div>
+
+    <!-- Rules Info Box -->
+    <div class="alert info" style="margin:12px 0;font-size:12px">
+      <strong>Calculation Rules:</strong> 
+      Target = 5 weeks coverage | Main Min = 8 weeks safety stock | 
+      Need = Target - Branch Stock | Can Send = Main Stock - Main Min | 
+      Suggested = min(Need, Can Send) | <em>Products with 0 avg sales are skipped</em>
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="display:flex;gap:10px;margin:16px 0;flex-wrap:wrap">
+      <button id="generateBtn" class="search-btn-small" onclick="generatePlan()">Generate Plan</button>
+      <button id="exportBtn" class="search-btn-small secondary" onclick="exportPlan()" style="display:none">Export CSV</button>
+    </div>
+
+    <!-- Conflict Alert (hidden by default) -->
+    <div id="conflictAlert" class="conflict-alert" style="display:none">
+      ⚠️ <strong id="conflictCount">0</strong> products have allocation conflicts with other branches
+    </div>
+
+    <!-- Summary Cards -->
+    <div id="summarySection" class="summary-cards" style="display:none">
+      <div class="summary-card">
+        <div class="value" id="totalProducts">0</div>
+        <div class="label">Products to Send</div>
+      </div>
+      <div class="summary-card">
+        <div class="value" id="totalUnits">0</div>
+        <div class="label">Total Units</div>
+      </div>
+      <div class="summary-card">
+        <div class="value" id="criticalCount">0</div>
+        <div class="label">Critical (&lt;1 week)</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-row">
+      <input type="text" id="searchInput" placeholder="Search product..." 
+             style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px"
+             oninput="applyFilters()">
+      <span id="resultCount" style="color:#64748b;font-size:13px"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrapper">
+      <table class="app-table" id="planTable">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Cover</th>
+            <th>Branch Stock</th>
+            <th>Branch AVG</th>
+            <th>Main Stock</th>
+            <th>Main AVG</th>
+            <th>Send Qty</th>
+          </tr>
+        </thead>
+        <tbody id="planTableBody">
+          <tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b">Click "Generate Plan" to start</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="pager" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:12px">
+      <button id="prevPageBtn" class="pages-btn" onclick="changePage(-1)">‹</button>
+      <span id="pageInfo" class="small-note">Page 1 / 1</span>
+      <button id="nextPageBtn" class="pages-btn" onclick="changePage(1)">›</button>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.8);z-index:100;display:flex;align-items:center;justify-content:center">
+      <div style="text-align:center">
+        <div class="spinner"></div>
+        <p style="margin-top:12px;color:#475569">Processing...</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">© 2026 JSlab.dev — All rights reserved.</div>
+  </footer>
+
+  <script src="../../supabase-config.js"></script>
+  <script src="replenishment-branch.js"></script>
+</body>
+</html>

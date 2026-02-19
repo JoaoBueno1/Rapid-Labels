@@ -4,13 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rapid Label Printer</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../styles/styles.css">
+    <!-- Suppress Supabase 404 errors -->
+    <script>
+    (function(){
+        const origError = console.error;
+        console.error = function(...args) {
+            const msg = String(args[0] || '');
+            if (msg.includes('404') || msg.includes('NOT_FOUND')) return;
+            origError.apply(console, args);
+        };
+    })();
+    </script>
     <!-- Supabase CDN -->
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0"></script>
+    <!-- <link rel="manifest" href="../../config/manifest.json"> -->
     <meta name="theme-color" content="#232946">
-    <link rel="icon" type="image/svg+xml" href="icon-192.svg">
-    <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+    <link rel="icon" type="image/svg+xml" href="../../assets/icons/icon-192.svg">
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
     <meta name="x-build" content="2025-09-09T00:00:00Z-v3" />
 </head>
 <body>
@@ -27,7 +38,6 @@
                     <a href="collections.html" class="nav-link">Collections</a>
                     <a href="collections-history.html" class="nav-link">Collections History</a>
                     <a href="restock.html" class="nav-link">Re-Stock</a>
-                    <a href="stock-anomalies.html" class="nav-link">Anomalies</a>
                 </nav>
             </div>
         </header>
@@ -44,20 +54,18 @@
             <a class="main-btn" href="collections.html">📦 Collections</a>
                 <a class="main-btn" href="collections-history.html">📁 Collections History</a>
             <a class="main-btn" href="restock.html">♻️ Re-Stock</a>
-            <a class="main-btn" href="restock-v2.html" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">♻️ Re-Stock V2</a>
-            <a class="main-btn" href="gateway-main.html" style="background:linear-gradient(135deg,#0ea5e9,#0284c7)">🏭 Gateway → Main</a>
-            <a class="main-btn" href="audit.html" style="background:linear-gradient(135deg,#7c3aed,#a855f7)">🔍 Stock Audit</a>
-            <a class="main-btn" href="stock-anomalies.html">⚠️ Stock Anomalies</a>
-            <a class="main-btn" href="replacements/replacements.html">🔄 Replacements</a>
-            <a class="main-btn" href="features/replenishment/replenishment.html">📦 Branch Replenishment</a>
             <button class="main-btn" type="button" onclick="openAnalyticsAndRegisters()">📊 Analytics & Registers</button>
         </div>
         </main>
 
             // Proactively update SW (v3) and reload if a new controller takes over
-            // Service worker disabled } catch(e){} });
-                 } });
+            // Service Worker disabled
+            /*
+            if ('serviceWorker' in navigator){
+                navigator.serviceWorker.addEventListener('controllerchange', () => { try { if (!window.__reloaded){ window.__reloaded = true; location.reload(); } } catch(e){} });
+                navigator.serviceWorker.getRegistration().then(r=>{ if(r){ r.update().catch(()=>{}); } });
             }
+            */
     <!-- Modal Search Product -->
     <div id="searchModal" class="modal hidden">
         <div class="modal-content">
@@ -242,7 +250,7 @@
                             <div class="mode-preview">
                                 <div class="mode-preview-inner">
                                     <div class="eg-note">e.g.</div>
-                                    <img id="bcS1ModePreview" src="Product.svg" alt="Mode preview">
+                                    <img id="bcS1ModePreview" src="../../assets/icons/Product.svg" alt="Mode preview">
                                 </div>
                             </div>
                         </div>
@@ -272,7 +280,7 @@
                             <div class="mode-preview">
                                 <div class="mode-preview-inner">
                                     <div class="eg-note">e.g.</div>
-                                    <img id="bcS2ModePreview" src="Product.svg" alt="Mode preview">
+                                    <img id="bcS2ModePreview" src="../../assets/icons/Product.svg" alt="Mode preview">
                                 </div>
                             </div>
                         </div>
@@ -302,7 +310,7 @@
                             <div class="mode-preview">
                                 <div class="mode-preview-inner">
                                     <div class="eg-note">e.g.</div>
-                                    <img id="bcS3ModePreview" src="Product.svg" alt="Mode preview">
+                                    <img id="bcS3ModePreview" src="../../assets/icons/Product.svg" alt="Mode preview">
                                 </div>
                             </div>
                         </div>
@@ -333,18 +341,21 @@
         </footer>
 
         <!-- Scripts -->
-    <script src="supabase-config.js"></script>
-    <script src="scanner.js"></script>
-    <script src="app.js"></script>
+    <script src="../../config/supabase-config.js"></script>
+    <script src="../js/scanner.js"></script>
+    <script src="../js/app.js?v=2"></script>
     <script>
-        // Service worker disabled for production stability
-        
-        // Open modals via hash shortcuts (from secondary pages)
-        document.addEventListener('DOMContentLoaded', () => {
-            if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
-            if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
-            if (location.hash === '#barcodes') { try { openBarcodesModal(); } catch(e){} }
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          // navigator.serviceWorker.register('service-worker.js');
         });
+      }
+            // Open modals via hash shortcuts (from secondary pages)
+            document.addEventListener('DOMContentLoaded', () => {
+                if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
+                if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
+                if (location.hash === '#barcodes') { try { openBarcodesModal(); } catch(e){} }
+            });
     </script>
 </body>
 </html>

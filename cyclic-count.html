@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cyclic Count - Rapid Label</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="icon-192.svg">
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="supabase-config.js"></script>
+  <script src="upload-system.js"></script>
+  <meta name="x-build" content="2025-11-21T00:00:00Z-v5-simplified" />
+  <style>
+    .warehouse-selector {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .warehouse-btn {
+      padding: 8px 16px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .warehouse-btn:hover {
+      background: #f1f5f9;
+    }
+    .warehouse-btn.active {
+      background: #4f46e5;
+      color: white;
+      border-color: #4f46e5;
+    }
+    .warehouse-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+    }
+    .warehouse-btn.confirmed {
+      border-color: #10b981;
+      background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+      color: #065f46;
+    }
+    .warehouse-btn.confirmed.active {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+    }
+    .wh-status {
+      font-size: 16px;
+      font-weight: bold;
+      color: #10b981;
+    }
+    .warehouse-btn.confirmed .wh-status {
+      display: inline-block !important;
+    }
+    .warehouse-btn.active .wh-status {
+      color: white;
+    }
+    .count-status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .count-status.pending {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .count-status.completed {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .count-status.in-progress {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    #tableSearchInput:focus {
+      outline: none;
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+    .analysis-table tbody tr {
+      transition: background-color 0.2s;
+    }
+    .analysis-table tbody tr:hover {
+      background-color: #f8fafc;
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center">
+    <div style="text-align:center;color:white">
+      <div style="border:8px solid #f3f3f3;border-top:8px solid #4f46e5;border-radius:50%;width:80px;height:80px;animation:spin 1s linear infinite;margin:0 auto 20px"></div>
+      <h2 style="margin:0 0 10px 0;font-size:24px">🔄 Syncing Data...</h2>
+      <p id="loadingMessage" style="margin:0;font-size:16px;opacity:0.9">Updating stock levels and orders</p>
+    </div>
+  </div>
+  <style>
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="index.html">← Back</a>
+        <a class="brand" href="index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="index.html" class="nav-link">Home</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="collections-history.html" class="nav-link">Collections History</a>
+        <a href="restock.html" class="nav-link">Re-Stock</a>
+        <a href="cyclic-count.html" class="nav-link active">Cyclic Count</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="main-container wide-container">
+    <div class="page-header">
+      <h1>Cyclic Count Management</h1>
+      <div class="header-actions">
+        <button class="search-btn-small" onclick="openUploadReportsModal()">📤 Upload Reports</button>
+        <button class="search-btn-small" onclick="manageProducts()">📦 Manage Products</button>
+        <button class="search-btn-small secondary" onclick="exportAnalysis()">📊 Export Analysis</button>
+        <button class="search-btn-small secondary" onclick="viewHistory()">📅 History</button>
+      </div>
+    </div>
+
+    <!-- Info Banner -->
+    <div id="infoBanner" style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:none;">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div>
+            <span style="font-weight:600;color:#166534">📊 Cyclic Count System</span>
+          </div>
+        </div>
+        <div style="margin-top:6px;font-size:0.85em;color:#64748b">
+          💡 View and manage your cyclic count analysis
+        </div>
+      </div>
+    </div>
+
+    <!-- Count Link Generator -->
+    <div id="countLinkSection" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="margin:0;font-size:1.1em">📋 Generate Count Link for Employee</h3>
+        <button class="search-btn-small" onclick="openGenerateLinkModal()" id="generateLinkBtn">🔗 Generate New Link</button>
+      </div>
+      <div id="countLinkInfo" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+          <div>
+            <div style="font-size:0.85em;color:#64748b;margin-bottom:4px">Warehouse</div>
+            <div style="font-weight:600" id="linkWarehouse">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.85em;color:#64748b;margin-bottom:4px">Generated</div>
+            <div style="font-weight:600" id="linkCreated">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.85em;color:#64748b;margin-bottom:4px">Expires</div>
+            <div style="font-weight:600" id="linkExpires">—</div>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:0.85em;color:#64748b;margin-bottom:4px">Status</div>
+          <span id="linkStatus" class="count-status pending">Awaiting Count</span>
+        </div>
+        <div style="background:white;border:1px solid #cbd5e1;border-radius:8px;padding:12px;display:flex;gap:8px;align-items:center">
+          <input type="text" id="generatedLink" readonly style="flex:1;border:none;outline:none;font-family:monospace;font-size:0.9em" />
+          <button class="search-btn-small" onclick="copyCountLink()">📋 Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center">
+      <div style="flex:1;position:relative">
+        <input 
+          type="text" 
+          id="tableSearchInput" 
+          placeholder="🔍 Search products in table (SKU, Code, or Status)..." 
+          style="width:100%;padding:12px 16px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"
+          oninput="filterTable()"
+        />
+        <button 
+          onclick="clearTableSearch()" 
+          id="clearSearchBtn"
+          style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#64748b;cursor:pointer;font-size:18px;display:none"
+        >×</button>
+      </div>
+      <button class="search-btn-small secondary" onclick="clearTableSearch()">Clear</button>
+    </div>
+
+    <!-- Warehouse Selector -->
+    <div class="warehouse-selector">
+      <button class="warehouse-btn active" data-warehouse="all" onclick="selectWarehouse('all')">
+        <span class="wh-name">All Warehouses (Overview)</span>
+        <span class="wh-status" data-status="all" style="display:none">✓</span>
+      </button>
+      <button class="warehouse-btn" data-warehouse="main" onclick="selectWarehouse('main')">
+        <span class="wh-name">Main Warehouse</span>
+        <span class="wh-status" data-status="main" style="display:none">✓</span>
+      </button>
+      <button class="warehouse-btn" data-warehouse="sydney" onclick="selectWarehouse('sydney')">
+        <span class="wh-name">Sydney</span>
+        <span class="wh-status" data-status="sydney" style="display:none">✓</span>
+      </button>
+      <button class="warehouse-btn" data-warehouse="melbourne" onclick="selectWarehouse('melbourne')">
+        <span class="wh-name">Melbourne</span>
+        <span class="wh-status" data-status="melbourne" style="display:none">✓</span>
+      </button>
+      <button class="warehouse-btn" data-warehouse="sunshine-coast" onclick="selectWarehouse('sunshine-coast')">
+        <span class="wh-name">Sunshine Coast</span>
+        <span class="wh-status" data-status="sunshine-coast" style="display:none">✓</span>
+      </button>
+      <button class="warehouse-btn" data-warehouse="hobart" onclick="selectWarehouse('hobart')">
+        <span class="wh-name">Hobart</span>
+        <span class="wh-status" data-status="hobart" style="display:none">✓</span>
+      </button>
+      <button class="warehouse-btn" data-warehouse="cairns" onclick="selectWarehouse('cairns')">
+        <span class="wh-name">Cairns</span>
+        <span class="wh-status" data-status="cairns" style="display:none">✓</span>
+      </button>
+      <button class="warehouse-btn" data-warehouse="coffs-harbour" onclick="selectWarehouse('coffs-harbour')">
+        <span class="wh-name">Coffs Harbour</span>
+        <span class="wh-status" data-status="coffs-harbour" style="display:none">✓</span>
+      </button>
+      <button class="warehouse-btn" data-warehouse="brisbane" onclick="selectWarehouse('brisbane')">
+        <span class="wh-name">Brisbane</span>
+        <span class="wh-status" data-status="brisbane" style="display:none">✓</span>
+      </button>
+    </div>
+
+    <!-- Filters Row -->
+    <div class="table-header-actions">
+      <div class="filter-row">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="display:inline-flex;align-items:center;gap:6px">
+            <input type="checkbox" id="showCompletedOnly" onchange="toggleCompletedOnly(this.checked)" />
+            Show Completed Only
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px">
+            <input type="checkbox" id="showPendingOnly" onchange="togglePendingOnly(this.checked)" />
+            Show Pending Only
+          </label>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span id="productCount" class="small-note">0 products</span>
+          <!-- Confirm button for individual warehouse (hidden in All Warehouses view) -->
+          <button id="confirmWarehouseBtn" 
+                  class="search-btn-small" 
+                  onclick="confirmWarehouseCyclicCount()" 
+                  style="display:none;background:linear-gradient(135deg,#10b981 0%,#059669 100%)">
+            ✓ Confirm Cyclic Count
+          </button>
+          <!-- Finalize button for All Warehouses view (only when all confirmed) -->
+          <button id="finalizeCyclicBtn" 
+                  class="search-btn-small" 
+                  onclick="finalizeCyclicCount()" 
+                  style="display:none;background:linear-gradient(135deg,#4f46e5 0%,#4338ca 100%);opacity:0.5"
+                  disabled>
+            🏁 Finalize Cyclic Count
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrapper" style="overflow-x:auto">
+      <table class="app-table" id="cyclicCountTable" style="min-width:100%;font-size:0.85em">
+        <thead id="cyclicCountHead">
+          <tr>
+            <th>SKU</th>
+            <th>Product</th>
+            <th style="text-align:center">Total System</th>
+            <th style="text-align:center">Total Physical</th>
+            <th style="text-align:center">Variance</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="cyclicCountBody">
+          <tr>
+            <td colspan="7" style="text-align:center;padding:40px;color:#64748b">
+              Loading...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination-controls">
+      <button id="prevPage" onclick="prevPage()" class="search-btn-small secondary">Previous</button>
+      <span id="pageInfo" class="small-note">Page 1 of 1</span>
+      <button id="nextPage" onclick="nextPage()" class="search-btn-small secondary">Next</button>
+    </div>
+  </div>
+
+  <!-- Details Modal -->
+  <div id="detailsModal" class="modal" style="display:none">
+    <div class="modal-content" style="max-width:1200px;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <h2 id="modalProductTitle">Product Details</h2>
+        <button class="modal-close" onclick="closeDetailsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Warehouse Breakdown -->
+        <section class="detail-section">
+          <h3>📦 Warehouse Stock Analysis</h3>
+          <table class="app-table" style="font-size:0.9em">
+            <thead>
+              <tr>
+                <th>Warehouse</th>
+                <th style="text-align:center">System Count</th>
+                <th style="text-align:center">Physical Count</th>
+                <th style="text-align:center">Variance</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="warehouseBreakdown">
+              <tr><td colspan="5" style="text-align:center;color:#64748b">Loading...</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- Special Locations -->
+        <section class="detail-section" style="margin-top:24px">
+          <h3>🔍 Special Locations (Ghost, Faulty, etc.)</h3>
+          <div id="specialLocations" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
+            <!-- Will be populated by JS -->
+          </div>
+        </section>
+
+        <!-- Problematic Orders -->
+        <section class="detail-section" style="margin-top:24px">
+          <h3>⚠️ Orders with Detected Issues</h3>
+          <div id="problematicOrders">
+            <!-- Will be populated by JS -->
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .modal {
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+      width: 90%;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .modal-header h2 {
+      margin: 0;
+      font-size: 1.5em;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 28px;
+      cursor: pointer;
+      color: #64748b;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+    .modal-close:hover {
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+    .modal-body {
+      padding: 24px;
+    }
+    .detail-section h3 {
+      margin: 0 0 12px 0;
+      font-size: 1.1em;
+      color: #1e293b;
+    }
+    .location-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      min-width: 150px;
+    }
+    .location-card-title {
+      font-size: 0.85em;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    .location-card-value {
+      font-size: 1.5em;
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .order-issue-card {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .order-issue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .order-issue-id {
+      font-weight: 600;
+      color: #991b1b;
+    }
+    .order-issue-date {
+      font-size: 0.85em;
+      color: #64748b;
+    }
+    .order-issue-reason {
+      font-size: 0.9em;
+      color: #7f1d1d;
+      margin-top: 8px;
+    }
+    .editable-cell {
+      cursor: pointer;
+      position: relative;
+    }
+    .editable-cell:hover {
+      background: #f1f5f9;
+    }
+    .editable-cell input {
+      width: 80px;
+      padding: 4px 8px;
+      border: 2px solid #4f46e5;
+      border-radius: 4px;
+      text-align: center;
+      font-size: 0.9em;
+    }
+  </style>
+
+  <!-- PIN Protection Modal -->
+  <div id="pinModal" class="modal" style="display:flex">
+    <div class="modal-content" style="max-width:400px">
+      <div class="modal-header">
+        <h2>🔒 Access Protected</h2>
+      </div>
+      <div class="modal-body" style="text-align:center">
+        <p style="color:#64748b;margin-bottom:20px">Enter PIN to access Cyclic Count Management</p>
+        <input type="password" 
+               id="pinInput" 
+               placeholder="Enter 4-digit PIN" 
+               maxlength="4"
+               style="width:200px;padding:12px;font-size:1.5em;text-align:center;border:2px solid #cbd5e1;border-radius:8px;letter-spacing:8px"
+               onkeypress="if(event.key==='Enter') validatePin()" />
+        <div id="pinError" style="color:#dc2626;margin-top:12px;display:none">❌ Incorrect PIN</div>
+        <button class="search-btn-small" onclick="validatePin()" style="margin-top:20px;width:100%">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generate Link Modal -->
+  <div id="generateLinkModal" class="modal" style="display:none">
+    <div class="modal-content" style="max-width:500px">
+      <div class="modal-header">
+        <h2>Generate Count Link</h2>
+        <button class="modal-close" onclick="closeGenerateLinkModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom:16px">
+          <label style="display:block;margin-bottom:8px;font-weight:500">Select Warehouse</label>
+          <select id="linkWarehouseSelect" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px">
+            <option value="">-- Select Warehouse --</option>
+            <option value="main">🏢 Main Warehouse</option>
+            <option value="sydney">🌆 Sydney</option>
+            <option value="melbourne">🌃 Melbourne</option>
+            <option value="sunshine-coast">☀️ Sunshine Coast</option>
+            <option value="hobart">🏔️ Hobart</option>
+            <option value="cairns">🌴 Cairns</option>
+            <option value="coffs-harbour">🌊 Coffs Harbour</option>
+            <option value="brisbane">🌉 Brisbane</option>
+          </select>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;margin-bottom:8px;font-weight:500">Link Expires In</label>
+          <select id="linkExpiresSelect" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px">
+            <option value="24">24 hours</option>
+            <option value="48" selected>48 hours (Recommended)</option>
+            <option value="168">7 days</option>
+          </select>
+        </div>
+        <button class="search-btn-small" onclick="createCountSession()" style="width:100%">🔗 Generate Link</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manage Products Modal -->
+  <div id="manageProductsModal" class="modal" style="display:none">
+    <div class="modal-content" style="max-width:900px;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <h2>📦 Manage Products in Audit List</h2>
+        <button class="modal-close" onclick="closeManageProductsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Search Section -->
+        <div style="margin-bottom:24px">
+          <h3 style="margin-bottom:12px">🔍 Search & Add Products</h3>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input type="text" 
+                   id="productSearchInput" 
+                   placeholder="Search by SKU or product name..." 
+                   style="flex:1;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.95em"
+                   onkeyup="searchAvailableProducts()" />
+            <button class="search-btn-small" onclick="searchAvailableProducts()">🔍 Search</button>
+          </div>
+          
+          <!-- Search Results -->
+          <div id="searchResults" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;max-height:300px;overflow-y:auto">
+            <div style="font-size:0.9em;color:#64748b;margin-bottom:8px">Available Products:</div>
+            <div id="searchResultsList">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0" />
+        
+        <!-- Current Products List -->
+        <div>
+          <h3 style="margin-bottom:12px">📋 Products in Audit List (<span id="auditProductCount">0</span>)</h3>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;max-height:400px;overflow-y:auto">
+            <div id="productsList" style="display:flex;flex-direction:column;gap:8px">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History Modal -->
+  <div id="historyModal" class="modal" style="display:none">
+    <div class="modal-content" style="max-width:1400px;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <h2>📅 Historical Data</h2>
+        <button class="modal-close" onclick="closeHistoryModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom:20px;display:flex;gap:12px;flex-wrap:wrap">
+          <button class="filter-btn active" onclick="filterHistory('week')">This Week</button>
+          <button class="filter-btn" onclick="filterHistory('month')">This Month</button>
+          <button class="filter-btn" onclick="filterHistory('quarter')">Last 3 Months</button>
+          <button class="filter-btn" onclick="filterHistory('all')">All Time</button>
+        </div>
+        <div id="historyContent">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .filter-btn {
+      padding: 8px 16px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      font-size: 0.9em;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover {
+      background: #f1f5f9;
+    }
+    .filter-btn.active {
+      background: #4f46e5;
+      color: white;
+      border-color: #4f46e5;
+    }
+    .product-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+    }
+    .product-item:hover {
+      background: #f8fafc;
+    }
+  </style>
+
+  <!-- Upload Reports Modal (2 Sections: Sales Orders + Stock Available) -->
+  <div id="uploadReportsModal" class="modal" style="display:none">
+    <div class="modal-content" style="max-width:800px;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <h2>📤 Upload Reports (CIN7)</h2>
+        <button class="modal-close" onclick="closeUploadReportsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Instructions Banner -->
+        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:12px;margin-bottom:24px">
+          <div style="font-weight:600;color:#92400e;margin-bottom:4px">⚠️ Important: Upload Both Reports</div>
+          <div style="font-size:0.9em;color:#78350f">
+            Both <strong>Sales Orders</strong> and <strong>Stock Availability</strong> reports are required for accurate cyclic count analysis.
+          </div>
+        </div>
+
+        <!-- Section 1: Sales Orders -->
+        <div style="margin-bottom:32px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="margin:0">📦 Sales Orders Report</h3>
+            <button class="search-btn-small secondary" onclick="showSalesOrdersInstructions()" style="font-size:0.85em;padding:6px 12px">
+              ❓ How to generate
+            </button>
+          </div>
+          
+          <input type="file" 
+                 id="salesOrdersFile" 
+                 accept=".csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" 
+                 style="display:none"
+                 onchange="handleSalesOrdersFileSelect(this)" />
+          
+          <div id="salesOrdersDropZone" 
+               style="border:3px dashed #6366f1;border-radius:12px;padding:32px;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#3730a3;background:#eef2ff;cursor:pointer;font-size:14px;font-weight:600;text-align:center;transition:all 0.2s"
+               onclick="document.getElementById('salesOrdersFile').click()"
+               ondragover="event.preventDefault(); this.style.borderColor='#4f46e5'; this.style.background='#e0e7ff'"
+               ondragleave="this.style.borderColor='#6366f1'; this.style.background='#eef2ff'"
+               ondrop="handleSalesOrdersDrop(event)">
+            <span style="font-size:2em">📦</span>
+            <span>Drop CSV/Excel or click to upload</span>
+            <span style="font-size:0.8em;color:#6366f1;font-weight:400">Sales Orders Report from CIN7</span>
+          </div>
+          
+          <div id="salesOrdersFileName" style="margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;display:none">
+            <span style="font-weight:600;color:#166534">✓</span>
+            <span id="salesOrdersFileNameText" style="margin-left:8px;color:#166534"></span>
+            <button onclick="clearSalesOrdersFile()" style="float:right;background:none;border:none;color:#166534;cursor:pointer;font-weight:600">✕</button>
+          </div>
+        </div>
+
+        <!-- Section 2: Stock Availability -->
+        <div style="margin-bottom:24px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="margin:0">📊 Stock Availability Report</h3>
+            <button class="search-btn-small secondary" onclick="showStockAvailabilityInstructions()" style="font-size:0.85em;padding:6px 12px">
+              ❓ How to generate
+            </button>
+          </div>
+          
+          <input type="file" 
+                 id="stockAvailabilityFile" 
+                 accept=".csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" 
+                 style="display:none"
+                 onchange="handleStockAvailabilityFileSelect(this)" />
+          
+          <div id="stockAvailabilityDropZone" 
+               style="border:3px dashed #10b981;border-radius:12px;padding:32px;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#047857;background:#d1fae5;cursor:pointer;font-size:14px;font-weight:600;text-align:center;transition:all 0.2s"
+               onclick="document.getElementById('stockAvailabilityFile').click()"
+               ondragover="event.preventDefault(); this.style.borderColor='#059669'; this.style.background='#a7f3d0'"
+               ondragleave="this.style.borderColor='#10b981'; this.style.background='#d1fae5'"
+               ondrop="handleStockAvailabilityDrop(event)">
+            <span style="font-size:2em">📊</span>
+            <span>Drop CSV/Excel or click to upload</span>
+            <span style="font-size:0.8em;color:#059669;font-weight:400">Product Availability Report from CIN7</span>
+          </div>
+          
+          <div id="stockAvailabilityFileName" style="margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;display:none">
+            <span style="font-weight:600;color:#166534">✓</span>
+            <span id="stockAvailabilityFileNameText" style="margin-left:8px;color:#166534"></span>
+            <button onclick="clearStockAvailabilityFile()" style="float:right;background:none;border:none;color:#166534;cursor:pointer;font-weight:600">✕</button>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div id="uploadSummary" style="margin-top:20px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;display:none">
+          <div style="font-weight:600;margin-bottom:8px;color:#475569">📋 Upload Summary:</div>
+          <div id="uploadSummaryContent" style="font-size:0.9em;color:#64748b"></div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:24px">
+          <button class="search-btn-small secondary" onclick="closeUploadReportsModal()">Cancel</button>
+          <button id="processReportsBtn" class="search-btn-small" onclick="processUploadedReports()" disabled style="opacity:0.5">
+            🚀 Process Reports
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report Instructions Modal -->
+  <div id="reportInstructionsModal" class="modal" style="display:none">
+    <div class="modal-content" style="max-width:700px;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <h2 id="instructionsTitle">Report Instructions</h2>
+        <button class="modal-close" onclick="closeReportInstructions()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="instructionsBody" style="line-height:1.8;color:#475569">
+          <!-- Populated by JS -->
+        </div>
+        <div style="margin-top:24px;text-align:right">
+          <button class="search-btn-small" onclick="closeReportInstructions()">Got it!</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Upload Reports Modal Functions
+    let salesOrdersFileData = null;
+    let stockAvailabilityFileData = null;
+
+    function openUploadReportsModal() {
+      document.getElementById('uploadReportsModal').style.display = 'flex';
+      clearAllUploadData();
+    }
+
+    function closeUploadReportsModal() {
+      document.getElementById('uploadReportsModal').style.display = 'none';
+    }
+
+    function clearAllUploadData() {
+      // Clear Sales Orders
+      salesOrdersFileData = null;
+      document.getElementById('salesOrdersFile').value = '';
+      document.getElementById('salesOrdersFileName').style.display = 'none';
+      
+      // Clear Stock Availability
+      stockAvailabilityFileData = null;
+      document.getElementById('stockAvailabilityFile').value = '';
+      document.getElementById('stockAvailabilityFileName').style.display = 'none';
+      
+      // Clear summary
+      document.getElementById('uploadSummary').style.display = 'none';
+      
+      // Disable process button
+      document.getElementById('processReportsBtn').disabled = true;
+      document.getElementById('processReportsBtn').style.opacity = '0.5';
+    }
+
+    // Sales Orders File Handlers
+    function handleSalesOrdersFileSelect(input) {
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+        salesOrdersFileData = file;
+        window.uploadSalesFile(file);
+        document.getElementById('salesOrdersFileNameText').textContent = file.name;
+        document.getElementById('salesOrdersFileName').style.display = 'block';
+        checkBothFilesUploaded();
+      }
+    }
+
+    function handleSalesOrdersDrop(e) {
+      e.preventDefault();
+      const dropZone = document.getElementById('salesOrdersDropZone');
+      dropZone.style.borderColor = '#6366f1';
+      dropZone.style.background = '#eef2ff';
+      
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        const file = e.dataTransfer.files[0];
+        document.getElementById('salesOrdersFile').files = e.dataTransfer.files;
+        handleSalesOrdersFileSelect({ files: e.dataTransfer.files });
+      }
+    }
+
+    function clearSalesOrdersFile() {
+      salesOrdersFileData = null;
+      document.getElementById('salesOrdersFile').value = '';
+      document.getElementById('salesOrdersFileName').style.display = 'none';
+      checkBothFilesUploaded();
+    }
+
+    // Stock Availability File Handlers
+    function handleStockAvailabilityFileSelect(input) {
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+        stockAvailabilityFileData = file;
+        window.uploadStockFile(file);
+        document.getElementById('stockAvailabilityFileNameText').textContent = file.name;
+        document.getElementById('stockAvailabilityFileName').style.display = 'block';
+        checkBothFilesUploaded();
+      }
+    }
+
+    function handleStockAvailabilityDrop(e) {
+      e.preventDefault();
+      const dropZone = document.getElementById('stockAvailabilityDropZone');
+      dropZone.style.borderColor = '#10b981';
+      dropZone.style.background = '#d1fae5';
+      
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        const file = e.dataTransfer.files[0];
+        document.getElementById('stockAvailabilityFile').files = e.dataTransfer.files;
+        handleStockAvailabilityFileSelect({ files: e.dataTransfer.files });
+      }
+    }
+
+    function clearStockAvailabilityFile() {
+      stockAvailabilityFileData = null;
+      document.getElementById('stockAvailabilityFile').value = '';
+      document.getElementById('stockAvailabilityFileName').style.display = 'none';
+      checkBothFilesUploaded();
+    }
+
+    // Check if both files are uploaded
+    function checkBothFilesUploaded() {
+      const processBtn = document.getElementById('processReportsBtn');
+      const summary = document.getElementById('uploadSummary');
+      const summaryContent = document.getElementById('uploadSummaryContent');
+      
+      if (salesOrdersFileData && stockAvailabilityFileData) {
+        processBtn.disabled = false;
+        processBtn.style.opacity = '1';
+        
+        summary.style.display = 'block';
+        summaryContent.innerHTML = `
+          ✅ <strong>Sales Orders:</strong> ${salesOrdersFileData.name}<br>
+          ✅ <strong>Stock Availability:</strong> ${stockAvailabilityFileData.name}<br>
+          <div style="margin-top:8px;color:#059669;font-weight:600">Ready to process!</div>
+        `;
+      } else {
+        processBtn.disabled = true;
+        processBtn.style.opacity = '0.5';
+        
+        const missing = [];
+        if (!salesOrdersFileData) missing.push('Sales Orders Report');
+        if (!stockAvailabilityFileData) missing.push('Stock Availability Report');
+        
+        summary.style.display = 'block';
+        summaryContent.innerHTML = `
+          ⚠️ Missing: <strong>${missing.join(', ')}</strong>
+        `;
+      }
+    }
+
+    // Instructions
+    function showSalesOrdersInstructions() {
+      const modal = document.getElementById('reportInstructionsModal');
+      const title = document.getElementById('instructionsTitle');
+      const body = document.getElementById('instructionsBody');
+      
+      title.textContent = '📦 Sales Orders Report - How to Generate';
+      body.innerHTML = `
+        <h4 style="color:#1e293b;margin-bottom:12px">Step-by-Step Guide:</h4>
+        <ol style="padding-left:20px">
+          <li style="margin-bottom:10px">Login to <strong>CIN7/DEAR Inventory</strong></li>
+          <li style="margin-bottom:10px">Navigate to: <strong style="color:#4f46e5">Reports → Sales Reports → Sales Orders</strong></li>
+          <li style="margin-bottom:10px">
+            Configure filters:
+            <ul style="margin-top:6px;padding-left:20px">
+              <li>Status: <strong>Authorised</strong> and/or <strong>Pending</strong></li>
+              <li>Exclude: <strong>Fulfilled</strong>, <strong>Cancelled</strong></li>
+              <li><strong style="color:#dc2626">Date Range: FULL MONTH</strong> (entire previous month)</li>
+              <li>Example: For cyclic count on <strong>Feb 1</strong>, select <strong>Jan 1 to Jan 31</strong></li>
+            </ul>
+          </li>
+          <li style="margin-bottom:10px">Click <strong>Export → CSV</strong></li>
+          <li>Save the file (e.g., <code style="background:#f1f5f9;padding:2px 6px;border-radius:3px">sales_orders_${new Date().toISOString().split('T')[0]}.csv</code>)</li>
+        </ol>
+        
+        <div style="background:#dbeafe;border:1px solid #3b82f6;border-radius:6px;padding:12px;margin-top:16px">
+          <strong style="color:#1e40af">📅 IMPORTANT - Monthly Period:</strong>
+          <p style="color:#1e3a8a;margin:8px 0 0 0;font-size:14px;line-height:1.6">
+            • <strong>ALWAYS generate monthly</strong> (full calendar month)<br>
+            • Generate on <strong>last day of month</strong> or <strong>first day of next month</strong><br>
+            • This ensures <strong>all orders are captured</strong>, especially weekend orders<br>
+            • Captures discrepancies that occurred during month-end/weekend periods<br>
+            • Never use weekly ranges - they miss critical data!
+          </p>
+        </div>
+        
+        <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:12px;margin-top:12px">
+          <strong style="color:#991b1b">⚠️ Header Location:</strong>
+          <p style="color:#991b1b;margin:8px 0 0 0;font-size:14px">
+            CIN7 Sales Orders report has <strong>header starting at line 5</strong> (lines 1-4 are metadata).
+            The system will automatically detect and skip these lines.
+          </p>
+        </div>
+      `;
+      
+      modal.style.display = 'flex';
+    }
+
+    function showStockAvailabilityInstructions() {
+      const modal = document.getElementById('reportInstructionsModal');
+      const title = document.getElementById('instructionsTitle');
+      const body = document.getElementById('instructionsBody');
+      
+      title.textContent = '📊 Stock Availability Report - How to Generate';
+      body.innerHTML = `
+        <h4 style="color:#1e293b;margin-bottom:12px">Step-by-Step Guide:</h4>
+        <ol style="padding-left:20px">
+          <li style="margin-bottom:10px">Login to <strong>CIN7/DEAR Inventory</strong></li>
+          <li style="margin-bottom:10px">Navigate to: <strong style="color:#059669">Reports → Inventory Reports → Product Availability</strong></li>
+          <li style="margin-bottom:10px">
+            Configure filters:
+            <ul style="margin-top:6px;padding-left:20px">
+              <li>Select <strong>All Products</strong> (or filter by your products)</li>
+              <li>Select <strong>All Locations</strong></li>
+              <li><strong style="color:#059669">NO DATE SELECTION</strong> - uses system's current snapshot</li>
+            </ul>
+          </li>
+          <li style="margin-bottom:10px">Click <strong>Export → CSV</strong></li>
+          <li>Save the file (e.g., <code style="background:#f1f5f9;padding:2px 6px;border-radius:3px">product_availability_${new Date().toISOString().split('T')[0]}.csv</code>)</li>
+        </ol>
+        
+        <div style="background:#d1fae5;border:1px solid #10b981;border-radius:6px;padding:12px;margin-top:16px">
+          <strong style="color:#065f46">📸 Real-Time Snapshot:</strong>
+          <p style="color:#065f46;margin:8px 0 0 0;font-size:14px;line-height:1.6">
+            • This report does NOT require date selection<br>
+            • Shows <strong>current system inventory snapshot</strong><br>
+            • Automatically reflects <strong>real-time stock levels</strong><br>
+            • Generate <strong>at time of cyclic count</strong> (weekly/monthly as needed)<br>
+            • This is your "expected" baseline for comparison
+          </p>
+        </div>
+        
+        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:12px;margin-top:12px">
+          <strong style="color:#92400e">⚠️ Required Columns:</strong>
+          <p style="color:#92400e;margin:8px 0 0 0;font-size:14px">
+            CSV must contain: <strong>SKU, Location, OnHand, Available, Allocated, OnOrder</strong>
+          </p>
+        </div>
+      `;
+      
+      modal.style.display = 'flex';
+    }
+
+    function closeReportInstructions() {
+      document.getElementById('reportInstructionsModal').style.display = 'none';
+    }
+
+    // Process Reports - usa novo sistema simplificado
+    async function processUploadedReports() {
+      console.log('🔄 Processing uploads...');
+      
+      if (!salesOrdersFileData || !stockAvailabilityFileData) {
+        alert('⚠️ Please upload both reports');
+        return;
+      }
+      
+      // Desabilitar botão
+      const btn = document.getElementById('processReportsBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Processing...';
+      
+      try {
+        // Usar novo sistema simplificado
+        await window.processUploadSimple();
+      } catch (error) {
+        console.error('❌ Error:', error);
+        btn.disabled = false;
+        btn.textContent = '🚀 Process Reports';
+      }
+    }
+  </script>
+
+  <script>
+    // Cyclic Count Confirmation System
+    const CYCLIC_STATUS_KEY = 'cyclicCountStatus';
+    
+    // Get confirmed warehouses from localStorage
+    function getConfirmedWarehouses() {
+      const stored = localStorage.getItem(CYCLIC_STATUS_KEY);
+      if (stored) {
+        try {
+          const data = JSON.parse(stored);
+          // Check if data is from current run (you can add run_id check here)
+          return data.confirmed || [];
+        } catch (e) {
+          return [];
+        }
+      }
+      return [];
+    }
+    
+    // Save confirmed warehouse
+    function saveConfirmedWarehouse(warehouseCode) {
+      const confirmed = getConfirmedWarehouses();
+      if (!confirmed.includes(warehouseCode)) {
+        confirmed.push(warehouseCode);
+      }
+      localStorage.setItem(CYCLIC_STATUS_KEY, JSON.stringify({
+        confirmed: confirmed,
+        timestamp: new Date().toISOString()
+      }));
+      updateWarehouseVisualStatus();
+    }
+    
+    // Check if warehouse is confirmed
+    function isWarehouseConfirmed(warehouseCode) {
+      return getConfirmedWarehouses().includes(warehouseCode);
+    }
+    
+    // Update visual status of warehouse buttons
+    function updateWarehouseVisualStatus() {
+      const confirmed = getConfirmedWarehouses();
+      const allWarehouses = ['main', 'sydney', 'melbourne', 'sunshine-coast', 'hobart', 'cairns', 'coffs-harbour', 'brisbane'];
+      
+      allWarehouses.forEach(whCode => {
+        const btn = document.querySelector(`.warehouse-btn[data-warehouse="${whCode}"]`);
+        if (btn) {
+          if (confirmed.includes(whCode)) {
+            btn.classList.add('confirmed');
+          } else {
+            btn.classList.remove('confirmed');
+          }
+        }
+      });
+      
+      // Update Finalize button state
+      const finalizeBtn = document.getElementById('finalizeCyclicBtn');
+      if (finalizeBtn && finalizeBtn.style.display !== 'none') {
+        if (confirmed.length === allWarehouses.length) {
+          finalizeBtn.disabled = false;
+          finalizeBtn.style.opacity = '1';
+        } else {
+          finalizeBtn.disabled = true;
+          finalizeBtn.style.opacity = '0.5';
+        }
+      }
+    }
+    
+    // Confirm current warehouse cyclic count
+    async function confirmWarehouseCyclicCount() {
+      const currentWarehouse = window.currentWarehouse || 'main';
+      
+      if (currentWarehouse === 'all') {
+        alert('⚠️ Please select a specific warehouse to confirm.');
+        return;
+      }
+      
+      const warehouseName = {
+        'main': 'Main Warehouse',
+        'sydney': 'Sydney',
+        'melbourne': 'Melbourne',
+        'sunshine-coast': 'Sunshine Coast',
+        'hobart': 'Hobart',
+        'cairns': 'Cairns',
+        'coffs-harbour': 'Coffs Harbour',
+        'brisbane': 'Brisbane'
+      }[currentWarehouse] || currentWarehouse;
+      
+      if (isWarehouseConfirmed(currentWarehouse)) {
+        alert(`✓ ${warehouseName} cyclic count is already confirmed.`);
+        return;
+      }
+      
+      const confirmed = confirm(
+        `Confirm Cyclic Count for ${warehouseName}?\n\n` +
+        `This will:\n` +
+        `• Lock the count for this warehouse\n` +
+        `• Mark it as completed ✓\n` +
+        `• Generate historical record\n\n` +
+        `This action cannot be undone. Continue?`
+      );
+      
+      if (!confirmed) return;
+      
+      try {
+        // Save confirmation
+        saveConfirmedWarehouse(currentWarehouse);
+        
+        // Update UI
+        updateWarehouseVisualStatus();
+        
+        // Show success message
+        alert(`✅ ${warehouseName} cyclic count confirmed!\n\nThe warehouse is now locked and marked as completed.`);
+        
+        // Optionally: Save to database here
+        // await saveConfirmationToDatabase(currentWarehouse);
+        
+      } catch (error) {
+        console.error('Error confirming warehouse:', error);
+        alert('❌ Error confirming cyclic count: ' + error.message);
+      }
+    }
+    
+    // Finalize entire cyclic count (all warehouses)
+    async function finalizeCyclicCount() {
+      const confirmed = getConfirmedWarehouses();
+      const allWarehouses = ['main', 'sydney', 'melbourne', 'sunshine-coast', 'hobart', 'cairns', 'coffs-harbour', 'brisbane'];
+      
+      if (confirmed.length !== allWarehouses.length) {
+        const remaining = allWarehouses.filter(wh => !confirmed.includes(wh));
+        alert(
+          `⚠️ Cannot finalize yet!\n\n` +
+          `Pending warehouses:\n` +
+          remaining.map(wh => `• ${wh}`).join('\n') +
+          `\n\nPlease confirm all warehouses first.`
+        );
+        return;
+      }
+      
+      const finalConfirm = confirm(
+        `🏁 Finalize Cyclic Count?\n\n` +
+        `This will:\n` +
+        `• Complete the current cyclic count cycle\n` +
+        `• Generate final report and historical records\n` +
+        `• Reset the system for next cycle\n\n` +
+        `All ${allWarehouses.length} warehouses are confirmed ✓\n\n` +
+        `This action cannot be undone. Continue?`
+      );
+      
+      if (!finalConfirm) return;
+      
+      try {
+        // Clear confirmations for next cycle
+        localStorage.removeItem(CYCLIC_STATUS_KEY);
+        
+        // Update UI
+        updateWarehouseVisualStatus();
+        
+        // Show success
+        alert(
+          `✅ Cyclic Count Finalized!\n\n` +
+          `• Historical records saved\n` +
+          `• System reset for next cycle\n` +
+          `• Report generated\n\n` +
+          `You can now start a new cyclic count cycle.`
+        );
+        
+        // Reload page to reset
+        window.location.reload();
+        
+      } catch (error) {
+        console.error('Error finalizing cyclic count:', error);
+        alert('❌ Error finalizing: ' + error.message);
+      }
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      updateWarehouseVisualStatus();
+    });
+    
+    // Store current warehouse globally
+    window.currentWarehouse = 'all';
+    
+    // Override selectWarehouse to update button visibility
+    const originalSelectWarehouse = window.selectWarehouse;
+    window.selectWarehouse = function(warehouse) {
+      window.currentWarehouse = warehouse;
+      
+      // Call original function
+      if (originalSelectWarehouse) {
+        originalSelectWarehouse(warehouse);
+      }
+      
+      // Show/hide appropriate buttons
+      const confirmBtn = document.getElementById('confirmWarehouseBtn');
+      const finalizeBtn = document.getElementById('finalizeCyclicBtn');
+      
+      if (warehouse === 'all') {
+        // All Warehouses view - show Finalize button
+        confirmBtn.style.display = 'none';
+        finalizeBtn.style.display = 'inline-block';
+        updateWarehouseVisualStatus();
+      } else {
+        // Individual warehouse view - show Confirm button if not already confirmed
+        finalizeBtn.style.display = 'none';
+        if (!isWarehouseConfirmed(warehouse)) {
+          confirmBtn.style.display = 'inline-block';
+        } else {
+          confirmBtn.style.display = 'none';
+        }
+      }
+    };
+  </script>
+
+  <script src="upload-handler-new.js"></script>
+  <script src="cyclic-count.js"></script>
+</body>
+</html>

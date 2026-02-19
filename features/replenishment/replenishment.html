@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Branch Replenishment Planner</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <link rel="manifest" href="../../manifest.json">
+  <meta name="theme-color" content="#232946">
+  <link rel="icon" type="image/svg+xml" href="../../icon-192.svg">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    /* Branch Replenishment specific styles */
+    .branch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .branch-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: all 0.2s;
+    }
+    .branch-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border-color: #94a3b8;
+    }
+    .branch-card .branch-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .branch-card .branch-code {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 500;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-badge.draft { background: #fef3c7; color: #92400e; }
+    .status-badge.approved { background: #d1fae5; color: #065f46; }
+    .status-badge.sent { background: #dbeafe; color: #1e40af; }
+    .status-badge.no_plan { background: #f1f5f9; color: #64748b; }
+    
+    .snapshot-info {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border: 1px solid #7dd3fc;
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .snapshot-info .snapshot-date {
+      font-weight: 600;
+      color: #0369a1;
+    }
+    .snapshot-info .snapshot-rows {
+      font-size: 13px;
+      color: #475569;
+    }
+    
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .alert.warning {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+    }
+    .alert.success {
+      background: #d1fae5;
+      border: 1px solid #6ee7b7;
+      color: #065f46;
+    }
+    .alert.info {
+      background: #dbeafe;
+      border: 1px solid #93c5fd;
+      color: #1e40af;
+    }
+    
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+    
+    .missing-avg-badge {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    
+    .input-approved {
+      width: 80px;
+      padding: 4px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      text-align: right;
+      font-size: 13px;
+    }
+    .input-approved:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+    
+    .summary-cards {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+    .summary-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px 24px;
+      min-width: 140px;
+    }
+    .summary-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .summary-card .label {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 500;
+    }
+    
+    /* Drop zone styles */
+    .drop-zone {
+      border: 3px dashed #6366f1;
+      border-radius: 14px;
+      padding: 32px;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #3730a3;
+      background: #eef2ff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .drop-zone:hover {
+      background: #e0e7ff;
+      border-color: #4f46e5;
+    }
+    .drop-zone.drag-over {
+      background: #c7d2fe;
+      border-color: #4338ca;
+    }
+    .drop-zone.success {
+      border-color: #10b981;
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .drop-zone.error {
+      border-color: #ef4444;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="brand" href="../index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="../index.html" class="nav-link">Home</a>
+        <a href="../restock.html" class="nav-link">Re-Stock</a>
+        <a href="../stock-anomalies.html" class="nav-link">Anomalies</a>
+        <a href="replenishment.html" class="nav-link active">Replenishment</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <div>
+        <h1 style="margin:0;font-size:24px;color:#1e293b">Branch Replenishment Planner</h1>
+        <p class="small-note" style="margin:4px 0 0 0">Plan stock transfers from Main Warehouse to branches</p>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="search-btn-small" onclick="openUploadModal()">Upload Stock Report</button>
+        <button class="search-btn-small secondary" onclick="openAvgManagementModal()">Manage AVG Sales</button>
+      </div>
+    </div>
+
+    <!-- Snapshot Info -->
+    <div id="snapshotSection" style="display:none">
+      <div class="snapshot-info">
+        <div>
+          <span class="snapshot-date" id="snapshotDate">No snapshot loaded</span>
+          <span class="snapshot-rows" id="snapshotRows"></span>
+        </div>
+        <div style="font-size:12px;color:#64748b" id="snapshotFilename"></div>
+      </div>
+    </div>
+
+    <!-- No Snapshot Alert -->
+    <div id="noSnapshotAlert" class="alert warning">
+      No stock snapshot available. Please upload a stock report to begin planning.
+    </div>
+
+    <!-- Rules / Configuration Info -->
+    <div class="alert info" style="margin:16px 0">
+      <strong>Replenishment Rules:</strong>
+      <ul style="margin:8px 0 0 16px;padding:0;font-size:13px;line-height:1.8">
+        <li><strong>Branch Target:</strong> Maintain <strong>5 weeks</strong> of stock based on avg monthly sales</li>
+        <li><strong>Main Warehouse Minimum:</strong> Keep at least <strong>8 weeks</strong> of stock before sending</li>
+        <li><strong>No Sales = No Transfer:</strong> Products with 0 avg sales in a branch are skipped</li>
+        <li><strong>Formula:</strong> Suggested = min(Branch Need, Main Can Send)</li>
+      </ul>
+    </div>
+
+    <!-- Branches Grid -->
+    <h2 style="margin:24px 0 12px 0;font-size:18px;color:#334155">Branches</h2>
+    <div class="branch-grid" id="branchGrid">
+      <!-- Will be populated by JS -->
+    </div>
+
+    <!-- Loading -->
+    <div id="loadingOverlay" style="display:none;text-align:center;padding:40px;color:#64748b">
+      <div class="spinner"></div>
+      <p style="margin-top:12px">Loading...</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">© 2026 JSlab.dev — All rights reserved.</div>
+  </footer>
+
+  <!-- Upload Stock Report Modal -->
+  <div id="uploadModal" class="modal hidden">
+    <div class="modal-content" style="max-width:600px">
+      <span class="close" onclick="closeUploadModal()">&times;</span>
+      <h2>Upload Stock Report</h2>
+      
+      <div class="alert info" style="margin-bottom:16px">
+        <strong>Instructions:</strong> Export the Stock Report from Cin7 with all warehouses. 
+        The system will automatically detect and extract the "Available" quantity for each branch.
+      </div>
+
+      <div style="margin-bottom:16px">
+        <strong>Required Report:</strong>
+        <ul style="margin:8px 0 0 20px;color:#475569;font-size:14px">
+          <li>Stock report with SKU column</li>
+          <li>Columns for each warehouse (Main, Sydney, Melbourne, etc.)</li>
+          <li>The "Available" column for each warehouse will be used</li>
+        </ul>
+      </div>
+
+      <input type="file" id="uploadFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileSelect(event)" />
+      
+      <div id="dropZone" class="drop-zone" onclick="document.getElementById('uploadFile').click()">
+        <span style="font-size:32px">📄</span>
+        <span>Drop Excel/CSV file here or click to browse</span>
+        <span style="font-size:12px;opacity:0.7">Supports .xlsx, .xls, .csv</span>
+      </div>
+
+      <div id="uploadPreview" style="display:none;margin-top:16px">
+        <div id="uploadSummary" style="padding:12px;background:#f8fafc;border-radius:8px;margin-bottom:12px"></div>
+        <div style="max-height:200px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px">
+          <table class="app-table" style="margin:0;font-size:12px">
+            <thead>
+              <tr id="previewHeaders"></tr>
+            </thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="search-btn-small secondary" onclick="closeUploadModal()">Cancel</button>
+        <button id="confirmUploadBtn" class="search-btn-small" onclick="confirmUpload()" disabled>Upload & Process</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AVG Sales Management Modal -->
+  <div id="avgModal" class="modal hidden">
+    <div class="modal-content" style="max-width:900px">
+      <span class="close" onclick="closeAvgManagementModal()">&times;</span>
+      <h2>Average Monthly Sales (AVG)</h2>
+      
+      <div class="alert info" style="margin-bottom:16px">
+        <strong>Read-only view.</strong> AVG data is imported via Supabase CSV. 
+        Values shown are monthly averages based on last 6 months of sales.
+        <br><em>Products with 0 avg in a branch are skipped in replenishment calculations.</em>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <input type="text" id="avgSearchInput" placeholder="Search product..." 
+               style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px"
+               oninput="filterAvgTable()">
+        <span id="avgCount" style="color:#64748b;font-size:13px;align-self:center"></span>
+      </div>
+
+      <div style="max-height:400px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px">
+        <table class="app-table" style="margin:0;font-size:12px">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th style="text-align:right">Main</th>
+              <th style="text-align:right">Sydney</th>
+              <th style="text-align:right">Melbourne</th>
+              <th style="text-align:right">Brisbane</th>
+              <th style="text-align:right">Cairns</th>
+              <th style="text-align:right">Coffs H.</th>
+              <th style="text-align:right">Hobart</th>
+              <th style="text-align:right">S.Coast</th>
+            </tr>
+          </thead>
+          <tbody id="avgTableBody">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:16px">
+        <button class="search-btn-small" onclick="closeAvgManagementModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../../supabase-config.js"></script>
+  <script src="replenishment.js"></script>
+</body>
+</html>

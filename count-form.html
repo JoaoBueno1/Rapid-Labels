@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Count Form - Rapid Label</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="icon-192.svg">
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <style>
+    body {
+      background: #f8fafc;
+    }
+    .count-form-container {
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .count-header {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .count-header h1 {
+      margin: 0 0 8px 0;
+      font-size: 1.8em;
+      color: #1e293b;
+    }
+    .count-header .session-info {
+      color: #64748b;
+      font-size: 0.9em;
+    }
+    .progress-bar {
+      background: #e2e8f0;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 16px 0;
+    }
+    .progress-fill {
+      background: #4f46e5;
+      height: 100%;
+      transition: width 0.3s;
+    }
+    .name-input-section {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .name-input-section label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #1e293b;
+    }
+    .name-input-section input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 1em;
+    }
+    .count-table-wrapper {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+    }
+    .count-input {
+      width: 100px;
+      padding: 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      text-align: center;
+      font-size: 1em;
+    }
+    .count-input:focus {
+      border-color: #4f46e5;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+    .notes-input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .submit-section {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .submit-btn {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 16px 48px;
+      border-radius: 8px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .submit-btn:hover {
+      background: #059669;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .submit-btn:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .status-message {
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+      text-align: center;
+    }
+    .status-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+    .status-success {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+    }
+    .readonly-overlay {
+      background: rgba(248, 250, 252, 0.9);
+      padding: 40px;
+      border-radius: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="count-form-container">
+    <!-- Loading State -->
+    <div id="loadingState" class="count-header" style="text-align:center">
+      <h1>📦 Loading Count Session...</h1>
+      <p style="color:#64748b">Please wait while we load your count data</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="errorState" style="display:none">
+      <div class="status-message status-error">
+        <h2 style="margin:0 0 8px 0">❌ Error Loading Session</h2>
+        <p id="errorMessage" style="margin:0"></p>
+      </div>
+    </div>
+
+    <!-- Main Form -->
+    <div id="mainForm" style="display:none">
+      <!-- Header -->
+      <div class="count-header">
+        <h1>📦 Stock Count - <span id="warehouseName">Warehouse</span></h1>
+        <div class="session-info">
+          Session: <strong id="sessionToken">-</strong> | 
+          Expires: <strong id="sessionExpires">-</strong>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressBar" style="width:0%"></div>
+        </div>
+        <div style="font-size:0.9em;color:#64748b">
+          Progress: <strong id="progressText">0/0</strong> products counted
+        </div>
+      </div>
+
+      <!-- Name Input -->
+      <div class="name-input-section">
+        <label for="counterName">👤 Your Name (Optional)</label>
+        <input type="text" 
+               id="counterName" 
+               placeholder="Enter your name..." 
+               onchange="saveProgress()" />
+      </div>
+
+      <!-- Count Table -->
+      <div class="count-table-wrapper">
+        <table class="app-table" id="countTable">
+          <thead>
+            <tr>
+              <th style="width:150px">SKU</th>
+              <th>Product</th>
+              <th style="text-align:center;width:120px">System Count</th>
+              <th style="text-align:center;width:140px">Physical Count</th>
+              <th style="width:200px">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="countTableBody">
+            <tr>
+              <td colspan="5" style="text-align:center;padding:40px">
+                Loading products...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Submit Section -->
+      <div class="submit-section">
+        <p style="color:#64748b;margin-bottom:16px">
+          ⚠️ After submitting, you cannot edit this count anymore
+        </p>
+        <button class="submit-btn" onclick="confirmSubmit()" id="submitBtn">
+          ✅ Confirm & Submit Count
+        </button>
+      </div>
+    </div>
+
+    <!-- Read-Only State -->
+    <div id="readonlyState" style="display:none">
+      <div class="readonly-overlay">
+        <h1 style="margin:0 0 16px 0">✅ Count Already Submitted</h1>
+        <p style="color:#64748b;margin:0 0 8px 0">
+          Submitted by: <strong id="submittedBy">-</strong>
+        </p>
+        <p style="color:#64748b;margin:0">
+          Date: <strong id="submittedAt">-</strong>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmModal" class="modal" style="display:none">
+    <div class="modal-content" style="max-width:500px">
+      <div class="modal-header">
+        <h2>⚠️ Confirm Submission</h2>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom:16px">
+          You have counted <strong id="confirmCounted">0</strong> out of <strong id="confirmTotal">0</strong> products.
+        </p>
+        <p style="color:#dc2626;font-weight:500;margin-bottom:20px">
+          ⚠️ After submitting, you CANNOT edit these counts anymore.
+        </p>
+        <p style="margin-bottom:20px">Are you sure you want to submit?</p>
+        <div style="display:flex;gap:12px">
+          <button class="search-btn-small secondary" onclick="closeConfirmModal()" style="flex:1">
+            Cancel
+          </button>
+          <button class="search-btn-small" onclick="submitCount()" style="flex:1">
+            Yes, Submit Count
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="count-form.js"></script>
+</body>
+</html>

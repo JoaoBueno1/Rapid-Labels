@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Cin7 Cache</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; margin-top: 0; }
+        button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 10px 5px;
+        }
+        button:hover { background: #059669; }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status { 
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+        }
+        .success { background: #d1fae5; color: #065f46; }
+        .error { background: #fee2e2; color: #991b1b; }
+        .info { background: #dbeafe; color: #1e40af; }
+        .warning { background: #fef3c7; color: #92400e; }
+        pre {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+        .progress {
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #10b981;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .step {
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 3px solid #10b981;
+            background: #f9fafb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Cin7 Cache Sync</h1>
+        <p>Este script popula o cache Supabase com dados do Cin7 API.</p>
+        
+        <div>
+            <button id="syncBtn" onclick="syncCache()">▶️ Iniciar Sync</button>
+            <button onclick="testCache()">🧪 Testar Cache</button>
+            <button onclick="clearLogs()">🗑️ Limpar Logs</button>
+        </div>
+        
+        <div class="progress" id="progress" style="display:none;">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <div id="logs"></div>
+    </div>
+    
+    <script>
+        const BACKEND_URL = 'https://rapid-express-web.onrender.com';
+        const logs = document.getElementById('logs');
+        const syncBtn = document.getElementById('syncBtn');
+        const progress = document.getElementById('progress');
+        const progressBar = document.getElementById('progressBar');
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong> - ${message}`;
+            logs.appendChild(div);
+            logs.scrollTop = logs.scrollHeight;
+        }
+        
+        function logStep(message) {
+            const div = document.createElement('div');
+            div.className = 'step';
+            div.textContent = message;
+            logs.appendChild(div);
+            logs.scrollTop = logs.scrollHeight;
+        }
+        
+        function logPre(data) {
+            const pre = document.createElement('pre');
+            pre.textContent = JSON.stringify(data, null, 2);
+            logs.appendChild(pre);
+            logs.scrollTop = logs.scrollHeight;
+        }
+        
+        function clearLogs() {
+            logs.innerHTML = '';
+        }
+        
+        function updateProgress(percent) {
+            progress.style.display = 'block';
+            progressBar.style.width = percent + '%';
+        }
+        
+        async function syncCache() {
+            clearLogs();
+            syncBtn.disabled = true;
+            
+            try {
+                log('🚀 Iniciando sincronização do cache Cin7...', 'info');
+                logStep('Passo 1: Conectando ao backend...');
+                
+                updateProgress(10);
+                
+                const response = await fetch(`${BACKEND_URL}/api/integrations/cin7/cache/sync`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        force: true,
+                        limit: 100
+                    })
+                });
+                
+                updateProgress(30);
+                logStep('Passo 2: Aguardando resposta...');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                updateProgress(80);
+                logStep('Passo 3: Processando resultado...');
+                
+                if (data.success) {
+                    updateProgress(100);
+                    log(`✅ Sync completo! ${data.cached || 0} pedidos sincronizados.`, 'success');
+                    
+                    if (data.stats) {
+                        logStep('Estatísticas:');
+                        logPre(data.stats);
+                    }
+                    
+                    setTimeout(() => {
+                        log('🧪 Testando cache...', 'info');
+                        testCache();
+                    }, 1000);
+                } else {
+                    log(`❌ Sync falhou: ${data.error || 'Erro desconhecido'}`, 'error');
+                    if (data.details) {
+                        logPre(data.details);
+                    }
+                }
+                
+            } catch (error) {
+                log(`❌ Erro: ${error.message}`, 'error');
+                console.error('Sync error:', error);
+            } finally {
+                syncBtn.disabled = false;
+                setTimeout(() => {
+                    progress.style.display = 'none';
+                    progressBar.style.width = '0%';
+                }, 2000);
+            }
+        }
+        
+        async function testCache() {
+            log('🧪 Testando acesso ao cache Supabase...', 'info');
+            
+            try {
+                // Wait for Supabase to be ready
+                if (typeof window.supabaseReady !== 'undefined') {
+                    await window.supabaseReady;
+                } else {
+                    // Load Supabase dynamically
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = 'https://unpkg.com/@supabase/supabase-js@2';
+                        script.onload = resolve;
+                        script.onerror = reject;
+                        document.head.appendChild(script);
+                    });
+                    
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    const config = document.createElement('script');
+                    config.src = 'supabase-config.js';
+                    config.onload = () => setTimeout(resolve, 500);
+                    document.head.appendChild(config);
+                }
+                
+                logStep('Conectado ao Supabase');
+                
+                const { count, error: countError } = await window.supabase
+                    .from('cin7_orders_cache')
+                    .select('*', { count: 'exact', head: true });
+                
+                if (countError) {
+                    log(`❌ Erro ao contar: ${countError.message}`, 'error');
+                    return;
+                }
+                
+                log(`✅ Total de ordens no cache: ${count}`, 'success');
+                
+                if (count > 0) {
+                    logStep('Buscando ordens recentes...');
+                    
+                    const { data, error } = await window.supabase
+                        .from('cin7_orders_cache')
+                        .select('cin7_reference, delivery_company, delivery_contact, synced_at')
+                        .order('synced_at', { ascending: false })
+                        .limit(5);
+                    
+                    if (error) {
+                        log(`❌ Erro ao listar: ${error.message}`, 'error');
+                    } else {
+                        log(`✅ Últimas ${data.length} ordens:`, 'success');
+                        logPre(data);
+                    }
+                } else {
+                    log('⚠️ Cache vazio. Execute o sync!', 'warning');
+                }
+                
+            } catch (error) {
+                log(`❌ Erro no teste: ${error.message}`, 'error');
+                console.error('Test error:', error);
+            }
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('📊 Verificando status inicial...', 'info');
+                testCache().catch(err => {
+                    log('⚠️ Aguardando Supabase config...', 'warning');
+                });
+            }, 1000);
+        });
+    </script>
+    
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+</body>
+</html>

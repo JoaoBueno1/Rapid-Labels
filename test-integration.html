@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Integração Cin7</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .test { margin: 20px 0; padding: 15px; background: #f0f0f0; border-radius: 5px; }
+        .success { background: #d4edda; }
+        .error { background: #f8d7da; }
+        button { padding: 10px 20px; margin: 5px; font-size: 14px; cursor: pointer; }
+        pre { background: #fff; padding: 10px; border: 1px solid #ddd; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste de Integração Cin7</h1>
+    
+    <div class="test">
+        <h3>1. Teste Backend Flask (Cache)</h3>
+        <button onclick="testBackend()">Testar Cache Backend</button>
+        <pre id="backend-result">Aguardando...</pre>
+    </div>
+    
+    <div class="test">
+        <h3>2. Teste API Cin7 Direta</h3>
+        <button onclick="testCin7API()">Testar API Cin7</button>
+        <pre id="api-result">Aguardando...</pre>
+    </div>
+    
+    <div class="test">
+        <h3>3. Teste Integração Completa (Cache + Fallback)</h3>
+        <input type="text" id="order-ref" value="SO-237147" style="padding: 8px; width: 200px;">
+        <button onclick="testIntegration()">Buscar Ordem</button>
+        <pre id="integration-result">Aguardando...</pre>
+    </div>
+    
+    <div class="test">
+        <h3>4. Verificar cin7Service</h3>
+        <button onclick="checkServices()">Verificar Serviços</button>
+        <pre id="services-result">Aguardando...</pre>
+    </div>
+
+    <!-- Load scripts -->
+    <script src="cin7-config.js?v=6"></script>
+    <script src="cin7-client.js?v=6"></script>
+    <script src="cin7-service.js?v=6"></script>
+    <script src="cin7-simple-cache.js?v=6"></script>
+
+    <script>
+        async function testBackend() {
+            const resultEl = document.getElementById('backend-result');
+            resultEl.textContent = '⏳ Testando...';
+            
+            try {
+                const response = await fetch('http://localhost:5050/api/cin7/cache/lookup/SO-237147');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                resultEl.textContent = '✅ SUCESSO!\n\n' + JSON.stringify(data, null, 2);
+                resultEl.parentElement.classList.add('success');
+            } catch (err) {
+                resultEl.textContent = '❌ ERRO: ' + err.message;
+                resultEl.parentElement.classList.add('error');
+            }
+        }
+        
+        async function testCin7API() {
+            const resultEl = document.getElementById('api-result');
+            resultEl.textContent = '⏳ Testando...';
+            
+            try {
+                if (!window.cin7Service) throw new Error('cin7Service não encontrado');
+                
+                const result = await window.cin7Service.lookupOrder('SO-235063');
+                resultEl.textContent = '✅ SUCESSO!\n\n' + JSON.stringify(result, null, 2);
+                resultEl.parentElement.classList.add('success');
+            } catch (err) {
+                resultEl.textContent = '❌ ERRO: ' + err.message + '\n\nStack: ' + err.stack;
+                resultEl.parentElement.classList.add('error');
+            }
+        }
+        
+        async function testIntegration() {
+            const resultEl = document.getElementById('integration-result');
+            const orderRef = document.getElementById('order-ref').value;
+            resultEl.textContent = '⏳ Buscando ' + orderRef + '...';
+            
+            try {
+                if (!window.cin7SimpleCache) throw new Error('cin7SimpleCache não encontrado');
+                
+                const result = await window.cin7SimpleCache.lookupOrder(orderRef);
+                resultEl.textContent = '✅ SUCESSO!\n\nSource: ' + (result.source || 'api') + '\n\n' + JSON.stringify(result, null, 2);
+                resultEl.parentElement.classList.add('success');
+            } catch (err) {
+                resultEl.textContent = '❌ ERRO: ' + err.message + '\n\nStack: ' + err.stack;
+                resultEl.parentElement.classList.add('error');
+            }
+        }
+        
+        function checkServices() {
+            const resultEl = document.getElementById('services-result');
+            
+            const checks = {
+                'window.cin7SimpleCache': typeof window.cin7SimpleCache,
+                'cin7SimpleCache.lookupOrder': typeof window.cin7SimpleCache?.lookupOrder,
+                'window.cin7Service': typeof window.cin7Service,
+                'cin7Service.lookupOrder': typeof window.cin7Service?.lookupOrder,
+                'window.cin7Config': typeof window.cin7Config,
+                'cin7Config.enabled': window.cin7Config?.enabled
+            };
+            
+            resultEl.textContent = JSON.stringify(checks, null, 2);
+            
+            const allOk = Object.values(checks).every(v => v === 'function' || v === 'object' || v === true);
+            resultEl.parentElement.classList.add(allOk ? 'success' : 'error');
+        }
+        
+        // Auto-check on load
+        window.addEventListener('load', () => {
+            setTimeout(checkServices, 500);
+        });
+    </script>
+</body>
+</html>

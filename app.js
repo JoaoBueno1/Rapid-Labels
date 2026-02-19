@@ -162,9 +162,20 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch(e) { /* modal may not be on this page */ }
 });
 
-// Temporary Analytics placeholder
+// Analytics and Integrations
 function openAnalyticsAndRegisters(){
-  try { window.location.href = 'features/logistics/deliveries-couriers.html'; } catch(e){}
+  try { 
+    // Check if we have Cin7 integration configured to show analytics
+    if (typeof cin7Config !== 'undefined' && cin7Config.isConfigured()) {
+      window.location.href = 'features/analytics/integrations.html';
+    } else {
+      // Fallback to logistics page if no integrations configured
+      window.location.href = 'features/logistics/deliveries-couriers.html';
+    }
+  } catch(e){
+    console.error('Error opening analytics:', e);
+    window.location.href = 'features/logistics/deliveries-couriers.html';
+  }
 }
 
 // Debounce function to limit API calls
