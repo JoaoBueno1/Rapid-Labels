@@ -29,6 +29,8 @@
     onlyFavorites: false,
     onlyConfigured: false,
     onlyReserveInfo: false,
+    onlyCapacityReview: false,
+    onlyPickfaceMismatch: false,
     page: 1,
     perPage: 30,
     hideLocations: {
@@ -205,7 +207,7 @@
      ═══════════════════════════════════════════════ */
   function render(rows) {
     if (!rows || !rows.length) {
-      setTbody('<tr><td colspan="13" style="text-align:center;opacity:.7">No results</td></tr>');
+      setTbody('<tr><td colspan="14" style="text-align:center;opacity:.7">No results</td></tr>');
       updatePager(0);
       if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
       return;
@@ -218,13 +220,48 @@
     for (let i = 0; i < limited.length; i += 30) {
       const slice = limited.slice(i, i + 30);
       const rowsHtml = slice.map(r => {
-        const sku = escapeHtml(r.sku);
-        const product = escapeHtml(r.product);
+        const skuKey = escapeHtml(r.sku);               // action identifier (5DC || product code)
+        const fiveDC = escapeHtml(r.__5dc || '');        // 5-digit code column
+        const skuDisplay = escapeHtml(r.__stock_sku || r.sku);  // cin7 product code (e.g. R6078-BK-TRI)
+        const product = escapeHtml(r.product);           // product code (for reserve info lines)
+        const productName = r.__full_description || r.product;  // full description or product code
+        const productNameEsc = escapeHtml(productName);
+        // Product cell: show description, truncated with tooltip if long
+        const productHtml = productName.length > 50
+          ? `<span title="${productNameEsc}" style="cursor:help">${escapeHtml(productName.substring(0, 48))}…</span>`
+          : productNameEsc;
         const avgMth = r.__avg_month_sales;
         const avgMthHtml = avgMth != null ? `<span style="font-variant-numeric:tabular-nums">${Math.round(avgMth).toLocaleString()}</span>` : '<span style="opacity:.35">—</span>';
         const pickface = escapeHtml(r.stock_locator);
+        // Mismatch badge: cin7 stock_locator ≠ setup pickface → yellow ⚠
+        let pickfaceHtml = pickface;
+        if (r.__pickface_mismatch && r.__cin7_stock_locator) {
+          pickfaceHtml += ` <span title="Cin7 Stock Locator: ${escapeHtml(r.__cin7_stock_locator)}" style="cursor:help;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:0 4px;font-size:11px;font-weight:700">!</span>`;
+        }
         const onHand = r.on_hand ?? '';
         const capacity = r.pickface_space ?? '';
+
+        // ── Capacity tooltip with weeks coverage ──
+        const capWeeks = r.__capacity_weeks;
+        const runWeeks = r.__runway_weeks;
+        const avgM = r.__avg_month_sales;
+        let capacityHtml;
+        if (capacity === '' || capacity == null) {
+          capacityHtml = '<span style="opacity:.35">—</span>';
+        } else if (capWeeks != null && avgM != null) {
+          const lines = [
+            `Capacity ${capacity} ≈ ${capWeeks} weeks at ${Math.round(avgM)}/mth avg`,
+            `Current stock (${r.on_hand}) ≈ ${runWeeks != null ? runWeeks : 0} weeks`,
+            capWeeks < 3 ? '⚠ Capacity too small — consider larger pickface' : capWeeks < 4 ? '⚡ Borderline — pickface may need review' : '✓ Healthy capacity',
+          ].join('\n');
+          // Border color: red < 3wk, amber 3-4wk, none ≥ 4wk
+          const borderColor = capWeeks < 3 ? '#ef4444' : capWeeks < 4 ? '#f59e0b' : '';
+          const borderStyle = borderColor ? `border-left:3px solid ${borderColor};padding-left:6px;` : '';
+          capacityHtml = `<span title="${escapeHtml(lines)}" style="cursor:help;${borderStyle}font-variant-numeric:tabular-nums">${escapeHtml(String(capacity))}</span>`;
+        } else {
+          capacityHtml = `<span style="font-variant-numeric:tabular-nums">${escapeHtml(String(capacity))}</span>`;
+        }
+
         const status = (r.__norm_status || r.status || 'configure').toLowerCase();
         const reserveQty = Number(r.__reserve_total ?? 0);
         const restock = r.restock_qty ?? '';
@@ -245,7 +282,7 @@
             for (const x of locs) { if (sum + x.qty <= restockNum) { chosen.push(x); sum += x.qty; } }
             if (!chosen.length) { const under = locs.filter(x => x.qty < restockNum).sort((a,b) => b.qty - a.qty)[0]; if (under) chosen = [under]; }
           }
-          const lines = chosen.map(x => `SKU: ${sku} — Product: ${product} — Location: ${escapeHtml(x.location)} — QTY: ${escapeHtml(x.qty)}`);
+          const lines = chosen.map(x => `SKU: ${skuKey} — Product: ${product} — Location: ${escapeHtml(x.location)} — QTY: ${escapeHtml(x.qty)}`);
           const popHtml = lines.length ? `<div class="reserve-pop">${lines.map(l => `<span class="line">${l}</span>`).join('')}</div>` : '';
           reserveCellHtml = `<span class="reserve-cell">${reserveCellHtml}<button type="button" class="info-badge" aria-label="Reserve locations" onclick="restockToggleReserveInfo(this)">i</button>${popHtml}</span>`;
         }
@@ -253,23 +290,24 @@
         const nearestLines = computeNearestReserveLines(r.stock_locator, r.__reserve_locations);
         const nearestHtml = nearestLines.length ? nearestLines.map(l => `<div>${escapeHtml(l)}</div>`).join('') : '';
         const favOn = favorites.has(String(r.sku));
-        const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${sku}" onclick="restockToggleFavorite('${sku}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
+        const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${skuKey}" onclick="restockToggleFavorite('${skuKey}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
         const actionButtons = `
           <div class="action-buttons">
-            <button type="button" class="action-btn edit" onclick="openEditProductModal('${sku}')" title="Edit" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;border:none;padding:6px 12px;border-radius:8px;font-weight:600;cursor:pointer;min-width:50px;height:28px;display:inline-flex;align-items:center;justify-content:center;text-transform:uppercase;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s">Edit</button>
-            <button type="button" class="action-btn delete" onclick="openDeleteConfirmModal('${sku}')" title="Delete" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;padding:6px 12px;border-radius:8px;font-weight:600;cursor:pointer;min-width:50px;height:28px;display:inline-flex;align-items:center;justify-content:center;text-transform:uppercase;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s">Delete</button>
+            <button type="button" class="action-btn edit" onclick="openEditProductModal('${skuKey}')" title="Configure capacity" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;border:none;padding:6px 12px;border-radius:8px;font-weight:600;cursor:pointer;min-width:50px;height:28px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s;font-size:13px">⚙ Edit</button>
+            <button type="button" class="action-btn delete" onclick="openDeleteConfirmModal('${skuKey}')" title="Remove configuration" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;padding:6px 10px;border-radius:8px;font-weight:600;cursor:pointer;min-width:40px;height:28px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s;font-size:12px">✕</button>
           </div>`;
         const wrapText = (text, chunkSize) => { if (!text) return ''; const e = escapeHtml(text); const c = []; for (let j = 0; j < e.length; j += chunkSize) c.push(e.substring(j, j + chunkSize)); return c.join('<br>'); };
         const notesHtml = r.__notes ? wrapText(r.__notes, 10) : '';
 
         return `<tr>
           <td>${star}</td>
-          <td>${sku}</td>
-          <td>${product}</td>
+          <td style="font-variant-numeric:tabular-nums;font-size:12px;color:#64748b">${fiveDC}</td>
+          <td>${skuDisplay}</td>
+          <td>${productHtml}</td>
           <td>${avgMthHtml}</td>
-          <td>${pickface}</td>
+          <td>${pickfaceHtml}</td>
           <td>${onHand}</td>
-          <td>${capacity}</td>
+          <td>${capacityHtml}</td>
           <td>${statusChip(status, r.__setup_info)}</td>
           <td>${reserveCellHtml}</td>
           <td>${restock}</td>
@@ -279,7 +317,7 @@
         </tr>`;
       }).join('');
       chunks.push(rowsHtml);
-      if (i + 30 < limited.length) chunks.push('<tr class="print-break"><td colspan="13"></td></tr>');
+      if (i + 30 < limited.length) chunks.push('<tr class="print-break"><td colspan="14"></td></tr>');
     }
     setTbody(chunks.join(''));
     if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
@@ -290,7 +328,7 @@
      ═══════════════════════════════════════════════ */
   function updateStatusCounters() {
     const allRows = state.allRows || [];
-    const counts = { all: allRows.length, low: 0, medium: 0, full: 0, over: 0, not_configured: 0 };
+    const counts = { all: allRows.length, low: 0, medium: 0, full: 0, over: 0, not_configured: 0, capacity_review: 0, pickface_mismatch: 0 };
     allRows.forEach(row => {
       const s = String(row.__norm_status || '').toUpperCase();
       if (s === 'LOW') counts.low++;
@@ -298,6 +336,8 @@
       else if (s === 'FULL' || s === 'OK') counts.full++;
       else if (s === 'OVER') counts.over++;
       else if (s === 'NOT_CONFIGURED') counts.not_configured++;
+      if (row.__capacity_weeks != null && row.__capacity_weeks < 4) counts.capacity_review++;
+      if (row.__pickface_mismatch) counts.pickface_mismatch++;
     });
     const u = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     u('countAll', counts.all);
@@ -306,6 +346,27 @@
     u('countFull', counts.full);
     u('countOver', counts.over);
     u('countNotConfigured', counts.not_configured);
+    u('countCapacityReview', counts.capacity_review);
+    u('countPickfaceMismatch', counts.pickface_mismatch);
+
+    // Update the filters button badge
+    const activeFilters = [];
+    if (state.onlyFavorites) activeFilters.push('Favorites');
+    if (state.onlyConfigured) activeFilters.push('Configured');
+    if (state.onlyCapacityReview) activeFilters.push('Capacity < 4wk');
+    if (state.onlyPickfaceMismatch) activeFilters.push('Mismatch');
+    if (state.onlyReserveInfo) activeFilters.push('Clear loc.');
+    if (state.hideNoReserve) activeFilters.push('Hide no-reserve');
+    const hiddenLocs = Object.entries(state.hideLocations).filter(([,v]) => v).map(([k]) => k);
+    if (hiddenLocs.length) activeFilters.push('Hide ' + hiddenLocs.length + ' loc');
+    const badge = document.getElementById('filtersBadge');
+    if (badge) { badge.textContent = activeFilters.length || ''; badge.style.display = activeFilters.length ? 'inline-flex' : 'none'; }
+    // Active filter tags next to button
+    const tagsEl = document.getElementById('activeFilterTags');
+    if (tagsEl) {
+      if (activeFilters.length === 0) { tagsEl.innerHTML = ''; }
+      else { tagsEl.innerHTML = activeFilters.map(f => `<span style="display:inline-flex;align-items:center;gap:3px;background:#eef2ff;color:#4338ca;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid #c7d2fe;white-space:nowrap">${escapeHtml(f)}</span>`).join(''); }
+    }
   }
 
   /* ═══════════════════════════════════════════════
@@ -334,6 +395,14 @@
   function applyOnlyReserveInfoFilter(rows) {
     if (!state.onlyReserveInfo) return rows;
     return rows.filter(hasReserveInfoBadge);
+  }
+  function applyCapacityReviewFilter(rows) {
+    if (!state.onlyCapacityReview) return rows;
+    return rows.filter(r => r.__capacity_weeks != null && r.__capacity_weeks < 4);
+  }
+  function applyPickfaceMismatchFilter(rows) {
+    if (!state.onlyPickfaceMismatch) return rows;
+    return rows.filter(r => r.__pickface_mismatch);
   }
   function applyLocationFilters(rows) {
     const hideList = Object.keys(state.hideLocations).filter(loc => state.hideLocations[loc]);
@@ -403,6 +472,8 @@
     rows = applyOnlyConfiguredFilter(rows);
     rows = applyFavoritesFilter(rows);
     rows = applyOnlyReserveInfoFilter(rows);
+    rows = applyCapacityReviewFilter(rows);
+    rows = applyPickfaceMismatchFilter(rows);
     const arranged = stableSortByBusinessRules(rows);
     let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total || 0) > 0) : arranged;
     if (state.onlyNeedsAdjustment) {
@@ -518,11 +589,11 @@
      ═══════════════════════════════════════════════ */
   async function fetchData() {
     if (!window.supabase || !window.supabaseReady) {
-      setTbody('<tr><td colspan="13" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>');
+      setTbody('<tr><td colspan="14" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>');
       return;
     }
     state.loading = true;
-    setTbody('<tr><td colspan="13" style="text-align:center;opacity:.7">Loading from Cin7 mirror…</td></tr>');
+    setTbody('<tr><td colspan="14" style="text-align:center;opacity:.7">Loading from Cin7 mirror…</td></tr>');
 
     try {
       await window.supabaseReady;
@@ -542,7 +613,7 @@
         console.warn('⚠️ Could not read cin7_mirror.stock_snapshot:', e.message);
         if (state.mirrorAvailable === null) state.mirrorAvailable = false;
         // Show helpful message
-        setTbody(`<tr><td colspan="13" style="text-align:center;color:#b45309;padding:30px">
+        setTbody(`<tr><td colspan="14" style="text-align:center;color:#b45309;padding:30px">
           <div style="font-size:16px;font-weight:600;margin-bottom:8px">⚠️ cin7_mirror schema not accessible</div>
           <div style="font-size:13px;color:#64748b">To enable V2, expose the <code>cin7_mirror</code> schema in Supabase Dashboard → Settings → API → Exposed schemas,<br>then run the first sync with <code>node cin7-stock-sync/sync-service.js</code></div>
         </td></tr>`);
@@ -550,10 +621,10 @@
         return;
       }
 
-      /* ── 3. Fetch cin7_mirror.products ── */
+      /* ── 3. Fetch cin7_mirror.products (includes attribute1 = 5DC from Cin7) ── */
       let productRows = [];
       try {
-        productRows = await fetchAllRows('products', 'sku, name, stock_locator, category, brand, barcode', {
+        productRows = await fetchAllRows('products', 'sku, name, stock_locator, category, brand, barcode, attribute1', {
           schema: 'cin7_mirror',
         });
       } catch (e) {
@@ -583,10 +654,23 @@
         if (a.product) avgSalesByName[a.product.toUpperCase()] = Number(a.avg_mth_main) || 0;
       }
 
-      const setupBySku = Object.create(null);
+      // ── Setup lookup: index by PRODUCT CODE (not 5DC) ──
+      // restock_setup.sku = 5-digit code (internal Cin7 Attribute1, e.g. "31471")
+      // restock_setup.product = product code (Cin7 SKU field, e.g. "R6078-BK-TRI")
+      // cin7_mirror.stock_snapshot.sku = product code (e.g. "R6078-BK-TRI")
+      // So the join key is: setup.product = stock.sku
+      const setupByProduct = Object.create(null);   // keyed by product code → matches stock.sku
+      const setupBy5DC     = Object.create(null);   // keyed by 5DC → for reverse lookups
       for (const s of setupRows) {
-        setupBySku[s.sku] = {
-          product: s.product || '',
+        // Clean product code: some rows have "30290  R2101-WH-WW" format — extract the code part
+        let productCode = (s.product || '').trim();
+        // If product field contains "5DC  CODE" pattern, extract the CODE part
+        const spaceMatch = productCode.match(/^\d{4,6}\s+(.+)$/);
+        if (spaceMatch) productCode = spaceMatch[1].trim();
+
+        const entry = {
+          sku5dc: String(s.sku || ''),          // 5-digit code
+          productCode: productCode,              // product code (cleaned)
           pickface_location: s.pickface_location || '',
           pickface_qty: Number(s.pickface_qty) || 0,
           min: Number(s.cap_min),
@@ -594,6 +678,8 @@
           max: Number(s.cap_max),
           notes: s.notes || ''
         };
+        if (productCode) setupByProduct[productCode] = entry;
+        if (s.sku) setupBy5DC[s.sku] = entry;
       }
 
       /* ── Group stock by SKU ── */
@@ -604,59 +690,143 @@
         stockBySku[s.sku].push(s);
       }
 
-      /* ── Build unique SKU set (union of stock + setup) ── */
-      const allSkus = new Set();
-      for (const sku of Object.keys(stockBySku)) allSkus.add(sku);
-      for (const sku of Object.keys(setupBySku)) allSkus.add(sku);
-
-      /* ── Apply search filter ── */
+      /* ── Build rows from STOCK SKUs only (like V1 uses restock_view) ── */
+      /* SKUs only in restock_setup but NOT in Main Warehouse stock are excluded */
       const q = (state.q || '').trim().toLowerCase();
 
-      /* ── Build rows ── */
       const rows = [];
-      for (const sku of allSkus) {
-        const prod  = productMap[sku] || {};
-        const setup = setupBySku[sku];
-        const stocks = stockBySku[sku] || [];
+      // Debug stats
+      const _dbg = { total: 0, binMatch: 0, totalFallback: 0, noPickface: 0, zeroStock: 0 };
+      window.__v2PickfaceMisses = [];
 
-        // Determine stock_locator: prefer cin7_mirror.products.stock_locator, fallback to setup.pickface_location
-        const stockLocator = (prod.stock_locator || (setup ? setup.pickface_location : '') || '').trim();
-        const normPickface = normalizeLocation(stockLocator);
+      for (const stockSku of Object.keys(stockBySku)) {
+        const prod  = productMap[stockSku] || {};
+        // JOIN: setup.product (product code) = stock.sku (product code)
+        const setup = setupByProduct[stockSku];
+        const stocks = stockBySku[stockSku] || [];
+        _dbg.total++;
 
-        // Determine product name: prefer cin7_mirror, fallback to setup
-        const productName = prod.name || (setup ? setup.product : '') || sku;
+        // ── Display identifiers ──
+        // V1 convention:  SKU column = 5-digit code,  Product column = product code (e.g. R6078-BK-TRI)
+        // V2 follows the same convention for consistency.
+        // cin7_mirror.products.name has the full description → shown as tooltip
+        // 5DC source priority: 1) restock_setup.sku  2) cin7_mirror.products.attribute1
+        const display5DC     = (setup ? setup.sku5dc : '') || (prod.attribute1 || '').trim();
+        const displayProduct = setup ? setup.productCode : stockSku;  // product code (matches V1)
+        const fullDescription = prod.name || '';                       // long description → tooltip
 
-        // Compute pickface on_hand and reserve
+        // ── Pickface source ──
+        // Priority: restock_setup.pickface_location (user-configured) > cin7_mirror.products.stock_locator
+        const setupPickface = setup ? (setup.pickface_location || '').trim() : '';
+        const cin7Locator   = (prod.stock_locator || '').trim();
+        const pickfaceSource = setupPickface || cin7Locator;
+        const normPickface   = normalizeLocation(pickfaceSource);
+
+        // Mismatch: cin7 stock_locator ≠ setup pickface_location (different pick bay)
+        const pickfaceMismatch = !!(setupPickface && cin7Locator
+          && normalizeLocation(setupPickface) !== normalizeLocation(cin7Locator));
+
+        // Product name for avg sales lookup
+        const productName = fullDescription || displayProduct;
+
+        // ═══════════════════════════════════════════════════════════════
+        // COMPUTE ON_HAND AT PICKFACE  (replicating V1 logic)
+        //
+        // V1 approach: restock_view returns ONE row per SKU with on_hand
+        // at the pickface location. The DB view joins restock_report.location
+        // with restock_setup.pickface_location.
+        //
+        // V2 approach: we have all bins from stock_snapshot. We need to:
+        //   1. Find the bin that matches the pickface → pickface on_hand
+        //   2. Other bins → reserve
+        //   3. If no bin matches → use TOTAL on_hand as pickface (fallback)
+        //      This handles: no bin tracking, bin format mismatch, etc.
+        // ═══════════════════════════════════════════════════════════════
+
         let pickfaceOnHand = 0;
         const reserveLocations = [];
+        let matchMethod = 'none';
 
-        for (const s of stocks) {
-          const normBin = normalizeLocation(s.bin);
-          if (normPickface && normBin === normPickface) {
-            pickfaceOnHand += Number(s.on_hand) || 0;
+        // Total on_hand across ALL bins (ultimate fallback)
+        const totalOnHand = stocks.reduce((sum, s) => sum + (Number(s.on_hand) || 0), 0);
+
+        if (!normPickface) {
+          // No pickface defined → total = on_hand (can't distinguish)
+          pickfaceOnHand = totalOnHand;
+          matchMethod = 'no-pickface';
+          _dbg.noPickface++;
+        } else {
+          // Try to match bins to the configured pickface
+          let matched = false;
+
+          for (const s of stocks) {
+            const binVal = (s.bin || '').trim();
+            const normBin = normalizeLocation(binVal);
+
+            // Match strategies: exact, suffix, contains
+            const isPickface = normBin && (
+              normBin === normPickface ||
+              normPickface.endsWith(normBin) ||
+              normBin.endsWith(normPickface)
+            );
+
+            if (isPickface) {
+              pickfaceOnHand += Number(s.on_hand) || 0;
+              matched = true;
+            } else if (binVal) {
+              // Non-matching bin with stock → reserve
+              const oh = Number(s.on_hand) || 0;
+              if (oh !== 0) {
+                reserveLocations.push({ location: binVal, qty: oh });
+              }
+            }
+            // Empty-bin entries: handled in fallback below
+          }
+
+          if (matched) {
+            matchMethod = 'bin-match';
+            _dbg.binMatch++;
+            // Unbinned entries → unassigned reserve
+            for (const s of stocks) {
+              if (!(s.bin || '').trim()) {
+                const oh = Number(s.on_hand) || 0;
+                if (oh !== 0) reserveLocations.push({ location: 'Unassigned', qty: oh });
+              }
+            }
           } else {
-            const locLabel = s.bin || s.location_name || '';
-            const oh = Number(s.on_hand) || 0;
-            if (oh !== 0) {
-              reserveLocations.push({ location: locLabel, qty: oh });
+            // ── FALLBACK: no bin matched the pickface ──
+            // Use TOTAL on_hand as pickface stock.
+            // This handles:
+            //   a) No bin tracking (all bins empty) → total IS the pickface
+            //   b) Bin format mismatch → total as best approximation
+            // Same behavior as V1 when Excel only has one row per SKU.
+            pickfaceOnHand = totalOnHand;
+            reserveLocations.length = 0;
+            matchMethod = totalOnHand > 0 ? 'total-fallback' : 'zero';
+            if (totalOnHand > 0) _dbg.totalFallback++;
+            else _dbg.zeroStock++;
+
+            // Log mismatches for debugging (first 30)
+            if (setup && totalOnHand > 0 && window.__v2PickfaceMisses.length < 30) {
+              window.__v2PickfaceMisses.push({
+                sku: stockSku, pickface: pickfaceSource, normPickface,
+                bins: stocks.map(s => ({ bin: s.bin || '(empty)', on_hand: Number(s.on_hand) || 0 })),
+              });
             }
           }
         }
 
         const reserveTotal = reserveLocations.reduce((sum, l) => sum + (l.qty || 0), 0);
 
-        // Capacity / status
+        // ── Capacity / Status ──
         const pickfaceSpace = setup ? setup.pickface_qty : 0;
         let restockQty = 0;
         let normStatus = '';
         let setupInfo = null;
 
-        if (!setup) {
+        if (!setup || !Number.isFinite(setup.min) || !Number.isFinite(setup.med) || !Number.isFinite(setup.max)) {
           normStatus = 'NOT_CONFIGURED';
-          setupInfo = { sku, hasSetup: false };
-        } else if (!Number.isFinite(setup.min) || !Number.isFinite(setup.med) || !Number.isFinite(setup.max)) {
-          normStatus = 'CONFIGURE';
-          setupInfo = { sku, hasSetup: true, min: setup.min, med: setup.med, max: setup.max };
+          setupInfo = { sku: stockSku, hasSetup: !!setup, min: setup ? setup.min : undefined, med: setup ? setup.med : undefined, max: setup ? setup.max : undefined };
         } else {
           const on = pickfaceOnHand;
           if (on < setup.min) normStatus = 'LOW';
@@ -668,9 +838,12 @@
         }
 
         const row = {
-          sku,
-          product: productName,
-          stock_locator: stockLocator,
+          sku: display5DC || stockSku,          // action key (5DC when available, else product code)
+          __5dc: display5DC,                       // 5-digit code (empty if not configured)
+          product: displayProduct,               // product code (e.g. R6078-BK-TRI) — matches V1
+          __stock_sku: stockSku,                 // always the cin7 product code (join key)
+          __full_description: fullDescription,   // cin7 product description (for tooltip)
+          stock_locator: pickfaceSource,
           on_hand: pickfaceOnHand,
           pickface_space: pickfaceSpace,
           restock_qty: restockQty,
@@ -679,19 +852,60 @@
           __reserve_total: reserveTotal,
           __reserve_locations: reserveLocations,
           __notes: setup ? setup.notes : '',
-          __avg_month_sales: avgSalesByName[productName.toUpperCase()] ?? null,
+          __avg_month_sales: avgSalesByName[displayProduct.toUpperCase()] ?? null,
+          __pickface_mismatch: pickfaceMismatch,
+          __cin7_stock_locator: cin7Locator,
+          __match_method: matchMethod,
         };
+
+        // ── Capacity coverage (weeks of stock) ──
+        const avgMthVal = row.__avg_month_sales;
+        const avgWeekly = avgMthVal != null && avgMthVal > 0 ? avgMthVal / 4.33 : null;
+        // Capacity coverage: how many weeks does a FULL pickface last?
+        const capMax = setup ? setup.max : 0;
+        row.__capacity_weeks = avgWeekly && capMax > 0 ? Math.round((capMax / avgWeekly) * 10) / 10 : null;
+        // Current runway: how many weeks does current on_hand last?
+        row.__runway_weeks = avgWeekly && pickfaceOnHand > 0 ? Math.round((pickfaceOnHand / avgWeekly) * 10) / 10 : null;
 
         // Search filter (client-side)
         if (q) {
-          const haystack = `${sku} ${productName} ${stockLocator}`.toLowerCase();
+          const haystack = `${display5DC} ${stockSku} ${displayProduct} ${pickfaceSource}`.toLowerCase();
           if (!haystack.includes(q)) continue;
         }
 
         rows.push(row);
       }
 
-      console.log(`📊 Re-Stock V2: ${rows.length} products loaded (${stockRows.length} stock rows, ${productRows.length} products, ${setupRows.length} setups)`);
+      // ── JOIN diagnostics ──
+      const setupProductKeys = Object.keys(setupByProduct).length;
+      const configuredCount = rows.filter(r => r.__norm_status !== 'NOT_CONFIGURED').length;
+      const notConfiguredCount = rows.filter(r => r.__norm_status === 'NOT_CONFIGURED').length;
+
+      console.log(`📊 Re-Stock V2: ${rows.length} rows (${configuredCount} configured, ${notConfiguredCount} NOT_CONFIGURED)`);
+      console.log(`📊 V2 Data: ${stockRows.length} stock rows → ${Object.keys(stockBySku).length} unique SKUs, ${productRows.length} cin7 products, ${setupRows.length} setups (${setupProductKeys} join-ready by product code)`);
+      console.log('📊 V2 Pickface match stats:', _dbg);
+
+      // Debug: status distribution
+      const statusDist = {};
+      rows.forEach(r => { const s = r.__norm_status || '?'; statusDist[s] = (statusDist[s] || 0) + 1; });
+      console.log('📊 V2 Status distribution:', statusDist);
+
+      // Sample: first 3 configured rows
+      const sampleConfigured = rows.filter(r => r.__norm_status !== 'NOT_CONFIGURED').slice(0, 3);
+      console.log('📊 V2 Sample configured rows:', sampleConfigured.map(r => ({
+        sku: r.sku, product: r.product, on_hand: r.on_hand, status: r.__norm_status, method: r.__match_method, pickface: r.stock_locator,
+      })));
+
+      // Debug: pickface mismatches
+      if (window.__v2PickfaceMisses.length > 0) {
+        console.warn(`⚠️ V2: ${window.__v2PickfaceMisses.length} configured SKUs used total-fallback (no bin matched pickface):`, window.__v2PickfaceMisses);
+      }
+
+      // Debug: sample data inspection (first 5 rows with stock)
+      const sampleWithStock = rows.filter(r => r.on_hand > 0).slice(0, 5);
+      console.log('📊 V2 Sample rows with stock:', sampleWithStock.map(r => ({
+        sku: r.sku, on_hand: r.on_hand, pickface: r.stock_locator, status: r.__norm_status, method: r.__match_method
+      })));
 
       // Save all rows
       state.allRows = rows.slice();
@@ -702,7 +916,7 @@
 
     } catch (e) {
       console.error('restock-v2 fetch error', e);
-      setTbody(`<tr><td colspan="13" style="text-align:center;color:#b91c1c">Failed to load data: ${escapeHtml(e.message)}</td></tr>`);
+      setTbody(`<tr><td colspan="14" style="text-align:center;color:#b91c1c">Failed to load data: ${escapeHtml(e.message)}</td></tr>`);
     } finally {
       state.loading = false;
     }
@@ -736,6 +950,8 @@
     state.onlyFavorites = false;
     state.onlyConfigured = false;
     state.onlyReserveInfo = false;
+    state.onlyCapacityReview = false;
+    state.onlyPickfaceMismatch = false;
     state.statusFilter = 'ALL';
     switch (keyword) {
       case 'needs-adjustment': state.onlyNeedsAdjustment = true; break;
@@ -841,6 +1057,8 @@
   window.restockToggleOnlyFavorites = function (flag) { state.onlyFavorites = !!flag; rebuildView(); };
   window.restockToggleOnlyConfigured = function (flag) { state.onlyConfigured = !!flag; rebuildView(); };
   window.restockToggleOnlyReserveInfo = function (flag) { state.onlyReserveInfo = !!flag; rebuildView(); };
+  window.restockToggleCapacityReview = function (flag) { state.onlyCapacityReview = !!flag; rebuildView(); };
+  window.restockTogglePickfaceMismatch = function (flag) { state.onlyPickfaceMismatch = !!flag; rebuildView(); };
   window.restockToggleHideLocation = function (location, flag) { state.hideLocations[location] = !!flag; rebuildView(); };
   window.restockToggleReserveInfo = function (btn) { try { const wrap = btn && btn.closest('.reserve-cell'); if (wrap) wrap.classList.toggle('show'); } catch {} };
 
@@ -875,17 +1093,27 @@
 
   window.openEditProductModal = function (sku) {
     currentEditingSku = sku;
-    document.getElementById('addEditProductTitle').textContent = 'Edit Product';
-    const product = state.allRows.find(r => String(r.sku) === String(sku));
-    if (product) {
-      const skuField = document.getElementById('productSku');
-      skuField.value = product.sku || '';
-      skuField.readOnly = true;
-      skuField.style.backgroundColor = '#f8f9fa';
-      document.getElementById('productName').value = product.product || '';
-      document.getElementById('productPickface').value = product.stock_locator || '';
-      loadProductSetupData(sku);
-    }
+    const row = state.allRows.find(r => String(r.sku) === String(sku));
+    if (!row) { showToast('Product not found', 'error'); return; }
+
+    document.getElementById('addEditProductTitle').textContent = 'Configure Capacity';
+
+    // Read-only info fields
+    const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
+    el('editInfo5DC', row.__5dc || '');
+    el('editInfoSKU', row.__stock_sku || row.product);
+    el('editInfoProduct', row.__full_description || row.product);
+    el('editInfoOnHand', row.on_hand != null ? String(row.on_hand) : '—');
+    el('editInfoAvgMth', row.__avg_month_sales != null ? Math.round(row.__avg_month_sales).toLocaleString() + '/mth' : 'No data');
+
+    // Coverage info (dynamic, updated on capacity input)
+    window.__editRowRef = row;
+    updateEditCoverageInfo();
+
+    // Editable fields
+    document.getElementById('productPickface').value = row.stock_locator || '';
+    loadProductSetupData(sku);
+
     clearFormErrors();
     document.getElementById('addEditProductModal').classList.remove('hidden');
   };
@@ -896,9 +1124,14 @@
   };
 
   window.openDeleteConfirmModal = function (sku) {
-    const product = state.allRows.find(r => String(r.sku) === String(sku));
-    const name = product ? product.product : 'this product';
-    document.getElementById('deleteConfirmText').textContent = `Are you sure you want to delete "${name}" (SKU: ${sku})? This action cannot be undone.`;
+    const row = state.allRows.find(r => String(r.sku) === String(sku));
+    const name = row ? (row.__full_description || row.product) : 'this product';
+    const isConfigured = row && row.__norm_status !== 'NOT_CONFIGURED';
+    if (!isConfigured) {
+      showToast('This product is already not configured', 'info');
+      return;
+    }
+    document.getElementById('deleteConfirmText').innerHTML = `Remove capacity configuration for <strong>${escapeHtml(name)}</strong>?<br><br><span style="font-size:13px;color:#64748b">The product will become <strong>Not Configured</strong>. No data is deleted — you can reconfigure it anytime via Edit.</span>`;
     document.getElementById('confirmDeleteBtn').dataset.sku = sku;
     document.getElementById('deleteConfirmModal').classList.remove('hidden');
   };
@@ -912,9 +1145,16 @@
     if (!sku) return;
     try {
       await window.supabaseReady;
-      const { error } = await window.supabase.from('restock_setup').delete().eq('sku', sku);
-      if (error) { showToast('Error deleting: ' + error.message, 'error'); return; }
-      showToast('Product deleted successfully', 'success');
+      // Deconfigure: clear capacity fields (don't delete the row)
+      const { error } = await window.supabase.from('restock_setup').update({
+        pickface_qty: null, cap_min: null, cap_med: null, cap_max: null
+      }).eq('sku', sku);
+      if (error) {
+        // If row doesn't exist, nothing to deconfigure
+        showToast('Could not deconfigure: ' + error.message, 'error');
+        return;
+      }
+      showToast('Capacity removed — product is now Not Configured', 'success');
       window.closeDeleteConfirmModal();
       fetchData();
     } catch (e) { showToast('Error: ' + e.message, 'error'); }
@@ -940,9 +1180,10 @@
 
   document.getElementById('addEditProductForm').addEventListener('submit', async function (e) {
     e.preventDefault();
+    const row = window.__editRowRef;
     const fd = {
-      sku: document.getElementById('productSku').value.trim(),
-      product: document.getElementById('productName').value.trim(),
+      sku: row ? (row.__5dc || row.sku) : currentEditingSku,
+      product: row ? (row.__stock_sku || row.product) : '',
       pickface_location: document.getElementById('productPickface').value.trim(),
       pickface_qty: parseInt(document.getElementById('productPickfaceQty').value) || 0,
       cap_min: parseInt(document.getElementById('productCapMin').value) || 0,
@@ -955,18 +1196,20 @@
     try {
       await window.supabaseReady;
       if (currentEditingSku) {
-        const { error } = await window.supabase.from('restock_setup').update({
-          product: fd.product, pickface_location: fd.pickface_location, pickface_qty: fd.pickface_qty,
-          cap_min: fd.cap_min, cap_med: fd.cap_med, cap_max: fd.cap_max, notes: fd.notes
-        }).eq('sku', currentEditingSku);
-        if (error) { showToast('Error updating: ' + error.message, 'error'); return; }
-        showToast('Product updated successfully', 'success');
-      } else {
-        const { data: existing } = await window.supabase.from('restock_setup').select('sku').eq('sku', fd.sku).single();
-        if (existing) { showToast('A product with this SKU already exists', 'error'); return; }
-        const { error } = await window.supabase.from('restock_setup').insert([fd]);
-        if (error) { showToast('Error adding: ' + error.message, 'error'); return; }
-        showToast('Product added successfully', 'success');
+        // Check if row exists
+        const { data: existing } = await window.supabase.from('restock_setup').select('sku').eq('sku', currentEditingSku).maybeSingle();
+        if (existing) {
+          const { error } = await window.supabase.from('restock_setup').update({
+            product: fd.product, pickface_location: fd.pickface_location, pickface_qty: fd.pickface_qty,
+            cap_min: fd.cap_min, cap_med: fd.cap_med, cap_max: fd.cap_max, notes: fd.notes
+          }).eq('sku', currentEditingSku);
+          if (error) { showToast('Error updating: ' + error.message, 'error'); return; }
+        } else {
+          // Insert new setup row
+          const { error } = await window.supabase.from('restock_setup').insert([fd]);
+          if (error) { showToast('Error creating: ' + error.message, 'error'); return; }
+        }
+        showToast('Capacity configured successfully', 'success');
       }
       window.closeAddEditProductModal();
       fetchData();
@@ -976,8 +1219,6 @@
   function validateProductForm(d) {
     clearFormErrors();
     let ok = true;
-    if (!d.sku) { showFieldError('productSkuError', 'SKU is required'); ok = false; }
-    if (!d.product) { showFieldError('productNameError', 'Product name is required'); ok = false; }
     if (!d.pickface_location) { showFieldError('productPickfaceError', 'Pickface location is required'); ok = false; }
     if (d.pickface_qty < 0) { showFieldError('productPickfaceQtyError', 'Must be ≥ 0'); ok = false; }
     if (d.cap_min < 0) { showFieldError('productCapMinError', 'Must be ≥ 0'); ok = false; }
@@ -1014,7 +1255,26 @@
     const mc = document.getElementById('productCapMax');
     mc.value = pq && !isNaN(pq) ? pq : '';
     window.validateCapacities();
+    updateEditCoverageInfo();
   };
+
+  function updateEditCoverageInfo() {
+    const el = document.getElementById('editCoverageInfo');
+    if (!el) return;
+    const row = window.__editRowRef;
+    const avg = row ? row.__avg_month_sales : null;
+    const cap = parseInt(document.getElementById('productPickfaceQty')?.value) || 0;
+    if (!avg || avg <= 0 || !cap) {
+      el.innerHTML = '<span style="color:#94a3b8;font-size:12px">Enter Pickface Qty to see coverage estimate</span>';
+      return;
+    }
+    const weeklyRate = avg / 4.33;
+    const weeks = cap / weeklyRate;
+    const weeksRound = Math.round(weeks * 10) / 10;
+    const color = weeks < 3 ? '#ef4444' : weeks < 4 ? '#f59e0b' : '#22c55e';
+    const icon = weeks < 3 ? '🔴' : weeks < 4 ? '🟡' : '🟢';
+    el.innerHTML = `<span style="color:${color};font-weight:600">${icon} ${weeksRound} weeks</span> of stock at ${Math.round(avg)}/mth avg`;
+  }
 
   window.validateCapacities = function () {
     const minV = document.getElementById('productCapMin').value;
@@ -1056,6 +1316,77 @@
     console.table(counts);
     return { total: state.allRows.length, visible: state.rows.length, byStatus: counts };
   };
+
+  /* ═══════════════════════════════════════════════
+     COLUMN VISIBILITY SETTINGS
+     ═══════════════════════════════════════════════ */
+  const COL_SETTINGS_KEY = 'restockV2_hiddenColumns';
+  const TOGGLEABLE_COLS = [
+    { idx: 1,  label: '5DC' },
+    { idx: 2,  label: 'SKU' },
+    { idx: 3,  label: 'Product' },
+    { idx: 4,  label: 'AVG/mth' },
+    { idx: 5,  label: 'Pickface' },
+    { idx: 6,  label: 'On Hand' },
+    { idx: 7,  label: 'Capacity' },
+    { idx: 8,  label: 'Status' },
+    { idx: 9,  label: 'Reserve' },
+    { idx: 10, label: 'Restock' }
+  ];
+
+  function getHiddenColumns() {
+    try { return JSON.parse(localStorage.getItem(COL_SETTINGS_KEY)) || []; }
+    catch { return []; }
+  }
+  function saveHiddenColumns(arr) {
+    localStorage.setItem(COL_SETTINGS_KEY, JSON.stringify(arr));
+  }
+
+  function applyColumnVisibility() {
+    const hidden = getHiddenColumns();
+    const wrapper = document.getElementById('restockTable')?.closest('.table-wrapper') || document.body;
+    TOGGLEABLE_COLS.forEach(c => {
+      wrapper.classList.toggle('col-hidden-' + c.idx, hidden.includes(c.idx));
+    });
+  }
+
+  function buildColumnToggles() {
+    const container = document.getElementById('columnToggles');
+    if (!container) return;
+    const hidden = getHiddenColumns();
+    container.innerHTML = TOGGLEABLE_COLS.map(c => {
+      const checked = !hidden.includes(c.idx) ? 'checked' : '';
+      return `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;color:#1e293b;background:${hidden.includes(c.idx) ? '#f8fafc' : '#f0f9ff'};border:1px solid ${hidden.includes(c.idx) ? '#e2e8f0' : '#bfdbfe'}">
+        <input type="checkbox" ${checked} onchange="toggleColumnVisibility(${c.idx}, this.checked)" style="accent-color:#3b82f6;width:16px;height:16px">
+        <span>${c.label}</span>
+      </label>`;
+    }).join('');
+  }
+
+  window.toggleColumnVisibility = function (idx, visible) {
+    const hidden = getHiddenColumns();
+    const newHidden = visible ? hidden.filter(i => i !== idx) : [...hidden.filter(i => i !== idx), idx];
+    saveHiddenColumns(newHidden);
+    applyColumnVisibility();
+    // Update toggle styling
+    buildColumnToggles();
+  };
+
+  window.openColumnSettingsModal = function () {
+    buildColumnToggles();
+    document.getElementById('columnSettingsModal').classList.remove('hidden');
+  };
+  window.closeColumnSettingsModal = function () {
+    document.getElementById('columnSettingsModal').classList.add('hidden');
+  };
+  window.resetColumnSettings = function () {
+    saveHiddenColumns([]);
+    applyColumnVisibility();
+    buildColumnToggles();
+  };
+
+  // Apply saved column visibility on load
+  applyColumnVisibility();
 
   console.log('✅ Re-Stock V2 loaded — data source: cin7_mirror');
 })();

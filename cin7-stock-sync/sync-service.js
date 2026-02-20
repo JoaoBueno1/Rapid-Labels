@@ -31,7 +31,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 const CONFIG = {
   cin7: {
     accountId: process.env.CIN7_ACCOUNT_ID || '3bda282b-60f0-40dc-9199-21959e247cd5',
-    apiKey: process.env.CIN7_API_KEY || '02db29ae-9840-d6f3-9212-ba11b469df7c',
+    apiKey: process.env.CIN7_API_KEY || '55c70204-619a-5286-ae1d-593493533cb9',
     baseUrl: 'https://inventory.dearsystems.com/ExternalApi/v2',
     pageSize: 1000,        // Max allowed by Cin7
     maxRetries: 3,
@@ -463,6 +463,8 @@ function mapProductRow(raw) {
     average_cost: parseFloat(raw.AverageCost) || 0,
     stock_locator: raw.StockLocator || null,
     pick_zones: raw.PickZones || null,
+    attribute1: (raw.AdditionalAttribute1 || '').trim() || null,
+    attribute2: (raw.AdditionalAttribute2 || '').trim() || null,
     sellable: raw.Status !== 'Deprecated',
     last_modified_on: raw.LastModifiedOn || null,
     synced_at: new Date().toISOString(),

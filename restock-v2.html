@@ -49,7 +49,7 @@
 
     <div style="margin-top:8px">
       <div id="restockFilters" style="display:flex;flex-direction:column;gap:8px">
-        <!-- Filter row: all filters and action buttons -->
+        <!-- Row 1: Status chips + Print buttons -->
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:6px">
             <span style="font-weight:600;color:#475569">Status:</span>
@@ -72,48 +72,86 @@
               Not Configured <span id="countNotConfigured" class="status-count">0</span>
             </button>
           </div>
-          <label style="display:inline-flex;align-items:center;gap:6px;margin-left:15px">
-            <input type="checkbox" id="toggleHideNoReserve" onchange="toggleHideNoReserve(this.checked)" />
-            Hide "No reserve"
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px">
-            <input type="checkbox" id="toggleOnlyFavorites" onchange="toggleOnlyFavorites(this.checked)" />
-            Only favorites
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px">
-            <input type="checkbox" id="toggleOnlyConfigured" onchange="toggleOnlyConfigured(this.checked)" />
-            Only configured
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px">
-            <input type="checkbox" id="toggleOnlyReserveInfo" onchange="toggleOnlyReserveInfo(this.checked)" />
-            Clear locations (i)
-          </label>
-          <div style="width:1px;height:20px;background:#ddd;margin:0 8px"></div>
-          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
-            <input type="checkbox" id="hideMAGA" onchange="restockToggleHideLocation('MA-GA', this.checked)" />
-            Hide MA-GA
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
-            <input type="checkbox" id="hideMAPRODUCTION" onchange="restockToggleHideLocation('MA-PRODUCTION', this.checked)" />
-            Hide MA-PRODUCTION
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
-            <input type="checkbox" id="hideMASAMPLES" onchange="restockToggleHideLocation('MA-SAMPLES', this.checked)" />
-            Hide MA-SAMPLES
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
-            <input type="checkbox" id="hideMADOCK" onchange="restockToggleHideLocation('MA-DOCK', this.checked)" />
-            Hide MA-DOCK
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85em">
-            <input type="checkbox" id="hideMAR_ETURNS" onchange="restockToggleHideLocation('MA-RETURNS', this.checked)" />
-            Hide MA-RETURNS
-          </label>
           <div style="flex:1"></div>
           <div style="display:flex;align-items:center;gap:10px">
+            <!-- Active filter tags -->
+            <div id="activeFilterTags" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap"></div>
+            <!-- Filters Dropdown Button -->
+            <div style="position:relative;display:inline-block" id="filtersDropdownWrap">
+              <button class="search-btn-small" type="button" onclick="toggleFiltersDropdown()" style="position:relative">
+                Filters <span id="filtersBadge" style="display:none;background:#ef4444;color:#fff;font-size:10px;min-width:16px;height:16px;border-radius:99px;align-items:center;justify-content:center;position:absolute;top:-6px;right:-8px;padding:0 4px;font-weight:700"></span>
+              </button>
+              <div id="filtersDropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:16px;min-width:280px;z-index:100">
+                <div style="font-weight:700;font-size:13px;color:#1e293b;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+                  <span>Filters</span>
+                  <button type="button" onclick="clearAllFilters()" style="background:none;border:none;font-size:11px;color:#6366f1;cursor:pointer;font-weight:600;text-decoration:underline">Clear all</button>
+                </div>
+                <div style="font-weight:600;font-size:11px;color:#6366f1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Show Only</div>
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="toggleOnlyFavorites" onchange="toggleOnlyFavorites(this.checked)" />
+                  <span>★ Favorites</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="toggleOnlyConfigured" onchange="toggleOnlyConfigured(this.checked)" />
+                  <span>Configured only</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="toggleCapacityReview" onchange="restockToggleCapacityReview(this.checked)" />
+                  <span>⚠ Capacity &lt; 4 wk <span id="countCapacityReview" style="font-size:11px;color:#94a3b8"></span></span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="togglePickfaceMismatch" onchange="restockTogglePickfaceMismatch(this.checked)" />
+                  <span>⚠ Pickface mismatch <span id="countPickfaceMismatch" style="font-size:11px;color:#94a3b8"></span></span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="toggleOnlyReserveInfo" onchange="toggleOnlyReserveInfo(this.checked)" />
+                  <span>Clear locations (i)</span>
+                </label>
+                <div style="border-top:1px solid #e2e8f0;margin:8px 0"></div>
+                <div style="font-weight:600;font-size:11px;color:#ef4444;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Hide</div>
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="toggleHideNoReserve" onchange="toggleHideNoReserve(this.checked)" />
+                  <span>No reserve</span>
+                </label>
+                <div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#64748b">
+                    <input type="checkbox" id="hideMAGA" onchange="restockToggleHideLocation('MA-GA', this.checked)" /> MA-GA
+                  </label>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#64748b">
+                    <input type="checkbox" id="hideMAPRODUCTION" onchange="restockToggleHideLocation('MA-PRODUCTION', this.checked)" /> MA-PROD
+                  </label>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#64748b">
+                    <input type="checkbox" id="hideMASAMPLES" onchange="restockToggleHideLocation('MA-SAMPLES', this.checked)" /> MA-SAMPLES
+                  </label>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#64748b">
+                    <input type="checkbox" id="hideMADOCK" onchange="restockToggleHideLocation('MA-DOCK', this.checked)" /> MA-DOCK
+                  </label>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#64748b">
+                    <input type="checkbox" id="hideMAR_ETURNS" onchange="restockToggleHideLocation('MA-RETURNS', this.checked)" /> MA-RETURNS
+                  </label>
+                </div>
+              </div>
+            </div>
             <button class="search-btn-small" type="button" onclick="openLocationsPrintModal()">Print Locations</button>
             <button class="search-btn-small" type="button" onclick="printRestock()">Print</button>
+            <button class="search-btn-small" type="button" onclick="openColumnSettingsModal()" title="Column visibility settings" style="background:#64748b;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px">⚙ Columns</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column Settings Modal -->
+    <div id="columnSettingsModal" class="modal hidden">
+      <div class="modal-content" style="max-width:360px;padding:20px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="margin:0;font-size:16px;font-weight:700;color:#0f172a">⚙ Column Visibility</h3>
+          <button onclick="closeColumnSettingsModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;padding:0;line-height:1">&times;</button>
+        </div>
+        <p style="font-size:12px;color:#64748b;margin:0 0 12px">Toggle columns on/off. Changes are saved automatically.</p>
+        <div id="columnToggles" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="resetColumnSettings()" style="padding:6px 14px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:12px;cursor:pointer">Reset All</button>
+          <button onclick="closeColumnSettingsModal()" style="padding:6px 14px;border-radius:6px;border:none;background:#3b82f6;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Done</button>
         </div>
       </div>
     </div>
@@ -125,6 +163,7 @@
         <thead>
           <tr>
             <th style="width:36px">★</th>
+            <th style="white-space:nowrap;font-size:12px">5DC</th>
             <th>SKU</th>
             <th>Product</th>
             <th style="white-space:nowrap">AVG/mth</th>
@@ -139,7 +178,7 @@
             <th style="width:120px" class="no-print">Actions</th>
           </tr>
         </thead>
-        <tbody id="restockTbody"><tr><td colspan="13" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
+        <tbody id="restockTbody"><tr><td colspan="14" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
       </table>
     </div>
     <div id="restockPagination" class="pager" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
@@ -296,21 +335,50 @@
     .print-header, .table-wrapper, .table-wrapper * { visibility: visible; }
     .print-header { position: relative; }
   .table-wrapper { position: relative; background:#fff !important; box-shadow:none !important; }
-  #restockTable { font-size: 11px; border-collapse: collapse; background:#fff !important; }
-  #restockTable th, #restockTable td { border:1px solid #333 !important; padding:6px 8px !important; }
-  #restockTable thead th { background:#f3f4f6 !important; color:#111827 !important; }
+  #restockTable { font-size: 10px; border-collapse: collapse; background:#fff !important; width:100%; table-layout:fixed; }
+  #restockTable th, #restockTable td { border:1px solid #333 !important; padding:4px 5px !important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #restockTable thead th { background:#f3f4f6 !important; color:#111827 !important; font-size:9px; text-transform:uppercase; letter-spacing:.3px; }
     thead { display: table-header-group; }
     tfoot { display: table-footer-group; }
     tr { break-inside: avoid; page-break-inside: avoid; }
     tr.print-break { display: table-row; break-before: page; page-break-before: always; height:0 }
   .print-header{ display:block; font-size:12px; color:#0f172a; font-weight:600; margin: 0 0 6px; text-align:center; }
-  .status-badge { background: transparent !important; border-color: #999 !important; color:#111 !important; }
+  .status-badge { background: transparent !important; border-color: #999 !important; color:#111 !important; font-size:9px !important; padding:1px 5px !important; }
   .info-badge, .reserve-pop { display:none !important; }
+  /* Hide ★ (col 1) */
   #restockTable th:first-child, #restockTable td:first-child { display: none !important; }
+  /* Hide Actions (col 14 — last) */
   #restockTable th:last-child, #restockTable td:last-child { display: none !important; }
+  /* Hide Product col (col 4 = nth-child(4)) — too wide for print */
+  #restockTable th:nth-child(4), #restockTable td:nth-child(4) { display: none !important; }
+  /* Hide AVG/mth col (col 5 = nth-child(5)) — not needed for warehouse ops */
+  #restockTable th:nth-child(5), #restockTable td:nth-child(5) { display: none !important; }
+  /* Show print-only cells */
   .print-only{ display: table-cell !important; }
+  /* Print column widths (visible: 5DC, SKU, Pickface, On Hand, Capacity, Status, Reserve, Restock, Nearest Reserve, Notes) */
+  #restockTable th:nth-child(2), #restockTable td:nth-child(2) { width:8%; }
+  #restockTable th:nth-child(3), #restockTable td:nth-child(3) { width:14%; }
+  #restockTable th:nth-child(6), #restockTable td:nth-child(6) { width:11%; }
+  #restockTable th:nth-child(7), #restockTable td:nth-child(7) { width:8%; }
+  #restockTable th:nth-child(8), #restockTable td:nth-child(8) { width:12%; }
+  #restockTable th:nth-child(9), #restockTable td:nth-child(9) { width:8%; }
+  #restockTable th:nth-child(10), #restockTable td:nth-child(10) { width:9%; }
+  #restockTable th:nth-child(11), #restockTable td:nth-child(11) { width:8%; }
+  #restockTable th:nth-child(12), #restockTable td:nth-child(12) { width:12%; }
+  #restockTable th:nth-child(13), #restockTable td:nth-child(13) { width:10%; max-width:80px; }
   }
   @page { size: A4 landscape; margin: 12mm }
+  /* Column visibility — dynamically toggled via JS */
+  .col-hidden-1 #restockTable th:nth-child(2), .col-hidden-1 #restockTable td:nth-child(2) { display:none !important }
+  .col-hidden-2 #restockTable th:nth-child(3), .col-hidden-2 #restockTable td:nth-child(3) { display:none !important }
+  .col-hidden-3 #restockTable th:nth-child(4), .col-hidden-3 #restockTable td:nth-child(4) { display:none !important }
+  .col-hidden-4 #restockTable th:nth-child(5), .col-hidden-4 #restockTable td:nth-child(5) { display:none !important }
+  .col-hidden-5 #restockTable th:nth-child(6), .col-hidden-5 #restockTable td:nth-child(6) { display:none !important }
+  .col-hidden-6 #restockTable th:nth-child(7), .col-hidden-6 #restockTable td:nth-child(7) { display:none !important }
+  .col-hidden-7 #restockTable th:nth-child(8), .col-hidden-7 #restockTable td:nth-child(8) { display:none !important }
+  .col-hidden-8 #restockTable th:nth-child(9), .col-hidden-8 #restockTable td:nth-child(9) { display:none !important }
+  .col-hidden-9 #restockTable th:nth-child(10), .col-hidden-9 #restockTable td:nth-child(10) { display:none !important }
+  .col-hidden-10 #restockTable th:nth-child(11), .col-hidden-10 #restockTable td:nth-child(11) { display:none !important }
       `;
       const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
     })();
@@ -380,6 +448,26 @@
     function toggleOnlyFavorites(flag){ if (window.restockToggleOnlyFavorites){ window.restockToggleOnlyFavorites(flag); } }
     function toggleOnlyConfigured(flag){ if (window.restockToggleOnlyConfigured){ window.restockToggleOnlyConfigured(flag); } }
     function toggleOnlyReserveInfo(flag){ if (window.restockToggleOnlyReserveInfo){ window.restockToggleOnlyReserveInfo(flag); } }
+    function restockToggleCapacityReview(flag){ if (window.restockToggleCapacityReview){ window.restockToggleCapacityReview(flag); } }
+    function restockTogglePickfaceMismatch(flag){ if (window.restockTogglePickfaceMismatch){ window.restockTogglePickfaceMismatch(flag); } }
+
+    // Filters dropdown
+    function toggleFiltersDropdown(){
+      const dd = document.getElementById('filtersDropdown');
+      if (dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+    }
+    function clearAllFilters(){
+      ['toggleOnlyFavorites','toggleOnlyConfigured','toggleCapacityReview','togglePickfaceMismatch','toggleOnlyReserveInfo','toggleHideNoReserve','hideMAGA','hideMAPRODUCTION','hideMASAMPLES','hideMADOCK','hideMAR_ETURNS'].forEach(id=>{
+        const el = document.getElementById(id);
+        if (el) { el.checked = false; el.dispatchEvent(new Event('change')); }
+      });
+    }
+    // Close dropdown on outside click
+    document.addEventListener('click', function(e){
+      const wrap = document.getElementById('filtersDropdownWrap');
+      const dd = document.getElementById('filtersDropdown');
+      if (wrap && dd && !wrap.contains(e.target)) dd.style.display = 'none';
+    });
     window.addEventListener('DOMContentLoaded', ()=>{
       const allBtn = document.querySelector('#restockFilters .chip[data-status-filter="ALL"]');
       if (allBtn) allBtn.classList.add('active');
@@ -506,31 +594,40 @@
     }
   </script>
 
-  <!-- Add/Edit Product Modal -->
+  <!-- Add/Edit Product Modal (V2: Configure Capacity) -->
   <div id="addEditProductModal" class="modal hidden">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width:500px">
       <span class="close" onclick="closeAddEditProductModal()">&times;</span>
-      <h2 id="addEditProductTitle">Add Product</h2>
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 20px;">
-        <h4 style="margin: 0 0 8px 0; color: #374151; font-size: 14px;">📋 Capacity Guidelines:</h4>
-        <div style="font-size: 12px; color: #6b7280; line-height: 1.4;">
-          • <span style="color: #dc2626; font-weight: 600;">0 to Min</span> = Low Status (Red)<br>
-          • <span style="color: #d97706; font-weight: 600;">Min to Med</span> = Medium Status (Orange)<br>
-          • <span style="color: #059669; font-weight: 600;">Med to Max</span> = Full Status (Green)<br>
+      <h2 id="addEditProductTitle">Configure Capacity</h2>
+
+      <!-- Product Info (read-only from Cin7 sync) -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px">
+          <span style="color:#94a3b8;font-weight:600">5DC</span> <span id="editInfo5DC" style="color:#1e293b;font-variant-numeric:tabular-nums">—</span>
+          <span style="color:#94a3b8;font-weight:600">SKU</span> <span id="editInfoSKU" style="color:#1e293b">—</span>
+          <span style="color:#94a3b8;font-weight:600">Product</span> <span id="editInfoProduct" style="color:#1e293b">—</span>
+          <span style="color:#94a3b8;font-weight:600">On Hand</span> <span id="editInfoOnHand" style="color:#1e293b;font-weight:600">—</span>
+          <span style="color:#94a3b8;font-weight:600">Avg Sales</span> <span id="editInfoAvgMth" style="color:#1e293b">—</span>
         </div>
       </div>
+
+      <!-- Coverage estimate -->
+      <div id="editCoverageInfo" style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;text-align:center">
+        <span style="color:#94a3b8;font-size:12px">Enter Pickface Qty to see coverage estimate</span>
+      </div>
+
+      <!-- Capacity guidelines -->
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:16px">
+        <div style="font-size:12px;color:#166534;line-height:1.5">
+          <span style="color:#dc2626;font-weight:600">0→Min</span> = Low &nbsp;·&nbsp;
+          <span style="color:#d97706;font-weight:600">Min→Med</span> = Medium &nbsp;·&nbsp;
+          <span style="color:#059669;font-weight:600">Med→Max</span> = Full &nbsp;·&nbsp;
+          <span style="color:#1d4ed8;font-weight:600">&gt;Max</span> = Over
+        </div>
+      </div>
+
       <form id="addEditProductForm">
         <div class="manual-fields">
-          <div class="field-group">
-            <label for="productSku">SKU: *</label>
-            <input type="text" id="productSku" required placeholder="SKU" maxlength="50" />
-            <div class="error" id="productSkuError"></div>
-          </div>
-          <div class="field-group">
-            <label for="productName">Product: *</label>
-            <input type="text" id="productName" required placeholder="PRODUCT NAME" maxlength="255" style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()" />
-            <div class="error" id="productNameError"></div>
-          </div>
           <div class="field-group">
             <label for="productPickface">Pickface Location: *</label>
             <input type="text" id="productPickface" required placeholder="E.G. MA-A-01-L1" maxlength="50" style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()" />
@@ -538,33 +635,33 @@
           </div>
           <div class="field-group">
             <label for="productPickfaceQty">Pickface Qty (Capacity): *</label>
-            <input type="number" id="productPickfaceQty" required min="0" placeholder="Quantity" oninput="updateMaxCapacity()" />
+            <input type="number" id="productPickfaceQty" required min="0" placeholder="Max units that fit" oninput="updateMaxCapacity()" />
             <div class="error" id="productPickfaceQtyError"></div>
           </div>
           <div class="field-row">
             <div class="field-group">
-              <label for="productCapMin">Min Capacity: *</label>
-              <input type="number" id="productCapMin" required min="0" placeholder="Min capacity" oninput="validateCapacities()" />
+              <label for="productCapMin">Min: *</label>
+              <input type="number" id="productCapMin" required min="0" placeholder="Low threshold" oninput="validateCapacities()" />
               <div class="error" id="productCapMinError"></div>
             </div>
             <div class="field-group">
-              <label for="productCapMed">Med Capacity: *</label>
-              <input type="number" id="productCapMed" required min="0" placeholder="Med capacity" oninput="validateCapacities()" />
+              <label for="productCapMed">Med: *</label>
+              <input type="number" id="productCapMed" required min="0" placeholder="Medium threshold" oninput="validateCapacities()" />
               <div class="error" id="productCapMedError"></div>
             </div>
             <div class="field-group">
-              <label for="productCapMax">Max Capacity: *</label>
-              <input type="number" id="productCapMax" required min="0" placeholder="Same as Pickface Qty" readonly style="background-color: #f3f4f6; cursor: not-allowed;" />
+              <label for="productCapMax">Max: *</label>
+              <input type="number" id="productCapMax" required min="0" placeholder="= Pickface Qty" readonly style="background-color: #f3f4f6; cursor: not-allowed;" />
               <div class="error" id="productCapMaxError"></div>
             </div>
           </div>
-          <div class="field-group" style="margin-top: 16px;">
-            <label for="productNotes">Notes: <span style="font-weight: normal; color: #6b7280;">(max 40 chars - will appear on print)</span></label>
-            <textarea id="productNotes" placeholder="Add notes for this product" rows="2" maxlength="40" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; resize: none;" oninput="document.getElementById('notesCharCount').textContent = this.value.length"></textarea>
-            <div style="text-align: right; font-size: 11px; color: #9ca3af; margin-top: 2px;"><span id="notesCharCount">0</span>/40</div>
+          <div class="field-group" style="margin-top:12px">
+            <label for="productNotes">Notes: <span style="font-weight:normal;color:#6b7280">(max 40 chars - print)</span></label>
+            <textarea id="productNotes" placeholder="Add notes for this product" rows="2" maxlength="40" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;resize:none" oninput="document.getElementById('notesCharCount').textContent = this.value.length"></textarea>
+            <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:2px"><span id="notesCharCount">0</span>/40</div>
           </div>
         </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
           <button type="button" class="search-btn-small secondary" onclick="closeAddEditProductModal()">Cancel</button>
           <button type="submit" id="saveProductBtn" class="search-btn-small">Save</button>
         </div>
@@ -572,19 +669,19 @@
     </div>
   </div>
 
-  <!-- Delete Confirmation Modal -->
+  <!-- Deconfigure Confirmation Modal -->
   <div id="deleteConfirmModal" class="modal hidden">
-    <div class="modal-content" style="max-width: 400px">
+    <div class="modal-content" style="max-width: 420px">
       <span class="close" onclick="closeDeleteConfirmModal()">&times;</span>
-      <h2>🗑️ Delete Product</h2>
-      <p id="deleteConfirmText">Are you sure you want to delete this product?</p>
+      <h2>⚙️ Remove Configuration</h2>
+      <p id="deleteConfirmText" style="line-height:1.6">Are you sure you want to remove the capacity configuration?</p>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
         <button type="button" class="search-btn-small secondary" onclick="closeDeleteConfirmModal()">Cancel</button>
-        <button type="button" id="confirmDeleteBtn" class="search-btn-small" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" onclick="confirmDelete()">Delete</button>
+        <button type="button" id="confirmDeleteBtn" class="search-btn-small" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" onclick="confirmDelete()">Deconfigure</button>
       </div>
     </div>
   </div>
 
-  <script src="restock-v2.js"></script>
+  <script src="restock-v2.js?v=20260220i"></script>
 </body>
 </html>

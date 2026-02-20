@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS cin7_mirror.products (
     average_cost    DECIMAL(12,4) DEFAULT 0,
     stock_locator   TEXT,
     pick_zones      TEXT,
+    attribute1      TEXT,
+    attribute2      TEXT,
     sellable        BOOLEAN DEFAULT true,
     last_modified_on TIMESTAMPTZ,
     synced_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
