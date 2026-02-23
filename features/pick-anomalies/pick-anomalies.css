@@ -1,0 +1,448 @@
+/* ──────────────────────────────────────────────
+   Pick Anomalies Monitor — Full Design System
+   Follows styles.css (app-table, search-btn-small,
+   chip) + logistics.css design tokens (--log-*)
+   ────────────────────────────────────────────── */
+
+/* ─────────── Title ─────────── */
+.pa-title-row{
+  display:flex; align-items:center; gap:14px; margin-bottom:16px;
+}
+.pa-title-row .log-page-title{ margin:0; }
+
+/* ─────────── Sync Status Indicator ─────────── */
+.pa-sync-status{
+  display:flex; align-items:center; gap:8px;
+  font-size:12px; font-weight:600; color:#64748b;
+}
+.pa-sync-dot{
+  width:10px; height:10px; border-radius:50%;
+  background:#94a3b8; flex-shrink:0;
+  transition:background .3s;
+}
+.pa-sync-dot.pa-sync-idle{ background:#94a3b8; }
+.pa-sync-dot.pa-sync-syncing{
+  background:#f59e0b;
+  animation:paSyncPulse 1s infinite;
+}
+.pa-sync-dot.pa-sync-success{ background:#22c55e; }
+.pa-sync-dot.pa-sync-error{ background:#ef4444; }
+@keyframes paSyncPulse{
+  0%,100%{ opacity:1; transform:scale(1); }
+  50%{ opacity:.5; transform:scale(1.3); }
+}
+
+/* ─────────── Toolbar (replaces date picker filters) ─────────── */
+.pa-toolbar{
+  padding:14px 20px;
+  background:linear-gradient(135deg,#f8f9fa 0%,#eef2f7 100%);
+  border:1px solid #dee2e6; border-radius:12px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.pa-toolbar-row{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+
+/* ─────────── Search Bar ─────────── */
+.pa-search-group{ flex:1; min-width:200px; max-width:400px; }
+.pa-search-input{
+  width:100%; padding:9px 14px; border:2px solid #e1e8ed; border-radius:10px;
+  font-size:13px; font-weight:500; background:#fff;
+  transition:border-color .25s, box-shadow .25s;
+}
+.pa-search-input::placeholder{ color:#94a3b8; }
+.pa-search-input:hover{ border-color:#cbd5e1; }
+.pa-search-input:focus{
+  outline:none; border-color:#4facfe;
+  box-shadow:0 0 0 3px rgba(79,172,254,.12);
+}
+
+.pa-spacer{ flex:1 1 auto; }
+.pa-status-chips{ display:flex; gap:6px; flex-wrap:wrap; }
+
+/* Secondary button style */
+.search-btn-small.secondary{
+  background:linear-gradient(135deg,#e2e8f0 0%,#cbd5e1 100%);
+  color:#475569;
+}
+.search-btn-small.secondary:hover{
+  background:linear-gradient(135deg,#cbd5e1 0%,#94a3b8 100%);
+  color:#1e293b;
+}
+
+/* ─────────── KPI Summary Cards (gradient style) ─────────── */
+#paKpis.kpi-row.five{
+  display:grid; grid-template-columns:repeat(5,1fr);
+  gap:14px; margin:16px 0;
+}
+#paKpis .kpi{
+  padding:16px 20px; border-radius:14px; border:none;
+  position:relative; overflow:hidden;
+  box-shadow:0 4px 14px rgba(0,0,0,.06);
+  transition:transform .2s, box-shadow .2s;
+}
+#paKpis .kpi:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 24px rgba(0,0,0,.1);
+}
+#paKpis .kpi .label{ font-size:12px; font-weight:700; }
+#paKpis .kpi .value{ font-size:28px; font-weight:800; margin-top:2px; }
+
+/* Individual KPI card gradients */
+#kpi-orders{
+  background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%);
+  border:1px solid #dee2e6;
+}
+#kpi-orders .label{ color:#475569; }
+#kpi-orders .value{ color:#1e293b; }
+#kpi-picks{
+  background:linear-gradient(135deg,#ede9fe 0%,#ddd6fe 100%);
+  border:1px solid #c4b5fd;
+}
+#kpi-picks .label{ color:#6d28d9; }
+#kpi-picks .value{ color:#5b21b6; }
+#kpi-correct{
+  background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);
+  border:1px solid #86efac;
+}
+#kpi-correct .label{ color:#166534; }
+#kpi-correct .value{ color:#15803d; }
+#kpi-anomalies{
+  background:linear-gradient(135deg,#fee2e2 0%,#fecaca 100%);
+  border:1px solid #fca5a5;
+}
+#kpi-anomalies .label{ color:#991b1b; }
+#kpi-anomalies .value{ color:#dc2626; }
+#kpi-fg{
+  background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);
+  border:1px solid #93c5fd;
+}
+#kpi-fg .label{ color:#1d4ed8; }
+#kpi-fg .value{ color:#2563eb; }
+
+/* ─────────── Progress Bar ─────────── */
+.pa-progress{ margin:10px 0; display:flex; align-items:center; gap:12px; }
+.pa-progress-bar{
+  flex:1; height:8px; background:#e2e8f0; border-radius:99px;
+  overflow:hidden; box-shadow:inset 0 1px 2px rgba(0,0,0,.06);
+}
+.pa-progress-fill{
+  height:100%; border-radius:99px;
+  background:linear-gradient(90deg,#4facfe 0%,#00f2fe 100%);
+  transition:width .4s ease;
+  box-shadow:0 0 8px rgba(79,172,254,.3);
+}
+.pa-progress-text{ font-size:12px; font-weight:700; color:#64748b; white-space:nowrap; }
+
+/* ─────────── Badges ─────────── */
+.pa-badge{
+  display:inline-flex; align-items:center; gap:3px;
+  padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700;
+  background:#f1f5f9; color:#475569; border:1px solid #e2e8f0;
+}
+.pa-badge-anomaly{ background:#fef3c7; color:#92400e; border-color:#fde68a; }
+.pa-badge-fg{ background:#dbeafe; color:#1e40af; border-color:#93c5fd; }
+.pa-badge-correct{ background:#dcfce7; color:#166534; border-color:#86efac; }
+
+/* ─────────── Table Row Colors (full background) ─────────── */
+.pa-row-anomaly{
+  background:rgba(245,158,11,.10) !important;
+}
+.pa-row-anomaly td{ background:rgba(245,158,11,.10); }
+
+.pa-row-fg{
+  background:rgba(59,130,246,.08) !important;
+}
+.pa-row-fg td{ background:rgba(59,130,246,.08); }
+
+.pa-row-correct{
+  background:rgba(34,197,94,.10) !important;
+}
+.pa-row-correct td{ background:rgba(34,197,94,.10); }
+
+.pa-row-mixed{
+  background:rgba(168,85,247,.08) !important;
+}
+.pa-row-mixed td{ background:rgba(168,85,247,.08); }
+
+.pa-row-reviewed{
+  background:rgba(34,197,94,.10) !important;
+}
+.pa-row-reviewed td{ background:rgba(34,197,94,.10); }
+
+/* Reviewed button disabled state */
+.pa-btn-reviewed{
+  background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%) !important;
+  color:#166534 !important;
+  cursor:default !important;
+  opacity:.8;
+}
+/* clickable rows */
+#paTable tbody tr{ cursor:pointer; transition:background .15s; }
+#paTable tbody tr:hover{ background:rgba(79,172,254,.08) !important; }
+
+/* ─────────── Modal System (pa-scoped) ─────────── */
+.pa-modal-overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,.55);
+  backdrop-filter:blur(4px); z-index:999;
+}
+.pa-modal-dialog{
+  position:relative; z-index:1000;
+  background:#fafdff; /* subtle blue-tinted white matching styles.css */
+  border-radius:20px;
+  box-shadow:0 20px 60px rgba(0,0,0,.2);
+  width:min(900px,96vw);
+  max-height:92vh;
+  display:flex; flex-direction:column;
+  animation:paModalIn .3s ease;
+  overflow:hidden;
+}
+@keyframes paModalIn{
+  from{ opacity:0; transform:translateY(-30px) scale(.97); }
+  to{ opacity:1; transform:translateY(0) scale(1); }
+}
+.pa-modal-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 24px; border-bottom:1px solid #e2e8f0;
+  background:linear-gradient(135deg,#f8fafc 0%,#eef2f7 100%);
+}
+.pa-modal-head h2{
+  font-size:18px; font-weight:800; color:#1e293b; margin:0;
+  text-align:left;
+}
+.pa-modal-x{
+  width:36px; height:36px; border:none; background:#f1f5f9;
+  border-radius:10px; font-size:20px; color:#64748b;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:all .2s;
+}
+.pa-modal-x:hover{ background:#e2e8f0; color:#1e293b; transform:scale(1.05); }
+
+.pa-modal-body{
+  flex:1 1 auto; overflow-y:auto; padding:16px 24px;
+  max-height:60vh;
+}
+.pa-modal-foot{
+  display:flex; gap:10px; justify-content:flex-end;
+  padding:14px 24px; border-top:1px solid #e2e8f0;
+  background:#f8fafc;
+}
+
+/* ─────────── Modal Tabs ─────────── */
+.pa-modal-tabs{
+  display:flex; gap:0; border-bottom:1px solid #e2e8f0;
+  padding:0 24px; background:#fff;
+}
+.pa-tab{
+  padding:12px 20px; background:none; border:none;
+  font-size:13px; font-weight:700; color:#94a3b8; cursor:pointer;
+  border-bottom:3px solid transparent; transition:all .2s;
+  position:relative;
+}
+.pa-tab:hover{ color:#475569; }
+.pa-tab.active{
+  color:#2563eb; border-bottom-color:#2563eb;
+}
+.pa-tab-count{
+  font-size:10px; font-weight:800; background:#e2e8f0;
+  padding:2px 7px; border-radius:99px; margin-left:5px;
+  vertical-align:middle;
+}
+.pa-tab.active .pa-tab-count{
+  background:#dbeafe; color:#2563eb;
+}
+.pa-modal-summary{
+  padding:12px 24px; font-size:13px; color:#64748b; font-weight:500;
+  background:linear-gradient(135deg,#f8fafc 0%,#f0f4f8 100%);
+  border-bottom:1px solid #e2e8f0;
+}
+
+/* ─────────── Empty State ─────────── */
+.pa-empty{
+  padding:40px 24px; text-align:center; color:#94a3b8;
+  font-size:15px; font-weight:500;
+}
+
+/* ─────────── Anomaly Card ─────────── */
+.pa-anomaly-card{
+  border:1px solid #e2e8f0; border-radius:12px;
+  margin:12px 0; padding:16px 20px;
+  background:#fff;
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+  transition:box-shadow .2s, border-color .2s;
+}
+.pa-anomaly-card:hover{
+  box-shadow:0 4px 16px rgba(0,0,0,.07);
+  border-color:#cbd5e1;
+}
+.pa-anomaly-header{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; flex-wrap:wrap;
+}
+.pa-anomaly-detail{
+  margin-top:12px; display:flex; gap:16px; flex-wrap:wrap;
+}
+.pa-bin-compare{ flex:1; min-width:220px; }
+.pa-bin-line{
+  display:flex; align-items:center; gap:8px;
+  padding:6px 10px; font-size:13px; border-radius:8px;
+  margin:3px 0;
+}
+.pa-bin-wrong{
+  background:rgba(220,38,38,.06);
+}
+.pa-bin-expected{
+  background:rgba(22,163,74,.06);
+}
+.pa-bin-icon{ font-size:15px; width:22px; text-align:center; flex-shrink:0; }
+.pa-bin-label{ font-weight:700; color:#64748b; min-width:105px; font-size:12px; text-transform:uppercase; letter-spacing:.3px; }
+.pa-bin-value{
+  font-weight:800; font-family:'Courier New',monospace; font-size:14px;
+  padding:2px 8px; border-radius:6px; background:#f1f5f9;
+}
+.pa-bin-wrong .pa-bin-value{ color:#dc2626; background:#fef2f2; }
+.pa-bin-expected .pa-bin-value{ color:#16a34a; background:#f0fdf4; }
+.pa-fix-preview{
+  flex:1; min-width:220px;
+  background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);
+  border:1px solid #bbf7d0; border-radius:10px;
+  padding:14px 18px;
+}
+.pa-fix-title{
+  font-size:10px; font-weight:800; color:#16a34a;
+  text-transform:uppercase; letter-spacing:.8px; margin-bottom:6px;
+}
+.pa-fix-detail{ font-size:13px; color:#1e293b; line-height:1.5; }
+.pa-fix-qty{ font-size:12px; color:#64748b; margin-top:6px; }
+.pa-anomaly-actions{
+  margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;
+  padding-top:12px; border-top:1px solid #f1f5f9;
+}
+
+/* ─────────── Corrected Card ─────────── */
+.pa-card-corrected{
+  border-color:#86efac !important;
+  background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%) !important;
+  opacity:.85;
+}
+.pa-correction-status{
+  flex:1; min-width:220px;
+  background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);
+  border:1px solid #86efac; border-radius:10px;
+  padding:14px 18px;
+}
+.pa-correction-title{
+  font-size:13px; font-weight:800; color:#16a34a;
+  margin-bottom:6px;
+}
+.pa-correction-detail{
+  font-size:12px; color:#475569; line-height:1.6;
+}
+.pa-correction-detail strong{ color:#1e293b; }
+
+/* ─────────── Progress Bar Animation ─────────── */
+@keyframes paPulseBar{
+  0%{ opacity:1; }
+  50%{ opacity:.6; }
+  100%{ opacity:1; }
+}
+
+/* ─────────── FG Card ─────────── */
+.pa-fg-card{
+  border:1px solid #bfdbfe; border-radius:12px;
+  margin:12px 0; padding:16px 20px;
+  background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+  box-shadow:0 2px 8px rgba(59,130,246,.06);
+}
+.pa-fg-header{ font-weight:800; margin-bottom:8px; font-size:14px; color:#1e40af; }
+.pa-fg-components{ margin-top:10px; }
+.pa-fg-comp-row{
+  display:flex; align-items:center; gap:10px;
+  padding:5px 8px; font-size:13px; border-radius:6px;
+  margin:2px 0;
+}
+.pa-fg-comp-row:nth-child(odd){ background:rgba(255,255,255,.5); }
+
+/* ─────────── Select All / Batch ─────────── */
+.pa-select-all{
+  display:flex; align-items:center; gap:12px;
+  padding:10px 14px; border-bottom:1px solid #e2e8f0;
+  margin-bottom:10px; background:#f8fafc; border-radius:8px;
+}
+.pa-batch-actions{
+  display:flex; align-items:center; gap:12px;
+  padding:14px 24px; border-top:1px solid #e2e8f0;
+  background:linear-gradient(135deg,#f8fafc 0%,#eef2f7 100%);
+}
+
+/* ─────────── Table Column Borders ─────────── */
+#paTable th,
+#paTable td{
+  border:1px solid #e2e8f0;
+}
+#paTable thead th{
+  border-bottom:2px solid #cbd5e1;
+}
+
+/* ─────────── SO Status Badges ─────────── */
+.pa-so-badge{
+  display:inline-block; padding:2px 8px; border-radius:6px;
+  font-size:11px; font-weight:700; text-transform:capitalize;
+}
+.pa-so-invoiced{ background:#fef3c7; color:#92400e; }
+.pa-so-fulfilled{ background:#dcfce7; color:#166534; }
+.pa-so-packed{ background:#dbeafe; color:#1e40af; }
+.pa-so-shipped{ background:#e0e7ff; color:#3730a3; }
+.pa-so-other{ background:#f1f5f9; color:#475569; }
+
+/* ─────────── Pagination ─────────── */
+.pa-pagination{
+  display:flex; align-items:center; justify-content:center;
+  gap:16px; padding:14px 0; margin-top:8px;
+}
+.pa-page-btn{
+  padding:8px 18px; border:1px solid #d1d5db; border-radius:8px;
+  background:#fff; font-size:13px; font-weight:600; color:#374151;
+  cursor:pointer; transition:all .2s;
+}
+.pa-page-btn:hover:not(:disabled){
+  background:#f3f4f6; border-color:#9ca3af;
+}
+.pa-page-btn:disabled{
+  opacity:.4; cursor:not-allowed;
+}
+.pa-page-info{
+  font-size:13px; font-weight:600; color:#64748b;
+}
+
+/* ─────────── Footer ─────────── */
+.pa-footer{
+  text-align:center; padding:12px;
+  font-size:12px; color:#94a3b8; margin-top:10px;
+  background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0;
+}
+
+/* ─────────── Severity Badges ─────────── */
+.pa-sev-low{ background:#fef3c7; color:#92400e; border-color:#fde68a; }
+.pa-sev-medium{ background:#fed7aa; color:#9a3412; border-color:#fdba74; }
+.pa-sev-high{ background:#fecaca; color:#991b1b; border-color:#fca5a5; }
+.pa-sev-info{ background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; }
+
+/* ─────────── Responsive ─────────── */
+@media(max-width:900px){
+  #paKpis.kpi-row.five{ grid-template-columns:repeat(3,1fr); }
+}
+@media(max-width:768px){
+  .pa-toolbar-row{ flex-direction:column; align-items:stretch; }
+  .pa-search-group{ max-width:100%; }
+  .pa-spacer{ display:none; }
+  .pa-anomaly-detail{ flex-direction:column; }
+  #paKpis.kpi-row.five{ grid-template-columns:1fr 1fr; }
+  .pa-modal-dialog{ width:98vw; }
+  .pa-modal-body{ padding:12px 16px; }
+  .pa-modal-head{ padding:14px 16px; }
+  .pa-modal-tabs{ padding:0 16px; }
+}
+@media(max-width:480px){
+  #paKpis.kpi-row.five{ grid-template-columns:1fr; }
+}

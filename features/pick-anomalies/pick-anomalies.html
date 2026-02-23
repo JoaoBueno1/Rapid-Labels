@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pick Anomalies Monitor — Rapid Led</title>
+  <link rel="icon" href="/logo/rapidled_icon_500_v2.png" type="image/png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="../logistics/logistics.css" />
+  <link rel="stylesheet" href="pick-anomalies.css?v=20260223c" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="/index.html" class="nav-link">Home</a>
+        <a href="/restock-v2.html" class="nav-link">Re-Stock V2</a>
+        <a href="pick-anomalies.html" class="nav-link active">Pick Anomalies</a>
+        <a href="../logistics/warehouse-movements.html" class="nav-link">Warehouse</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container wide-container">
+    <div class="log-container">
+
+      <!-- ─── Title + Sync Status ─── -->
+      <div class="pa-title-row">
+        <h1 class="log-page-title">📦 Pick Anomalies Monitor</h1>
+        <div class="pa-sync-status" id="paSyncStatus">
+          <span class="pa-sync-dot" id="paSyncDot"></span>
+          <span id="paSyncText">Loading...</span>
+        </div>
+      </div>
+
+      <!-- ─── Toolbar: Search + Filters ─── -->
+      <div class="log-card pa-toolbar" id="paToolbar">
+        <div class="pa-toolbar-row">
+          <div class="search-input-group pa-search-group">
+            <input type="text" id="paSearch" placeholder="Search order, customer or SKU..." class="pa-search-input" oninput="PA.debounceSearch()" />
+          </div>
+          <div class="pa-spacer"></div>
+          <div class="pa-status-chips">
+            <button class="chip active" data-filter="all" onclick="PA.setFilter('all', this)">All</button>
+            <button class="chip" data-filter="anomaly" onclick="PA.setFilter('anomaly', this)">⚠️ Anomalies</button>
+            <button class="chip" data-filter="fg" onclick="PA.setFilter('fg', this)">🔧 FG</button>
+            <button class="chip" data-filter="correct" onclick="PA.setFilter('correct', this)">✅ Correct</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── KPIs ─── -->
+      <div class="kpi-row five" id="paKpis" style="display:none">
+        <div class="kpi" id="kpi-orders">
+          <div class="label">Orders in History</div>
+          <div class="value" id="kpiOrders">0</div>
+        </div>
+        <div class="kpi" id="kpi-picks">
+          <div class="label">Total Picks</div>
+          <div class="value" id="kpiPicks">0</div>
+        </div>
+        <div class="kpi" id="kpi-correct">
+          <div class="label">Correct Picks</div>
+          <div class="value" id="kpiCorrect">0</div>
+        </div>
+        <div class="kpi" id="kpi-anomalies">
+          <div class="label">Anomaly Picks</div>
+          <div class="value" id="kpiAnomalies">0</div>
+        </div>
+        <div class="kpi" id="kpi-fg">
+          <div class="label">FG/Assembly</div>
+          <div class="value" id="kpiFg">0</div>
+        </div>
+      </div>
+
+      <!-- ─── Sync Progress ─── -->
+      <div class="pa-progress" id="paProgress" style="display:none">
+        <div class="pa-progress-bar"><div class="pa-progress-fill" id="paProgressFill" style="width:0%"></div></div>
+        <span class="pa-progress-text" id="paProgressText">Syncing...</span>
+      </div>
+
+      <!-- ─── Orders Table ─── -->
+      <div class="log-card" id="paTableCard" style="display:none">
+        <div class="table-wrapper">
+          <table class="app-table" id="paTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Order</th>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>SO Status</th>
+                <th>Picks</th>
+                <th>✅</th>
+                <th>⚠️</th>
+                <th>FG</th>
+                <th>Status</th>
+                <th>Reviewed</th>
+              </tr>
+            </thead>
+            <tbody id="paBody"></tbody>
+          </table>
+        </div>
+        <!-- Pagination -->
+        <div class="pa-pagination" id="paPagination" style="display:none">
+          <button class="pa-page-btn" id="paPrevBtn" onclick="PA.prevPage()">← Prev</button>
+          <span class="pa-page-info" id="paPageInfo">Page 1 of 1</span>
+          <button class="pa-page-btn" id="paNextBtn" onclick="PA.nextPage()">Next →</button>
+        </div>
+      </div>
+
+      <!-- ─── Footer ─── -->
+      <div class="pa-footer" id="paFooter" style="display:none">
+        <span id="paFooterText"></span>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ═══════════════════════════════════════════════
+       ORDER DETAIL MODAL
+       ═══════════════════════════════════════════════ -->
+  <div class="modal" id="paDetailModal">
+    <div class="pa-modal-overlay" onclick="PA.closeDetail()"></div>
+    <div class="pa-modal-dialog" style="max-width:900px">
+      <div class="pa-modal-head">
+        <h2 id="paModalTitle">Order Detail</h2>
+        <button class="pa-modal-x" onclick="PA.closeDetail()">×</button>
+      </div>
+
+      <div class="pa-modal-tabs" id="paModalTabs">
+        <button class="pa-tab active" data-tab="anomalies" onclick="PA.setTab('anomalies', this)">⚠️ Anomalies <span class="pa-tab-count" id="tabCountAnomalies">0</span></button>
+        <button class="pa-tab" data-tab="fg" onclick="PA.setTab('fg', this)">🔧 FG/Assembly <span class="pa-tab-count" id="tabCountFg">0</span></button>
+        <button class="pa-tab" data-tab="correct" onclick="PA.setTab('correct', this)">✅ Correct <span class="pa-tab-count" id="tabCountCorrect">0</span></button>
+      </div>
+
+      <div class="pa-modal-summary" id="paModalSummary"></div>
+      <div class="pa-modal-body" id="paModalBody"></div>
+
+      <div class="pa-batch-actions" id="paBatchActions" style="display:none">
+        <span id="paBatchSummary">0 selected</span>
+        <button type="button" class="search-btn-small" onclick="PA.fixSelected()">🔧 Fix Selected</button>
+        <div style="flex:1"></div>
+        <button type="button" id="paReviewBtn" class="search-btn-small" onclick="PA.reviewOrder()">☑️ Mark Reviewed</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       CONFIRMATION MODAL
+       ═══════════════════════════════════════════════ -->
+  <div class="modal" id="paConfirmModal">
+    <div class="pa-modal-overlay" onclick="document.getElementById('paConfirmModal').classList.remove('open')"></div>
+    <div class="pa-modal-dialog" style="max-width:450px">
+      <div class="pa-modal-head">
+        <h2>Confirm Stock Transfer</h2>
+        <button class="pa-modal-x" onclick="document.getElementById('paConfirmModal').classList.remove('open')">×</button>
+      </div>
+      <div class="pa-modal-body" id="paConfirmBody"></div>
+      <div class="pa-modal-foot">
+        <button type="button" class="search-btn-small secondary" onclick="document.getElementById('paConfirmModal').classList.remove('open')">Cancel</button>
+        <button type="button" class="search-btn-small pa-confirm-btn" onclick="PA.confirmFix()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="pick-anomalies.js?v=20260224a"></script>
+</body>
+</html>

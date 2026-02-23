@@ -19,8 +19,8 @@
 const fetch = require('node-fetch');
 
 const CIN7_CONFIG = {
-  accountId: process.env.CIN7_ACCOUNT_ID || '3bda282b-60f0-40dc-9199-21959e247cd5',
-  apiKey: process.env.CIN7_API_KEY || '02db29ae-9840-d6f3-9212-ba11b469df7c',
+  accountId: process.env.CIN7_ACCOUNT_ID || '',
+  apiKey: process.env.CIN7_API_KEY || '',
   baseUrl: 'https://inventory.dearsystems.com/ExternalApi/v2',
   timeoutMs: 30000,
 };

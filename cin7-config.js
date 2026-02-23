@@ -6,10 +6,10 @@
 
 class Cin7Config {
     constructor() {
-        // Hardcoded credentials - always enabled
+        // Credentials loaded from environment — set CIN7_ACCOUNT_ID and CIN7_API_KEY
         this.enabled = true;
-        this.accountId = '3bda282b-60f0-40dc-9199-21959e247cd5';
-        this.apiKey = '55c70204-619a-5286-ae1d-593493533cb9';
+        this.accountId = '';
+        this.apiKey = '';
         this.baseUrl = 'https://inventory.dearsystems.com';
         this.apiPrefix = '/ExternalApi/v2';
         this.timeout = 15000; // 15 seconds - Cin7 API can be slow

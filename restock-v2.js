@@ -207,7 +207,7 @@
      ═══════════════════════════════════════════════ */
   function render(rows) {
     if (!rows || !rows.length) {
-      setTbody('<tr><td colspan="14" style="text-align:center;opacity:.7">No results</td></tr>');
+      setTbody('<tr><td colspan="16" style="text-align:center;opacity:.7">No results</td></tr>');
       updatePager(0);
       if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
       return;
@@ -215,6 +215,10 @@
     const start = (state.page - 1) * state.perPage;
     const limited = rows.slice(start, start + state.perPage);
     updatePager(rows.length);
+
+    // DEBUG: show first 5 capacity values
+    const _capSample = limited.slice(0, 8).map(r => ({ sku: r.sku, pickface_space: r.pickface_space, status: r.__norm_status }));
+    console.log('🔍 RENDER capacity check (first 8):', _capSample);
 
     const chunks = [];
     for (let i = 0; i < limited.length; i += 30) {
@@ -299,6 +303,12 @@
         const wrapText = (text, chunkSize) => { if (!text) return ''; const e = escapeHtml(text); const c = []; for (let j = 0; j < e.length; j += chunkSize) c.push(e.substring(j, j + chunkSize)); return c.join('<br>'); };
         const notesHtml = r.__notes ? wrapText(r.__notes, 10) : '';
 
+        // Qty per CTN / Qty per Pallet
+        const qtyCtnVal = r.__qty_per_ctn;
+        const qtyPalletVal = r.__qty_per_pallet;
+        const qtyCtnHtml = qtyCtnVal != null ? `<span style="font-variant-numeric:tabular-nums">${qtyCtnVal}</span>` : '<span style="opacity:.35">—</span>';
+        const qtyPalletHtml = qtyPalletVal != null ? `<span style="font-variant-numeric:tabular-nums">${qtyPalletVal}</span>` : '<span style="opacity:.35">—</span>';
+
         return `<tr>
           <td>${star}</td>
           <td style="font-variant-numeric:tabular-nums;font-size:12px;color:#64748b">${fiveDC}</td>
@@ -311,13 +321,15 @@
           <td>${statusChip(status, r.__setup_info)}</td>
           <td>${reserveCellHtml}</td>
           <td>${restock}</td>
+          <td>${qtyCtnHtml}</td>
+          <td>${qtyPalletHtml}</td>
           <td class="print-only">${nearestHtml}</td>
           <td class="print-only">${notesHtml}</td>
           <td class="no-print">${actionButtons}</td>
         </tr>`;
       }).join('');
       chunks.push(rowsHtml);
-      if (i + 30 < limited.length) chunks.push('<tr class="print-break"><td colspan="14"></td></tr>');
+      if (i + 30 < limited.length) chunks.push('<tr class="print-break"><td colspan="16"></td></tr>');
     }
     setTbody(chunks.join(''));
     if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
@@ -526,7 +538,6 @@
       const isRunning = run.status === 'running';
 
       dot.style.background = isSuccess ? '#22c55e' : isRunning ? '#3b82f6' : '#ef4444';
-      const statusLabel = isSuccess ? 'Last sync successful' : isRunning ? 'Sync running…' : 'Last sync failed';
 
       // Count metrics
       const metrics = run.metrics || {};
@@ -534,18 +545,24 @@
       const stockCount = metrics.stock_synced || 0;
       const duration = run.timing?.duration_ms ? `${(run.timing.duration_ms / 1000).toFixed(1)}s` : '';
 
+      // Format time for prominent display
+      const pad = n => String(n).padStart(2, '0');
+      let timeStr = '';
+      if (run.ended_at) {
+        const d = new Date(run.ended_at);
+        timeStr = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      } else if (run.started_at) {
+        const d = new Date(run.started_at);
+        timeStr = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
+
+      const statusLabel = isSuccess ? 'Last sync successful' : isRunning ? 'Sync running…' : 'Last sync failed';
       text.textContent = `${statusLabel}${prodCount ? ` • ${prodCount} products, ${stockCount} stock rows` : ''}${duration ? ` • ${duration}` : ''}`;
       text.style.color = isSuccess ? '#166534' : isRunning ? '#1d4ed8' : '#991b1b';
 
-      // Format time
-      if (run.ended_at) {
-        const d = new Date(run.ended_at);
-        const pad = n => String(n).padStart(2, '0');
-        time.textContent = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      } else if (run.started_at) {
-        const d = new Date(run.started_at);
-        const pad = n => String(n).padStart(2, '0');
-        time.textContent = `Started ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      // Show time prominently
+      if (timeStr) {
+        time.textContent = `Stock data from: ${timeStr}`;
       }
     } catch (e) {
       console.warn('Error fetching sync status:', e);
@@ -589,11 +606,11 @@
      ═══════════════════════════════════════════════ */
   async function fetchData() {
     if (!window.supabase || !window.supabaseReady) {
-      setTbody('<tr><td colspan="14" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>');
+      setTbody('<tr><td colspan="16" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>');
       return;
     }
     state.loading = true;
-    setTbody('<tr><td colspan="14" style="text-align:center;opacity:.7">Loading from Cin7 mirror…</td></tr>');
+    setTbody('<tr><td colspan="16" style="text-align:center;opacity:.7">Loading from Cin7 mirror…</td></tr>');
 
     try {
       await window.supabaseReady;
@@ -613,7 +630,7 @@
         console.warn('⚠️ Could not read cin7_mirror.stock_snapshot:', e.message);
         if (state.mirrorAvailable === null) state.mirrorAvailable = false;
         // Show helpful message
-        setTbody(`<tr><td colspan="14" style="text-align:center;color:#b45309;padding:30px">
+        setTbody(`<tr><td colspan="16" style="text-align:center;color:#b45309;padding:30px">
           <div style="font-size:16px;font-weight:600;margin-bottom:8px">⚠️ cin7_mirror schema not accessible</div>
           <div style="font-size:13px;color:#64748b">To enable V2, expose the <code>cin7_mirror</code> schema in Supabase Dashboard → Settings → API → Exposed schemas,<br>then run the first sync with <code>node cin7-stock-sync/sync-service.js</code></div>
         </td></tr>`);
@@ -632,7 +649,7 @@
       }
 
       /* ── 4. Fetch restock_setup (shared with V1) ── */
-      const setupRows = await fetchAllRows('restock_setup', 'sku, product, pickface_location, pickface_qty, cap_min, cap_med, cap_max, notes');
+      const setupRows = await fetchAllRows('restock_setup', '*');
 
       /* ── 5. Fetch user_favorites ── */
       await loadFavoritesFromDB();
@@ -645,6 +662,14 @@
         console.warn('⚠️ Could not read branch_avg_monthly_sales:', e.message);
       }
 
+      /* ── 7. Fetch pallet_capacity_rules (for insights) ── */
+      let palletRulesRows = [];
+      try {
+        palletRulesRows = await fetchAllRows('pallet_capacity_rules', 'product, sku, qty_pallet');
+      } catch (e) {
+        console.warn('⚠️ Could not read pallet_capacity_rules:', e.message);
+      }
+
       /* ── Build lookup maps ── */
       const productMap = Object.create(null);
       for (const p of productRows) productMap[p.sku] = p;
@@ -652,6 +677,13 @@
       const avgSalesByName = Object.create(null);
       for (const a of avgSalesRows) {
         if (a.product) avgSalesByName[a.product.toUpperCase()] = Number(a.avg_mth_main) || 0;
+      }
+
+      // ── Pallet capacity lookup: product code → qty_pallet ──
+      const palletCapacity = Object.create(null);
+      for (const r of palletRulesRows) {
+        const key = (r.product || r.sku || '').trim();
+        if (key && r.qty_pallet) palletCapacity[key] = Number(r.qty_pallet) || 0;
       }
 
       // ── Setup lookup: index by PRODUCT CODE (not 5DC) ──
@@ -676,10 +708,21 @@
           min: Number(s.cap_min),
           med: Number(s.cap_med),
           max: Number(s.cap_max),
-          notes: s.notes || ''
+          notes: s.notes || '',
+          qty_per_ctn: s.qty_per_ctn != null ? Number(s.qty_per_ctn) : null,
+          qty_per_pallet: s.qty_per_pallet != null ? Number(s.qty_per_pallet) : null,
         };
         if (productCode) setupByProduct[productCode] = entry;
         if (s.sku) setupBy5DC[s.sku] = entry;
+      }
+
+      // ── Merge restock_setup.qty_per_pallet into palletCapacity (higher priority) ──
+      for (const key of Object.keys(setupByProduct)) {
+        const s = setupByProduct[key];
+        if (s.qty_per_pallet) {
+          palletCapacity[key] = s.qty_per_pallet;
+          if (s.sku5dc) palletCapacity[s.sku5dc] = s.qty_per_pallet;
+        }
       }
 
       /* ── Group stock by SKU ── */
@@ -819,7 +862,7 @@
         const reserveTotal = reserveLocations.reduce((sum, l) => sum + (l.qty || 0), 0);
 
         // ── Capacity / Status ──
-        const pickfaceSpace = setup ? setup.pickface_qty : 0;
+        const pickfaceSpace = setup ? setup.pickface_qty : null;
         let restockQty = 0;
         let normStatus = '';
         let setupInfo = null;
@@ -852,6 +895,8 @@
           __reserve_total: reserveTotal,
           __reserve_locations: reserveLocations,
           __notes: setup ? setup.notes : '',
+          __qty_per_ctn: setup ? setup.qty_per_ctn : null,
+          __qty_per_pallet: setup ? setup.qty_per_pallet : null,
           __avg_month_sales: avgSalesByName[displayProduct.toUpperCase()] ?? null,
           __pickface_mismatch: pickfaceMismatch,
           __cin7_stock_locator: cin7Locator,
@@ -893,7 +938,7 @@
       // Sample: first 3 configured rows
       const sampleConfigured = rows.filter(r => r.__norm_status !== 'NOT_CONFIGURED').slice(0, 3);
       console.log('📊 V2 Sample configured rows:', sampleConfigured.map(r => ({
-        sku: r.sku, product: r.product, on_hand: r.on_hand, status: r.__norm_status, method: r.__match_method, pickface: r.stock_locator,
+        sku: r.sku, product: r.product, on_hand: r.on_hand, capacity: r.pickface_space, status: r.__norm_status, method: r.__match_method, pickface: r.stock_locator,
       })));
 
       // Debug: pickface mismatches
@@ -909,14 +954,19 @@
 
       // Save all rows
       state.allRows = rows.slice();
+      state.palletCapacity = palletCapacity;
+      state.setupByProduct = setupByProduct;
       updateStatusCounters();
 
       // Apply filters & render
       rebuildView();
 
+      // Generate stock insights (Redistribute + Consolidate)
+      generateInsights();
+
     } catch (e) {
       console.error('restock-v2 fetch error', e);
-      setTbody(`<tr><td colspan="14" style="text-align:center;color:#b91c1c">Failed to load data: ${escapeHtml(e.message)}</td></tr>`);
+      setTbody(`<tr><td colspan="16" style="text-align:center;color:#b91c1c">Failed to load data: ${escapeHtml(e.message)}</td></tr>`);
     } finally {
       state.loading = false;
     }
@@ -1105,6 +1155,8 @@
     el('editInfoProduct', row.__full_description || row.product);
     el('editInfoOnHand', row.on_hand != null ? String(row.on_hand) : '—');
     el('editInfoAvgMth', row.__avg_month_sales != null ? Math.round(row.__avg_month_sales).toLocaleString() + '/mth' : 'No data');
+    el('editInfoQtyCtn', row.__qty_per_ctn != null ? String(row.__qty_per_ctn) : '—');
+    el('editInfoQtyPallet', row.__qty_per_pallet != null ? String(row.__qty_per_pallet) : '—');
 
     // Coverage info (dynamic, updated on capacity input)
     window.__editRowRef = row;
@@ -1125,13 +1177,15 @@
 
   window.openDeleteConfirmModal = function (sku) {
     const row = state.allRows.find(r => String(r.sku) === String(sku));
-    const name = row ? (row.__full_description || row.product) : 'this product';
+    const dc = row ? (row.__5dc || '') : '';
+    const skuCode = row ? (row.__stock_sku || row.product || '') : '';
+    const displayLabel = dc ? `${dc} — ${skuCode}` : skuCode || 'this product';
     const isConfigured = row && row.__norm_status !== 'NOT_CONFIGURED';
     if (!isConfigured) {
       showToast('This product is already not configured', 'info');
       return;
     }
-    document.getElementById('deleteConfirmText').innerHTML = `Remove capacity configuration for <strong>${escapeHtml(name)}</strong>?<br><br><span style="font-size:13px;color:#64748b">The product will become <strong>Not Configured</strong>. No data is deleted — you can reconfigure it anytime via Edit.</span>`;
+    document.getElementById('deleteConfirmText').innerHTML = `Remove capacity configuration for <strong>${escapeHtml(displayLabel)}</strong>?<br><br><span style="font-size:13px;color:#64748b">The product will become <strong>Not Configured</strong>. No data is deleted — you can reconfigure it anytime via Edit.</span>`;
     document.getElementById('confirmDeleteBtn').dataset.sku = sku;
     document.getElementById('deleteConfirmModal').classList.remove('hidden');
   };
@@ -1163,7 +1217,7 @@
   async function loadProductSetupData(sku) {
     try {
       await window.supabaseReady;
-      const { data, error } = await window.supabase.from('restock_setup').select('pickface_qty, cap_min, cap_med, cap_max, notes').eq('sku', sku).single();
+      const { data, error } = await window.supabase.from('restock_setup').select('*').eq('sku', sku).single();
       if (!error && data) {
         document.getElementById('productPickfaceQty').value = data.pickface_qty || '';
         document.getElementById('productCapMin').value = data.cap_min || '';
@@ -1172,6 +1226,11 @@
         const n = data.notes || '';
         document.getElementById('productNotes').value = n;
         document.getElementById('notesCharCount').textContent = n.length;
+        // Qty per CTN / Pallet
+        const qcEl = document.getElementById('productQtyPerCtn');
+        const qpEl = document.getElementById('productQtyPerPallet');
+        if (qcEl) qcEl.value = data.qty_per_ctn || '';
+        if (qpEl) qpEl.value = data.qty_per_pallet || '';
         window.updateMaxCapacity();
         window.validateCapacities();
       }
@@ -1189,7 +1248,9 @@
       cap_min: parseInt(document.getElementById('productCapMin').value) || 0,
       cap_med: parseInt(document.getElementById('productCapMed').value) || 0,
       cap_max: parseInt(document.getElementById('productCapMax').value) || 0,
-      notes: document.getElementById('productNotes').value.trim()
+      notes: document.getElementById('productNotes').value.trim(),
+      qty_per_ctn: parseInt(document.getElementById('productQtyPerCtn').value) || null,
+      qty_per_pallet: parseInt(document.getElementById('productQtyPerPallet').value) || null
     };
     if (!validateProductForm(fd)) return;
 
@@ -1199,14 +1260,34 @@
         // Check if row exists
         const { data: existing } = await window.supabase.from('restock_setup').select('sku').eq('sku', currentEditingSku).maybeSingle();
         if (existing) {
-          const { error } = await window.supabase.from('restock_setup').update({
+          const updateData = {
             product: fd.product, pickface_location: fd.pickface_location, pickface_qty: fd.pickface_qty,
             cap_min: fd.cap_min, cap_med: fd.cap_med, cap_max: fd.cap_max, notes: fd.notes
-          }).eq('sku', currentEditingSku);
+          };
+          // Add new columns if they have values (graceful if columns don't exist yet)
+          if (fd.qty_per_ctn != null) updateData.qty_per_ctn = fd.qty_per_ctn;
+          if (fd.qty_per_pallet != null) updateData.qty_per_pallet = fd.qty_per_pallet;
+          let { error } = await window.supabase.from('restock_setup').update(updateData).eq('sku', currentEditingSku);
+          // If error is about missing column, retry without new fields
+          if (error && error.message && error.message.includes('column')) {
+            delete updateData.qty_per_ctn;
+            delete updateData.qty_per_pallet;
+            const retry = await window.supabase.from('restock_setup').update(updateData).eq('sku', currentEditingSku);
+            error = retry.error;
+          }
           if (error) { showToast('Error updating: ' + error.message, 'error'); return; }
         } else {
           // Insert new setup row
-          const { error } = await window.supabase.from('restock_setup').insert([fd]);
+          const insertData = { ...fd };
+          if (insertData.qty_per_ctn == null) delete insertData.qty_per_ctn;
+          if (insertData.qty_per_pallet == null) delete insertData.qty_per_pallet;
+          let { error } = await window.supabase.from('restock_setup').insert([insertData]);
+          if (error && error.message && error.message.includes('column')) {
+            delete insertData.qty_per_ctn;
+            delete insertData.qty_per_pallet;
+            const retry = await window.supabase.from('restock_setup').insert([insertData]);
+            error = retry.error;
+          }
           if (error) { showToast('Error creating: ' + error.message, 'error'); return; }
         }
         showToast('Capacity configured successfully', 'success');
@@ -1331,7 +1412,9 @@
     { idx: 7,  label: 'Capacity' },
     { idx: 8,  label: 'Status' },
     { idx: 9,  label: 'Reserve' },
-    { idx: 10, label: 'Restock' }
+    { idx: 10, label: 'Restock' },
+    { idx: 11, label: 'Qty/CTN' },
+    { idx: 12, label: 'Qty/Pallet' }
   ];
 
   function getHiddenColumns() {
@@ -1387,6 +1470,264 @@
 
   // Apply saved column visibility on load
   applyColumnVisibility();
+
+  /* ═══════════════════════════════════════════════
+     STOCK INSIGHTS — Redistribute + Consolidate
+     Uses the same data V2 already loads (cin7_mirror).
+     ═══════════════════════════════════════════════ */
+  const insightState = {
+    redistribute: [],
+    consolidate: [],
+    activeTab: 'redistribute',
+    page: 1,
+    perPage: 5,
+    collapsed: false,
+  };
+
+  function generateInsights() {
+    const rows = state.allRows || [];
+    const palletCap = state.palletCapacity || {};
+    const setupMap = state.setupByProduct || {};
+
+    const redistributeInsights = [];
+    const consolidateInsights = [];
+
+    for (const row of rows) {
+      const stockSku = row.__stock_sku || row.product;
+      const setup = setupMap[stockSku];
+      if (!setup || !Number.isFinite(setup.max)) continue;
+
+      const palletQty = palletCap[stockSku] || palletCap[row.__5dc] || 0;
+      const reserveLocs = row.__reserve_locations || [];
+      const pickfaceOnHand = row.on_hand || 0;
+      const capMax = setup.max;
+
+      // ── REDISTRIBUTE: Pickface OVER capacity + reserve bins that are under ──
+      if (pickfaceOnHand > capMax && palletQty > 0 && reserveLocs.length > 0) {
+        const excess = pickfaceOnHand - capMax;
+        // Find bins that are under pallet capacity
+        const underBins = reserveLocs
+          .filter(l => l.qty > 0 && l.qty < palletQty)
+          .map(l => ({ location: l.location, qty: l.qty, missing: palletQty - l.qty }))
+          .sort((a, b) => a.missing - b.missing);
+
+        if (underBins.length > 0) {
+          let remaining = excess;
+          const completable = [];
+          for (const bin of underBins) {
+            if (remaining >= bin.missing) {
+              completable.push(bin);
+              remaining -= bin.missing;
+            }
+          }
+          if (completable.length > 0) {
+            const totalToMove = completable.reduce((s, b) => s + b.missing, 0);
+            redistributeInsights.push({
+              sku: stockSku,
+              display5dc: row.__5dc || '',
+              product: row.__full_description || row.product,
+              pickfaceExcess: excess,
+              palletQty,
+              completableBins: completable,
+              remainingExcess: remaining,
+              incompleteBins: underBins.length - completable.length,
+              totalToMove,
+            });
+          }
+        }
+      }
+
+      // ── CONSOLIDATE: 2+ partial reserve bins → can merge into ~1 pallet ──
+      if (palletQty > 0 && reserveLocs.length >= 2) {
+        const partials = reserveLocs
+          .filter(l => l.qty > 0 && l.qty < palletQty)
+          .map(l => ({ location: l.location, qty: l.qty }))
+          .sort((a, b) => b.qty - a.qty);
+
+        if (partials.length >= 2) {
+          const consolidations = [];
+          const used = new Set();
+
+          for (let i = 0; i < partials.length && consolidations.length < 3; i++) {
+            if (used.has(i)) continue;
+            const group = [partials[i]];
+            let total = partials[i].qty;
+            used.add(i);
+
+            for (let j = i + 1; j < partials.length; j++) {
+              if (used.has(j)) continue;
+              if (total + partials[j].qty <= palletQty * 1.1) {
+                group.push(partials[j]);
+                total += partials[j].qty;
+                used.add(j);
+                if (total >= palletQty * 0.95) break;
+              }
+            }
+
+            if (group.length >= 2 && total >= palletQty * 0.85) {
+              consolidations.push({
+                bins: group,
+                totalQty: total,
+                palletsFormed: Math.floor(total / palletQty),
+                locationsFreed: group.length - Math.ceil(total / palletQty),
+              });
+            }
+          }
+
+          if (consolidations.length > 0) {
+            consolidateInsights.push({
+              sku: stockSku,
+              display5dc: row.__5dc || '',
+              product: row.__full_description || row.product,
+              palletQty,
+              consolidations,
+              totalLocationsCanFree: consolidations.reduce((s, c) => s + c.locationsFreed, 0),
+            });
+          }
+        }
+      }
+    }
+
+    insightState.redistribute = redistributeInsights.sort((a, b) => b.completableBins.length - a.completableBins.length);
+    insightState.consolidate  = consolidateInsights.sort((a, b) => b.totalLocationsCanFree - a.totalLocationsCanFree);
+    insightState.page = 1;
+
+    // Update tab counts
+    const countR = document.getElementById('insightCountRedistribute');
+    const countC = document.getElementById('insightCountConsolidate');
+    if (countR) countR.textContent = redistributeInsights.length;
+    if (countC) countC.textContent = consolidateInsights.length;
+
+    console.log(`💡 Insights: ${redistributeInsights.length} redistribute, ${consolidateInsights.length} consolidate`);
+  }
+
+  /* ── View switching: Restock table ↔ Redistribute ↔ Consolidate ── */
+  window.switchRestockView = function (view) {
+    const restockView = document.getElementById('restockView');
+    const insightsView = document.getElementById('insightsView');
+    const searchGroup = document.getElementById('restockSearchGroup');
+    const syncCard = document.getElementById('syncStatusCard');
+
+    // Update tab active states
+    document.querySelectorAll('.rv2-nav-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    });
+
+    if (view === 'restock') {
+      // Show table, hide insights
+      if (restockView) restockView.style.display = '';
+      if (insightsView) insightsView.style.display = 'none';
+      if (searchGroup) searchGroup.style.display = '';
+      if (syncCard) syncCard.style.display = '';
+    } else {
+      // Show insights, hide table
+      if (restockView) restockView.style.display = 'none';
+      if (insightsView) insightsView.style.display = 'block';
+      if (searchGroup) searchGroup.style.display = 'none';
+      if (syncCard) syncCard.style.display = 'none';
+      insightState.activeTab = view;
+      insightState.page = 1;
+      renderInsightsPage();
+    }
+  };
+
+  window.changeInsightsPage = function (delta) {
+    const items = insightState[insightState.activeTab] || [];
+    const totalPages = Math.max(1, Math.ceil(items.length / insightState.perPage));
+    insightState.page = Math.max(1, Math.min(totalPages, insightState.page + delta));
+    renderInsightsPage();
+  };
+
+  function renderInsightsPage() {
+    const container = document.getElementById('insightsContent');
+    if (!container) return;
+
+    const tab = insightState.activeTab;
+    const items = insightState[tab] || [];
+    const page = insightState.page;
+    const perPage = insightState.perPage;
+    const totalPages = Math.max(1, Math.ceil(items.length / perPage));
+    const start = (page - 1) * perPage;
+    const end = Math.min(start + perPage, items.length);
+    const pageItems = items.slice(start, end);
+
+    if (items.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b;font-size:13px">No issues found in this category</div>';
+      return;
+    }
+
+    let html = '';
+    if (tab === 'redistribute') {
+      html = renderRedistributeCards(pageItems);
+    } else {
+      html = renderConsolidateCards(pageItems);
+    }
+
+    // Pagination
+    if (totalPages > 1) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid #e2e8f0;margin-top:8px">
+        <span style="font-size:12px;color:#64748b">${start + 1}–${end} of ${items.length}</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button onclick="changeInsightsPage(-1)" class="pages-btn" ${page <= 1 ? 'disabled style="opacity:.4;cursor:not-allowed"' : ''}>‹</button>
+          <span style="font-size:12px;color:#475569">Page ${page}/${totalPages}</span>
+          <button onclick="changeInsightsPage(1)" class="pages-btn" ${page >= totalPages ? 'disabled style="opacity:.4;cursor:not-allowed"' : ''}>›</button>
+        </div>
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function renderRedistributeCards(items) {
+    return items.map(ins => {
+      const totalToMove = ins.totalToMove;
+      return `<div style="padding:14px;background:#fff;border:1px solid #e2e8f0;border-left:4px solid #f59e0b;border-radius:8px;margin-bottom:8px">
+        <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:6px">
+          ${ins.display5dc ? '<span style="color:#64748b;font-size:12px">' + escapeHtml(ins.display5dc) + '</span> · ' : ''}${escapeHtml(ins.sku)} <span style="font-weight:400;color:#64748b">— ${escapeHtml(ins.product)}</span>
+        </div>
+        <div style="font-size:13px;color:#475569;line-height:1.6">
+          <strong>Issue:</strong> Pickface has <strong style="color:#dc2626">+${ins.pickfaceExcess}</strong> excess units.
+          ${ins.completableBins.length + ins.incompleteBins} bins with incomplete pallets (expected ${ins.palletQty}/pallet).
+        </div>
+        <div style="font-size:13px;color:#059669;margin-top:6px;line-height:1.6">
+          <strong>Suggestion:</strong> Move <strong>${totalToMove} units</strong> from pickface to complete <strong>${ins.completableBins.length} bin${ins.completableBins.length > 1 ? 's' : ''}</strong>:
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+          ${ins.completableBins.map(b => `<span style="display:inline-block;padding:3px 8px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:4px;font-size:12px;font-weight:600">${escapeHtml(b.location)} (+${b.missing})</span>`).join('')}
+        </div>
+        ${ins.remainingExcess > 0 ? `<div style="font-size:12px;color:#6b7280;margin-top:8px">After: <strong>${ins.remainingExcess}</strong> units still excess.${ins.incompleteBins > 0 ? ` ${ins.incompleteBins} bins still incomplete.` : ''}${ins.palletQty > 0 && ins.remainingExcess >= ins.palletQty ? ` <span style="color:#dc2626">≈ ${Math.round(ins.remainingExcess / ins.palletQty)} pallet(s) — verify physical stock.</span>` : ''}</div>` : `<div style="font-size:12px;color:#059669;margin-top:8px">✓ Fully resolves pickface overflow.</div>`}
+      </div>`;
+    }).join('');
+  }
+
+  function renderConsolidateCards(items) {
+    return items.map(ins => {
+      return `<div style="padding:14px;background:#fff;border:1px solid #e2e8f0;border-left:4px solid #0ea5e9;border-radius:8px;margin-bottom:8px">
+        <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:6px">
+          ${ins.display5dc ? '<span style="color:#64748b;font-size:12px">' + escapeHtml(ins.display5dc) + '</span> · ' : ''}${escapeHtml(ins.sku)} <span style="font-weight:400;color:#64748b">— ${escapeHtml(ins.product)}</span>
+        </div>
+        <div style="font-size:13px;color:#475569;line-height:1.6">
+          <strong>Opportunity:</strong> Multiple partial bins can be consolidated.
+          Pallet capacity: <strong>${ins.palletQty}</strong> units.
+        </div>
+        ${ins.consolidations.map((c, idx) => `
+          <div style="margin-top:8px;padding:10px;background:#f0f9ff;border-radius:6px">
+            <div style="font-size:12px;color:#0369a1;font-weight:600;margin-bottom:4px">
+              Merge ${c.bins.length} bins → ${c.palletsFormed} full pallet${c.palletsFormed > 1 ? 's' : ''}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+              ${c.bins.map((b, i) => `<span style="display:inline-block;padding:3px 8px;background:#e0f2fe;color:#0c4a6e;border:1px solid #bae6fd;border-radius:4px;font-size:12px">${escapeHtml(b.location)}: ${b.qty}</span>${i < c.bins.length - 1 ? '<span style="color:#94a3b8">+</span>' : ''}`).join('')}
+              <span style="color:#0369a1;font-weight:600;font-size:12px;margin-left:4px">= ${c.totalQty}</span>
+            </div>
+            ${c.locationsFreed > 0 ? `<div style="font-size:11px;color:#059669;margin-top:4px">Frees ${c.locationsFreed} location${c.locationsFreed > 1 ? 's' : ''}</div>` : ''}
+          </div>
+        `).join('')}
+        <div style="font-size:12px;color:#0369a1;font-weight:600;margin-top:10px">
+          Total: free ${ins.totalLocationsCanFree} location${ins.totalLocationsCanFree > 1 ? 's' : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
 
   console.log('✅ Re-Stock V2 loaded — data source: cin7_mirror');
 })();

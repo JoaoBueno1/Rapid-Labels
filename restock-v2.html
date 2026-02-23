@@ -20,17 +20,26 @@
         <a href="index.html" class="nav-link">Home</a>
         <a href="restock.html" class="nav-link">Re-Stock V1</a>
         <a href="restock-v2.html" class="nav-link">Re-Stock V2</a>
-        <a href="stock-anomalies.html" class="nav-link">Anomalies</a>
+        <a href="features/pick-anomalies/pick-anomalies.html" class="nav-link">Pick Anomalies</a>
       </nav>
     </div>
   </header>
   <div class="main-container wide-container">
     <div class="page-header">
-      <div style="display: flex; align-items: center; gap: 20px;">
-        <h1 style="margin: 0;">Re-Stock <span style="font-size:14px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:2px 10px;border-radius:999px;vertical-align:middle">V2</span></h1>
+      <div style="display: flex; align-items: center; gap: 0;">
+        <!-- 3-view nav tabs -->
+        <button class="rv2-nav-tab active" data-view="restock" onclick="switchRestockView('restock')">
+          Re-Stock <span style="font-size:11px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:1px 8px;border-radius:999px;vertical-align:middle;margin-left:4px">V2</span>
+        </button>
+        <button class="rv2-nav-tab" data-view="redistribute" onclick="switchRestockView('redistribute')">
+          📊 Redistribute <span id="insightCountRedistribute" class="rv2-nav-badge" style="background:#f59e0b">0</span>
+        </button>
+        <button class="rv2-nav-tab" data-view="consolidate" onclick="switchRestockView('consolidate')">
+          🔧 Consolidate <span id="insightCountConsolidate" class="rv2-nav-badge" style="background:#0ea5e9">0</span>
+        </button>
       </div>
       <div class="header-actions">
-        <div class="search-input-group">
+        <div class="search-input-group" id="restockSearchGroup">
           <input type="text" id="restockSearch" placeholder="Search SKU, Product, Pickface or scan" style="min-width: 420px" />
           <button class="search-btn-small" onclick="runRestockSearch()">Search</button>
         </div>
@@ -44,10 +53,12 @@
         <span id="syncStatusText" style="font-size:13px;color:#475569;font-weight:500">Checking sync status…</span>
       </div>
       <div style="flex:1"></div>
-      <span id="syncStatusTime" style="font-size:12px;color:#94a3b8"></span>
+      <span id="syncStatusTime" style="font-size:13px;color:#64748b;font-weight:500"></span>
     </div>
 
-    <div style="margin-top:8px">
+    <!-- Restock View (table + filters) -->
+    <div id="restockView" style="margin-top:8px">
+    <div style="margin-top:0">
       <div id="restockFilters" style="display:flex;flex-direction:column;gap:8px">
         <!-- Row 1: Status chips + Print buttons -->
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -173,18 +184,28 @@
             <th>Status</th>
             <th>Reserve</th>
             <th>Restock</th>
+            <th style="white-space:nowrap">Qty/CTN</th>
+            <th style="white-space:nowrap">Qty/Pallet</th>
             <th class="print-only">Nearest Reserve</th>
             <th class="print-only" style="width: 80px; max-width: 80px;">Notes</th>
             <th style="width:120px" class="no-print">Actions</th>
           </tr>
         </thead>
-        <tbody id="restockTbody"><tr><td colspan="14" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
+        <tbody id="restockTbody"><tr><td colspan="16" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
       </table>
     </div>
     <div id="restockPagination" class="pager" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
       <button id="restockPrevPage" class="pages-btn" type="button" aria-label="Previous page" onclick="restockPrevPage()">‹</button>
       <span id="restockPageInfo" class="small-note">Page 1 / 1</span>
       <button id="restockNextPage" class="pages-btn" type="button" aria-label="Next page" onclick="restockNextPage()">›</button>
+    </div>
+    </div><!-- /restockView -->
+
+    <!-- Insights View (replaces table when Redistribute or Consolidate active) -->
+    <div id="insightsView" style="display:none;margin-top:8px">
+      <div style="padding:16px 0">
+        <div id="insightsContent"></div>
+      </div>
     </div>
   </div>
   <footer class="site-footer">
@@ -379,6 +400,15 @@
   .col-hidden-8 #restockTable th:nth-child(9), .col-hidden-8 #restockTable td:nth-child(9) { display:none !important }
   .col-hidden-9 #restockTable th:nth-child(10), .col-hidden-9 #restockTable td:nth-child(10) { display:none !important }
   .col-hidden-10 #restockTable th:nth-child(11), .col-hidden-10 #restockTable td:nth-child(11) { display:none !important }
+  .col-hidden-11 #restockTable th:nth-child(12), .col-hidden-11 #restockTable td:nth-child(12) { display:none !important }
+  .col-hidden-12 #restockTable th:nth-child(13), .col-hidden-12 #restockTable td:nth-child(13) { display:none !important }
+  /* Nav tabs (Re-Stock V2 / Redistribute / Consolidate) */
+  .rv2-nav-tab{ padding:10px 20px; font-size:14px; font-weight:600; color:#64748b; background:none; border:none; border-bottom:3px solid transparent; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; gap:6px }
+  .rv2-nav-tab:hover{ color:#334155; background:#f8fafc }
+  .rv2-nav-tab.active{ color:#6366f1; border-bottom-color:#6366f1 }
+  .rv2-nav-tab.active[data-view="redistribute"]{ color:#b45309; border-bottom-color:#f59e0b }
+  .rv2-nav-tab.active[data-view="consolidate"]{ color:#0369a1; border-bottom-color:#0ea5e9 }
+  .rv2-nav-badge{ display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:99px; font-size:10px; font-weight:700; color:#fff }
       `;
       const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
     })();
@@ -608,6 +638,8 @@
           <span style="color:#94a3b8;font-weight:600">Product</span> <span id="editInfoProduct" style="color:#1e293b">—</span>
           <span style="color:#94a3b8;font-weight:600">On Hand</span> <span id="editInfoOnHand" style="color:#1e293b;font-weight:600">—</span>
           <span style="color:#94a3b8;font-weight:600">Avg Sales</span> <span id="editInfoAvgMth" style="color:#1e293b">—</span>
+          <span style="color:#94a3b8;font-weight:600">Qty/CTN</span> <span id="editInfoQtyCtn" style="color:#1e293b;font-variant-numeric:tabular-nums">—</span>
+          <span style="color:#94a3b8;font-weight:600">Qty/Pallet</span> <span id="editInfoQtyPallet" style="color:#1e293b;font-variant-numeric:tabular-nums">—</span>
         </div>
       </div>
 
@@ -656,6 +688,19 @@
             </div>
           </div>
           <div class="field-group" style="margin-top:12px">
+            <label style="font-weight:600;color:#475569;font-size:13px;margin-bottom:6px;display:block">Packaging Info <span style="font-weight:normal;color:#6b7280">(optional)</span></label>
+            <div class="field-row">
+              <div class="field-group">
+                <label for="productQtyPerCtn">Qty per CTN:</label>
+                <input type="number" id="productQtyPerCtn" min="0" placeholder="Units/carton" />
+              </div>
+              <div class="field-group">
+                <label for="productQtyPerPallet">Qty per Pallet:</label>
+                <input type="number" id="productQtyPerPallet" min="0" placeholder="Units/pallet" />
+              </div>
+            </div>
+          </div>
+          <div class="field-group" style="margin-top:12px">
             <label for="productNotes">Notes: <span style="font-weight:normal;color:#6b7280">(max 40 chars - print)</span></label>
             <textarea id="productNotes" placeholder="Add notes for this product" rows="2" maxlength="40" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;resize:none" oninput="document.getElementById('notesCharCount').textContent = this.value.length"></textarea>
             <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:2px"><span id="notesCharCount">0</span>/40</div>
@@ -682,6 +727,6 @@
     </div>
   </div>
 
-  <script src="restock-v2.js?v=20260220i"></script>
+  <script src="restock-v2.js?v=20260223d"></script>
 </body>
 </html>

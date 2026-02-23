@@ -93,6 +93,14 @@ try {
   console.warn('⚠️  Could not register webhook routes:', e.message);
 }
 
+// ── Pick Anomalies routes ──
+try {
+  const { registerPickAnomalyRoutes } = require('./features/pick-anomalies/pick-anomalies-engine');
+  registerPickAnomalyRoutes(app);
+} catch (e) {
+  console.warn('⚠️  Could not register pick anomaly routes:', e.message);
+}
+
 app.listen(PORT, () => {
   console.log(`🚀 Rapid Label server running at http://localhost:${PORT}`);
 });

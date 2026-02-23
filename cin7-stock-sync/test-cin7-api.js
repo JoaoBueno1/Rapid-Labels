@@ -1,8 +1,8 @@
 const fetch = require('node-fetch');
 
 async function test() {
-  const accountId = '3bda282b-60f0-40dc-9199-21959e247cd5';
-  const apiKey = '55c70204-619a-5286-ae1d-593493533cb9';
+  const accountId = process.env.CIN7_ACCOUNT_ID || '';
+  const apiKey = process.env.CIN7_API_KEY || '';
   const headers = {
     'api-auth-accountid': accountId,
     'api-auth-applicationkey': apiKey,
