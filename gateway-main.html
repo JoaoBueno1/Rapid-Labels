@@ -31,7 +31,7 @@
       </div>
       <div class="header-actions">
         <div class="search-input-group">
-          <input type="text" id="gwSearch" placeholder="Search SKU, Product or Pickface…" style="min-width:380px" />
+          <input type="text" id="gwSearch" placeholder="Search 5DC, SKU, Product or Pickface…" style="min-width:380px" />
           <button class="search-btn-small" onclick="runGwSearch()">Search</button>
         </div>
       </div>
@@ -69,15 +69,6 @@
         <button class="chip" data-weeks-filter="NO_SALES" onclick="setWeeksFilter('NO_SALES',this)" style="background:#f1f5f9;color:#475569;border-color:#e2e8f0">
           No sales data <span id="countNoSales" class="status-count">0</span>
         </button>
-        <div style="width:1px;height:20px;background:#ddd;margin:0 8px"></div>
-        <label style="display:inline-flex;align-items:center;gap:6px">
-          <input type="checkbox" id="toggleOnlyGateway" onchange="toggleOnlyGateway(this.checked)" />
-          Only with Gateway stock
-        </label>
-        <label style="display:inline-flex;align-items:center;gap:6px">
-          <input type="checkbox" id="toggleOnlyConfigured" onchange="toggleOnlyConfigured(this.checked)" />
-          Only configured
-        </label>
         <div style="flex:1"></div>
         <button class="search-btn-small" type="button" onclick="printGw()">Print</button>
       </div>
@@ -89,18 +80,21 @@
       <table class="app-table" id="gwTable">
         <thead>
           <tr>
+            <th style="font-variant-numeric:tabular-nums;font-size:12px;color:#64748b">5DC</th>
             <th>SKU</th>
             <th>Product</th>
             <th>Pickface</th>
-            <th>Capacity</th>
             <th style="white-space:nowrap">Pickface Stk</th>
+            <th>Capacity</th>
             <th style="white-space:nowrap">Total MW</th>
-            <th style="white-space:nowrap">Gateway Stk</th>
+            <th style="white-space:nowrap">Gateway</th>
             <th style="white-space:nowrap">AVG/mth</th>
             <th style="white-space:nowrap">Weeks Avail.</th>
+            <th style="white-space:nowrap">Qty/CTN</th>
+            <th style="white-space:nowrap">Qty/Pallet</th>
           </tr>
         </thead>
-        <tbody id="gwTbody"><tr><td colspan="9" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
+        <tbody id="gwTbody"><tr><td colspan="12" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
       </table>
     </div>
 
@@ -176,8 +170,6 @@
       document.querySelectorAll('#gwFilters .chip[data-weeks-filter]').forEach(b=>b.classList.remove('active'));
       if(el){ el.classList.add('active'); fc && (val && val!=='ALL' ? fc.classList.add('has-active') : fc.classList.remove('has-active')); }
     };
-    window.toggleOnlyGateway = function(f){ if(window.gwToggleOnlyGateway) window.gwToggleOnlyGateway(f); };
-    window.toggleOnlyConfigured = function(f){ if(window.gwToggleOnlyConfigured) window.gwToggleOnlyConfigured(f); };
   </script>
 
   <script src="gateway-main.js"></script>
