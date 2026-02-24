@@ -7,7 +7,7 @@
   <link rel="icon" href="/logo/rapidled_icon_500_v2.png" type="image/png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
-  <link rel="stylesheet" href="pick-anomalies.css?v=20260223c" />
+  <link rel="stylesheet" href="pick-anomalies.css?v=20260226a" />
 </head>
 <body>
 
@@ -35,6 +35,8 @@
         <div class="pa-sync-status" id="paSyncStatus">
           <span class="pa-sync-dot" id="paSyncDot"></span>
           <span id="paSyncText">Loading...</span>
+          <span id="paSyncAge" style="font-size:11px;color:#94a3b8;margin-left:6px"></span>
+          <span id="paSyncCountdown" style="font-size:11px;color:#94a3b8;margin-left:4px" title="Auto-sync every 2h (backend scheduler). Page checks every 30min.">🛡️ Auto 2h</span>
         </div>
       </div>
 
@@ -55,9 +57,9 @@
       </div>
 
       <!-- ─── KPIs ─── -->
-      <div class="kpi-row five" id="paKpis" style="display:none">
+      <div class="kpi-row six" id="paKpis" style="display:none">
         <div class="kpi" id="kpi-orders">
-          <div class="label">Orders in History</div>
+          <div class="label">Orders</div>
           <div class="value" id="kpiOrders">0</div>
         </div>
         <div class="kpi" id="kpi-picks">
@@ -65,16 +67,23 @@
           <div class="value" id="kpiPicks">0</div>
         </div>
         <div class="kpi" id="kpi-correct">
-          <div class="label">Correct Picks</div>
+          <div class="label">Correct</div>
           <div class="value" id="kpiCorrect">0</div>
         </div>
         <div class="kpi" id="kpi-anomalies">
-          <div class="label">Anomaly Picks</div>
+          <div class="label">Anomalies</div>
           <div class="value" id="kpiAnomalies">0</div>
         </div>
         <div class="kpi" id="kpi-fg">
           <div class="label">FG/Assembly</div>
           <div class="value" id="kpiFg">0</div>
+        </div>
+        <div class="kpi" id="kpi-reviewed">
+          <div class="label">Reviewed</div>
+          <div class="value" id="kpiReviewed">0%</div>
+          <div class="pa-review-bar-wrap">
+            <div class="pa-review-bar-fill" id="kpiReviewedBar" style="width:0%"></div>
+          </div>
         </div>
       </div>
 
@@ -93,6 +102,7 @@
                 <th>#</th>
                 <th>Order</th>
                 <th>Date</th>
+                <th title="Shipment date — when stock was physically shipped/fulfilled">Shipped</th>
                 <th>Customer</th>
                 <th>SO Status</th>
                 <th>Picks</th>
@@ -169,6 +179,6 @@
     </div>
   </div>
 
-  <script src="pick-anomalies.js?v=20260224a"></script>
+  <script src="pick-anomalies.js?v=20260226a"></script>
 </body>
 </html>

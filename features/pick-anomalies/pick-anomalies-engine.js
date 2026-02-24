@@ -8,11 +8,19 @@
  *   - Corrections (Stock Transfers) are tracked in pick_anomaly_corrections
  *   - No manual date picker needed — system auto-continues from last sync
  *
+ * DATE HANDLING (UpdatedSince):
+ *   - Cin7 saleList `UpdatedSince` filters by LastModifiedOn (NOT OrderDate)
+ *   - This CORRECTLY catches late-fulfilled orders (e.g. order from Feb 24 fulfilled Mar 1)
+ *   - We use dateFrom = lastSyncDate (NOT +1 day) to avoid gap on orders modified late in the day
+ *   - existingNumbers dedup prevents double-processing on re-fetches
+ *   - Rolling 45-day FLOOR_DATE on OrderDate filters out noise (old orders with credits/adjustments)
+ *   - When 50-order cap is hit, last_synced_date is NOT advanced — remaining orders fetched next sync
+ *
  * OPTIMIZATIONS:
- *   - Rate-limited: 1.2s between Cin7 calls (~50/min, well under 60/min limit)
+ *   - Rate-limited: 2.5s between Cin7 calls (~24/min, safe margin)
  *   - Supabase stock_locator fetched in batch
  *   - Cap of 50 orders per sync run
- *   - Only recent orders (last 90 days) are processed
+ *   - Only orders with OrderDate within last 90 days are processed
  */
 
 const fetch = require('node-fetch');
@@ -30,7 +38,7 @@ const CIN7 = {
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
 const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5NTc5MzQsImV4cCI6MjA2NzUzMzkzNH0.k3G4Tc6U7XdYGmU9wTkcg3R1cLRij-CN6EbjSSbd9bE';
 
-const RATE_DELAY = 1200;
+const RATE_DELAY = 2500;   // 2.5s between Cin7 calls — safe margin, matches sync-service
 const MAX_ORDERS_PER_RUN = 50;
 const MW_LOCATION_ID = '907821e3-c06b-4bf1-a8af-888bc3a2031f';
 
@@ -253,6 +261,37 @@ async function updateSyncMeta(lastDate, totalOrders) {
 }
 
 // ═══════════════════════════════════════════════════
+// ACTION LOG — Tracks every user/system action per order
+// ═══════════════════════════════════════════════════
+
+async function logAction({ order_number, action, details, user_email }) {
+  try {
+    await sbPost('pick_anomaly_logs', {
+      order_number,
+      action,
+      details: details || null,
+      user_email: user_email || 'unknown',
+      created_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    // Log table may not exist yet — don't crash, just warn
+    console.warn('⚠️ Could not write action log:', err.message);
+  }
+}
+
+async function getOrderLogs(orderNumber) {
+  try {
+    const logs = await sbGet('pick_anomaly_logs',
+      `select=*&order_number=eq.${orderNumber}&order=created_at.desc&limit=50`
+    );
+    return logs;
+  } catch (err) {
+    console.warn('⚠️ Could not fetch logs:', err.message);
+    return [];
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // HISTORY (READ FROM SUPABASE)
 // ═══════════════════════════════════════════════════
 
@@ -337,19 +376,14 @@ async function syncNewOrders() {
     const lastDate = syncMeta?.last_synced_date || '2026-02-20';
     const today = new Date().toISOString().split('T')[0];
 
-    // dateFrom = day after last sync, dateTo = today
-    const fromDate = new Date(lastDate);
-    fromDate.setDate(fromDate.getDate() + 1);
-    const dateFrom = fromDate.toISOString().split('T')[0];
+    // ── FIX: Use lastDate directly (NOT +1 day) to avoid gap ──
+    // UpdatedSince=lastDate re-fetches the same day, but existingNumbers
+    // dedup ensures we never double-process. This catches any orders
+    // modified on lastDate AFTER the previous sync ran.
+    const dateFrom = lastDate;
     const dateTo = today;
 
-    if (dateFrom > dateTo) {
-      console.log('📋 Already synced up to today, checking for updates on last day...');
-      // Re-check today for any new fulfilled orders
-      return await _analyzeAndSave(today, today, syncMeta);
-    }
-
-    console.log(`🔄 Syncing new orders: ${dateFrom} → ${dateTo} (last sync: ${lastDate})`);
+    console.log(`🔄 Syncing orders: ${dateFrom} → ${dateTo} (last sync: ${syncMeta?.last_synced_at || 'never'})`);
     return await _analyzeAndSave(dateFrom, dateTo, syncMeta);
   } catch (err) {
     console.error('❌ Sync error:', err);
@@ -367,7 +401,14 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   const orders = [];
   let page = 1;
 
-  const FLOOR_DATE = '2026-02-20';
+  // ── FLOOR_DATE: Rolling 45-day lookback ──
+  // Orders with OrderDate older than 45 days are noise (credits, adjustments,
+  // late payments that trigger LastModifiedOn changes in Cin7).
+  // 45 days covers any reasonable pick-to-invoice delay while filtering out
+  // old orders resurfacing due to credit notes or payment updates.
+  const floorDate = new Date();
+  floorDate.setDate(floorDate.getDate() - 45);
+  const FLOOR_DATE = floorDate.toISOString().split('T')[0];
   const VALID_FULFILMENT = ['PACKED', 'DISPATCHED', 'FULFILLED', 'SHIPPED'];
   const VALID_ORDER_STATUS = ['INVOICED', 'COMPLETED'];
 
@@ -409,9 +450,11 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   const newOrders = orders.filter(o => !existingNumbers.has(o.OrderNumber));
   console.log(`📋 ${newOrders.length} new orders to process (${existingNumbers.size} already in history)`);
 
+  let wasCapped = false;
   if (newOrders.length > MAX_ORDERS_PER_RUN) {
-    console.log(`⚠️ Capping at ${MAX_ORDERS_PER_RUN} orders`);
+    console.log(`⚠️ Capping at ${MAX_ORDERS_PER_RUN} orders (${newOrders.length - MAX_ORDERS_PER_RUN} remaining for next sync)`);
     newOrders.length = MAX_ORDERS_PER_RUN;
+    wasCapped = true;
   }
 
   // ── Step 2: Analyze each new order ──
@@ -564,10 +607,35 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     const correctCount = filteredPicks.filter(p => p.status === 'correct').length;
     const anomalyCount = filteredPicks.filter(p => p.status === 'anomaly').length;
 
+    // fulfilled_date = ShipmentDate from Ship.Lines[0] (actual fulfilment date)
+    // invoice_date = InvoiceDate from Invoices[0]
+    // These are the REAL dates, not LastModifiedOn
+    let fulfilledDate = null;
+    let invoiceDate = null;
+    let shipmentDate = null;
+
+    // Extract shipment date (when physically fulfilled/shipped)
+    for (const ful of (saleDetail.Fulfilments || saleDetail.Fulfillments || [])) {
+      if (ful.Ship && ful.Ship.Lines && ful.Ship.Lines[0] && ful.Ship.Lines[0].ShipmentDate) {
+        shipmentDate = ful.Ship.Lines[0].ShipmentDate;
+        break;
+      }
+    }
+
+    // Extract invoice date
+    if (saleDetail.Invoices && saleDetail.Invoices[0] && saleDetail.Invoices[0].InvoiceDate) {
+      invoiceDate = saleDetail.Invoices[0].InvoiceDate;
+    }
+
+    // fulfilled_date = shipment date (when goods left the warehouse)
+    fulfilledDate = shipmentDate || invoiceDate || null;
+
     const orderResult = {
       sale_id: order.SaleID,
       order_number: order.OrderNumber,
       order_date: order.OrderDate ? order.OrderDate.split('T')[0] : null,
+      fulfilled_date: fulfilledDate ? fulfilledDate.split('T')[0] : null,
+      invoice_date: invoiceDate ? invoiceDate.split('T')[0] : null,
       customer: order.Customer,
       order_status: rawOrderStatus,
       total_picks: filteredPicks.length,
@@ -584,6 +652,13 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     // Save to Supabase immediately (upsert)
     try {
       await sbPost('pick_anomaly_orders', orderResult);
+      // Log the sync action
+      await logAction({
+        order_number: order.OrderNumber,
+        action: 'synced',
+        details: `Analyzed: ${correctCount} correct, ${anomalyCount} anomalies, ${fgOrders.length} FG`,
+        user_email: 'system@auto-sync',
+      });
     } catch (err) {
       console.warn(`⚠️ Failed to save ${order.OrderNumber} to Supabase:`, err.message);
     }
@@ -591,21 +666,29 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     console.log(`  [${i + 1}/${newOrders.length}] ${order.OrderNumber}: ${correctCount}✅ ${anomalyCount}⚠️ ${fgOrders.length}🔧`);
   }
 
-  // Update sync metadata
+  // ── FIX: Only advance last_synced_date when ALL orders were processed ──
+  // If capped at 50, keep the same dateFrom so next sync re-fetches remaining orders.
+  // The existingNumbers dedup prevents double-processing of already-saved orders.
   const totalInDb = (syncMeta?.total_orders || 0) + results.length;
-  await updateSyncMeta(dateTo, totalInDb);
+  const syncDate = wasCapped ? dateFrom : dateTo;
+  await updateSyncMeta(syncDate, totalInDb);
 
   const lastSyncedAt = new Date().toISOString();
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1) + 's';
-  console.log(`✅ Sync complete: ${results.length} new orders saved, ${apiCallCount} API calls, ${elapsed}`);
+  if (wasCapped) {
+    console.log(`✅ Sync complete (CAPPED): ${results.length} new orders saved, more remaining. Date NOT advanced (stays ${syncDate}). ${apiCallCount} API calls, ${elapsed}`);
+  } else {
+    console.log(`✅ Sync complete: ${results.length} new orders saved, synced to ${syncDate}. ${apiCallCount} API calls, ${elapsed}`);
+  }
 
   return {
     success: true,
     newOrders: results.length,
     skippedExisting: existingNumbers.size,
+    wasCapped,
     apiCalls: apiCallCount,
     elapsed,
-    syncedUpTo: dateTo,
+    syncedUpTo: syncDate,
     lastSyncedAt,
     totalOrders: totalInDb,
   };
@@ -626,19 +709,21 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0]; // 2026-02-23
 
+  // Format date as human-readable (24 Feb 2026)
+  const readableDate = now.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+
   // Build audit comment for the line (visible inside Cin7 transfer)
   const lineComment = [
-    `Pick Anomaly Correction — Created by API`,
+    `Pick Anomaly Correction`,
     `Order: ${orderNumber || 'N/A'}`,
-    `SKU: ${sku} × ${qty}`,
-    `Wrong Bin (picked from): ${expectedBin}`,
-    `Correct Bin (destination): ${pickedBin}`,
-    `Correction Date: ${todayStr}`,
-    `Pick ID: ${pickId || 'N/A'}`,
-  ].join(' | ');
+    `SKU: ${sku}  |  Qty: ${qty}`,
+    `From: ${expectedBin}  →  To: ${pickedBin}`,
+    `Date: ${readableDate}`,
+  ].join('\n');
 
   // Reference field (header level, searchable in Cin7)
-  const reference = `PA-${orderNumber || 'UNKNOWN'}-${todayStr}`;
+  // Format: PA | SO-12345 | 24 Feb 2026
+  const reference = `PA | ${orderNumber || 'UNKNOWN'} | ${readableDate}`;
 
   // Step 1: Create transfer as DRAFT with Reference + Line Comments
   await delay(RATE_DELAY);
@@ -706,6 +791,14 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
     }
   }
 
+  // Log the correction action
+  await logAction({
+    order_number: orderNumber,
+    action: 'correction_created',
+    details: `Transfer ${transferRef || transferId || 'N/A'} (${transferStatus}): ${sku} ×${qty} FROM ${expectedBin} → TO ${pickedBin}`,
+    user_email: 'operator',  // Will be overridden by route if user info available
+  });
+
   console.log(`📦 Created ${transferStatus} transfer: ${sku} ×${qty} FROM ${expectedBin} → TO ${pickedBin} | Ref: ${reference}`);
   return { ...result, transferId, transferRef, transferStatus, reference, comment: lineComment };
 }
@@ -713,11 +806,17 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
 /**
  * Mark an order as reviewed (all picks verified by operator)
  */
-async function markOrderReviewed(orderNumber) {
+async function markOrderReviewed(orderNumber, userEmail) {
   try {
     await sbPatch('pick_anomaly_orders', `order_number=eq.${orderNumber}`, {
       reviewed: true,
       reviewed_at: new Date().toISOString(),
+    });
+    await logAction({
+      order_number: orderNumber,
+      action: 'reviewed',
+      details: 'Order marked as reviewed',
+      user_email: userEmail || 'operator',
     });
     console.log(`✅ Order ${orderNumber} marked as reviewed`);
     return { success: true };
@@ -884,15 +983,100 @@ function registerPickAnomalyRoutes(app) {
    */
   app.post('/api/pick-anomalies/review', async (req, res) => {
     try {
-      const { orderNumber } = req.body;
+      const { orderNumber, userEmail } = req.body;
       if (!orderNumber) return res.status(400).json({ success: false, error: 'orderNumber required' });
-      await markOrderReviewed(orderNumber);
+      await markOrderReviewed(orderNumber, userEmail);
       res.json({ success: true, orderNumber });
     } catch (err) {
       console.error('❌ Review error:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
+
+  /**
+   * POST /api/pick-anomalies/refresh-dates
+   * One-time bulk refresh: update fulfilled_date for all orders missing it.
+   * Fetches sale detail from Cin7 for each order, extracts ShipmentDate.
+   */
+  app.post('/api/pick-anomalies/refresh-dates', async (req, res) => {
+    try {
+      // Fetch orders missing fulfilled_date OR invoice_date
+      const orders = await sbGet('pick_anomaly_orders',
+        'select=order_number,sale_id,fulfilled_date,invoice_date&or=(fulfilled_date.is.null,invoice_date.is.null)&limit=200'
+      );
+      if (!orders.length) {
+        return res.json({ success: true, updated: 0, message: 'All orders already have dates' });
+      }
+
+      console.log(`🔄 Refreshing dates for ${orders.length} orders...`);
+      let updated = 0;
+      let errors = 0;
+
+      for (const order of orders) {
+        try {
+          await delay(RATE_DELAY);
+          const detail = await cin7Get(`sale?ID=${order.sale_id}`);
+
+          let shipDate = null;
+          let invDate = null;
+
+          // Extract ShipmentDate
+          for (const ful of (detail.Fulfilments || detail.Fulfillments || [])) {
+            if (ful.Ship && ful.Ship.Lines && ful.Ship.Lines[0] && ful.Ship.Lines[0].ShipmentDate) {
+              shipDate = ful.Ship.Lines[0].ShipmentDate;
+              break;
+            }
+          }
+
+          // Extract InvoiceDate
+          if (detail.Invoices && detail.Invoices[0] && detail.Invoices[0].InvoiceDate) {
+            invDate = detail.Invoices[0].InvoiceDate;
+          }
+
+          const patch = {};
+          if (!order.fulfilled_date && (shipDate || invDate)) {
+            patch.fulfilled_date = (shipDate || invDate).split('T')[0];
+          }
+          if (!order.invoice_date && invDate) {
+            patch.invoice_date = invDate.split('T')[0];
+          }
+
+          if (Object.keys(patch).length) {
+            await sbPatch('pick_anomaly_orders', `order_number=eq.${order.order_number}`, patch);
+            updated++;
+            console.log(`  ✅ ${order.order_number}: ${JSON.stringify(patch)}`);
+          } else {
+            console.log(`  ⚠️ ${order.order_number}: no dates found in Cin7`);
+          }
+        } catch (err) {
+          errors++;
+          console.warn(`  ❌ ${order.order_number}: ${err.message}`);
+        }
+      }
+
+      console.log(`🔄 Refresh complete: ${updated} updated, ${errors} errors`);
+      res.json({ success: true, updated, errors, total: orders.length });
+    } catch (err) {
+      console.error('❌ Refresh dates error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
+   * GET /api/pick-anomalies/logs?orderNumber=SO-XXXXX
+   * Fetch action logs for a specific order
+   */
+  app.get('/api/pick-anomalies/logs', async (req, res) => {
+    try {
+      const { orderNumber } = req.query;
+      if (!orderNumber) return res.status(400).json({ success: false, error: 'orderNumber required' });
+      const logs = await getOrderLogs(orderNumber);
+      res.json({ success: true, logs });
+    } catch (err) {
+      console.error('❌ Logs fetch error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
 }
 
-module.exports = { registerPickAnomalyRoutes, syncNewOrders, loadHistory, createCorrectionTransfer, markOrderReviewed };
+module.exports = { registerPickAnomalyRoutes, syncNewOrders, loadHistory, createCorrectionTransfer, markOrderReviewed, getOrderLogs, logAction };

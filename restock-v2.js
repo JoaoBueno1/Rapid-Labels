@@ -240,7 +240,8 @@
         // Mismatch badge: cin7 stock_locator ≠ setup pickface → yellow ⚠
         let pickfaceHtml = pickface;
         if (r.__pickface_mismatch && r.__cin7_stock_locator) {
-          pickfaceHtml += ` <span title="Cin7 Stock Locator: ${escapeHtml(r.__cin7_stock_locator)}" style="cursor:help;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:0 4px;font-size:11px;font-weight:700">!</span>`;
+          const mismatchTip = `<div>Cin7 Stock Locator: ${escapeHtml(r.__cin7_stock_locator)}</div>`;
+          pickfaceHtml = `<span class="tip-cell" onclick="toggleTip(this)">${pickface} <span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:0 4px;font-size:11px;font-weight:700">!</span><div class="tip-pop">${mismatchTip}</div></span>`;
         }
         const onHand = r.on_hand ?? '';
         const capacity = r.pickface_space ?? '';
@@ -253,15 +254,15 @@
         if (capacity === '' || capacity == null) {
           capacityHtml = '<span style="opacity:.35">—</span>';
         } else if (capWeeks != null && avgM != null) {
-          const lines = [
-            `Capacity ${capacity} ≈ ${capWeeks} weeks at ${Math.round(avgM)}/mth avg`,
-            `Current stock (${r.on_hand}) ≈ ${runWeeks != null ? runWeeks : 0} weeks`,
-            capWeeks < 3 ? '⚠ Capacity too small — consider larger pickface' : capWeeks < 4 ? '⚡ Borderline — pickface may need review' : '✓ Healthy capacity',
-          ].join('\n');
-          // Border color: red < 3wk, amber 3-4wk, none ≥ 4wk
+          const tipLines = [
+            `Capacity ${capacity} ≈ ${capWeeks} wk at ${Math.round(avgM)}/mth`,
+            `Stock (${r.on_hand}) ≈ ${runWeeks != null ? runWeeks : 0} wk`,
+            capWeeks < 3 ? '⚠ Too small — consider larger pickface' : capWeeks < 4 ? '⚡ Borderline — review needed' : '✓ Healthy capacity',
+          ];
           const borderColor = capWeeks < 3 ? '#ef4444' : capWeeks < 4 ? '#f59e0b' : '';
           const borderStyle = borderColor ? `border-left:3px solid ${borderColor};padding-left:6px;` : '';
-          capacityHtml = `<span title="${escapeHtml(lines)}" style="cursor:help;${borderStyle}font-variant-numeric:tabular-nums">${escapeHtml(String(capacity))}</span>`;
+          const tipHtml = tipLines.map(l => `<div>${escapeHtml(l)}</div>`).join('');
+          capacityHtml = `<span class="tip-cell" onclick="toggleTip(this)" style="${borderStyle}font-variant-numeric:tabular-nums">${escapeHtml(String(capacity))}<div class="tip-pop">${tipHtml}</div></span>`;
         } else {
           capacityHtml = `<span style="font-variant-numeric:tabular-nums">${escapeHtml(String(capacity))}</span>`;
         }
@@ -498,6 +499,57 @@
   /* ═══════════════════════════════════════════════
      SYNC STATUS CARD
      ═══════════════════════════════════════════════ */
+  let _lastSyncEndedAt = null;
+
+  function _refreshSyncCountdown() {
+    const el = document.getElementById('syncCountdown');
+    if (!el) return;
+    const now = new Date();
+    // Stock cron: minute 00 of every even hour (0:00, 2:00, 4:00, ...)
+    let nextSync = new Date(now);
+    nextSync.setSeconds(0, 0);
+    nextSync.setMinutes(0);
+    // Move to next hour if past :00
+    if (now.getMinutes() > 0 || now.getSeconds() > 0) {
+      nextSync.setHours(nextSync.getHours() + 1);
+    }
+    // Align to even hour
+    while (nextSync.getHours() % 2 !== 0) {
+      nextSync.setHours(nextSync.getHours() + 1);
+    }
+    if (nextSync <= now) nextSync.setHours(nextSync.getHours() + 2);
+
+    const diffMs = nextSync - now;
+    const diffMin = Math.floor(diffMs / 60000);
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    el.textContent = `🛡️ Next sync in ${countdown}`;
+    el.title = `Next stock sync at ${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}. Auto-sync every 2h at :00.`;
+  }
+
+  function _refreshSyncAge() {
+    const ageEl = document.getElementById('syncStatusAge');
+    if (!ageEl || !_lastSyncEndedAt) return;
+    const agoMs = Date.now() - new Date(_lastSyncEndedAt).getTime();
+    const agoMin = Math.floor(agoMs / 60000);
+    let agoStr;
+    if (agoMin < 1) agoStr = 'just now';
+    else if (agoMin < 60) agoStr = `${agoMin}m ago`;
+    else {
+      const agoH = Math.floor(agoMin / 60);
+      const remM = agoMin % 60;
+      agoStr = remM > 0 ? `${agoH}h ${remM}m ago` : `${agoH}h ago`;
+    }
+    ageEl.textContent = agoStr;
+    ageEl.style.color = agoMin > 180 ? '#ef4444' : agoMin > 130 ? '#f59e0b' : '#94a3b8';
+    ageEl.style.fontWeight = agoMin > 130 ? '600' : '400';
+  }
+
+  // Auto-refresh countdown + age every 60s
+  setInterval(() => { _refreshSyncAge(); _refreshSyncCountdown(); }, 60000);
+  _refreshSyncCountdown();
+
   async function updateSyncStatusCard() {
     const dot  = document.getElementById('syncStatusDot');
     const text = document.getElementById('syncStatusText');
@@ -509,15 +561,15 @@
       const { data, error } = await window.supabase
         .schema('cin7_mirror')
         .from('sync_runs')
-        .select('run_id, started_at, ended_at, status, sync_type, metrics, timing')
+        .select('run_id, started_at, ended_at, status, sync_type, products_synced, stock_rows_synced, duration_ms')
         .order('ended_at', { ascending: false })
         .limit(1);
 
       if (error) {
-        // Schema may not be exposed yet
-        dot.style.background = '#f59e0b';
-        text.textContent = 'cin7_mirror schema not accessible — expose it in Supabase API settings';
-        text.style.color = '#92400e';
+        // Schema may not be exposed yet — show subtle info instead of alarming warning
+        dot.style.background = '#94a3b8';
+        text.textContent = 'Sync status unavailable — cin7_mirror schema needs to be exposed in Supabase API settings';
+        text.style.color = '#64748b';
         state.mirrorAvailable = false;
         return;
       }
@@ -539,20 +591,17 @@
 
       dot.style.background = isSuccess ? '#22c55e' : isRunning ? '#3b82f6' : '#ef4444';
 
-      // Count metrics
-      const metrics = run.metrics || {};
-      const prodCount = metrics.products_synced || 0;
-      const stockCount = metrics.stock_synced || 0;
-      const duration = run.timing?.duration_ms ? `${(run.timing.duration_ms / 1000).toFixed(1)}s` : '';
+      // Count metrics (columns are flat, not nested)
+      const prodCount = run.products_synced || 0;
+      const stockCount = run.stock_rows_synced || 0;
+      const duration = run.duration_ms ? `${(run.duration_ms / 1000).toFixed(1)}s` : '';
 
       // Format time for prominent display
       const pad = n => String(n).padStart(2, '0');
       let timeStr = '';
-      if (run.ended_at) {
-        const d = new Date(run.ended_at);
-        timeStr = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      } else if (run.started_at) {
-        const d = new Date(run.started_at);
+      const ts = run.ended_at || run.started_at;
+      if (ts) {
+        const d = new Date(ts);
         timeStr = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
       }
 
@@ -563,6 +612,12 @@
       // Show time prominently
       if (timeStr) {
         time.textContent = `Stock data from: ${timeStr}`;
+      }
+
+      // Track for live age refresh
+      if (run.ended_at) {
+        _lastSyncEndedAt = run.ended_at;
+        _refreshSyncAge();
       }
     } catch (e) {
       console.warn('Error fetching sync status:', e);
@@ -630,9 +685,9 @@
         console.warn('⚠️ Could not read cin7_mirror.stock_snapshot:', e.message);
         if (state.mirrorAvailable === null) state.mirrorAvailable = false;
         // Show helpful message
-        setTbody(`<tr><td colspan="16" style="text-align:center;color:#b45309;padding:30px">
-          <div style="font-size:16px;font-weight:600;margin-bottom:8px">⚠️ cin7_mirror schema not accessible</div>
-          <div style="font-size:13px;color:#64748b">To enable V2, expose the <code>cin7_mirror</code> schema in Supabase Dashboard → Settings → API → Exposed schemas,<br>then run the first sync with <code>node cin7-stock-sync/sync-service.js</code></div>
+        setTbody(`<tr><td colspan="16" style="text-align:center;color:#64748b;padding:30px">
+          <div style="font-size:16px;font-weight:600;margin-bottom:8px">Setup Required</div>
+          <div style="font-size:13px;color:#94a3b8">Expose <code>cin7_mirror</code> in Supabase Dashboard → Settings → API → Exposed schemas,<br>then run <code>node cin7-stock-sync/sync-service.js</code> to populate stock data.</div>
         </td></tr>`);
         state.loading = false;
         return;
@@ -1111,6 +1166,21 @@
   window.restockTogglePickfaceMismatch = function (flag) { state.onlyPickfaceMismatch = !!flag; rebuildView(); };
   window.restockToggleHideLocation = function (location, flag) { state.hideLocations[location] = !!flag; rebuildView(); };
   window.restockToggleReserveInfo = function (btn) { try { const wrap = btn && btn.closest('.reserve-cell'); if (wrap) wrap.classList.toggle('show'); } catch {} };
+
+  /* Toggle custom tooltip popover (Pickface / Capacity) */
+  window.toggleTip = function (el) {
+    const wrap = el.classList.contains('tip-cell') ? el : el.closest('.tip-cell');
+    if (!wrap) return;
+    const isOpen = wrap.classList.contains('show');
+    // Close all open tooltips first
+    document.querySelectorAll('.tip-cell.show').forEach(e => e.classList.remove('show'));
+    if (!isOpen) {
+      wrap.classList.add('show');
+      setTimeout(() => wrap.classList.remove('show'), 4000);
+      const close = (ev) => { if (!wrap.contains(ev.target)) { wrap.classList.remove('show'); document.removeEventListener('click', close); } };
+      setTimeout(() => document.addEventListener('click', close), 10);
+    }
+  };
 
   /* ═══════════════════════════════════════════════
      FAVORITES toggle
@@ -1613,18 +1683,19 @@
       btn.classList.toggle('active', btn.dataset.view === view);
     });
 
+    // Sync banner always visible on all tabs
+    if (syncCard) syncCard.style.display = '';
+
     if (view === 'restock') {
       // Show table, hide insights
       if (restockView) restockView.style.display = '';
       if (insightsView) insightsView.style.display = 'none';
       if (searchGroup) searchGroup.style.display = '';
-      if (syncCard) syncCard.style.display = '';
     } else {
       // Show insights, hide table
       if (restockView) restockView.style.display = 'none';
       if (insightsView) insightsView.style.display = 'block';
       if (searchGroup) searchGroup.style.display = 'none';
-      if (syncCard) syncCard.style.display = 'none';
       insightState.activeTab = view;
       insightState.page = 1;
       renderInsightsPage();

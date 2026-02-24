@@ -1207,11 +1207,108 @@ body {
 }
 
 /* Home-specific card size */
-.home-container { max-width: 560px !important; }
+.home-container { max-width: 920px !important; }
 
-h1 { font-size: 2rem; color: var(--text); margin-bottom: 18px; font-weight: 800; text-shadow: none; }
+h1 { font-size: 1.7rem; color: var(--text); margin-bottom: 22px; font-weight: 800; text-shadow: none; }
+.home-subtitle { color: var(--muted); font-size: 0.85rem; font-weight: 500; margin-left: 6px; }
 .mock-indicator { display: none; }
 
+/* ===== Category Grid ===== */
+.category-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 18px !important;
+}
+
+.category-card {
+    background: #fff !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 14px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    transition: box-shadow .2s, transform .2s !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04) !important;
+}
+.category-card:hover {
+    box-shadow: 0 6px 24px rgba(0,0,0,.08) !important;
+    transform: translateY(-2px) !important;
+}
+
+.category-header {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 14px 18px !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+.category-icon { font-size: 1.25rem !important; line-height: 1 !important; }
+.category-card .category-title,
+h2.category-title {
+    font-size: 0.95rem !important;
+    font-weight: 800 !important;
+    color: var(--text) !important;
+    margin: 0 !important;
+    text-align: left !important;
+    margin-bottom: 0 !important;
+}
+
+/* Category color accents */
+.category-labels .category-header  { background: #eff6ff !important; border-bottom-color: #bfdbfe !important; }
+.category-warehouse .category-header { background: #f0fdf4 !important; border-bottom-color: #bbf7d0 !important; }
+.category-quality .category-header { background: #fffbeb !important; border-bottom-color: #fde68a !important; }
+.category-analytics .category-header { background: #faf5ff !important; border-bottom-color: #e9d5ff !important; }
+
+.category-items {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 12px !important;
+}
+
+.cat-btn {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 12px 16px !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    cursor: pointer !important;
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    color: var(--text) !important;
+    text-decoration: none !important;
+    transition: all .2s ease !important;
+    text-align: left !important;
+    width: 100% !important;
+    font-family: inherit !important;
+    box-sizing: border-box !important;
+    line-height: 1.4 !important;
+}
+.cat-btn:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 3px 10px rgba(0,0,0,.08) !important;
+    border-color: #94a3b8 !important;
+}
+.cat-btn-icon {
+    font-size: 1.1rem !important;
+    flex-shrink: 0 !important;
+    width: 28px !important;
+    height: 28px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 8px !important;
+    background: #f1f5f9 !important;
+    line-height: 1 !important;
+}
+/* Color icon backgrounds per category */
+.category-labels .cat-btn-icon { background: #dbeafe !important; }
+.category-warehouse .cat-btn-icon { background: #dcfce7 !important; }
+.category-quality .cat-btn-icon { background: #fef3c7 !important; }
+.category-analytics .cat-btn-icon { background: #f3e8ff !important; }
+
+/* Legacy support — keep .main-btn for other pages that still use it */
 .button-group { display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .main-btn {
     padding: 12px 16px;
@@ -1234,6 +1331,14 @@ h1 { font-size: 2rem; color: var(--text); margin-bottom: 18px; font-weight: 800;
 .main-btn:hover { filter: brightness(.95); transform: translateY(-1px); }
 .search-btn { background: var(--primary-600); }
 .manual-btn { background: var(--primary); }
+
+/* ===== Responsive — stack cards on mobile ===== */
+@media (max-width: 640px) {
+    .category-grid { grid-template-columns: 1fr !important; }
+    .home-container { max-width: 100% !important; }
+    .home-hero { flex-direction: column !important; text-align: center !important; gap: 10px !important; }
+    img.home-logo { height: 40px !important; width: 40px !important; }
+}
 
 .modal-content { background: var(--surface); padding: 16px; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.16); max-width: 600px; width: 90%; }
 .close { color: var(--muted); }

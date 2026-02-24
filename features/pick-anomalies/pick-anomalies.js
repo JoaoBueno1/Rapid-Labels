@@ -39,7 +39,7 @@
     totalOrders: 0,
   };
 
-  const AUTO_SYNC_MS = 10 * 60 * 1000; // Auto-sync every 10 minutes
+  const AUTO_SYNC_MS = 30 * 60 * 1000; // Auto-sync every 30 minutes (backend does full sync every 2h)
 
   /* ═══════════════════════════════════════════════
      BIN PARSING & ERROR CLASSIFICATION
@@ -78,20 +78,32 @@
     const el = document.getElementById('paKpis');
     el.style.display = '';
 
-    let orders = 0, picks = 0, correct = 0, anomalies = 0, fg = 0;
+    let orders = 0, picks = 0, correct = 0, anomalies = 0, fg = 0, reviewed = 0;
     for (const o of state.orders) {
       orders++;
       picks += o.total_picks || 0;
       correct += o.correct_picks || 0;
       anomalies += o.anomaly_picks || 0;
       fg += o.fg_count || 0;
+      if (o.reviewed) reviewed++;
     }
+
+    const reviewedPct = orders > 0 ? Math.round((reviewed / orders) * 100) : 0;
 
     document.getElementById('kpiOrders').textContent = orders;
     document.getElementById('kpiPicks').textContent = picks;
     document.getElementById('kpiCorrect').textContent = correct;
     document.getElementById('kpiAnomalies').textContent = anomalies;
     document.getElementById('kpiFg').textContent = fg;
+    document.getElementById('kpiReviewed').textContent = `${reviewedPct}%`;
+
+    // Update review progress bar
+    const bar = document.getElementById('kpiReviewedBar');
+    if (bar) {
+      bar.style.width = `${reviewedPct}%`;
+      bar.className = 'pa-review-bar-fill' +
+        (reviewedPct >= 100 ? ' pa-bar-complete' : reviewedPct >= 50 ? ' pa-bar-good' : ' pa-bar-low');
+    }
   }
 
   /* ═══════════════════════════════════════════════
@@ -103,6 +115,63 @@
     dot.className = 'pa-sync-dot pa-sync-' + status; // idle | syncing | success | error
     txt.textContent = text;
   }
+
+  let _lastSyncTime = null;
+  function updateSyncAge(syncDate) {
+    _lastSyncTime = syncDate || new Date();
+    const ageEl = document.getElementById('paSyncAge');
+    if (!ageEl) return;
+    _refreshSyncAge();
+  }
+
+  function _refreshSyncAge() {
+    const ageEl = document.getElementById('paSyncAge');
+    if (!ageEl || !_lastSyncTime) return;
+    const agoMs = Date.now() - _lastSyncTime.getTime();
+    const agoMin = Math.floor(agoMs / 60000);
+    let agoStr;
+    if (agoMin < 1) agoStr = 'just now';
+    else if (agoMin < 60) agoStr = `${agoMin}m ago`;
+    else {
+      const h = Math.floor(agoMin / 60);
+      const m = agoMin % 60;
+      agoStr = m > 0 ? `${h}h ${m}m ago` : `${h}h ago`;
+    }
+    ageEl.textContent = agoStr;
+    ageEl.style.color = agoMin > 180 ? '#ef4444' : agoMin > 130 ? '#f59e0b' : '#94a3b8';
+  }
+
+  /* ─── Countdown to next backend sync ─── */
+  function _refreshCountdown() {
+    const el = document.getElementById('paSyncCountdown');
+    if (!el) return;
+    const now = new Date();
+    // Backend cron: minute 30 of every even hour (0:30, 2:30, 4:30, ...)
+    let nextSync = new Date(now);
+    nextSync.setSeconds(0, 0);
+    nextSync.setMinutes(30);
+    // If past :30, move to next hour
+    if (now.getMinutes() >= 30 || (now.getMinutes() === 30 && now.getSeconds() > 0)) {
+      nextSync.setHours(nextSync.getHours() + 1);
+    }
+    // Align to even hour (0, 2, 4, 6, ...)
+    while (nextSync.getHours() % 2 !== 0) {
+      nextSync.setHours(nextSync.getHours() + 1);
+    }
+    if (nextSync <= now) nextSync.setHours(nextSync.getHours() + 2);
+
+    const diffMs = nextSync - now;
+    const diffMin = Math.floor(diffMs / 60000);
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    el.textContent = `🛡️ Next sync in ${countdown}`;
+    el.title = `Next backend sync at ${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}. Auto-sync every 2h at :30.`;
+  }
+
+  // Refresh "time ago" + countdown every 60s
+  setInterval(() => { _refreshSyncAge(); _refreshCountdown(); }, 60000);
+  _refreshCountdown();
 
   function showProgress(text) {
     const el = document.getElementById('paProgress');
@@ -138,7 +207,7 @@
           setSyncStatus('error', '⚠️ Database tables not created yet');
           const tableBody = document.getElementById('paTableBody');
           if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px">
+            tableBody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:40px">
               <div style="font-size:16px;font-weight:600;color:#b45309;margin-bottom:8px">⚠️ Setup Required</div>
               <div style="font-size:13px;color:#64748b;margin-bottom:12px">The Pick Anomalies tables have not been created in Supabase yet.</div>
               <div style="font-size:13px;color:#64748b">Go to <b>Supabase Dashboard → SQL Editor</b> and run the migration file:</div>
@@ -174,11 +243,13 @@
   /* ═══════════════════════════════════════════════
      AUTO-SYNC — Fetch new orders in background
      ═══════════════════════════════════════════════ */
-  async function syncNewOrders() {
+  async function syncNewOrders(silent = false) {
     if (state.syncing) return;
     state.syncing = true;
-    setSyncStatus('syncing', 'Syncing new orders...');
-    showProgress('Fetching new orders from Cin7...');
+    if (!silent) {
+      setSyncStatus('syncing', 'Syncing new orders...');
+      showProgress('Fetching new orders from Cin7...');
+    }
 
     try {
       const res = await fetch('/api/pick-anomalies/sync', { method: 'POST' });
@@ -207,6 +278,9 @@
         ? `✅ Synced ${data.newOrders} new order${data.newOrders > 1 ? 's' : ''} · Last sync: ${syncTime} · ${data.elapsed}`
         : `✅ Up to date · Last sync: ${syncTime}`;
       setSyncStatus('success', msg);
+
+      // Update "time ago" badge
+      updateSyncAge(now);
 
       // Reload history to show new data
       if (data.newOrders > 0) {
@@ -243,7 +317,7 @@
     card.style.display = '';
 
     if (!state.orders.length) {
-      tbody.innerHTML = '<tr><td colspan="11" class="pa-empty">No orders found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="12" class="pa-empty">No orders found.</td></tr>';
       return;
     }
 
@@ -277,9 +351,13 @@
       if (anom === 0) {
         statusHtml = '<span class="pa-badge pa-badge-correct">✅ OK</span>';
       } else if (corrections.length >= anom) {
-        statusHtml = '<span class="pa-badge pa-badge-correct">✅ Fixed</span>';
+        const lastRef = corrections[corrections.length - 1]?.transfer_ref;
+        statusHtml = `<span class="pa-badge pa-badge-correct" title="${esc(lastRef || '')}">✅ Fixed</span>`;
+        if (lastRef) statusHtml += `<div class="pa-tr-ref">${esc(lastRef)}</div>`;
       } else if (corrections.length > 0) {
+        const lastRef = corrections[corrections.length - 1]?.transfer_ref;
         statusHtml = `<span class="pa-badge pa-badge-anomaly">⚠️ ${corrections.length}/${anom} fixed</span>`;
+        if (lastRef) statusHtml += `<div class="pa-tr-ref">${esc(lastRef)}</div>`;
       } else {
         statusHtml = `<span class="pa-badge pa-badge-anomaly">⚠️ ${anom} anomal${anom > 1 ? 'ies' : 'y'}</span>`;
       }
@@ -293,6 +371,7 @@
         <td>${offset + idx + 1}</td>
         <td><strong>${esc(o.order_number)}</strong></td>
         <td>${formatDate(o.order_date)}</td>
+        <td>${formatDate(o.fulfilled_date)}</td>
         <td>${esc(o.customer)}</td>
         <td><span class="pa-so-badge ${soClass}">${soStatus}</span></td>
         <td>${o.total_picks || 0}</td>
@@ -364,11 +443,20 @@
     const picks = order.picks || [];
     const anomalies = picks.filter(p => p.status === 'anomaly').length;
     const correct = picks.filter(p => p.status === 'correct').length;
-    const fg = (order.fg_orders || []).length;
+    const fgOrders = order.fg_orders || [];
 
-    document.getElementById('tabCountAnomalies').textContent = anomalies;
-    document.getElementById('tabCountFg').textContent = fg;
-    document.getElementById('tabCountCorrect').textContent = correct;
+    // Count FG component anomalies and correct
+    let fgAnomalyCount = 0, fgCorrectCount = 0;
+    for (const fg of fgOrders) {
+      for (const c of (fg.components || [])) {
+        if (c.status === 'anomaly') fgAnomalyCount++;
+        else if (c.status === 'correct') fgCorrectCount++;
+      }
+    }
+
+    document.getElementById('tabCountAnomalies').textContent = anomalies + fgAnomalyCount;
+    document.getElementById('tabCountFg').textContent = fgOrders.length;
+    document.getElementById('tabCountCorrect').textContent = correct + fgCorrectCount;
 
     // Review button state
     const reviewBtn = document.getElementById('paReviewBtn');
@@ -385,8 +473,13 @@
     }
 
     document.getElementById('paModalSummary').innerHTML =
-      `<strong>${picks.length}</strong> picks · <strong>${correct}</strong> correct · <strong>${anomalies}</strong> anomalies · <strong>${fg}</strong> FG orders ` +
-      `· Analyzed: ${formatDate(order.analyzed_at)}`;
+      `<div class="pa-summary-grid">
+        <div class="pa-summary-item"><span class="pa-summary-label">Picks</span><span class="pa-summary-val"><strong>${picks.length}</strong> total · <strong>${correct}</strong> ✅ · <strong>${anomalies}</strong> ⚠️ · <strong>${fgOrders.length}</strong> FG${fgAnomalyCount ? ` (<strong>${fgAnomalyCount}</strong> ⚠️)` : ''}</span></div>
+        <div class="pa-summary-item"><span class="pa-summary-label">📅 Order Date</span><span class="pa-summary-val">${formatDate(order.order_date)}</span></div>
+        <div class="pa-summary-item"><span class="pa-summary-label">🚚 Shipped</span><span class="pa-summary-val">${order.fulfilled_date ? formatDate(order.fulfilled_date) : '<span style="color:#94a3b8">—</span>'}</span></div>
+        <div class="pa-summary-item"><span class="pa-summary-label">📊 SO Status</span><span class="pa-summary-val"><span class="pa-so-badge ${order.order_status === 'FULFILLED' ? 'pa-so-fulfilled' : 'pa-so-other'}">${esc(order.order_status || '—')}</span></span></div>
+        <div class="pa-summary-item"><span class="pa-summary-label">🔍 Analyzed</span><span class="pa-summary-val">${formatDate(order.analyzed_at)}</span></div>
+      </div>`;
 
     setTabVisibility();
     renderTabContent();
@@ -439,34 +532,117 @@
 
   function renderAnomaliesTab(order) {
     const anomalies = (order.picks || []).filter(p => p.status === 'anomaly');
-    if (!anomalies.length) return '<div class="pa-empty">No anomalies found — all picks are correct! 🎉</div>';
 
-    const uncorrected = anomalies.filter(pick => {
+    // Collect FG component anomalies too
+    const fgAnomalies = [];
+    for (const fg of (order.fg_orders || [])) {
+      for (let ci = 0; ci < (fg.components || []).length; ci++) {
+        const comp = fg.components[ci];
+        if (comp.status === 'anomaly') {
+          fgAnomalies.push({ ...comp, _fgTaskId: fg.taskId, _fgIdx: ci, _fgLabel: fg.assemblyNumber || fg.taskId, _fgProduct: fg.productCode });
+        }
+      }
+    }
+
+    if (!anomalies.length && !fgAnomalies.length) return '<div class="pa-empty">No anomalies found — all picks are correct! 🎉</div>';
+
+    // Count uncorrected items (picks + FG)
+    const uncorrectedPicks = anomalies.filter(pick => {
       const pickId = pick.id || `${order.order_number}_pick_0`;
       return !getCorrection(order, pickId);
     });
+    const uncorrectedFg = fgAnomalies.filter(comp => {
+      const pickId = `fg_${comp._fgTaskId}_${comp._fgIdx}`;
+      return !getCorrection(order, pickId);
+    });
+    const totalUncorrected = uncorrectedPicks.length + uncorrectedFg.length;
 
-    return `
-      ${uncorrected.length > 0 ? `
-        <div class="pa-select-all">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:700">
-            <input type="checkbox" onchange="PA.toggleSelectAll(this.checked)" /> Select All Unfixed
-          </label>
-        </div>
-      ` : ''}
-      ${anomalies.map((pick, idx) => {
-        const err = classifyError(pick.bin, pick.expectedBin);
-        const pickId = pick.id || `${order.order_number}_pick_${idx}`;
+    let html = '';
+
+    if (totalUncorrected > 0) {
+      html += `<div class="pa-select-all">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:700">
+          <input type="checkbox" onchange="PA.toggleSelectAll(this.checked)" /> Select All Unfixed (${totalUncorrected})
+        </label>
+      </div>`;
+    }
+
+    // Render pick anomalies
+    html += anomalies.map((pick, idx) => {
+      const err = classifyError(pick.bin, pick.expectedBin);
+      const pickId = pick.id || `${order.order_number}_pick_${idx}`;
+      const correction = getCorrection(order, pickId);
+
+      return `
+        <div class="pa-anomaly-card ${correction ? 'pa-card-corrected' : ''}" id="card-${pickId}">
+          <div class="pa-anomaly-header">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              ${!correction ? `<input type="checkbox" class="pa-fix-check" data-pick-id="${pickId}" onchange="PA.toggleFix('${pickId}', this.checked)" />` : ''}
+              <strong>${esc(pick.sku)}</strong>
+              <span class="small-note">× ${pick.qty}</span>
+              <span class="small-note" style="color:#64748b">${esc(pick.name || '')}</span>
+            </label>
+            ${severityBadge(err.severity)}
+          </div>
+          <div class="pa-anomaly-detail">
+            <div class="pa-bin-compare">
+              <div class="pa-bin-line pa-bin-wrong">
+                <span class="pa-bin-icon">❌</span>
+                <span class="pa-bin-label">Picked From:</span>
+                <span class="pa-bin-value">${esc(pick.bin)}</span>
+              </div>
+              <div class="pa-bin-line pa-bin-expected">
+                <span class="pa-bin-icon">✅</span>
+                <span class="pa-bin-label">Expected Bin:</span>
+                <span class="pa-bin-value">${esc(pick.expectedBin)}</span>
+              </div>
+              <div class="pa-bin-line">
+                <span class="pa-bin-icon">📏</span>
+                <span class="pa-bin-label">Error Type:</span>
+                <span class="pa-bin-value">${esc(err.label)}</span>
+              </div>
+            </div>
+            ${correction ? `
+              <div class="pa-correction-status">
+                <div class="pa-correction-title">✅ Transfer ${correction.transfer_status === 'COMPLETED' ? 'Completed' : 'Created'}</div>
+                <div class="pa-correction-detail">
+                  <div>Transfer ID: <strong>${esc(correction.transfer_id || '—')}</strong></div>
+                  <div>Ref: <strong>${esc(correction.transfer_ref || '—')}</strong></div>
+                  <div>Status: <strong>${esc(correction.transfer_status || 'DRAFT')}</strong></div>
+                  <div>Corrected: <strong>${formatDate(correction.corrected_at)}</strong></div>
+                  <div>${esc(correction.from_bin)} → ${esc(correction.to_bin)} · ${correction.qty} units</div>
+                </div>
+              </div>
+            ` : `
+              <div class="pa-fix-preview">
+                <div class="pa-fix-title">Transfer will move stock:</div>
+                <div class="pa-fix-detail">
+                  FROM <strong>${esc(pick.expectedBin)}</strong> (expected)
+                  → TO <strong>${esc(pick.bin)}</strong> (picked)
+                </div>
+                <div class="pa-fix-qty">${pick.qty} units of ${esc(pick.sku)}</div>
+              </div>
+            `}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Render FG component anomalies
+    if (fgAnomalies.length) {
+      html += `<div style="margin:16px 0 8px;font-weight:700;font-size:14px;color:#7c3aed">🔧 FG/Assembly Component Anomalies</div>`;
+      html += fgAnomalies.map(comp => {
+        const err = classifyError(comp.bin, comp.expectedBin);
+        const pickId = `fg_${comp._fgTaskId}_${comp._fgIdx}`;
         const correction = getCorrection(order, pickId);
 
         return `
-          <div class="pa-anomaly-card ${correction ? 'pa-card-corrected' : ''}" id="card-${pickId}">
+          <div class="pa-anomaly-card ${correction ? 'pa-card-corrected' : ''}" id="card-${pickId}" style="border-left:3px solid #7c3aed">
             <div class="pa-anomaly-header">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                 ${!correction ? `<input type="checkbox" class="pa-fix-check" data-pick-id="${pickId}" onchange="PA.toggleFix('${pickId}', this.checked)" />` : ''}
-                <strong>${esc(pick.sku)}</strong>
-                <span class="small-note">× ${pick.qty}</span>
-                <span class="small-note" style="color:#64748b">${esc(pick.name || '')}</span>
+                <strong>${esc(comp.sku)}</strong>
+                <span class="small-note">× ${comp.qty}</span>
+                <span class="small-note" style="color:#7c3aed">FG: ${esc(comp._fgLabel)}</span>
               </label>
               ${severityBadge(err.severity)}
             </div>
@@ -474,13 +650,13 @@
               <div class="pa-bin-compare">
                 <div class="pa-bin-line pa-bin-wrong">
                   <span class="pa-bin-icon">❌</span>
-                  <span class="pa-bin-label">Picked From:</span>
-                  <span class="pa-bin-value">${esc(pick.bin)}</span>
+                  <span class="pa-bin-label">Component Bin:</span>
+                  <span class="pa-bin-value">${esc(comp.bin)}</span>
                 </div>
                 <div class="pa-bin-line pa-bin-expected">
                   <span class="pa-bin-icon">✅</span>
                   <span class="pa-bin-label">Expected Bin:</span>
-                  <span class="pa-bin-value">${esc(pick.expectedBin)}</span>
+                  <span class="pa-bin-value">${esc(comp.expectedBin)}</span>
                 </div>
                 <div class="pa-bin-line">
                   <span class="pa-bin-icon">📏</span>
@@ -503,16 +679,18 @@
                 <div class="pa-fix-preview">
                   <div class="pa-fix-title">Transfer will move stock:</div>
                   <div class="pa-fix-detail">
-                    FROM <strong>${esc(pick.expectedBin)}</strong> (expected)
-                    → TO <strong>${esc(pick.bin)}</strong> (picked)
+                    FROM <strong>${esc(comp.expectedBin)}</strong> (expected)
+                    → TO <strong>${esc(comp.bin)}</strong> (picked)
                   </div>
-                  <div class="pa-fix-qty">${pick.qty} units of ${esc(pick.sku)}</div>
+                  <div class="pa-fix-qty">${comp.qty} units of ${esc(comp.sku)}</div>
                 </div>
               `}
             </div>
           </div>`;
-      }).join('')}
-    `;
+      }).join('');
+    }
+
+    return html;
   }
 
   function renderFgTab(order) {
@@ -545,20 +723,53 @@
 
   function renderCorrectTab(order) {
     const correct = (order.picks || []).filter(p => p.status === 'correct');
-    if (!correct.length) return '<div class="pa-empty">No correct picks in this order.</div>';
 
-    return `<table class="app-table" style="font-size:13px">
-      <thead><tr><th>SKU</th><th>Product</th><th>Qty</th><th>Bin</th><th>Expected</th></tr></thead>
-      <tbody>
-        ${correct.map(p => `<tr>
-          <td><strong>${esc(p.sku)}</strong></td>
-          <td>${esc(p.name || '')}</td>
-          <td>${p.qty}</td>
-          <td><code>${esc(p.bin || '—')}</code></td>
-          <td><code>${esc(p.expectedBin || '—')}</code></td>
-        </tr>`).join('')}
-      </tbody>
-    </table>`;
+    // Collect FG components that are correct
+    const fgCorrect = [];
+    for (const fg of (order.fg_orders || [])) {
+      for (const c of (fg.components || [])) {
+        if (c.status === 'correct') {
+          fgCorrect.push({ ...c, _fgLabel: fg.assemblyNumber || fg.taskId });
+        }
+      }
+    }
+
+    if (!correct.length && !fgCorrect.length) return '<div class="pa-empty">No correct picks in this order.</div>';
+
+    let html = '';
+
+    if (correct.length) {
+      html += `<table class="app-table" style="font-size:13px">
+        <thead><tr><th>SKU</th><th>Product</th><th>Qty</th><th>Bin</th><th>Expected</th></tr></thead>
+        <tbody>
+          ${correct.map(p => `<tr>
+            <td><strong>${esc(p.sku)}</strong></td>
+            <td>${esc(p.name || '')}</td>
+            <td>${p.qty}</td>
+            <td><code>${esc(p.bin || '—')}</code></td>
+            <td><code>${esc(p.expectedBin || '—')}</code></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+    }
+
+    if (fgCorrect.length) {
+      html += `<div style="margin:16px 0 8px;font-weight:700;font-size:14px;color:#7c3aed">🔧 FG Components (correct)</div>`;
+      html += `<table class="app-table" style="font-size:13px">
+        <thead><tr><th>SKU</th><th>FG Order</th><th>Qty</th><th>Bin</th><th>Expected</th></tr></thead>
+        <tbody>
+          ${fgCorrect.map(c => `<tr>
+            <td><strong>${esc(c.sku)}</strong></td>
+            <td style="color:#7c3aed">${esc(c._fgLabel)}</td>
+            <td>${c.qty}</td>
+            <td><code>${esc(c.bin || '—')}</code></td>
+            <td><code>${esc(c.expectedBin || '—')}</code></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+    }
+
+    return html;
   }
 
   /* ═══════════════════════════════════════════════
@@ -595,8 +806,19 @@
 
   function findPickData(pickId) {
     for (const o of state.orders) {
+      // Check regular picks
       const pick = (o.picks || []).find(p => p.id === pickId);
       if (pick) return { order: o, pick };
+
+      // Check FG component picks (id format: fg_{taskId}_{compIdx})
+      if (pickId.startsWith('fg_')) {
+        for (const fg of (o.fg_orders || [])) {
+          for (let i = 0; i < (fg.components || []).length; i++) {
+            const compId = `fg_${fg.taskId}_${i}`;
+            if (compId === pickId) return { order: o, pick: fg.components[i] };
+          }
+        }
+      }
     }
     return null;
   }
@@ -826,11 +1048,10 @@
     // 1. Load existing history from Supabase
     await loadHistory();
 
-    // 2. Auto-sync new orders
-    setSyncStatus('syncing', 'Checking for new orders...');
-    await syncNewOrders();
+    // 2. Auto-sync new orders (silent on initial load — no progress bar)
+    await syncNewOrders(true);
 
-    // 3. Set up auto-refresh every 10 minutes
+    // 3. Set up auto-refresh every 30 minutes (backend scheduler syncs every 2h at :30)
     state.autoSyncInterval = setInterval(async () => {
       await syncNewOrders();
     }, AUTO_SYNC_MS);

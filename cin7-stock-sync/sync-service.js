@@ -11,7 +11,7 @@
  *   node cin7-stock-sync/sync-service.js --products-only        # Products catalog only
  *   node cin7-stock-sync/sync-service.js --locations-only       # Locations only
  *   node cin7-stock-sync/sync-service.js --dry-run              # Log what would happen, don't write
- *   node cin7-stock-sync/sync-service.js --schedule             # Run on cron schedule (10/30 min intervals)
+ *   node cin7-stock-sync/sync-service.js --schedule             # Run on cron schedule (2h/4h staggered intervals)
  *   node cin7-stock-sync/sync-service.js --verbose              # Detailed logging
  * 
  * See ARCHITECTURE.md for design decisions and data flow.
@@ -44,13 +44,13 @@ const CONFIG = {
     batchSize: 500,        // Rows per Supabase upsert call
   },
   throttle: {
-    callsPerMinute: 50,    // Stay under 60/min limit with headroom
-    delayMs: 1200,         // 60000 / 50 = 1200ms between calls
+    callsPerMinute: 24,    // Conservative: 60000/2500 = 24 calls/min
+    delayMs: 2500,         // 2.5s between calls — matches Rapid-Express-Web pace
   },
   schedule: {
-    stockIntervalMin: 10,
-    productsIntervalMin: 30,
-    locationsIntervalMin: 360,  // 6 hours
+    stockIntervalMin: 120,      // 2 hours
+    productsDaily: '0 3 * * *', // Daily at 3 AM
+    locationsDaily: '0 4 * * *', // Daily at 4 AM
   },
 };
 
@@ -159,6 +159,8 @@ class Cin7ApiClient {
         if (response.status === 429) {
           const backoff = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 30000);
           log('warn', `Rate limited (429). Backing off ${Math.round(backoff)}ms`, { attempt });
+          // Trip circuit breaker on any 429 — protects Rapid-Express-Web
+          if (typeof tripCircuitBreaker === 'function') tripCircuitBreaker('API returned 429');
           await new Promise(r => setTimeout(r, backoff));
           continue;
         }
@@ -751,13 +753,53 @@ class SyncOrchestrator {
 // SCHEDULER (optional — cron-based recurring syncs)
 // ============================================================
 
+// ============================================================
+// SYNC MUTEX & CIRCUIT BREAKER
+// ============================================================
+
+let _syncLock = false;
+let _syncLockOwner = '';
+let _circuitBreakerUntil = 0;
+const CIRCUIT_BREAKER_DURATION = 5 * 60 * 1000; // 5 minutes
+
+async function acquireSyncLock(name, timeoutMs = 120000) {
+  const deadline = Date.now() + timeoutMs;
+  while (_syncLock) {
+    if (Date.now() > deadline) {
+      log('warn', `${name}: timed out waiting for sync lock (held by ${_syncLockOwner})`);
+      return false;
+    }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  // Check circuit breaker
+  if (Date.now() < _circuitBreakerUntil) {
+    const remaining = Math.round((_circuitBreakerUntil - Date.now()) / 1000);
+    log('warn', `${name}: circuit breaker active, ${remaining}s remaining — skipping`);
+    return false;
+  }
+  _syncLock = true;
+  _syncLockOwner = name;
+  return true;
+}
+
+function releaseSyncLock() {
+  _syncLock = false;
+  _syncLockOwner = '';
+}
+
+function tripCircuitBreaker(reason) {
+  _circuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_DURATION;
+  log('error', `🔴 CIRCUIT BREAKER TRIPPED — all syncs paused for ${CIRCUIT_BREAKER_DURATION / 1000}s`, { reason });
+}
+
 async function runScheduler() {
   const cron = require('node-cron');
 
-  log('info', 'Starting sync scheduler', {
+  log('info', '🛡️ Starting SAFE sync scheduler (staggered, mutex, circuit breaker)', {
     stockInterval: `${CONFIG.schedule.stockIntervalMin} min`,
-    productsInterval: `${CONFIG.schedule.productsIntervalMin} min`,
-    locationsInterval: `${CONFIG.schedule.locationsIntervalMin} min`,
+    productsSchedule: CONFIG.schedule.productsDaily,
+    locationsSchedule: CONFIG.schedule.locationsDaily,
+    rateDelay: `${CONFIG.throttle.delayMs}ms`,
   });
 
   const orchestrator = new SyncOrchestrator();
@@ -766,47 +808,97 @@ async function runScheduler() {
   log('info', 'Running initial full sync...');
   await orchestrator.runFullSync();
 
-  // Stock snapshot every 10 minutes
-  cron.schedule(`*/${CONFIG.schedule.stockIntervalMin} * * * *`, async () => {
-    log('info', 'Scheduled stock sync triggered');
+  // ── Stock snapshot: every 2 hours at :00 ──
+  cron.schedule('0 */2 * * *', async () => {
+    if (!await acquireSyncLock('stock_sync')) return;
     try {
+      log('info', '⏰ Scheduled stock sync triggered');
       await orchestrator.runStockSync();
     } catch (err) {
       log('error', 'Scheduled stock sync failed', { error: err.message });
+      if (err.message.includes('429')) tripCircuitBreaker('stock_sync 429');
+    } finally {
+      releaseSyncLock();
     }
   });
 
-  // Products every 30 minutes
-  cron.schedule(`*/${CONFIG.schedule.productsIntervalMin} * * * *`, async () => {
-    log('info', 'Scheduled products sync triggered');
+  // ── Products: daily at 3 AM ──
+  cron.schedule(CONFIG.schedule.productsDaily, async () => {
+    if (!await acquireSyncLock('products_sync')) return;
     try {
+      log('info', '⏰ Scheduled daily products sync triggered');
       await orchestrator.runProductsSync();
     } catch (err) {
       log('error', 'Scheduled products sync failed', { error: err.message });
+      if (err.message.includes('429')) tripCircuitBreaker('products_sync 429');
+    } finally {
+      releaseSyncLock();
     }
   });
 
-  // Locations every 6 hours
-  cron.schedule('0 */6 * * *', async () => {
-    log('info', 'Scheduled locations sync triggered');
+  // ── Locations: daily at 4 AM ──
+  cron.schedule(CONFIG.schedule.locationsDaily, async () => {
+    if (!await acquireSyncLock('locations_sync')) return;
     try {
+      log('info', '⏰ Scheduled daily locations sync triggered');
       await orchestrator.runLocationsSync();
     } catch (err) {
       log('error', 'Scheduled locations sync failed', { error: err.message });
+      if (err.message.includes('429')) tripCircuitBreaker('locations_sync 429');
+    } finally {
+      releaseSyncLock();
     }
   });
 
-  // Full rebuild at 2 AM daily
+  // ── Full rebuild at 2 AM daily ──
   cron.schedule('0 2 * * *', async () => {
-    log('info', 'Scheduled daily full rebuild');
+    if (!await acquireSyncLock('full_rebuild')) return;
     try {
+      log('info', '⏰ Scheduled daily full rebuild');
       await orchestrator.runFullSync();
     } catch (err) {
       log('error', 'Scheduled full rebuild failed', { error: err.message });
+      if (err.message.includes('429')) tripCircuitBreaker('full_rebuild 429');
+    } finally {
+      releaseSyncLock();
     }
   });
 
-  log('info', 'Scheduler running. Press Ctrl+C to stop.');
+  // ── Pick Anomalies: every 2 hours at :30 (offset from stock) ──
+  try {
+    const { syncNewOrders } = require('../features/pick-anomalies/pick-anomalies-engine');
+    cron.schedule('30 */2 * * *', async () => {
+      if (!await acquireSyncLock('pick_anomalies')) return;
+      try {
+        log('info', '⏰ Scheduled pick anomalies sync triggered');
+        const result = await syncNewOrders();
+        log('info', 'Pick anomalies sync completed', {
+          success: result.success,
+          newOrders: result.newOrders || 0,
+          anomalies: result.anomaliesFound || 0,
+        });
+      } catch (err) {
+        log('error', 'Scheduled pick anomalies sync failed', { error: err.message });
+        if (err.message.includes('429')) tripCircuitBreaker('pick_anomalies 429');
+      } finally {
+        releaseSyncLock();
+      }
+    });
+    log('info', '✅ Pick anomalies auto-sync enabled (every 2h at :30)');
+  } catch (err) {
+    log('warn', '⚠️ Pick anomalies engine not available for scheduling', { error: err.message });
+  }
+
+  log('info', '🛡️ Scheduler running with safety features:');
+  log('info', '   Stock:          every 2h at :00');
+  log('info', '   Full Rebuild:   daily at 2:00 AM');
+  log('info', '   Products:       daily at 3:00 AM');
+  log('info', '   Locations:      daily at 4:00 AM');
+  log('info', '   Pick Anomalies: every 2h at :30');
+  log('info', '   Rate Delay:     2.5s between API calls');
+  log('info', '   Mutex:          only 1 sync at a time');
+  log('info', '   Circuit Breaker: 5min pause on any 429');
+  log('info', 'Press Ctrl+C to stop.');
 }
 
 // ============================================================

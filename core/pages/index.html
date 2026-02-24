@@ -4,7 +4,64 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rapid Label Printer</title>
-    <link rel="stylesheet" href="../styles/styles.css">
+    <link rel="stylesheet" href="../styles/styles.css?v=20250709">
+    <!-- Critical home page styles (inline to avoid cache issues) -->
+    <style>
+        body {
+            --bg: #0b1623;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --muted: #64748b;
+            --primary: #1e3a8a;
+            --primary-600: #2563eb;
+            --border: #e2e8f0;
+            --hover: #f1f5f9;
+            --header: #0f172a;
+            --header-text: #e2e8f0;
+            background: var(--bg) !important;
+            color: var(--text) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            justify-content: flex-start !important;
+            padding: 0 !important;
+        }
+        .site-header { position:sticky; top:0; z-index:100; background:var(--header); color:var(--header-text); border-bottom:1px solid rgba(255,255,255,.08); }
+        .header-inner { width:100%; padding:10px 8px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .header-inner .left { display:flex; align-items:center; gap:10px; margin-right:auto; }
+        .brand { color:var(--header-text); text-decoration:none; font-weight:800; letter-spacing:.2px; }
+        .site-nav { display:flex; gap:6px; margin-left:auto; }
+        .nav-link { color:var(--header-text); text-decoration:none; padding:8px 10px; border-radius:8px; opacity:.9; }
+        .nav-link:hover { background:rgba(255,255,255,.08); opacity:1; }
+        .nav-link.active { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); opacity:1; }
+        .main-container { background:var(--surface)!important; padding:28px!important; border-radius:16px!important; box-shadow:0 10px 28px rgba(0,0,0,.10)!important; max-width:1100px!important; width:92%!important; margin:24px auto!important; text-align:left!important; }
+        .home-container { max-width:920px!important; }
+        h1 { font-size:1.7rem!important; color:var(--text)!important; margin-bottom:22px!important; font-weight:800!important; text-shadow:none!important; }
+        .home-subtitle { color:var(--muted); font-size:.85rem; font-weight:500; margin-left:6px; }
+        .category-grid { display:grid!important; grid-template-columns:1fr 1fr!important; gap:18px!important; }
+        .category-card { background:#fff!important; border:1px solid #e2e8f0!important; border-radius:14px!important; padding:0!important; overflow:hidden!important; box-shadow:0 2px 8px rgba(0,0,0,.04)!important; transition:box-shadow .2s, transform .2s; }
+        .category-card:hover { box-shadow:0 6px 24px rgba(0,0,0,.08)!important; transform:translateY(-2px); }
+        .category-header { display:flex!important; align-items:center!important; gap:10px!important; padding:14px 18px!important; border-bottom:1px solid #e2e8f0!important; }
+        .category-icon { font-size:1.25rem!important; line-height:1; }
+        h2.category-title, .category-card .category-title { font-size:.95rem!important; font-weight:800!important; color:#0f172a!important; margin:0!important; text-align:left!important; }
+        .category-labels .category-header  { background:#eff6ff!important; border-bottom-color:#bfdbfe!important; }
+        .category-warehouse .category-header { background:#f0fdf4!important; border-bottom-color:#bbf7d0!important; }
+        .category-quality .category-header { background:#fffbeb!important; border-bottom-color:#fde68a!important; }
+        .category-analytics .category-header { background:#faf5ff!important; border-bottom-color:#e9d5ff!important; }
+        .category-items { display:flex!important; flex-direction:column!important; gap:8px!important; padding:12px!important; }
+        .cat-btn { display:flex!important; align-items:center!important; gap:12px!important; padding:12px 16px!important; background:#ffffff!important; border:1px solid #e2e8f0!important; border-radius:10px!important; cursor:pointer!important; font-size:.9rem!important; font-weight:600!important; color:#0f172a!important; text-decoration:none!important; width:100%!important; font-family:inherit!important; box-sizing:border-box!important; line-height:1.4!important; transition:all .2s ease; }
+        .cat-btn:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,.08); border-color:#94a3b8!important; }
+        .cat-btn-icon { font-size:1.1rem!important; flex-shrink:0; width:28px!important; height:28px!important; display:flex!important; align-items:center!important; justify-content:center!important; border-radius:8px!important; background:#f1f5f9!important; line-height:1; }
+        .category-labels .cat-btn-icon { background:#dbeafe!important; }
+        .category-warehouse .cat-btn-icon { background:#dcfce7!important; }
+        .category-quality .cat-btn-icon { background:#fef3c7!important; }
+        .category-analytics .cat-btn-icon { background:#f3e8ff!important; }
+        .cat-badge { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 7px; border-radius:12px; background:#ef4444; color:#fff; font-size:.75rem; font-weight:700; margin-left:auto; line-height:1; }
+        .cat-badge.zero { background:#94a3b8; }
+        .site-footer { margin-top:auto; background:var(--header); color:var(--header-text); border-top:1px solid rgba(255,255,255,.08); }
+        .footer-inner { width:100%; padding:14px 16px; text-align:center; }
+        @media (max-width:640px) { .category-grid { grid-template-columns:1fr!important; } .home-container { max-width:100%!important; } }
+    </style>
     <!-- Suppress Supabase 404 errors -->
     <script>
     (function(){
@@ -31,30 +88,108 @@
                     <a class="brand" href="index.html">JSlab.dev</a>
                 </div>
                 <nav class="site-nav">
-                    <a href="index.html" class="nav-link">Home</a>
-                    <a href="#" class="nav-link" onclick="openSearchModal()">Search Product Label</a>
-                    <a href="#" class="nav-link" onclick="openManualModal()">Manual Label</a>
-                    <a href="#" class="nav-link" onclick="openBarcodesModal()">Barcodes</a>
+                    <a href="index.html" class="nav-link active">Home</a>
+                    <a href="#" class="nav-link" onclick="openSearchModal()">Labels</a>
                     <a href="collections.html" class="nav-link">Collections</a>
-                    <a href="collections-history.html" class="nav-link">Collections History</a>
-                    <a href="restock.html" class="nav-link">Re-Stock</a>
                 </nav>
             </div>
         </header>
         <main class="main-container home-container">
-        <h1>Rapid Led WMS Lite</h1>
-        <div class="button-group">
-            <button class="main-btn search-btn" onclick="openSearchModal()">
-                🏷️ Search Product Label
-            </button>
-            <button class="main-btn manual-btn" onclick="openManualModal()">
-                ✏️ Manual Label
-            </button>
-            <button class="main-btn" type="button" onclick="openBarcodesModal()">🏷️ Barcodes</button>
-            <a class="main-btn" href="collections.html">📦 Collections</a>
-                <a class="main-btn" href="collections-history.html">📁 Collections History</a>
-            <a class="main-btn" href="restock.html">♻️ Re-Stock</a>
-            <button class="main-btn" type="button" onclick="openAnalyticsAndRegisters()">📊 Analytics & Registers</button>
+
+        <h1>Rapid Led <span class="home-subtitle">WMS Lite</span></h1>
+
+        <!-- Category Cards Grid -->
+        <div class="category-grid">
+
+            <!-- 1. Labels & Barcodes -->
+            <div class="category-card category-labels">
+                <div class="category-header">
+                    <span class="category-icon">🏷️</span>
+                    <h2 class="category-title">Labels & Barcodes</h2>
+                </div>
+                <div class="category-items">
+                    <button class="cat-btn" onclick="openSearchModal()">
+                        <span class="cat-btn-icon">🔍</span>
+                        <span>Search Product</span>
+                    </button>
+                    <button class="cat-btn" onclick="openManualModal()">
+                        <span class="cat-btn-icon">✏️</span>
+                        <span>Manual Label</span>
+                    </button>
+                    <button class="cat-btn" type="button" onclick="openBarcodesModal()">
+                        <span class="cat-btn-icon">🏷️</span>
+                        <span>Barcodes</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Warehouse Operations -->
+            <div class="category-card category-warehouse">
+                <div class="category-header">
+                    <span class="category-icon">📦</span>
+                    <h2 class="category-title">Warehouse Ops</h2>
+                </div>
+                <div class="category-items">
+                    <a class="cat-btn" href="collections.html">
+                        <span class="cat-btn-icon">📦</span>
+                        <span>Collections</span>
+                        <span class="cat-badge" id="collectionsCount" style="display:none"></span>
+                    </a>
+                    <a class="cat-btn" href="collections-history.html">
+                        <span class="cat-btn-icon">📁</span>
+                        <span>Collections History</span>
+                    </a>
+                    <a class="cat-btn" href="restock.html">
+                        <span class="cat-btn-icon">♻️</span>
+                        <span>Re-Stock V1 (legacy)</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- 3. Quality & Compliance -->
+            <div class="category-card category-quality">
+                <div class="category-header">
+                    <span class="category-icon">🔍</span>
+                    <h2 class="category-title">Quality & Compliance</h2>
+                </div>
+                <div class="category-items">
+                    <a class="cat-btn" href="features/pick-anomalies/pick-anomalies.html">
+                        <span class="cat-btn-icon">📋</span>
+                        <span>Pick Anomalies</span>
+                    </a>
+                    <a class="cat-btn" href="replacements/replacements.html">
+                        <span class="cat-btn-icon">🔄</span>
+                        <span>Replacements</span>
+                    </a>
+                    <a class="cat-btn" href="features/replenishment/replenishment.html">
+                        <span class="cat-btn-icon">📦</span>
+                        <span>Branch Replenishment</span>
+                    </a>
+                    <a class="cat-btn" href="restock-v2.html">
+                        <span class="cat-btn-icon">♻️</span>
+                        <span>Re-Stock V2</span>
+                    </a>
+                    <a class="cat-btn" href="gateway-main.html">
+                        <span class="cat-btn-icon">🏭</span>
+                        <span>Gateway</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- 4. Analytics -->
+            <div class="category-card category-analytics">
+                <div class="category-header">
+                    <span class="category-icon">📊</span>
+                    <h2 class="category-title">Analytics</h2>
+                </div>
+                <div class="category-items">
+                    <button class="cat-btn" type="button" onclick="openAnalyticsAndRegisters()">
+                        <span class="cat-btn-icon">📊</span>
+                        <span>Analytics & Registers</span>
+                    </button>
+                </div>
+            </div>
+
         </div>
         </main>
 
@@ -355,6 +490,24 @@
                 if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
                 if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
                 if (location.hash === '#barcodes') { try { openBarcodesModal(); } catch(e){} }
+
+                // Fetch pending collections count
+                (async () => {
+                    try {
+                        const sb = window.supabase;
+                        if (!sb || !sb.from) return;
+                        const { count, error } = await sb
+                            .from('collections_active')
+                            .select('id', { count: 'exact', head: true });
+                        if (error) return;
+                        const badge = document.getElementById('collectionsCount');
+                        if (badge && typeof count === 'number') {
+                            badge.textContent = count;
+                            badge.style.display = '';
+                            if (count === 0) badge.classList.add('zero');
+                        }
+                    } catch(e) { /* silent */ }
+                })();
             });
     </script>
 </body>

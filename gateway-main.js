@@ -204,8 +204,55 @@
   }
 
   /* ═══════════════════════════════════════════════
-     SYNC STATUS CARD (same as restock-v2)
+     SYNC STATUS CARD
      ═══════════════════════════════════════════════ */
+  let _lastSyncEndedAt = null;
+
+  function _refreshSyncCountdown() {
+    const el = document.getElementById('syncCountdown');
+    if (!el) return;
+    const now = new Date();
+    // Stock cron: minute 00 of every even hour (0:00, 2:00, 4:00, ...)
+    let nextSync = new Date(now);
+    nextSync.setSeconds(0, 0);
+    nextSync.setMinutes(0);
+    if (now.getMinutes() > 0 || now.getSeconds() > 0) {
+      nextSync.setHours(nextSync.getHours() + 1);
+    }
+    while (nextSync.getHours() % 2 !== 0) {
+      nextSync.setHours(nextSync.getHours() + 1);
+    }
+    if (nextSync <= now) nextSync.setHours(nextSync.getHours() + 2);
+
+    const diffMs = nextSync - now;
+    const diffMin = Math.floor(diffMs / 60000);
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    el.textContent = `🛡️ Next sync in ${countdown}`;
+    el.title = `Next stock sync at ${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}. Auto-sync every 2h at :00.`;
+  }
+
+  function _refreshSyncAge() {
+    const ageEl = document.getElementById('syncStatusAge');
+    if (!ageEl || !_lastSyncEndedAt) return;
+    const agoMs = Date.now() - new Date(_lastSyncEndedAt).getTime();
+    const agoMin = Math.floor(agoMs / 60000);
+    let agoStr;
+    if (agoMin < 1) agoStr = 'just now';
+    else if (agoMin < 60) agoStr = `${agoMin}m ago`;
+    else {
+      const agoH = Math.floor(agoMin / 60);
+      const remM = agoMin % 60;
+      agoStr = remM > 0 ? `${agoH}h ${remM}m ago` : `${agoH}h ago`;
+    }
+    ageEl.textContent = agoStr;
+    ageEl.style.color = agoMin > 180 ? '#ef4444' : agoMin > 130 ? '#f59e0b' : '#94a3b8';
+  }
+
+  setInterval(() => { _refreshSyncAge(); _refreshSyncCountdown(); }, 60000);
+  _refreshSyncCountdown();
+
   async function updateSyncStatusCard() {
     const dot  = document.getElementById('syncStatusDot');
     const text = document.getElementById('syncStatusText');
@@ -217,14 +264,15 @@
       const { data, error } = await window.supabase
         .schema('cin7_mirror')
         .from('sync_runs')
-        .select('run_id, started_at, ended_at, status, sync_type, metrics, timing')
+        .select('run_id, started_at, ended_at, status, sync_type, products_synced, stock_rows_synced, duration_ms')
         .order('ended_at', { ascending: false })
         .limit(1);
 
       if (error) {
-        dot.style.background = '#f59e0b';
-        text.textContent = 'cin7_mirror schema not accessible — expose it in Supabase API settings';
-        text.style.color = '#92400e';
+        // Schema may not be exposed yet — show subtle info
+        dot.style.background = '#94a3b8';
+        text.textContent = 'Sync status unavailable — cin7_mirror schema needs to be exposed in Supabase API settings';
+        text.style.color = '#64748b';
         return;
       }
       if (!data || data.length === 0) {
@@ -236,14 +284,20 @@
       const ok = run.status === 'success';
       const running = run.status === 'running';
       dot.style.background = ok ? '#22c55e' : running ? '#3b82f6' : '#ef4444';
-      const m = run.metrics || {};
-      const dur = run.timing?.duration_ms ? `${(run.timing.duration_ms / 1000).toFixed(1)}s` : '';
-      text.textContent = `${ok ? 'Last sync successful' : running ? 'Sync running…' : 'Last sync failed'}${m.products_synced ? ` • ${m.products_synced} prods, ${m.stock_synced} stock` : ''}${dur ? ` • ${dur}` : ''}`;
+      const prodCount = run.products_synced || 0;
+      const stockCount = run.stock_rows_synced || 0;
+      const dur = run.duration_ms ? `${(run.duration_ms / 1000).toFixed(1)}s` : '';
+      text.textContent = `${ok ? 'Last sync successful' : running ? 'Sync running…' : 'Last sync failed'}${prodCount ? ` • ${prodCount} prods, ${stockCount} stock` : ''}${dur ? ` • ${dur}` : ''}`;
       text.style.color = ok ? '#166534' : running ? '#1d4ed8' : '#991b1b';
       const ts = run.ended_at || run.started_at;
       if (ts) {
         const d = new Date(ts), p = n => String(n).padStart(2, '0');
         time.textContent = `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+      }
+      // Track for live age refresh
+      if (run.ended_at) {
+        _lastSyncEndedAt = run.ended_at;
+        _refreshSyncAge();
       }
     } catch (e) {
       console.warn('Sync status error:', e);
@@ -302,9 +356,9 @@
         });
       } catch (e) {
         console.warn('⚠️ Could not read cin7_mirror.stock_snapshot:', e.message);
-        setTbody(`<tr><td colspan="${COLS}" style="text-align:center;color:#b45309;padding:30px">
-          <div style="font-size:16px;font-weight:600;margin-bottom:8px">⚠️ cin7_mirror schema not accessible</div>
-          <div style="font-size:13px;color:#64748b">Expose <code>cin7_mirror</code> in Supabase → Settings → API → Exposed schemas, then run the first sync.</div>
+        setTbody(`<tr><td colspan="${COLS}" style="text-align:center;color:#64748b;padding:30px">
+          <div style="font-size:16px;font-weight:600;margin-bottom:8px">Setup Required</div>
+          <div style="font-size:13px;color:#94a3b8">Expose <code>cin7_mirror</code> in Supabase Dashboard → Settings → API → Exposed schemas, then run the first sync.</div>
         </td></tr>`);
         state.loading = false;
         return;

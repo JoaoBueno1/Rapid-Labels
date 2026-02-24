@@ -15,7 +15,7 @@ const PRINTER_PORT = parseInt(process.env.PRINTER_PORT || '9100', 10);
 
 // Supabase setup for backend endpoints
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTk1NzkzNCwiZXhwIjoyMDY3NTMzOTM0fQ.l6qjolSKgFG9H6zZvwJejzG9zsQFBQ9RtHN6S16TCR4';
 let supabaseBackend = null;
 
 if (SUPABASE_SERVICE_KEY) {

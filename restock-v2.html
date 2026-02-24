@@ -53,7 +53,10 @@
         <span id="syncStatusText" style="font-size:13px;color:#475569;font-weight:500">Checking sync status…</span>
       </div>
       <div style="flex:1"></div>
+      <span id="syncStatusAge" style="font-size:12px;color:#94a3b8;font-weight:400"></span>
+      <span style="color:#cbd5e1">|</span>
       <span id="syncStatusTime" style="font-size:13px;color:#64748b;font-weight:500"></span>
+      <span id="syncCountdown" style="font-size:11px;color:#94a3b8;margin-left:4px" title="Stock sync every 2h at :00">🛡️ Auto 2h</span>
     </div>
 
     <!-- Restock View (table + filters) -->
@@ -347,6 +350,20 @@
   .reserve-pop{ position:absolute; bottom:calc(100% + 6px); right:0; background:#fff; color:#0f172a; border:1px solid var(--border,#cbd5e1); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:6px 8px; font-size:11px; white-space:nowrap; display:none; z-index:1200 }
   .reserve-cell:hover .reserve-pop, .reserve-cell.show .reserve-pop{ display:block }
   .reserve-pop .line{ display:block; margin:2px 0 }
+  /* Custom tooltip popover for Pickface and Capacity */
+  .tip-cell{ display:inline-flex; align-items:center; gap:4px; position:relative; cursor:pointer }
+  .tip-pop{
+    position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%);
+    background:#1e293b; color:#f1f5f9; border-radius:8px;
+    box-shadow:0 12px 32px rgba(0,0,0,.25); padding:8px 12px;
+    font-size:12px; line-height:1.5; white-space:nowrap;
+    display:none; z-index:9999; pointer-events:none;
+  }
+  .tip-pop::after{
+    content:''; position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
+    border:6px solid transparent; border-bottom-color:#1e293b;
+  }
+  .tip-cell.show .tip-pop{ display:block }\n  /* Allow tooltip to overflow table-wrapper */\n  .table-wrapper{ overflow:visible !important }\n  #restockTable td{ overflow:visible }
   tr.print-break{ display:none }
   .print-header{ display:none }
   @media print{
@@ -358,6 +375,9 @@
   .table-wrapper { position: relative; background:#fff !important; box-shadow:none !important; }
   #restockTable { font-size: 10px; border-collapse: collapse; background:#fff !important; width:100%; table-layout:fixed; }
   #restockTable th, #restockTable td { border:1px solid #333 !important; padding:4px 5px !important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* Allow Nearest Reserve & Notes columns to wrap text fully — never truncate */
+  #restockTable td.print-only { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; word-break:break-word; font-size:8px; line-height:1.3; }
+  #restockTable td.print-only div { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; word-break:break-word; }
   #restockTable thead th { background:#f3f4f6 !important; color:#111827 !important; font-size:9px; text-transform:uppercase; letter-spacing:.3px; }
     thead { display: table-header-group; }
     tfoot { display: table-footer-group; }
@@ -374,19 +394,24 @@
   #restockTable th:nth-child(4), #restockTable td:nth-child(4) { display: none !important; }
   /* Hide AVG/mth col (col 5 = nth-child(5)) — not needed for warehouse ops */
   #restockTable th:nth-child(5), #restockTable td:nth-child(5) { display: none !important; }
+  /* Hide Qty/CTN (col 12) and Qty/Pallet (col 13) on print — free space for Nearest Reserve */
+  #restockTable th:nth-child(12), #restockTable td:nth-child(12) { display: none !important; }
+  #restockTable th:nth-child(13), #restockTable td:nth-child(13) { display: none !important; }
   /* Show print-only cells */
   .print-only{ display: table-cell !important; }
   /* Print column widths (visible: 5DC, SKU, Pickface, On Hand, Capacity, Status, Reserve, Restock, Nearest Reserve, Notes) */
-  #restockTable th:nth-child(2), #restockTable td:nth-child(2) { width:8%; }
-  #restockTable th:nth-child(3), #restockTable td:nth-child(3) { width:14%; }
-  #restockTable th:nth-child(6), #restockTable td:nth-child(6) { width:11%; }
-  #restockTable th:nth-child(7), #restockTable td:nth-child(7) { width:8%; }
-  #restockTable th:nth-child(8), #restockTable td:nth-child(8) { width:12%; }
+  #restockTable th:nth-child(2), #restockTable td:nth-child(2) { width:6%; }
+  #restockTable th:nth-child(3), #restockTable td:nth-child(3) { width:12%; }
+  #restockTable th:nth-child(6), #restockTable td:nth-child(6) { width:10%; }
+  #restockTable th:nth-child(7), #restockTable td:nth-child(7) { width:6%; }
+  #restockTable th:nth-child(8), #restockTable td:nth-child(8) { width:8%; }
   #restockTable th:nth-child(9), #restockTable td:nth-child(9) { width:8%; }
-  #restockTable th:nth-child(10), #restockTable td:nth-child(10) { width:9%; }
-  #restockTable th:nth-child(11), #restockTable td:nth-child(11) { width:8%; }
-  #restockTable th:nth-child(12), #restockTable td:nth-child(12) { width:12%; }
-  #restockTable th:nth-child(13), #restockTable td:nth-child(13) { width:10%; max-width:80px; }
+  #restockTable th:nth-child(10), #restockTable td:nth-child(10) { width:8%; }
+  #restockTable th:nth-child(11), #restockTable td:nth-child(11) { width:6%; }
+  /* Nearest Reserve (col 14) — wider to avoid truncation */
+  #restockTable th:nth-child(14), #restockTable td:nth-child(14) { width:26%; }
+  /* Notes (col 15) */
+  #restockTable th:nth-child(15), #restockTable td:nth-child(15) { width:10%; }
   }
   @page { size: A4 landscape; margin: 12mm }
   /* Column visibility — dynamically toggled via JS */
@@ -417,7 +442,7 @@
       const tbody = document.getElementById('restockTbody');
       if (!tbody) return;
       [...tbody.querySelectorAll('tr')].forEach(tr => {
-        const statusTd = tr.children && tr.children[7];
+        const statusTd = tr.children && tr.children[8];
         if (!statusTd) return;
         const val = (statusTd.textContent || '').trim().toLowerCase();
         if (!val) return;
@@ -506,9 +531,9 @@
 
   <!-- Locations Print Modal -->
   <div id="locationsPrintModal" class="modal hidden">
-    <div class="modal-content" style="max-width: 800px">
+    <div class="modal-content" style="max-width: 900px">
       <span class="close" onclick="closeLocationsPrintModal()">&times;</span>
-      <h2>📍 Print Locations</h2>
+      <h2>📍 Print by Location</h2>
       <div style="margin-bottom: 20px">
         <h3 style="margin-bottom: 10px; color: #475569">Select Locations:</h3>
         <div style="display: flex; gap: 8px; flex-wrap: wrap">
@@ -528,6 +553,10 @@
             <input type="checkbox" id="locMA-SAMPLES" value="MA-SAMPLES" onchange="updateLocationsPrint()">
             <span style="color: #a16207; font-weight: 600">MA-SAMPLES</span>
           </label>
+          <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; background: #f8fafc">
+            <input type="checkbox" id="locUnassigned" value="Unassigned" onchange="updateLocationsPrint()">
+            <span style="color: #6b7280; font-weight: 600">Unassigned</span>
+          </label>
         </div>
       </div>
       <div id="locationsPreview" style="display: none; margin-bottom: 20px">
@@ -537,7 +566,7 @@
         </div>
         <div style="max-height: 300px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px">
           <table class="app-table" style="margin: 0; font-size: 12px">
-            <thead><tr><th>SKU</th><th>Product</th><th>Pickface</th><th>Reserve</th></tr></thead>
+            <thead><tr><th>5DC</th><th>SKU</th><th>Pickface</th><th>Location</th><th style="text-align:right">Qty</th></tr></thead>
             <tbody id="locationsPreviewBody"></tbody>
           </table>
         </div>
@@ -550,73 +579,133 @@
   </div>
 
   <script>
-    // Locations Print Modal Functions (same logic as V1)
+    // Locations Print Modal Functions
     let locationsModalData = [];
+
     function openLocationsPrintModal() {
       document.getElementById('locationsPrintModal')?.classList.remove('hidden');
       document.querySelectorAll('#locationsPrintModal input[type="checkbox"]').forEach(cb => cb.checked = false);
       updateLocationsPrint();
     }
-    function closeLocationsPrintModal() { document.getElementById('locationsPrintModal')?.classList.add('hidden'); }
+
+    function closeLocationsPrintModal() {
+      document.getElementById('locationsPrintModal')?.classList.add('hidden');
+    }
+
+    function getSelectedLocations() {
+      const locs = [];
+      document.querySelectorAll('#locationsPrintModal input[type="checkbox"]:checked').forEach(cb => locs.push(cb.value));
+      return locs;
+    }
+
+    function buildLocationRows(selectedLocations) {
+      if (!window.restockGetAllRows) return [];
+      const allRows = window.restockGetAllRows();
+      const result = [];
+
+      for (const row of allRows) {
+        const reserves = Array.isArray(row.__reserve_locations) ? row.__reserve_locations : [];
+        for (const loc of reserves) {
+          if (!loc || !loc.location) continue;
+          const locStr = String(loc.location).toUpperCase();
+          const qty = Number(loc.qty) || 0;
+          if (qty <= 0) continue;
+
+          const matched = selectedLocations.some(sl => {
+            if (sl === 'Unassigned') return locStr === 'UNASSIGNED';
+            return locStr.startsWith(sl.toUpperCase());
+          });
+          if (!matched) continue;
+
+          result.push({
+            fiveDC: row.__5dc || '',
+            sku: row.__stock_sku || row.sku || '',
+            pickface: String(row.stock_locator || '').trim() || '—',
+            location: loc.location,
+            qty: qty,
+            product: row.__full_description || row.product || '',
+          });
+        }
+      }
+
+      // Sort by location, then SKU
+      result.sort((a, b) => a.location.localeCompare(b.location) || a.sku.localeCompare(b.sku));
+      return result;
+    }
+
     function updateLocationsPrint() {
-      const selectedLocations = [];
-      document.querySelectorAll('#locationsPrintModal input[type="checkbox"]:checked').forEach(cb => selectedLocations.push(cb.value));
+      const selectedLocations = getSelectedLocations();
       const printBtn = document.getElementById('printLocationsBtn');
       const preview = document.getElementById('locationsPreview');
-      if (selectedLocations.length === 0) { printBtn.disabled = true; printBtn.style.opacity = '0.5'; preview.style.display = 'none'; return; }
-      printBtn.disabled = false; printBtn.style.opacity = '1';
-      if (window.restockGetAllRows) {
-        const allRows = window.restockGetAllRows();
-        const filteredRows = allRows.filter(row => {
-          if (Array.isArray(row.__reserve_locations)) {
-            const hasReserveInLocation = row.__reserve_locations.some(loc => {
-              if (!loc || !loc.location) return false;
-              const locStr = String(loc.location).toUpperCase();
-              return selectedLocations.some(sl => locStr.startsWith(sl.toUpperCase()) && Number(loc.qty) > 0);
-            });
-            if (hasReserveInLocation) return true;
-          }
-          const hasPickface = row.stock_locator && String(row.stock_locator).trim() !== '';
-          return !hasPickface;
-        });
-        locationsModalData = filteredRows;
-        const previewBody = document.getElementById('locationsPreviewBody');
-        const countSpan = document.getElementById('locationsCount');
-        if (filteredRows.length === 0) {
-          previewBody.innerHTML = '<tr><td colspan="4" style="text-align: center; opacity: 0.7">No items found</td></tr>';
-          countSpan.textContent = '0 items';
-        } else {
-          const previewRows = filteredRows.slice(0, 10);
-          previewBody.innerHTML = previewRows.map(row => {
-            const sku = String(row.sku || ''), product = String(row.product || '');
-            const rawPickface = String(row.stock_locator || '').trim();
-            const pickface = rawPickface || 'Not configured';
-            const relevantReserves = (row.__reserve_locations || [])
-              .filter(loc => { if (!loc || !loc.location) return false; const locStr = String(loc.location).toUpperCase(); return selectedLocations.some(sl => locStr.startsWith(sl.toUpperCase()) && Number(loc.qty) > 0); })
-              .map(loc => `${loc.location}: ${loc.qty}`).join(', ');
-            const reserveDisplay = relevantReserves || (rawPickface ? 'No reserve' : 'Needs pickface setup');
-            return `<tr><td>${sku}</td><td>${product}</td><td>${pickface}</td><td>${reserveDisplay}</td></tr>`;
-          }).join('');
-          countSpan.textContent = `${filteredRows.length} items${filteredRows.length > 10 ? ' (showing first 10)' : ''}`;
-        }
-        preview.style.display = 'block';
+
+      if (selectedLocations.length === 0) {
+        printBtn.disabled = true;
+        printBtn.style.opacity = '0.5';
+        preview.style.display = 'none';
+        return;
       }
+
+      printBtn.disabled = false;
+      printBtn.style.opacity = '1';
+
+      const rows = buildLocationRows(selectedLocations);
+      locationsModalData = rows;
+
+      const previewBody = document.getElementById('locationsPreviewBody');
+      const countSpan = document.getElementById('locationsCount');
+
+      if (rows.length === 0) {
+        previewBody.innerHTML = '<tr><td colspan="5" style="text-align: center; opacity: 0.7">No items found in selected locations</td></tr>';
+        countSpan.textContent = '0 items';
+      } else {
+        const previewRows = rows.slice(0, 15);
+        previewBody.innerHTML = previewRows.map(r =>
+          `<tr><td style="font-size:11px;color:#64748b">${r.fiveDC}</td><td>${r.sku}</td><td>${r.pickface}</td><td>${r.location}</td><td style="text-align:right;font-weight:600">${r.qty}</td></tr>`
+        ).join('');
+        countSpan.textContent = `${rows.length} items${rows.length > 15 ? ' (showing first 15)' : ''}`;
+      }
+      preview.style.display = 'block';
     }
+
     function printSelectedLocations() {
       if (locationsModalData.length === 0) return;
-      const selectedLocations = [];
-      document.querySelectorAll('#locationsPrintModal input[type="checkbox"]:checked').forEach(cb => selectedLocations.push(cb.value));
+      const selectedLocations = getSelectedLocations();
       const printWindow = window.open('', '_blank');
       const now = new Date();
-      const stamp = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-      const printContent = `<!DOCTYPE html><html><head><title>Locations Report - ${selectedLocations.join(', ')}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;color:#0f172a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-header{text-align:center;margin-bottom:20px;font-size:16px;font-weight:600}.print-subtitle{text-align:center;margin-bottom:24px;font-size:12px;color:#64748b}table{width:100%;border-collapse:collapse;font-size:11px;background:#fff}th,td{border:1px solid #334155;padding:8px 10px;text-align:left}th{background:#f1f5f9;color:#0f172a;font-weight:600}tr:nth-child(even){background:#f8fafc}td:first-child{font-weight:600;font-variant-numeric:tabular-nums}@page{size:A4 landscape;margin:12mm}</style></head><body><div class="print-header">Locations Report V2 - ${selectedLocations.join(', ')}</div><div class="print-subtitle">${stamp} - ${locationsModalData.length} items</div><table><thead><tr><th style="width:80px">SKU</th><th>Product</th><th style="width:120px">Pickface</th><th style="width:200px">Reserve</th></tr></thead><tbody>${locationsModalData.map(row => {
-        const sku = String(row.sku || ''), product = String(row.product || '');
-        const rawPickface = String(row.stock_locator || '').trim();
-        const pickface = rawPickface || 'Not configured';
-        const relevantReserves = (row.__reserve_locations || []).filter(loc => { if (!loc || !loc.location) return false; const locStr = String(loc.location).toUpperCase(); return selectedLocations.some(sl => locStr.startsWith(sl.toUpperCase()) && Number(loc.qty) > 0); }).sort((a,b)=>Number(b.qty)-Number(a.qty)).map(loc => `${loc.location}: ${loc.qty}`).join('<br>');
-        const reserveDisplay = relevantReserves || (rawPickface ? 'No reserve' : 'Needs pickface setup');
-        return `<tr><td>${sku}</td><td>${product}</td><td>${pickface}</td><td>${reserveDisplay}</td></tr>`;
-      }).join('')}</tbody></table></body></html>`;
+      const pad = n => String(n).padStart(2, '0');
+      const stamp = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+      // Group rows by location for sub-headers
+      const groups = {};
+      for (const r of locationsModalData) {
+        const key = r.location;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(r);
+      }
+
+      let tableRows = '';
+      for (const [loc, items] of Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))) {
+        tableRows += `<tr style="background:#e2e8f0"><td colspan="5" style="font-weight:700;font-size:13px;padding:8px 10px;color:#0f172a">📍 ${loc} (${items.length} items)</td></tr>`;
+        for (const r of items) {
+          tableRows += `<tr><td style="font-size:11px;color:#64748b">${r.fiveDC}</td><td>${r.sku}</td><td>${r.pickface}</td><td>${r.location}</td><td style="text-align:right;font-weight:600">${r.qty}</td></tr>`;
+        }
+      }
+
+      const printContent = `<!DOCTYPE html><html><head><title>Location Stock - ${selectedLocations.join(', ')}</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;color:#0f172a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.print-header{text-align:center;margin-bottom:8px;font-size:16px;font-weight:600}
+.print-subtitle{text-align:center;margin-bottom:20px;font-size:12px;color:#64748b}
+table{width:100%;border-collapse:collapse;font-size:11px;background:#fff}
+th,td{border:1px solid #334155;padding:6px 8px;text-align:left}
+th{background:#f1f5f9;color:#0f172a;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.3px}
+tr:nth-child(even){background:#f8fafc}
+@page{size:A4 landscape;margin:12mm}</style></head>
+<body>
+<div class="print-header">Location Stock Report — ${selectedLocations.join(', ')}</div>
+<div class="print-subtitle">${stamp} — ${locationsModalData.length} items</div>
+<table><thead><tr><th style="width:60px">5DC</th><th style="width:120px">SKU</th><th style="width:100px">Pickface</th><th style="width:120px">Location</th><th style="width:60px;text-align:right">Qty</th></tr></thead>
+<tbody>${tableRows}</tbody></table></body></html>`;
+
       printWindow.document.write(printContent);
       printWindow.document.close();
       setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
@@ -727,6 +816,6 @@
     </div>
   </div>
 
-  <script src="restock-v2.js?v=20260223d"></script>
+  <script src="restock-v2.js?v=20260224a"></script>
 </body>
 </html>
