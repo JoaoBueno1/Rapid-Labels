@@ -16,9 +16,6 @@
       </div>
       <nav class="site-nav">
         <a href="index.html" class="nav-link">Home</a>
-        <a href="restock-v2.html" class="nav-link">Re-Stock V2</a>
-        <a href="gateway-main.html" class="nav-link active">Gateway → Main</a>
-        <a href="features/replenishment/replenishment.html" class="nav-link">Branch Replenishment</a>
       </nav>
     </div>
   </header>
@@ -50,29 +47,86 @@
       <span id="syncCountdown" style="font-size:11px;color:#94a3b8;margin-left:4px" title="Stock sync every 2h at :00">🛡️ Auto 2h</span>
     </div>
 
+    <!-- View Mode Tabs -->
+    <div style="display:flex;align-items:center;gap:0;margin-top:8px">
+      <button class="gw-nav-tab active" data-view="main_stock" onclick="switchGwView('main_stock')">
+        📦 Main Stock
+      </button>
+      <button class="gw-nav-tab" data-view="pickface_restock" onclick="switchGwView('pickface_restock')">
+        🏬 Pickface Restock
+      </button>
+    </div>
+
     <!-- Filters -->
     <div style="margin-top:8px">
       <div id="gwFilters" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span style="font-weight:600;color:#475569">Weeks:</span>
-        <button class="chip active" data-weeks-filter="ALL" onclick="setWeeksFilter('ALL',this)">
-          All <span id="countAll" class="status-count">0</span>
-        </button>
-        <button class="chip" data-weeks-filter="CRITICAL" onclick="setWeeksFilter('CRITICAL',this)" style="background:#fee2e2;color:#b91c1c;border-color:#fecaca">
-          &lt; 1 wk <span id="countCritical" class="status-count">0</span>
-        </button>
-        <button class="chip" data-weeks-filter="LOW" onclick="setWeeksFilter('LOW',this)" style="background:#fef3c7;color:#b45309;border-color:#fde68a">
-          1–2 wks <span id="countLow" class="status-count">0</span>
-        </button>
-        <button class="chip" data-weeks-filter="OK" onclick="setWeeksFilter('OK',this)" style="background:#dcfce7;color:#15803d;border-color:#bbf7d0">
-          2–4 wks <span id="countOk" class="status-count">0</span>
-        </button>
-        <button class="chip" data-weeks-filter="GOOD" onclick="setWeeksFilter('GOOD',this)" style="background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe">
-          4+ wks <span id="countGood" class="status-count">0</span>
-        </button>
-        <button class="chip" data-weeks-filter="NO_SALES" onclick="setWeeksFilter('NO_SALES',this)" style="background:#f1f5f9;color:#475569;border-color:#e2e8f0">
-          No sales data <span id="countNoSales" class="status-count">0</span>
-        </button>
+        <!-- Main Stock mode chips -->
+        <div id="gwChipsMainStock" style="display:inline-flex;align-items:center;gap:6px">
+          <span style="font-weight:600;color:#475569">Weeks:</span>
+          <button class="chip active" data-weeks-filter="ALL" onclick="setWeeksFilter('ALL',this)">
+            All <span id="countAll" class="status-count">0</span>
+          </button>
+          <button class="chip" data-weeks-filter="CRITICAL" onclick="setWeeksFilter('CRITICAL',this)" style="background:#fee2e2;color:#b91c1c;border-color:#fecaca">
+            &lt; 1 wk <span id="countCritical" class="status-count">0</span>
+          </button>
+          <button class="chip" data-weeks-filter="LOW" onclick="setWeeksFilter('LOW',this)" style="background:#fef3c7;color:#b45309;border-color:#fde68a">
+            1–2 wks <span id="countLow" class="status-count">0</span>
+          </button>
+          <button class="chip" data-weeks-filter="OK" onclick="setWeeksFilter('OK',this)" style="background:#dcfce7;color:#15803d;border-color:#bbf7d0">
+            2–4 wks <span id="countOk" class="status-count">0</span>
+          </button>
+          <button class="chip" data-weeks-filter="GOOD" onclick="setWeeksFilter('GOOD',this)" style="background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe">
+            4+ wks <span id="countGood" class="status-count">0</span>
+          </button>
+          <button class="chip" data-weeks-filter="NO_SALES" onclick="setWeeksFilter('NO_SALES',this)" style="background:#f1f5f9;color:#475569;border-color:#e2e8f0">
+            No data <span id="countNoSales" class="status-count">0</span>
+          </button>
+        </div>
+        <!-- Pickface Restock mode chips (hidden by default) -->
+        <div id="gwChipsPickface" style="display:none;align-items:center;gap:6px">
+          <span style="font-weight:600;color:#475569">Pickface:</span>
+          <button class="chip active" data-pf-filter="ALL" onclick="setPfFilter('ALL',this)">
+            All <span id="pfCountAll" class="status-count">0</span>
+          </button>
+          <button class="chip" data-pf-filter="NEEDS_RESTOCK" onclick="setPfFilter('NEEDS_RESTOCK',this)" style="background:#fef3c7;color:#b45309;border-color:#fde68a">
+            Needs restock <span id="pfCountNeedsRestock" class="status-count">0</span>
+          </button>
+          <button class="chip" data-pf-filter="EMPTY" onclick="setPfFilter('EMPTY',this)" style="background:#fee2e2;color:#b91c1c;border-color:#fecaca">
+            Empty <span id="pfCountEmpty" class="status-count">0</span>
+          </button>
+          <button class="chip" data-pf-filter="FULL" onclick="setPfFilter('FULL',this)" style="background:#dcfce7;color:#15803d;border-color:#bbf7d0">
+            Full <span id="pfCountFull" class="status-count">0</span>
+          </button>
+          <button class="chip" data-pf-filter="NO_SETUP" onclick="setPfFilter('NO_SETUP',this)" style="background:#f1f5f9;color:#475569;border-color:#e2e8f0">
+            No setup <span id="pfCountNoSetup" class="status-count">0</span>
+          </button>
+        </div>
         <div style="flex:1"></div>
+        <div id="gwActiveFilterTags" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap"></div>
+        <!-- Filters Dropdown -->
+        <div style="position:relative;display:inline-block" id="gwFiltersDropdownWrap">
+          <button class="search-btn-small" type="button" onclick="toggleGwFiltersDropdown()" style="position:relative">
+            Filters <span id="gwFiltersBadge" style="display:none;background:#ef4444;color:#fff;font-size:10px;min-width:16px;height:16px;border-radius:99px;align-items:center;justify-content:center;position:absolute;top:-6px;right:-8px;padding:0 4px;font-weight:700"></span>
+          </button>
+          <div id="gwFiltersDropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:16px;min-width:240px;z-index:100">
+            <div style="font-weight:700;font-size:13px;color:#1e293b;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+              <span>Filters</span>
+              <button type="button" onclick="gwClearAllFilters()" style="background:none;border:none;font-size:11px;color:#6366f1;cursor:pointer;font-weight:600;text-decoration:underline">Clear all</button>
+            </div>
+            <div style="font-weight:600;font-size:11px;color:#6366f1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Show Only</div>
+            <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="gwToggleOnlyDemand" onchange="gwSetOnlyWithDemand(this.checked)" />
+              <span>Products with demand</span>
+            </label>
+            <div style="border-top:1px solid #e2e8f0;margin:8px 0"></div>
+            <div style="font-weight:600;font-size:11px;color:#ef4444;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Hidden Products</div>
+            <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="gwToggleShowHidden" onchange="gwSetShowHidden(this.checked)" />
+              <span>Show hidden <span id="gwHiddenCount" style="font-size:11px;color:#94a3b8"></span></span>
+            </label>
+          </div>
+        </div>
+        <button class="search-btn-small" type="button" onclick="openGwColumnSettingsModal()" title="Column visibility" style="background:#64748b;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px">⚙ Columns</button>
         <button class="search-btn-small" type="button" onclick="printGw()">Print</button>
       </div>
     </div>
@@ -83,22 +137,32 @@
       <table class="app-table" id="gwTable">
         <thead>
           <tr>
+            <th style="width:32px" class="no-print"><input type="checkbox" id="gwSelectAll" onchange="gwToggleSelectAll(this.checked)" title="Select all" style="cursor:pointer;width:16px;height:16px" /></th>
             <th style="font-variant-numeric:tabular-nums;font-size:12px;color:#64748b">5DC</th>
             <th>SKU</th>
             <th>Product</th>
-            <th>Pickface</th>
-            <th style="white-space:nowrap">Pickface Stk</th>
+            <th style="white-space:nowrap">Pickface Location</th>
+            <th style="white-space:nowrap">Pickface Stock</th>
             <th>Capacity</th>
             <th style="white-space:nowrap">Total MW</th>
             <th style="white-space:nowrap">Gateway</th>
-            <th style="white-space:nowrap">AVG/mth</th>
-            <th style="white-space:nowrap">Weeks Avail.</th>
+            <th style="white-space:nowrap">Avg Mth / 4Wk</th>
+            <th id="gwWeeksHeader" style="white-space:nowrap">Weeks Avail.</th>
             <th style="white-space:nowrap">Qty/CTN</th>
             <th style="white-space:nowrap">Qty/Pallet</th>
+            <th style="width:80px" class="no-print">Actions</th>
           </tr>
         </thead>
-        <tbody id="gwTbody"><tr><td colspan="12" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
+        <tbody id="gwTbody"><tr><td colspan="14" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
       </table>
+    </div>
+
+    <!-- Bulk action bar -->
+    <div id="gwBulkBar" class="gw-bulk-bar">
+      <span id="gwBulkCount" style="font-weight:700">0 selected</span>
+      <button type="button" onclick="gwHideSelected()" style="background:#ef4444;color:#fff">🚫 Hide selected</button>
+      <button type="button" id="gwBulkShowBtn" onclick="gwShowSelected()" style="background:#22c55e;color:#fff;display:none">👁 Show selected</button>
+      <button type="button" onclick="gwClearSelection()" style="background:rgba(255,255,255,.15);color:#fff">✕ Clear</button>
     </div>
 
     <div id="gwPagination" class="pager" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
@@ -118,6 +182,8 @@
     /* ── Scoped styles ── */
     (function(){
       const css = `
+  /* Full-width layout (same as pick anomalies) */
+  .main-container.wide-container{ max-width:none!important; width:100%!important; text-align:left!important; align-self:stretch!important; padding:20px 24px!important; }
   .chip{padding:4px 10px;border:1px solid var(--border,#cbd5e1);border-radius:999px;background:#fff;color:#0f172a;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .2s ease;opacity:1}
   .status-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 5px;border-radius:999px;font-size:10px;font-weight:700;line-height:1;background:rgba(0,0,0,.15);color:currentColor}
   #gwFilters.has-active .chip:not(.active){opacity:.35;filter:grayscale(.6);transform:scale(.96)}
@@ -133,10 +199,51 @@
   .pager button[disabled]{opacity:.5;cursor:not-allowed}
   @media print{.pager{display:none!important}}
   .print-header{display:none}
+  /* Tooltip popover for AVG breakdown */
+  .tip-cell{ display:inline-flex; align-items:center; gap:4px; position:relative; cursor:pointer }
+  .tip-pop{
+    position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%);
+    background:#1e293b; color:#f1f5f9; border-radius:8px;
+    box-shadow:0 12px 32px rgba(0,0,0,.25); padding:8px 12px;
+    font-size:12px; line-height:1.5; white-space:nowrap;
+    display:none; z-index:9999; pointer-events:none;
+  }
+  .tip-pop::after{
+    content:''; position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
+    border:6px solid transparent; border-bottom-color:#1e293b;
+  }
+  .tip-cell.show .tip-pop{ display:block }
+  .table-wrapper{ overflow:visible !important }
+  #gwTable td{ overflow:visible }
+  .no-print{}
+  /* Nav tabs */
+  .gw-nav-tab{ padding:10px 20px; font-size:14px; font-weight:600; color:#64748b; background:none; border:none; border-bottom:3px solid transparent; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; gap:6px }
+  .gw-nav-tab:hover{ color:#334155; background:#f8fafc }
+  .gw-nav-tab.active{ color:#0ea5e9; border-bottom-color:#0ea5e9 }
+  /* Checkbox column */
+  #gwTable th:first-child,#gwTable td:first-child{width:32px;padding:4px 6px}
+  #gwTable input[type=checkbox]{cursor:pointer;width:15px;height:15px}
+  /* Bulk action bar */
+  .gw-bulk-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 20px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:50;display:none;align-items:center;gap:14px;font-size:13px;animation:gwBulkSlide .2s ease}
+  @keyframes gwBulkSlide{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  .gw-bulk-bar button{border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer}
+  /* Column visibility (shifted +1 for checkbox col) */
+  .gw-col-hidden-0 #gwTable th:nth-child(2),.gw-col-hidden-0 #gwTable td:nth-child(2){display:none!important}
+  .gw-col-hidden-1 #gwTable th:nth-child(3),.gw-col-hidden-1 #gwTable td:nth-child(3){display:none!important}
+  .gw-col-hidden-2 #gwTable th:nth-child(4),.gw-col-hidden-2 #gwTable td:nth-child(4){display:none!important}
+  .gw-col-hidden-3 #gwTable th:nth-child(5),.gw-col-hidden-3 #gwTable td:nth-child(5){display:none!important}
+  .gw-col-hidden-4 #gwTable th:nth-child(6),.gw-col-hidden-4 #gwTable td:nth-child(6){display:none!important}
+  .gw-col-hidden-5 #gwTable th:nth-child(7),.gw-col-hidden-5 #gwTable td:nth-child(7){display:none!important}
+  .gw-col-hidden-6 #gwTable th:nth-child(8),.gw-col-hidden-6 #gwTable td:nth-child(8){display:none!important}
+  .gw-col-hidden-7 #gwTable th:nth-child(9),.gw-col-hidden-7 #gwTable td:nth-child(9){display:none!important}
+  .gw-col-hidden-8 #gwTable th:nth-child(10),.gw-col-hidden-8 #gwTable td:nth-child(10){display:none!important}
+  .gw-col-hidden-9 #gwTable th:nth-child(11),.gw-col-hidden-9 #gwTable td:nth-child(11){display:none!important}
+  .gw-col-hidden-10 #gwTable th:nth-child(12),.gw-col-hidden-10 #gwTable td:nth-child(12){display:none!important}
+  .gw-col-hidden-11 #gwTable th:nth-child(13),.gw-col-hidden-11 #gwTable td:nth-child(13){display:none!important}
   @media print{
     html,body{background:#fff!important;color:#000!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     body *{visibility:hidden}
-    header.site-header,footer.site-footer,#gwFilters,.header-actions,.site-footer,#syncStatusCard{display:none!important}
+    header.site-header,footer.site-footer,#gwFilters,.header-actions,.site-footer,#syncStatusCard,.gw-nav-tab,.no-print{display:none!important}
     .print-header,.table-wrapper,.table-wrapper *{visibility:visible}
     .print-header{position:relative}
     .table-wrapper{position:relative;background:#fff!important;box-shadow:none!important}
@@ -170,11 +277,61 @@
     window.setWeeksFilter = function(val, el){
       if(window.gwSetWeeksFilter) window.gwSetWeeksFilter(val);
       const fc = document.getElementById('gwFilters');
-      document.querySelectorAll('#gwFilters .chip[data-weeks-filter]').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('#gwChipsMainStock .chip[data-weeks-filter]').forEach(b=>b.classList.remove('active'));
       if(el){ el.classList.add('active'); fc && (val && val!=='ALL' ? fc.classList.add('has-active') : fc.classList.remove('has-active')); }
+    };
+    window.setPfFilter = function(val, el){
+      if(window.gwSetPfFilter) window.gwSetPfFilter(val);
+      document.querySelectorAll('#gwChipsPickface .chip[data-pf-filter]').forEach(b=>b.classList.remove('active'));
+      if(el) el.classList.add('active');
+    };
+    window.switchGwView = function(mode){
+      if(window.gwSwitchView) window.gwSwitchView(mode);
+      document.querySelectorAll('.gw-nav-tab').forEach(t => t.classList.toggle('active', t.dataset.view === mode));
+      document.getElementById('gwChipsMainStock').style.display = mode === 'main_stock' ? 'inline-flex' : 'none';
+      document.getElementById('gwChipsPickface').style.display = mode === 'pickface_restock' ? 'inline-flex' : 'none';
+      // Update Weeks header text
+      var wh = document.getElementById('gwWeeksHeader');
+      if(wh) wh.textContent = mode === 'pickface_restock' ? 'Pickface Fill' : 'Weeks Avail.';
+      // Reset active chip in newly shown set
+      if(mode==='main_stock'){document.querySelectorAll('#gwChipsMainStock .chip').forEach(b=>b.classList.remove('active'));document.querySelector('#gwChipsMainStock .chip[data-weeks-filter="ALL"]').classList.add('active');}
+      else{document.querySelectorAll('#gwChipsPickface .chip').forEach(b=>b.classList.remove('active'));document.querySelector('#gwChipsPickface .chip[data-pf-filter="ALL"]').classList.add('active');}
+    };
+    window.toggleGwFiltersDropdown = function(){
+      const dd = document.getElementById('gwFiltersDropdown');
+      if(!dd) return;
+      const isOpen = dd.style.display !== 'none';
+      dd.style.display = isOpen ? 'none' : 'block';
+      if(!isOpen){
+        const close = (e) => { if(!document.getElementById('gwFiltersDropdownWrap').contains(e.target)){ dd.style.display='none'; document.removeEventListener('click',close); } };
+        setTimeout(()=> document.addEventListener('click', close), 10);
+      }
+    };
+    window.gwSetOnlyWithDemand = function(checked){ if(window.gwSetOnlyDemand) window.gwSetOnlyDemand(checked); };
+    window.gwSetShowHidden = function(checked){ if(window.gwSetShowHiddenFn) window.gwSetShowHiddenFn(checked); };
+    window.gwClearAllFilters = function(){
+      if(window.gwClearFilters) window.gwClearFilters();
+      document.getElementById('gwToggleOnlyDemand').checked = false;
+      document.getElementById('gwToggleShowHidden').checked = false;
     };
   </script>
 
-  <script src="gateway-main.js"></script>
+  <!-- Column Settings Modal -->
+  <div id="gwColumnSettingsModal" class="modal hidden">
+    <div class="modal-content" style="max-width:360px;padding:20px 24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#0f172a">⚙ Column Visibility</h3>
+        <button onclick="closeGwColumnSettingsModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;padding:0;line-height:1">&times;</button>
+      </div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 12px">Toggle columns on/off. Changes are saved automatically.</p>
+      <div id="gwColumnToggles" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="resetGwColumnSettings()" style="padding:6px 14px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:12px;cursor:pointer">Reset All</button>
+        <button onclick="closeGwColumnSettingsModal()" style="padding:6px 14px;border-radius:6px;border:none;background:#3b82f6;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="gateway-main.js?v=20260225b"></script>
 </body>
 </html>

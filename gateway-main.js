@@ -38,12 +38,27 @@
     allRows: [],
     rows: [],
     weeksFilter: 'ALL',
+    pfFilter: 'ALL',
+    viewMode: 'main_stock',
+    hiddenSkus: new Set(),
+    showHidden: false,
+    onlyWithDemand: false,
+    selectedSkus: new Set(),
     page: 1,
     perPage: 30,
   };
 
+  // Hidden products persistence
+  const GW_HIDDEN_KEY = 'gw_hidden_skus';
+  (function loadHiddenSkus() {
+    try { const raw = localStorage.getItem(GW_HIDDEN_KEY); if (raw) JSON.parse(raw).forEach(s => state.hiddenSkus.add(String(s))); } catch {}
+  })();
+  function saveHiddenSkus() {
+    try { localStorage.setItem(GW_HIDDEN_KEY, JSON.stringify(Array.from(state.hiddenSkus))); } catch {}
+  }
+
   /* ── DOM refs ── */
-  const COLS = 12;
+  const COLS = 14;
   const tbody  = document.getElementById('gwTbody');
   const input  = document.getElementById('gwSearch');
   function setTbody(html) { if (tbody) tbody.innerHTML = html; }
@@ -65,6 +80,23 @@
     if (weeks == null) return '<span class="weeks-badge none">—</span>';
     const label = weeks.toFixed(1);
     return `<span class="weeks-badge ${cls}">${label}</span>`;
+  }
+
+  function classifyPickface(r) {
+    if (!r.capacity || r.capacity <= 0) return 'NO_SETUP';
+    if (r.pickface_on_hand <= 0) return 'EMPTY';
+    if (r.pickface_on_hand >= r.capacity) return 'FULL';
+    return 'NEEDS_RESTOCK';
+  }
+
+  function pickfaceBadge(r) {
+    const cls = classifyPickface(r);
+    if (cls === 'NO_SETUP') return '<span class="weeks-badge none">—</span>';
+    const pct = Math.round((r.pickface_on_hand / r.capacity) * 100);
+    const fillNeeded = r.capacity - r.pickface_on_hand;
+    if (cls === 'EMPTY') return `<span class="weeks-badge critical">Empty (need ${fillNeeded})</span>`;
+    if (cls === 'NEEDS_RESTOCK') return `<span class="weeks-badge low">${pct}% (need ${fillNeeded})</span>`;
+    return `<span class="weeks-badge good">Full</span>`;
   }
 
   /* ═══════════════════════════════════════════════
@@ -97,6 +129,8 @@
     updatePager(rows.length);
 
     const html = page.map(r => {
+      const rawSku = String(r.__stock_sku || r.sku);
+      const isSelected = state.selectedSkus.has(rawSku);
       const fiveDC    = escapeHtml(r.__5dc || '');
       const skuDisplay = escapeHtml(r.__stock_sku || r.sku);
       const productName = r.__full_description || r.product;
@@ -110,12 +144,32 @@
       const totalMW   = r.total_mw ?? 0;
       const gwStock   = r.gateway_stock ?? 0;
       const avgMth    = r.avg_month_sales;
+      const avgWk     = avgMth != null && avgMth > 0 ? avgMth / 4.33 : null;
+      const avgSalesO = r.__avg_sales_only;
+      const avgXfrO   = r.__avg_transfer_only;
       const weeks     = r.weeks_available;
       const wCls      = classifyWeeks(weeks);
 
-      const avgHtml   = avgMth != null
-        ? `<span style="font-variant-numeric:tabular-nums">${Math.round(avgMth).toLocaleString()}</span>`
-        : '<span style="opacity:.35">—</span>';
+      let avgHtml;
+      if (avgMth != null) {
+        const mthStr = Math.round(avgMth).toLocaleString();
+        const wkStr = avgWk != null ? Math.round(avgWk).toLocaleString() : '—';
+        const salesMth = avgSalesO != null ? Math.round(avgSalesO).toLocaleString() : '0';
+        const salesWk = avgSalesO != null && avgSalesO > 0 ? Math.round(avgSalesO / 4.33).toLocaleString() : '0';
+        const xfrMth = avgXfrO != null ? Math.round(avgXfrO).toLocaleString() : '0';
+        const xfrWk = avgXfrO != null && avgXfrO > 0 ? Math.round(avgXfrO / 4.33).toLocaleString() : '0';
+        const tipHtml = `<div style="text-align:left;min-width:220px">`
+          + `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid #475569;padding-bottom:3px">AVG Demand Breakdown</div>`
+          + `<div style="display:flex;justify-content:space-between;gap:12px;opacity:.6;font-size:11px;margin-bottom:2px"><span></span><span>mth / 4wk</span></div>`
+          + `<div style="display:flex;justify-content:space-between;gap:12px"><span>📦 Sales Orders:</span><span>${salesMth} / ${salesWk}</span></div>`
+          + `<div style="display:flex;justify-content:space-between;gap:12px"><span>🚚 Transfers NET:</span><span>${xfrMth} / ${xfrWk}</span></div>`
+          + `<div style="border-top:1px solid #475569;margin-top:3px;padding-top:3px;font-weight:700;display:flex;justify-content:space-between;gap:12px"><span>Total:</span><span>${mthStr} / ${wkStr}</span></div>`
+          + `<div style="margin-top:6px;font-size:10px;opacity:.6">Period: Aug 2025 – Feb 2026 (6.53 mths)</div>`
+          + `</div>`;
+        avgHtml = `<span class="tip-cell" onclick="toggleTip(this)"><span style="font-variant-numeric:tabular-nums">${mthStr}<span style="opacity:.45;margin:0 2px">/</span>${wkStr}</span><div class="tip-pop">${tipHtml}</div></span>`;
+      } else {
+        avgHtml = '<span style="opacity:.35">—</span>';
+      }
 
       const gwHtml    = gwStock > 0
         ? `<span style="font-weight:600;color:#0369a1">${gwStock.toLocaleString()}</span>`
@@ -126,7 +180,16 @@
       const qtyCtnHtml    = qtyCtnVal != null ? `<span style="font-variant-numeric:tabular-nums">${qtyCtnVal}</span>` : '<span style="opacity:.35">—</span>';
       const qtyPalletHtml = qtyPalletVal != null ? `<span style="font-variant-numeric:tabular-nums">${qtyPalletVal}</span>` : '<span style="opacity:.35">—</span>';
 
-      return `<tr>
+      // Actions: hide/unhide button
+      const isHidden = state.hiddenSkus.has(rawSku);
+      const hideBtn = `<button type="button" onclick="gwToggleHide('${escapeHtml(rawSku)}')" title="${isHidden ? 'Show product' : 'Hide product'}" style="background:none;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;padding:2px 8px;font-size:13px">${isHidden ? '👁' : '🚫'}</button>`;
+      const trStyle = isHidden ? ' style="opacity:.4;background:#f8fafc"' : '';
+
+      // Pickface fill badge (for pickface restock mode)
+      const pfBadge = state.viewMode === 'pickface_restock' ? pickfaceBadge(r) : weeksBadge(weeks, wCls.toLowerCase());
+
+      return `<tr${trStyle}>
+        <td class="no-print"><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="gwToggleSelectRow('${escapeHtml(rawSku)}', this.checked)" /></td>
         <td style="font-variant-numeric:tabular-nums;font-size:12px;color:#64748b">${fiveDC}</td>
         <td>${skuDisplay}</td>
         <td>${productHtml}</td>
@@ -136,28 +199,50 @@
         <td>${totalMW}</td>
         <td>${gwHtml}</td>
         <td>${avgHtml}</td>
-        <td>${weeksBadge(weeks, wCls.toLowerCase())}</td>
+        <td>${pfBadge}</td>
         <td>${qtyCtnHtml}</td>
         <td>${qtyPalletHtml}</td>
+        <td class="no-print">${hideBtn}</td>
       </tr>`;
     }).join('');
 
     setTbody(html);
+    updateBulkBar();
+    // Update select-all checkbox state
+    const selAll = document.getElementById('gwSelectAll');
+    if (selAll) {
+      const pageSkus = page.map(r => String(r.__stock_sku || r.sku));
+      const allChecked = pageSkus.length > 0 && pageSkus.every(s => state.selectedSkus.has(s));
+      const someChecked = pageSkus.some(s => state.selectedSkus.has(s));
+      selAll.checked = allChecked;
+      selAll.indeterminate = someChecked && !allChecked;
+    }
   }
 
   /* ═══════════════════════════════════════════════
      COUNTERS
      ═══════════════════════════════════════════════ */
   function updateCounters() {
+    // Filter out hidden for counting (unless showHidden)
+    const visibleRows = state.showHidden ? state.allRows : state.allRows.filter(r => !state.hiddenSkus.has(String(r.__stock_sku || r.sku)));
+    // Main Stock mode counters (weeks-based)
     const c = { all: 0, critical: 0, low: 0, ok: 0, good: 0, no_sales: 0 };
-    for (const r of state.allRows) {
+    // Pickface mode counters
+    const pf = { all: 0, needs_restock: 0, empty: 0, full: 0, no_setup: 0 };
+    for (const r of visibleRows) {
       c.all++;
+      pf.all++;
       const w = classifyWeeks(r.weeks_available);
       if (w === 'CRITICAL') c.critical++;
       else if (w === 'LOW') c.low++;
       else if (w === 'OK') c.ok++;
       else if (w === 'GOOD') c.good++;
       else c.no_sales++;
+      const p = classifyPickface(r);
+      if (p === 'NEEDS_RESTOCK') pf.needs_restock++;
+      else if (p === 'EMPTY') pf.empty++;
+      else if (p === 'FULL') pf.full++;
+      else pf.no_setup++;
     }
     const u = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     u('countAll', c.all);
@@ -166,6 +251,23 @@
     u('countOk', c.ok);
     u('countGood', c.good);
     u('countNoSales', c.no_sales);
+    u('pfCountAll', pf.all);
+    u('pfCountNeedsRestock', pf.needs_restock);
+    u('pfCountEmpty', pf.empty);
+    u('pfCountFull', pf.full);
+    u('pfCountNoSetup', pf.no_setup);
+    // Hidden count
+    u('gwHiddenCount', state.hiddenSkus.size > 0 ? `(${state.hiddenSkus.size})` : '');
+    // Filter badge
+    const activeFilters = [];
+    if (state.onlyWithDemand) activeFilters.push('With demand');
+    if (state.showHidden) activeFilters.push('Show hidden');
+    const badge = document.getElementById('gwFiltersBadge');
+    if (badge) { badge.textContent = activeFilters.length || ''; badge.style.display = activeFilters.length ? 'inline-flex' : 'none'; }
+    const tagsEl = document.getElementById('gwActiveFilterTags');
+    if (tagsEl) {
+      tagsEl.innerHTML = activeFilters.length === 0 ? '' : activeFilters.map(f => `<span style="display:inline-flex;align-items:center;gap:3px;background:#eef2ff;color:#4338ca;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid #c7d2fe;white-space:nowrap">${escapeHtml(f)}</span>`).join('');
+    }
   }
 
   /* ═══════════════════════════════════════════════
@@ -174,16 +276,47 @@
   function applyFilters(rows) {
     let out = rows.slice();
 
-    // weeks filter
-    if (state.weeksFilter !== 'ALL') {
-      out = out.filter(r => classifyWeeks(r.weeks_available) === state.weeksFilter);
+    // Hidden filter
+    if (!state.showHidden) {
+      out = out.filter(r => !state.hiddenSkus.has(String(r.__stock_sku || r.sku)));
+    }
+
+    // Only with demand
+    if (state.onlyWithDemand) {
+      out = out.filter(r => r.avg_month_sales != null && r.avg_month_sales > 0);
+    }
+
+    if (state.viewMode === 'main_stock') {
+      // weeks filter
+      if (state.weeksFilter !== 'ALL') {
+        out = out.filter(r => classifyWeeks(r.weeks_available) === state.weeksFilter);
+      }
+    } else {
+      // pickface filter
+      if (state.pfFilter !== 'ALL') {
+        out = out.filter(r => classifyPickface(r) === state.pfFilter);
+      }
     }
 
     return out;
   }
 
   function sortRows(rows) {
-    // Sort by weeks ascending (most urgent first), nulls last
+    if (state.viewMode === 'pickface_restock') {
+      // Sort by fill % ascending (emptiest pickfaces first), no-setup last
+      return rows.slice().sort((a, b) => {
+        const aSetup = a.capacity > 0;
+        const bSetup = b.capacity > 0;
+        if (!aSetup && !bSetup) return String(a.sku).localeCompare(String(b.sku));
+        if (!aSetup) return 1;
+        if (!bSetup) return -1;
+        const aFill = a.pickface_on_hand / a.capacity;
+        const bFill = b.pickface_on_hand / b.capacity;
+        if (aFill !== bFill) return aFill - bFill;
+        return String(a.sku).localeCompare(String(b.sku));
+      });
+    }
+    // Main stock mode: sort by weeks ascending (most urgent first), nulls last
     return rows.slice().sort((a, b) => {
       const wa = a.weeks_available;
       const wb = b.weeks_available;
@@ -197,6 +330,7 @@
 
   function rebuildView() {
     state.page = 1;
+    state.selectedSkus.clear();
     const filtered = applyFilters(state.allRows);
     const sorted   = sortRows(filtered);
     state.rows = sorted;
@@ -396,7 +530,7 @@
       /* 6. AVG monthly sales */
       let avgSalesRows = [];
       try {
-        avgSalesRows = await fetchAllRows('branch_avg_monthly_sales', 'product, avg_mth_main');
+        avgSalesRows = await fetchAllRows('branch_avg_monthly_sales', 'product, avg_mth_main, avg_sales_main, avg_transfer_main');
       } catch (e) { console.warn('⚠️ Could not read branch_avg_monthly_sales:', e.message); }
 
       /* ── Build lookup maps (same patterns as restock-v2) ── */
@@ -408,7 +542,11 @@
       // AVG sales by product name (uppercase)
       const avgSalesByName = Object.create(null);
       for (const a of avgSalesRows) {
-        if (a.product) avgSalesByName[a.product.toUpperCase()] = Number(a.avg_mth_main) || 0;
+        if (a.product) avgSalesByName[a.product.toUpperCase()] = {
+          total: Number(a.avg_mth_main) || 0,
+          sales: Number(a.avg_sales_main) || 0,
+          transfer: Number(a.avg_transfer_main) || 0,
+        };
       }
 
       // Pallet capacity: product/sku → qty_pallet
@@ -530,9 +668,12 @@
         const gatewayStock = gwBySku[stockSku] || 0;
 
         // AVG month sales (lookup by product code, uppercase)
-        const avgMonthSales = avgSalesByName[displayProduct.toUpperCase()]
+        const avgLookup = avgSalesByName[displayProduct.toUpperCase()]
           ?? avgSalesByName[(fullDescription || '').toUpperCase()]
           ?? null;
+        const avgMonthSales = avgLookup ? avgLookup.total : null;
+        const avgSalesOnly = avgLookup ? avgLookup.sales : null;
+        const avgTransferOnly = avgLookup ? avgLookup.transfer : null;
 
         // Weeks available = totalMW / (avgMonthSales / WEEKS_PER_MONTH)
         let weeksAvailable = null;
@@ -557,6 +698,8 @@
           total_mw: totalMW,
           gateway_stock: gatewayStock,
           avg_month_sales: avgMonthSales,
+          __avg_sales_only: avgSalesOnly,
+          __avg_transfer_only: avgTransferOnly,
           weeks_available: weeksAvailable,
           __qty_per_ctn: qtyCtn,
           __qty_per_pallet: qtyPallet,
@@ -587,6 +730,21 @@
   }
 
   /* ═══════════════════════════════════════════════
+     TOOLTIP TOGGLE
+     ═══════════════════════════════════════════════ */
+  window.toggleTip = function (el) {
+    const wrap = el.classList.contains('tip-cell') ? el : el.closest('.tip-cell');
+    if (!wrap) return;
+    const isOpen = wrap.classList.contains('show');
+    document.querySelectorAll('.tip-cell.show').forEach(e => e.classList.remove('show'));
+    if (!isOpen) {
+      wrap.classList.add('show');
+      const close = (ev) => { if (!wrap.contains(ev.target)) { wrap.classList.remove('show'); document.removeEventListener('click', close); } };
+      setTimeout(() => document.addEventListener('click', close), 10);
+    }
+  };
+
+  /* ═══════════════════════════════════════════════
      SEARCH
      ═══════════════════════════════════════════════ */
   window.runGwSearch = function () {
@@ -607,6 +765,186 @@
     state.weeksFilter = String(val || 'ALL').toUpperCase();
     rebuildView();
   };
+
+  window.gwSetPfFilter = function (val) {
+    state.pfFilter = String(val || 'ALL').toUpperCase();
+    rebuildView();
+  };
+
+  window.gwSwitchView = function (mode) {
+    state.viewMode = mode;
+    if (mode === 'main_stock') { state.pfFilter = 'ALL'; }
+    else { state.weeksFilter = 'ALL'; }
+    updateCounters();
+    rebuildView();
+  };
+
+  window.gwToggleHide = function (sku) {
+    const key = String(sku);
+    if (state.hiddenSkus.has(key)) state.hiddenSkus.delete(key);
+    else state.hiddenSkus.add(key);
+    saveHiddenSkus();
+    updateCounters();
+    rebuildView();
+  };
+
+  window.gwSetOnlyDemand = function (checked) {
+    state.onlyWithDemand = !!checked;
+    updateCounters();
+    rebuildView();
+  };
+
+  window.gwSetShowHiddenFn = function (checked) {
+    state.showHidden = !!checked;
+    updateCounters();
+    rebuildView();
+  };
+
+  window.gwClearFilters = function () {
+    state.onlyWithDemand = false;
+    state.showHidden = false;
+    updateCounters();
+    rebuildView();
+  };
+
+  /* ═══════════════════════════════════════════════
+     SELECTION & BULK ACTIONS
+     ═══════════════════════════════════════════════ */
+  function updateBulkBar() {
+    const bar = document.getElementById('gwBulkBar');
+    const cnt = document.getElementById('gwBulkCount');
+    const showBtn = document.getElementById('gwBulkShowBtn');
+    if (!bar) return;
+    const n = state.selectedSkus.size;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    if (cnt) cnt.textContent = `${n} selected`;
+    // Show "Show selected" button only when viewing hidden products
+    if (showBtn) showBtn.style.display = state.showHidden ? 'inline-block' : 'none';
+  }
+
+  window.gwToggleSelectAll = function (checked) {
+    const start = (state.page - 1) * state.perPage;
+    const page = state.rows.slice(start, start + state.perPage);
+    for (const r of page) {
+      const sku = String(r.__stock_sku || r.sku);
+      if (checked) state.selectedSkus.add(sku);
+      else state.selectedSkus.delete(sku);
+    }
+    render(state.rows);
+  };
+
+  window.gwToggleSelectRow = function (sku, checked) {
+    if (checked) state.selectedSkus.add(sku);
+    else state.selectedSkus.delete(sku);
+    updateBulkBar();
+    // Update select-all checkbox
+    const selAll = document.getElementById('gwSelectAll');
+    if (selAll) {
+      const start = (state.page - 1) * state.perPage;
+      const page = state.rows.slice(start, start + state.perPage);
+      const pageSkus = page.map(r => String(r.__stock_sku || r.sku));
+      const allChecked = pageSkus.length > 0 && pageSkus.every(s => state.selectedSkus.has(s));
+      const someChecked = pageSkus.some(s => state.selectedSkus.has(s));
+      selAll.checked = allChecked;
+      selAll.indeterminate = someChecked && !allChecked;
+    }
+  };
+
+  window.gwHideSelected = function () {
+    for (const sku of state.selectedSkus) {
+      state.hiddenSkus.add(sku);
+    }
+    saveHiddenSkus();
+    state.selectedSkus.clear();
+    updateCounters();
+    rebuildView();
+  };
+
+  window.gwShowSelected = function () {
+    for (const sku of state.selectedSkus) {
+      state.hiddenSkus.delete(sku);
+    }
+    saveHiddenSkus();
+    state.selectedSkus.clear();
+    updateCounters();
+    rebuildView();
+  };
+
+  window.gwClearSelection = function () {
+    state.selectedSkus.clear();
+    render(state.rows);
+  };
+
+  /* ═══════════════════════════════════════════════
+     COLUMN VISIBILITY
+     ═══════════════════════════════════════════════ */
+  const GW_COL_SETTINGS_KEY = 'gwMain_hiddenColumns';
+  const GW_TOGGLEABLE_COLS = [
+    { idx: 0, label: '5DC' },
+    { idx: 1, label: 'SKU' },
+    { idx: 2, label: 'Product' },
+    { idx: 3, label: 'Pickface Location' },
+    { idx: 4, label: 'Pickface Stock' },
+    { idx: 5, label: 'Capacity' },
+    { idx: 6, label: 'Total MW' },
+    { idx: 7, label: 'Gateway' },
+    { idx: 8, label: 'Avg Mth / 4Wk' },
+    { idx: 9, label: 'Weeks Avail.' },
+    { idx: 10, label: 'Qty/CTN' },
+    { idx: 11, label: 'Qty/Pallet' },
+  ];
+  let gwHiddenCols = new Set();
+
+  function gwLoadColSettings() {
+    try {
+      const raw = localStorage.getItem(GW_COL_SETTINGS_KEY);
+      if (raw) gwHiddenCols = new Set(JSON.parse(raw));
+    } catch {}
+    gwApplyColVisibility();
+  }
+  function gwSaveColSettings() {
+    try { localStorage.setItem(GW_COL_SETTINGS_KEY, JSON.stringify(Array.from(gwHiddenCols))); } catch {}
+  }
+  function gwApplyColVisibility() {
+    const container = document.querySelector('.main-container');
+    if (!container) return;
+    for (const col of GW_TOGGLEABLE_COLS) {
+      const cls = `gw-col-hidden-${col.idx}`;
+      if (gwHiddenCols.has(col.idx)) container.classList.add(cls);
+      else container.classList.remove(cls);
+    }
+  }
+  window.openGwColumnSettingsModal = function () {
+    const modal = document.getElementById('gwColumnSettingsModal');
+    if (!modal) return;
+    const container = document.getElementById('gwColumnToggles');
+    if (!container) return;
+    container.innerHTML = GW_TOGGLEABLE_COLS.map(col => {
+      const checked = !gwHiddenCols.has(col.idx) ? 'checked' : '';
+      return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px">
+        <input type="checkbox" ${checked} onchange="gwToggleCol(${col.idx}, this.checked)" />
+        <span>${col.label}</span>
+      </label>`;
+    }).join('');
+    modal.classList.remove('hidden');
+  };
+  window.closeGwColumnSettingsModal = function () {
+    const modal = document.getElementById('gwColumnSettingsModal');
+    if (modal) modal.classList.add('hidden');
+  };
+  window.gwToggleCol = function (idx, visible) {
+    if (visible) gwHiddenCols.delete(idx);
+    else gwHiddenCols.add(idx);
+    gwSaveColSettings();
+    gwApplyColVisibility();
+  };
+  window.resetGwColumnSettings = function () {
+    gwHiddenCols.clear();
+    gwSaveColSettings();
+    gwApplyColVisibility();
+    window.openGwColumnSettingsModal(); // refresh checkmarks
+  };
+  gwLoadColSettings();
 
   /* ═══════════════════════════════════════════════
      PAGER controls

@@ -39,16 +39,20 @@
         h1 { font-size:1.7rem!important; color:var(--text)!important; margin-bottom:22px!important; font-weight:800!important; text-shadow:none!important; }
         .home-subtitle { color:var(--muted); font-size:.85rem; font-weight:500; margin-left:6px; }
         .category-grid { display:grid!important; grid-template-columns:1fr 1fr!important; gap:18px!important; }
-        .category-card { background:#fff!important; border:1px solid #e2e8f0!important; border-radius:14px!important; padding:0!important; overflow:hidden!important; box-shadow:0 2px 8px rgba(0,0,0,.04)!important; transition:box-shadow .2s, transform .2s; }
+        .category-card { background:#e2e8f0!important; border:1px solid #cbd5e1!important; border-radius:14px!important; padding:0!important; overflow:hidden!important; box-shadow:0 2px 8px rgba(0,0,0,.06)!important; transition:box-shadow .2s, transform .2s; }
         .category-card:hover { box-shadow:0 6px 24px rgba(0,0,0,.08)!important; transform:translateY(-2px); }
         .category-header { display:flex!important; align-items:center!important; gap:10px!important; padding:14px 18px!important; border-bottom:1px solid #e2e8f0!important; }
         .category-icon { font-size:1.25rem!important; line-height:1; }
         h2.category-title, .category-card .category-title { font-size:.95rem!important; font-weight:800!important; color:#0f172a!important; margin:0!important; text-align:left!important; }
         .category-labels .category-header  { background:#eff6ff!important; border-bottom-color:#bfdbfe!important; }
+        .category-labels .category-items { background:#dbeafe!important; }
         .category-warehouse .category-header { background:#f0fdf4!important; border-bottom-color:#bbf7d0!important; }
+        .category-warehouse .category-items { background:#d1fae5!important; }
         .category-quality .category-header { background:#fffbeb!important; border-bottom-color:#fde68a!important; }
+        .category-quality .category-items { background:#fef3c7!important; }
         .category-analytics .category-header { background:#faf5ff!important; border-bottom-color:#e9d5ff!important; }
-        .category-items { display:flex!important; flex-direction:column!important; gap:8px!important; padding:12px!important; }
+        .category-analytics .category-items { background:#e9d5ff!important; }
+        .category-items { display:flex!important; flex-direction:column!important; gap:8px!important; padding:12px!important; background:#e2e8f0!important; }
         .cat-btn { display:flex!important; align-items:center!important; gap:12px!important; padding:12px 16px!important; background:#ffffff!important; border:1px solid #e2e8f0!important; border-radius:10px!important; cursor:pointer!important; font-size:.9rem!important; font-weight:600!important; color:#0f172a!important; text-decoration:none!important; width:100%!important; font-family:inherit!important; box-sizing:border-box!important; line-height:1.4!important; transition:all .2s ease; }
         .cat-btn:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,.08); border-color:#94a3b8!important; }
         .cat-btn-icon { font-size:1.1rem!important; flex-shrink:0; width:28px!important; height:28px!important; display:flex!important; align-items:center!important; justify-content:center!important; border-radius:8px!important; background:#f1f5f9!important; line-height:1; }
@@ -74,13 +78,13 @@
         <header class="site-header">
             <div class="header-inner">
                 <div class="left">
-                    <a class="brand" href="index.html">JSlab.dev</a>
+                    <a class="brand" href="index.html" style="display:flex;align-items:center;gap:8px">
+                        <img src="rapid-express-icon.png" alt="Rapid Labels" style="width:32px;height:32px;border-radius:8px;object-fit:contain">
+                        <span>JSlab.dev</span>
+                    </a>
                 </div>
                 <nav class="site-nav">
                     <a href="index.html" class="nav-link active">Home</a>
-                    <a href="#" class="nav-link" onclick="openSearchModal()">Labels</a>
-                    <a href="collections.html" class="nav-link">Collections</a>
-                    <a href="restock-v2.html" class="nav-link">Re-Stock</a>
                 </nav>
             </div>
         </header>
@@ -110,6 +114,10 @@
                         <span class="cat-btn-icon">🏷️</span>
                         <span>Barcodes</span>
                     </button>
+                    <button class="cat-btn" type="button" onclick="openMultiLabelModal()">
+                        <span class="cat-btn-icon">📋</span>
+                        <span>Multi-Label</span>
+                    </button>
                 </div>
             </div>
 
@@ -125,19 +133,25 @@
                         <span>Collections</span>
                         <span class="cat-badge" id="collectionsCount" style="display:none"></span>
                     </a>
-                    <a class="cat-btn" href="collections-history.html">
-                        <span class="cat-btn-icon">📁</span>
-                        <span>Collections History</span>
-                    </a>
                     <a class="cat-btn" href="restock.html">
                         <span class="cat-btn-icon">♻️</span>
                         <span>Re-Stock V1 (legacy)</span>
+                    </a>
+                    <a class="cat-btn" href="https://www.rapidexpress.com.au/" target="_blank" rel="noopener" style="border:1px solid #bbf7d0!important;background:#f0fdf4!important">
+                        <span class="cat-btn-icon" style="background:#fff!important;padding:2px!important;border-radius:10px!important;box-shadow:0 1px 4px rgba(0,0,0,.08)"><img src="rapid-express-icon.png" alt="Rapid Express" style="width:24px;height:24px;object-fit:contain;border-radius:6px"></span>
+                        <span style="font-weight:700">Rapid Express</span>
+                        <span style="margin-left:auto;font-size:10px;color:#94a3b8">↗</span>
+                    </a>
+                    <a class="cat-btn" href="restock-v2.html" style="border:1px dashed #93c5fd!important;background:#eff6ff!important;opacity:.85">
+                        <span class="cat-btn-icon">♻️</span>
+                        <span>Re-Stock V2</span>
+                        <span style="margin-left:auto;font-size:9px;font-weight:700;color:#3b82f6;background:#dbeafe;padding:2px 6px;border-radius:6px;letter-spacing:.5px">BETA</span>
                     </a>
                 </div>
             </div>
 
             <!-- 3. Quality & Compliance -->
-            <div class="category-card category-quality">
+            <div class="category-card category-quality" style="position:relative">
                 <div class="category-header">
                     <span class="category-icon">🔍</span>
                     <h2 class="category-title">Quality & Compliance</h2>
@@ -155,14 +169,18 @@
                         <span class="cat-btn-icon">📦</span>
                         <span>Branch Replenishment</span>
                     </a>
-                    <a class="cat-btn" href="restock-v2.html">
-                        <span class="cat-btn-icon">♻️</span>
-                        <span>Re-Stock V2</span>
-                    </a>
                     <a class="cat-btn" href="gateway-main.html">
                         <span class="cat-btn-icon">🏭</span>
                         <span>Gateway</span>
                     </a>
+                </div>
+                <!-- Password overlay – covers items, sits on top -->
+                <div id="qcLocked" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:14px;gap:6px">
+                    <div style="font-size:32px">🔒</div>
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN" style="width:80px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font-size:15px;outline:none" onkeydown="if(event.key==='Enter')document.getElementById('qcUnlockBtn').click()">
+                        <button id="qcUnlockBtn" type="button" onclick="if(document.getElementById('qcPin').value==='4209'){document.getElementById('qcLocked').remove()}else{document.getElementById('qcPin').style.borderColor='#ef4444';document.getElementById('qcPin').value='';document.getElementById('qcPin').placeholder='Wrong'}" style="padding:6px 14px;background:#eab308;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Unlock</button>
+                    </div>
                 </div>
             </div>
 
@@ -457,6 +475,36 @@
         </div>
     </div>
 
+    <!-- Multi-Label Modal -->
+    <div id="multiLabelModal" class="modal hidden">
+        <div class="modal-content" style="max-width:720px">
+            <span class="close" onclick="closeMultiLabelModal()">&times;</span>
+            <h2>📋 Multi-Label Print</h2>
+            <p style="font-size:12px;color:#64748b;margin:-8px 0 12px">Add products and print a table sheet for warehouse use.</p>
+
+            <!-- Orientation toggle -->
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+                <label style="font-weight:700;font-size:13px">Orientation:</label>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+                    <input type="radio" name="mlOrientation" value="portrait" checked onchange="mlUpdateSlots()"> Portrait <span style="color:#94a3b8;font-size:11px">(8 products)</span>
+                </label>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+                    <input type="radio" name="mlOrientation" value="landscape" onchange="mlUpdateSlots()"> Landscape <span style="color:#94a3b8;font-size:11px">(5 products)</span>
+                </label>
+            </div>
+
+            <!-- Product slots -->
+            <div id="mlSlots" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto;padding-right:4px"></div>
+
+            <!-- Actions -->
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+                <button class="search-btn-small secondary" onclick="mlClearAll()" style="margin-right:auto">🗑️ Clear All</button>
+                <button class="search-btn-small secondary" onclick="closeMultiLabelModal()">Cancel</button>
+                <button id="mlPrintBtn" class="search-btn-small" onclick="mlPrint()" disabled>🖨️ Print</button>
+            </div>
+        </div>
+    </div>
+
         <footer class="site-footer">
             <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
         </footer>
@@ -464,6 +512,7 @@
         <!-- Scripts -->
     <script src="supabase-config.js"></script>
     <script src="scanner.js"></script>
+    <script src="multi-label.js?v=20260226c"></script>
     <script src="app.js"></script>
     <script>
         // Service worker disabled for production stability
@@ -473,6 +522,7 @@
             if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
             if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
             if (location.hash === '#barcodes') { try { openBarcodesModal(); } catch(e){} }
+            if (location.hash === '#multilabel') { try { openMultiLabelModal(); } catch(e){} }
 
             // Fetch pending collections count
             (async () => {

@@ -33,13 +33,11 @@
     searchQuery: '',
     searchTimer: null,
     syncing: false,
-    autoSyncInterval: null,
     page: 1,
     perPage: 50,
     totalOrders: 0,
+    stats: null,  // Global KPI stats (all orders, not just current page)
   };
-
-  const AUTO_SYNC_MS = 30 * 60 * 1000; // Auto-sync every 30 minutes (backend does full sync every 2h)
 
   /* ═══════════════════════════════════════════════
      BIN PARSING & ERROR CLASSIFICATION
@@ -74,27 +72,37 @@
   /* ═══════════════════════════════════════════════
      KPI UPDATE
      ═══════════════════════════════════════════════ */
+  /**
+   * Fetch global KPI stats from backend (aggregated across ALL orders).
+   * Zero Cin7 API calls — Supabase only.
+   */
+  async function loadStats() {
+    try {
+      const res = await fetch('/api/pick-anomalies/stats');
+      const data = await res.json();
+      if (data.success && data.stats) {
+        state.stats = data.stats;
+        updateKpis();
+      }
+    } catch (err) {
+      console.warn('Stats load failed:', err);
+    }
+  }
+
   function updateKpis() {
     const el = document.getElementById('paKpis');
     el.style.display = '';
 
-    let orders = 0, picks = 0, correct = 0, anomalies = 0, fg = 0, reviewed = 0;
-    for (const o of state.orders) {
-      orders++;
-      picks += o.total_picks || 0;
-      correct += o.correct_picks || 0;
-      anomalies += o.anomaly_picks || 0;
-      fg += o.fg_count || 0;
-      if (o.reviewed) reviewed++;
-    }
+    const s = state.stats;
+    if (!s) return; // Stats not loaded yet
 
-    const reviewedPct = orders > 0 ? Math.round((reviewed / orders) * 100) : 0;
+    const reviewedPct = s.orders > 0 ? Math.round((s.reviewed / s.orders) * 100) : 0;
 
-    document.getElementById('kpiOrders').textContent = orders;
-    document.getElementById('kpiPicks').textContent = picks;
-    document.getElementById('kpiCorrect').textContent = correct;
-    document.getElementById('kpiAnomalies').textContent = anomalies;
-    document.getElementById('kpiFg').textContent = fg;
+    document.getElementById('kpiOrders').textContent = s.orders;
+    document.getElementById('kpiPicks').textContent = s.picks;
+    document.getElementById('kpiCorrect').textContent = s.correct;
+    document.getElementById('kpiAnomalies').textContent = s.anomalies;
+    document.getElementById('kpiFg').textContent = s.fg;
     document.getElementById('kpiReviewed').textContent = `${reviewedPct}%`;
 
     // Update review progress bar
@@ -225,7 +233,6 @@
       state.orders = data.orders || [];
       state.totalOrders = data.total || state.orders.length;
 
-      updateKpis();
       renderOrdersTable();
       renderPagination();
 
@@ -282,9 +289,10 @@
       // Update "time ago" badge
       updateSyncAge(now);
 
-      // Reload history to show new data
+      // Reload history + stats to show new data
       if (data.newOrders > 0) {
         await loadHistory();
+        await loadStats();
       }
 
     } catch (err) {
@@ -437,6 +445,7 @@
     state.selectedOrder = order;
     state.selectedFixes.clear();
     state.activeTab = 'anomalies';
+    state.stockData = null; // reset stock cache
 
     document.getElementById('paModalTitle').textContent = `Order ${order.order_number} — ${order.customer || ''}`;
 
@@ -455,7 +464,6 @@
     }
 
     document.getElementById('tabCountAnomalies').textContent = anomalies + fgAnomalyCount;
-    document.getElementById('tabCountFg').textContent = fgOrders.length;
     document.getElementById('tabCountCorrect').textContent = correct + fgCorrectCount;
 
     // Review button state
@@ -485,6 +493,9 @@
     renderTabContent();
 
     document.getElementById('paDetailModal').classList.add('open');
+
+    // Fetch stock data in background for anomaly cards
+    _fetchStockForOrder(order);
   }
 
   function closeDetail() {
@@ -516,10 +527,50 @@
     if (!order) { body.innerHTML = ''; return; }
     switch (state.activeTab) {
       case 'anomalies': body.innerHTML = renderAnomaliesTab(order); break;
-      case 'fg':        body.innerHTML = renderFgTab(order); break;
       case 'correct':   body.innerHTML = renderCorrectTab(order); break;
     }
     updateBatchSummary();
+  }
+
+  /* ─── Fetch stock snapshot for anomaly cards ─── */
+  async function _fetchStockForOrder(order) {
+    const picks = order.picks || [];
+    const anomalies = picks.filter(p => p.status === 'anomaly');
+    const fgAnomalies = [];
+    for (const fg of (order.fg_orders || [])) {
+      for (const c of (fg.components || [])) {
+        if (c.status === 'anomaly') fgAnomalies.push(c);
+      }
+    }
+    const allAnom = [...anomalies, ...fgAnomalies];
+    if (!allAnom.length) return;
+
+    const skuSet = new Set();
+    const binSet = new Set();
+    for (const a of allAnom) {
+      if (a.sku) skuSet.add(a.sku);
+      if (a.bin) binSet.add(a.bin);
+      if (a.expectedBin) binSet.add(a.expectedBin);
+    }
+
+    try {
+      const params = new URLSearchParams({
+        skus: [...skuSet].join(','),
+        bins: [...binSet].join(','),
+      });
+      const res = await fetch(`/api/pick-anomalies/stock-check?${params}`);
+      const data = await res.json();
+      if (data.success) {
+        state.stockData = { stock: data.stock || {}, syncedAt: data.syncedAt };
+        // Re-render anomalies tab with stock data
+        if (state.activeTab === 'anomalies') {
+          document.getElementById('paModalBody').innerHTML = renderAnomaliesTab(order);
+          updateBatchSummary();
+        }
+      }
+    } catch (err) {
+      console.warn('Stock check failed:', err);
+    }
   }
 
   /* ═══════════════════════════════════════════════
@@ -528,6 +579,50 @@
 
   function getCorrection(order, pickId) {
     return (order.corrections || []).find(c => c.pick_id === pickId);
+  }
+
+  /* Build stock-snapshot info block for an anomaly card */
+  function _stockInfoHtml(sku, expectedBin, pickedBin, qty) {
+    if (!state.stockData || !state.stockData.stock) {
+      return '<div class="pa-stock-info" style="padding:6px 10px;margin:6px 0;background:#f1f5f9;border-radius:6px;font-size:12px;color:#64748b">⏳ Loading stock data…</div>';
+    }
+    const sd = state.stockData.stock;
+    const fromKey = `${sku}|${expectedBin}`;
+    const toKey   = `${sku}|${pickedBin}`;
+    const fromStock = sd[fromKey];
+    const toStock   = sd[toKey];
+
+    const fmtNum = n => (n != null ? n : '—');
+    const syncLabel = state.stockData.syncedAt
+      ? `Synced: ${new Date(state.stockData.syncedAt).toLocaleString('en-AU', { hour12: false, day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}`
+      : '';
+
+    let warnings = '';
+    if (fromStock && fromStock.available != null && fromStock.available < qty) {
+      warnings += `<div style="color:#dc2626;font-weight:600;margin-top:4px">⚠️ FROM bin only has ${fromStock.available} available (need ${qty}) — may have been restocked already</div>`;
+    }
+    if (toStock && toStock.on_hand != null && toStock.on_hand === 0) {
+      warnings += `<div style="color:#f59e0b;font-weight:600;margin-top:4px">⚠️ TO bin is empty — stock may have been moved/consumed</div>`;
+    }
+
+    return `<div class="pa-stock-info" style="padding:8px 10px;margin:8px 0 4px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px">
+      <div style="font-weight:700;margin-bottom:4px;color:#15803d">📦 Current Stock Snapshot ${syncLabel ? `<span style="font-weight:400;color:#64748b;margin-left:8px">${syncLabel}</span>` : ''}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px">
+          <div style="font-weight:600;color:#dc2626">FROM: ${esc(expectedBin)}</div>
+          ${fromStock
+            ? `<div>On Hand: <strong>${fmtNum(fromStock.on_hand)}</strong> · Allocated: <strong>${fmtNum(fromStock.allocated)}</strong> · Available: <strong>${fmtNum(fromStock.available)}</strong></div>`
+            : `<div style="color:#94a3b8">No stock data for this bin</div>`}
+        </div>
+        <div style="flex:1;min-width:140px">
+          <div style="font-weight:600;color:#2563eb">TO: ${esc(pickedBin)}</div>
+          ${toStock
+            ? `<div>On Hand: <strong>${fmtNum(toStock.on_hand)}</strong> · Allocated: <strong>${fmtNum(toStock.allocated)}</strong> · Available: <strong>${fmtNum(toStock.available)}</strong></div>`
+            : `<div style="color:#94a3b8">No stock data for this bin</div>`}
+        </div>
+      </div>
+      ${warnings}
+    </div>`;
   }
 
   function renderAnomaliesTab(order) {
@@ -602,6 +697,7 @@
                 <span class="pa-bin-value">${esc(err.label)}</span>
               </div>
             </div>
+            ${_stockInfoHtml(pick.sku, pick.expectedBin, pick.bin, pick.qty)}
             ${correction ? `
               <div class="pa-correction-status">
                 <div class="pa-correction-title">✅ Transfer ${correction.transfer_status === 'COMPLETED' ? 'Completed' : 'Created'}</div>
@@ -664,6 +760,7 @@
                   <span class="pa-bin-value">${esc(err.label)}</span>
                 </div>
               </div>
+              ${_stockInfoHtml(comp.sku, comp.expectedBin, comp.bin, comp.qty)}
               ${correction ? `
                 <div class="pa-correction-status">
                   <div class="pa-correction-title">✅ Transfer ${correction.transfer_status === 'COMPLETED' ? 'Completed' : 'Created'}</div>
@@ -691,34 +788,6 @@
     }
 
     return html;
-  }
-
-  function renderFgTab(order) {
-    const fgs = order.fg_orders || [];
-    if (!fgs.length) return '<div class="pa-empty">No FG/Assembly orders found for this order.</div>';
-
-    return fgs.map(fg => {
-      const components = fg.components || [];
-      return `
-        <div class="pa-fg-card">
-          <div class="pa-fg-header">
-            🔧 ${esc(fg.assemblyNumber || fg.taskId)} — ${esc(fg.productCode)}
-            <span class="pa-badge">${esc(fg.status)}</span>
-          </div>
-          <div>Qty: ${fg.quantity} · Completed: ${formatDate(fg.completionDate)} ${fg.createdBy ? '· By: ' + esc(fg.createdBy) : ''}</div>
-          <div class="pa-fg-components">
-            <strong>Components (${components.length}):</strong>
-            ${components.map(c => {
-              const icon = c.status === 'anomaly' ? '⚠️' : '✅';
-              return `<div class="pa-fg-comp-row">
-                ${icon} <strong>${esc(c.sku)}</strong> ×${c.qty}
-                ${c.bin ? `— Bin: <code>${esc(c.bin)}</code>` : '— No bin'}
-                ${c.expectedBin ? ` (expected: <code>${esc(c.expectedBin)}</code>)` : ''}
-              </div>`;
-            }).join('')}
-          </div>
-        </div>`;
-    }).join('');
   }
 
   function renderCorrectTab(order) {
@@ -845,6 +914,63 @@
       };
     }).filter(Boolean);
 
+    // Show loading while checking for duplicates
+    document.getElementById('paConfirmBody').innerHTML = '<div style="text-align:center;padding:20px">⏳ Checking for recent transfers…</div>';
+    document.getElementById('paConfirmModal').classList.add('open');
+
+    // Check for recent duplicate transfers (parallel)
+    let duplicateWarnings = '';
+    try {
+      const dupChecks = await Promise.all(items.map(async t => {
+        const params = new URLSearchParams({ sku: t.sku, fromBin: t.expectedBin, toBin: t.pickedBin });
+        const res = await fetch(`/api/pick-anomalies/recent-transfers?${params}`);
+        const data = await res.json();
+        if (data.success && data.recentTransfers && data.recentTransfers.length > 0) {
+          return { item: t, transfers: data.recentTransfers };
+        }
+        return null;
+      }));
+      const dups = dupChecks.filter(Boolean);
+      if (dups.length > 0) {
+        duplicateWarnings = `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+          <div style="font-weight:700;color:#92400e;margin-bottom:6px">⚠️ Recent Transfers Detected</div>
+          ${dups.map(d => {
+            const latest = d.transfers[0];
+            const ago = _timeAgo(latest.corrected_at);
+            return `<div style="padding:3px 0;font-size:12px;color:#78350f">
+              <strong>${esc(d.item.sku)}</strong> (${esc(d.item.expectedBin)} → ${esc(d.item.pickedBin)}) — last transfer ${ago}
+            </div>`;
+          }).join('')}
+          <div style="font-size:11px;color:#92400e;margin-top:4px">These items already had a correction transfer recently. Creating another may cause phantom stock.</div>
+        </div>`;
+      }
+    } catch (err) {
+      console.warn('Duplicate check failed:', err);
+    }
+
+    // Stock warnings
+    let stockWarnings = '';
+    if (state.stockData && state.stockData.stock) {
+      const sd = state.stockData.stock;
+      const warns = [];
+      for (const t of items) {
+        const fromKey = `${t.sku}|${t.expectedBin}`;
+        const fromStock = sd[fromKey];
+        if (fromStock && fromStock.available != null && fromStock.available < t.qty) {
+          warns.push(`<div style="padding:3px 0;font-size:12px;color:#991b1b">
+            <strong>${esc(t.sku)}</strong> — FROM bin <strong>${esc(t.expectedBin)}</strong> has only ${fromStock.available} available (need ${t.qty})
+          </div>`);
+        }
+      }
+      if (warns.length) {
+        stockWarnings = `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+          <div style="font-weight:700;color:#991b1b;margin-bottom:6px">⚠️ Insufficient Stock Warning</div>
+          ${warns.join('')}
+          <div style="font-size:11px;color:#991b1b;margin-top:4px">Transfer FROM bin may not have enough stock. Stock may have already been restocked by drivers.</div>
+        </div>`;
+      }
+    }
+
     const summaryLines = items.map(t =>
       `<div style="padding:4px 0;border-bottom:1px solid #f1f5f9">
         <strong>${esc(t.sku)}</strong> ×${t.qty} — ${esc(t.expectedBin)} → ${esc(t.pickedBin)}
@@ -852,10 +978,20 @@
     ).join('');
 
     document.getElementById('paConfirmBody').innerHTML =
-      `<div style="margin-bottom:10px">Create <strong>${count}</strong> Stock Transfer${count > 1 ? 's' : ''} (COMPLETED) in Cin7:</div>
+      `${duplicateWarnings}${stockWarnings}
+      <div style="margin-bottom:10px">Create <strong>${count}</strong> Stock Transfer${count > 1 ? 's' : ''} (COMPLETED) in Cin7:</div>
       <div style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px">${summaryLines}</div>
       <div style="margin-top:10px;font-size:12px;color:#64748b">Transfers will be created and completed automatically.</div>`;
-    document.getElementById('paConfirmModal').classList.add('open');
+  }
+
+  function _timeAgo(dateStr) {
+    if (!dateStr) return '';
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
   }
 
   async function confirmFix() {
@@ -1026,6 +1162,7 @@
      ═══════════════════════════════════════════════ */
   window.PA = {
     loadHistory,
+    loadStats,
     syncNewOrders,
     debounceSearch,
     setFilter,
@@ -1045,16 +1182,15 @@
   document.addEventListener('DOMContentLoaded', async () => {
     setSyncStatus('idle', 'Loading...');
 
-    // 1. Load existing history from Supabase
+    // 1. Load existing history + global stats from Supabase (zero Cin7 calls)
     await loadHistory();
+    await loadStats();
 
-    // 2. Auto-sync new orders (silent on initial load — no progress bar)
+    // 2. Auto-sync new orders (silent — no progress bar, Cin7 API calls here)
     await syncNewOrders(true);
 
-    // 3. Set up auto-refresh every 30 minutes (backend scheduler syncs every 2h at :30)
-    state.autoSyncInterval = setInterval(async () => {
-      await syncNewOrders();
-    }, AUTO_SYNC_MS);
+    // Note: No frontend auto-sync interval.
+    // Backend scheduler syncs every 2h at :30. User can manually sync via button.
   });
 
 })();

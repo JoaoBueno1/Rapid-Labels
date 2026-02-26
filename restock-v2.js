@@ -235,7 +235,30 @@
           ? `<span title="${productNameEsc}" style="cursor:help">${escapeHtml(productName.substring(0, 48))}…</span>`
           : productNameEsc;
         const avgMth = r.__avg_month_sales;
-        const avgMthHtml = avgMth != null ? `<span style="font-variant-numeric:tabular-nums">${Math.round(avgMth).toLocaleString()}</span>` : '<span style="opacity:.35">—</span>';
+        const avgWk = avgMth != null && avgMth > 0 ? avgMth / 4.33 : null;
+        const avgSalesOnly = r.__avg_sales_only;
+        const avgXfrOnly = r.__avg_transfer_only;
+        let avgMthHtml;
+        if (avgMth != null) {
+          const mthStr = Math.round(avgMth).toLocaleString();
+          const wkStr = avgWk != null ? Math.round(avgWk).toLocaleString() : '—';
+          // Tooltip breakdown
+          const salesMth = avgSalesOnly != null ? Math.round(avgSalesOnly).toLocaleString() : '0';
+          const salesWk = avgSalesOnly != null && avgSalesOnly > 0 ? Math.round(avgSalesOnly / 4.33).toLocaleString() : '0';
+          const xfrMth = avgXfrOnly != null ? Math.round(avgXfrOnly).toLocaleString() : '0';
+          const xfrWk = avgXfrOnly != null && avgXfrOnly > 0 ? Math.round(avgXfrOnly / 4.33).toLocaleString() : '0';
+          const tipHtml = `<div style="text-align:left;min-width:220px">`
+            + `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid #475569;padding-bottom:3px">AVG Demand Breakdown</div>`
+            + `<div style="display:flex;justify-content:space-between;gap:12px;opacity:.6;font-size:11px;margin-bottom:2px"><span></span><span>mth / 4wk</span></div>`
+            + `<div style="display:flex;justify-content:space-between;gap:12px"><span>📦 Sales Orders:</span><span>${salesMth} / ${salesWk}</span></div>`
+            + `<div style="display:flex;justify-content:space-between;gap:12px"><span>🚚 Transfers NET:</span><span>${xfrMth} / ${xfrWk}</span></div>`
+            + `<div style="border-top:1px solid #475569;margin-top:3px;padding-top:3px;font-weight:700;display:flex;justify-content:space-between;gap:12px"><span>Total:</span><span>${mthStr} / ${wkStr}</span></div>`
+            + `<div style="margin-top:6px;font-size:10px;opacity:.6">Period: Aug 2025 – Feb 2026 (6.53 mths)</div>`
+            + `</div>`;
+          avgMthHtml = `<span class="tip-cell" onclick="toggleTip(this)"><span style="font-variant-numeric:tabular-nums">${mthStr}<span style="opacity:.45;margin:0 2px">/</span>${wkStr}</span><div class="tip-pop">${tipHtml}</div></span>`;
+        } else {
+          avgMthHtml = '<span style="opacity:.35">—</span>';
+        }
         const pickface = escapeHtml(r.stock_locator);
         // Mismatch badge: cin7 stock_locator ≠ setup pickface → yellow ⚠
         let pickfaceHtml = pickface;
@@ -254,15 +277,35 @@
         if (capacity === '' || capacity == null) {
           capacityHtml = '<span style="opacity:.35">—</span>';
         } else if (capWeeks != null && avgM != null) {
-          const tipLines = [
-            `Capacity ${capacity} ≈ ${capWeeks} wk at ${Math.round(avgM)}/mth`,
-            `Stock (${r.on_hand}) ≈ ${runWeeks != null ? runWeeks : 0} wk`,
-            capWeeks < 3 ? '⚠ Too small — consider larger pickface' : capWeeks < 4 ? '⚡ Borderline — review needed' : '✓ Healthy capacity',
-          ];
+          const avgWkCap = Math.round(avgM / 4.33);
+          const fillPct = Math.round((r.on_hand / Number(capacity)) * 100);
+          const restockEvery = Math.max(0.5, Math.floor(capWeeks * 2) / 2); // round to nearest 0.5
+          const idealCap = Math.ceil(avgWkCap * 4);
+          const statusIcon = capWeeks < 3 ? '🔴' : capWeeks < 4 ? '🟡' : '🟢';
+          let statusLine;
+          if (capWeeks < 3) {
+            statusLine = `Demand is ${avgWkCap}/wk but capacity only covers ${capWeeks} wk`
+              + `<br>Consider larger pickface (ideal: 4+ wk = ~${idealCap} units)`;
+          } else if (capWeeks < 4) {
+            statusLine = `Demand is ${avgWkCap}/wk, capacity covers ${capWeeks} wk`
+              + `<br>Borderline — review if restock frequency is OK`;
+          } else {
+            statusLine = `Demand is ${avgWkCap}/wk, capacity covers ${capWeeks} wk`
+              + `<br>Good coverage — restock ~every ${restockEvery} wk`;
+          }
+          const capTipHtml = `<div style="text-align:left;min-width:220px">`
+            + `<div style="font-weight:700;margin-bottom:5px;border-bottom:1px solid #475569;padding-bottom:3px">📦 Current Setup</div>`
+            + `<div style="display:flex;justify-content:space-between;gap:12px"><span>Capacity:</span><span>${capacity} units</span></div>`
+            + `<div style="display:flex;justify-content:space-between;gap:12px"><span>On Hand:</span><span>${r.on_hand} of ${capacity} (${fillPct}%)</span></div>`
+            + `<div style="border-top:1px solid #475569;margin-top:5px;padding-top:5px;font-weight:600">⏱️ AVG Demand: ${Math.round(avgM).toLocaleString()}/mth · ${avgWkCap}/wk</div>`
+            + `<div style="margin-top:5px">→ Full pickface lasts <b>~${capWeeks} weeks</b></div>`
+            + `<div>→ Need to restock every <b>~${restockEvery} weeks</b></div>`
+            + `<div>→ Stock left: <b>~${runWeeks != null ? runWeeks : 0} weeks</b></div>`
+            + `<div style="border-top:1px solid #475569;margin-top:6px;padding-top:5px;font-size:11px">${statusIcon} ${statusLine}</div>`
+            + `</div>`;
           const borderColor = capWeeks < 3 ? '#ef4444' : capWeeks < 4 ? '#f59e0b' : '';
           const borderStyle = borderColor ? `border-left:3px solid ${borderColor};padding-left:6px;` : '';
-          const tipHtml = tipLines.map(l => `<div>${escapeHtml(l)}</div>`).join('');
-          capacityHtml = `<span class="tip-cell" onclick="toggleTip(this)" style="${borderStyle}font-variant-numeric:tabular-nums">${escapeHtml(String(capacity))}<div class="tip-pop">${tipHtml}</div></span>`;
+          capacityHtml = `<span class="tip-cell" onclick="toggleTip(this)" style="${borderStyle}font-variant-numeric:tabular-nums">${escapeHtml(String(capacity))}<div class="tip-pop">${capTipHtml}</div></span>`;
         } else {
           capacityHtml = `<span style="font-variant-numeric:tabular-nums">${escapeHtml(String(capacity))}</span>`;
         }
@@ -273,7 +316,7 @@
 
         let reserveCellHtml = formatReserveCell(reserveQty);
         const restockNum = Number(restock);
-        const showInfo = Number.isFinite(restockNum) && reserveQty > 1 && reserveQty < restockNum;
+        const showInfo = Number.isFinite(restockNum) && reserveQty > 0 && reserveQty < restockNum;
         if (showInfo) {
           const locs = (Array.isArray(r.__reserve_locations) ? r.__reserve_locations : [])
             .filter(x => x && x.location && Number(x.qty) > 0)
@@ -396,7 +439,7 @@
   function hasReserveInfoBadge(r) {
     const reserveQty = Number(r.__reserve_total || 0);
     const restock = Number(r.restock_qty);
-    return Number.isFinite(restock) && reserveQty > 1 && reserveQty < restock;
+    return Number.isFinite(restock) && reserveQty > 0 && reserveQty < restock;
   }
   function applyOnlyConfiguredFilter(rows) {
     if (!state.onlyConfigured) return rows;
@@ -712,7 +755,7 @@
       /* ── 6. Fetch branch_avg_monthly_sales (avg_mth_main) ── */
       let avgSalesRows = [];
       try {
-        avgSalesRows = await fetchAllRows('branch_avg_monthly_sales', 'product, avg_mth_main');
+        avgSalesRows = await fetchAllRows('branch_avg_monthly_sales', 'product, avg_mth_main, avg_sales_main, avg_transfer_main');
       } catch (e) {
         console.warn('⚠️ Could not read branch_avg_monthly_sales:', e.message);
       }
@@ -731,7 +774,11 @@
 
       const avgSalesByName = Object.create(null);
       for (const a of avgSalesRows) {
-        if (a.product) avgSalesByName[a.product.toUpperCase()] = Number(a.avg_mth_main) || 0;
+        if (a.product) avgSalesByName[a.product.toUpperCase()] = {
+          total: Number(a.avg_mth_main) || 0,
+          sales: Number(a.avg_sales_main) || 0,
+          transfer: Number(a.avg_transfer_main) || 0,
+        };
       }
 
       // ── Pallet capacity lookup: product code → qty_pallet ──
@@ -952,7 +999,9 @@
           __notes: setup ? setup.notes : '',
           __qty_per_ctn: setup ? setup.qty_per_ctn : null,
           __qty_per_pallet: setup ? setup.qty_per_pallet : null,
-          __avg_month_sales: avgSalesByName[displayProduct.toUpperCase()] ?? null,
+          __avg_month_sales: (avgSalesByName[displayProduct.toUpperCase()] || {}).total ?? null,
+          __avg_sales_only: (avgSalesByName[displayProduct.toUpperCase()] || {}).sales ?? null,
+          __avg_transfer_only: (avgSalesByName[displayProduct.toUpperCase()] || {}).transfer ?? null,
           __pickface_mismatch: pickfaceMismatch,
           __cin7_stock_locator: cin7Locator,
           __match_method: matchMethod,
@@ -1176,7 +1225,6 @@
     document.querySelectorAll('.tip-cell.show').forEach(e => e.classList.remove('show'));
     if (!isOpen) {
       wrap.classList.add('show');
-      setTimeout(() => wrap.classList.remove('show'), 4000);
       const close = (ev) => { if (!wrap.contains(ev.target)) { wrap.classList.remove('show'); document.removeEventListener('click', close); } };
       setTimeout(() => document.addEventListener('click', close), 10);
     }
@@ -1216,7 +1264,7 @@
     const row = state.allRows.find(r => String(r.sku) === String(sku));
     if (!row) { showToast('Product not found', 'error'); return; }
 
-    document.getElementById('addEditProductTitle').textContent = 'Configure Capacity';
+    document.getElementById('addEditProductTitle').textContent = 'Edit Setup';
 
     // Read-only info fields
     const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v || '—'; };
@@ -1224,7 +1272,13 @@
     el('editInfoSKU', row.__stock_sku || row.product);
     el('editInfoProduct', row.__full_description || row.product);
     el('editInfoOnHand', row.on_hand != null ? String(row.on_hand) : '—');
-    el('editInfoAvgMth', row.__avg_month_sales != null ? Math.round(row.__avg_month_sales).toLocaleString() + '/mth' : 'No data');
+    if (row.__avg_month_sales != null) {
+      const _mth = Math.round(row.__avg_month_sales).toLocaleString();
+      const _wk = Math.round(row.__avg_month_sales / 4.33).toLocaleString();
+      el('editInfoAvgMth', `${_mth}/mth · ${_wk}/wk`);
+    } else {
+      el('editInfoAvgMth', 'No data');
+    }
     el('editInfoQtyCtn', row.__qty_per_ctn != null ? String(row.__qty_per_ctn) : '—');
     el('editInfoQtyPallet', row.__qty_per_pallet != null ? String(row.__qty_per_pallet) : '—');
 
@@ -1416,7 +1470,7 @@
     const avg = row ? row.__avg_month_sales : null;
     const cap = parseInt(document.getElementById('productPickfaceQty')?.value) || 0;
     if (!avg || avg <= 0 || !cap) {
-      el.innerHTML = '<span style="color:#94a3b8;font-size:12px">Enter Pickface Qty to see coverage estimate</span>';
+      el.innerHTML = '<span style="color:#94a3b8;font-size:12px">Set Capacity to see how many weeks it lasts</span>';
       return;
     }
     const weeklyRate = avg / 4.33;
@@ -1424,7 +1478,7 @@
     const weeksRound = Math.round(weeks * 10) / 10;
     const color = weeks < 3 ? '#ef4444' : weeks < 4 ? '#f59e0b' : '#22c55e';
     const icon = weeks < 3 ? '🔴' : weeks < 4 ? '🟡' : '🟢';
-    el.innerHTML = `<span style="color:${color};font-weight:600">${icon} ${weeksRound} weeks</span> of stock at ${Math.round(avg)}/mth avg`;
+    el.innerHTML = `<span style="color:${color};font-weight:600">${icon} ${weeksRound} weeks</span> of stock at ${Math.round(avg)}/mth demand`;
   }
 
   window.validateCapacities = function () {

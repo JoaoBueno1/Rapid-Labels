@@ -978,6 +978,128 @@ function registerPickAnomalyRoutes(app) {
   console.log('✅ Pick anomaly routes registered');
 
   /**
+   * GET /api/pick-anomalies/stats
+   * Aggregated KPI stats across ALL orders (not paginated).
+   * Zero Cin7 API calls — Supabase only.
+   */
+  app.get('/api/pick-anomalies/stats', async (req, res) => {
+    try {
+      // Use Supabase REST API to aggregate across all orders
+      const allOrders = await sbGet('pick_anomaly_orders',
+        'select=total_picks,correct_picks,anomaly_picks,fg_count,reviewed'
+      );
+
+      let totalOrders = 0, totalPicks = 0, totalCorrect = 0, totalAnomalies = 0, totalFg = 0, totalReviewed = 0;
+      for (const o of allOrders) {
+        totalOrders++;
+        totalPicks    += o.total_picks    || 0;
+        totalCorrect  += o.correct_picks  || 0;
+        totalAnomalies += o.anomaly_picks || 0;
+        totalFg       += o.fg_count       || 0;
+        if (o.reviewed) totalReviewed++;
+      }
+
+      res.json({
+        success: true,
+        stats: {
+          orders: totalOrders,
+          picks: totalPicks,
+          correct: totalCorrect,
+          anomalies: totalAnomalies,
+          fg: totalFg,
+          reviewed: totalReviewed,
+        },
+      });
+    } catch (err) {
+      console.error('Stats error:', err);
+      // Return zeros instead of failing — KPIs are non-critical
+      res.json({
+        success: true,
+        stats: { orders: 0, picks: 0, correct: 0, anomalies: 0, fg: 0, reviewed: 0 },
+      });
+    }
+  });
+
+  /**
+   * GET /api/pick-anomalies/stock-check?skus=SKU1,SKU2&bins=BIN1,BIN2
+   * Returns stock snapshot data for given SKU+bin combos from cin7_mirror.stock_snapshot
+   */
+  app.get('/api/pick-anomalies/stock-check', async (req, res) => {
+    try {
+      const { skus, bins } = req.query;
+      if (!skus || !bins) return res.json({ success: true, stock: {}, syncedAt: null });
+
+      const skuList = skus.split(',').map(s => s.trim()).filter(Boolean);
+      const binList = bins.split(',').map(b => b.trim()).filter(Boolean);
+      if (!skuList.length || !binList.length) return res.json({ success: true, stock: {}, syncedAt: null });
+
+      // Query cin7_mirror.stock_snapshot for all matching SKU+bin combos
+      const skuIn = skuList.map(s => `"${s}"`).join(',');
+      const binIn = binList.map(b => `"${b}"`).join(',');
+      const url = `${SUPABASE_URL}/rest/v1/stock_snapshot?select=sku,bin,on_hand,allocated,available,synced_at&sku=in.(${encodeURIComponent(skuIn)})&bin=in.(${encodeURIComponent(binIn)})`;
+      const snapRes = await fetch(url, {
+        headers: {
+          'apikey': SUPABASE_ANON,
+          'Authorization': `Bearer ${SUPABASE_ANON}`,
+          'Accept-Profile': 'cin7_mirror',
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!snapRes.ok) {
+        console.warn('Stock check failed:', snapRes.status);
+        return res.json({ success: true, stock: {}, syncedAt: null });
+      }
+
+      const rows = await snapRes.json();
+
+      // Build lookup: { "SKU|BIN": { on_hand, allocated, available, synced_at } }
+      const stock = {};
+      let latestSync = null;
+      for (const r of rows) {
+        const key = `${r.sku}|${r.bin}`;
+        stock[key] = {
+          on_hand: parseFloat(r.on_hand) || 0,
+          allocated: parseFloat(r.allocated) || 0,
+          available: parseFloat(r.available) || 0,
+          synced_at: r.synced_at,
+        };
+        if (!latestSync || r.synced_at > latestSync) latestSync = r.synced_at;
+      }
+
+      res.json({ success: true, stock, syncedAt: latestSync });
+    } catch (err) {
+      console.error('Stock check error:', err);
+      res.json({ success: true, stock: {}, syncedAt: null });
+    }
+  });
+
+  /**
+   * GET /api/pick-anomalies/recent-transfers?sku=SKU&fromBin=BIN&toBin=BIN
+   * Check if a transfer for this SKU+direction was created recently (48h)
+   */
+  app.get('/api/pick-anomalies/recent-transfers', async (req, res) => {
+    try {
+      const { sku, fromBin, toBin } = req.query;
+      if (!sku) return res.json({ success: true, recent: [] });
+
+      let query = `select=*&sku=eq.${encodeURIComponent(sku)}&order=corrected_at.desc&limit=5`;
+      if (fromBin) query += `&from_bin=eq.${encodeURIComponent(fromBin)}`;
+      if (toBin) query += `&to_bin=eq.${encodeURIComponent(toBin)}`;
+
+      // Only transfers from the last 48h
+      const cutoff = new Date(Date.now() - 48 * 3600000).toISOString();
+      query += `&corrected_at=gte.${cutoff}`;
+
+      const rows = await sbGet('pick_anomaly_corrections', query);
+      res.json({ success: true, recent: rows });
+    } catch (err) {
+      console.error('Recent transfers check error:', err);
+      res.json({ success: true, recent: [] });
+    }
+  });
+
+  /**
    * POST /api/pick-anomalies/review
    * Mark an order as reviewed
    */
