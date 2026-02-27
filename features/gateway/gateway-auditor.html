@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gateway Auditor — Rapid Label</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/icon-192.svg">
+  <style>
+    /* ── Layout ── */
+    .main-container.wide-container { max-width:none!important; width:100%!important; padding:20px 24px!important; }
+
+    /* ── Iframe mode ── */
+    body.in-iframe { background:transparent!important; margin:0; padding:0; }
+    body.in-iframe .site-header,
+    body.in-iframe .site-footer { display:none!important; }
+    body.in-iframe .main-container.wide-container { padding:0!important; margin:0; box-shadow:none; }
+
+    /* ── Summary stats ── */
+    .audit-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+    .audit-stat { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 16px; display:flex; flex-direction:column; align-items:center; min-width:90px; }
+    .audit-stat-val { font-size:22px; font-weight:700; color:#0f172a; }
+    .audit-stat-lbl { font-size:11px; color:#64748b; font-weight:500; text-align:center; }
+    .audit-stat.ok { border-color:#86efac; background:#f0fdf4; }
+    .audit-stat.ok .audit-stat-val { color:#15803d; }
+    .audit-stat.warn { border-color:#fde68a; background:#fffbeb; }
+    .audit-stat.warn .audit-stat-val { color:#b45309; }
+    .audit-stat.danger { border-color:#fca5a5; background:#fef2f2; }
+    .audit-stat.danger .audit-stat-val { color:#dc2626; }
+
+    /* ── Filter chips ── */
+    .audit-chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+    .audit-chip { padding:5px 12px; border:1px solid #e2e8f0; border-radius:999px; background:#fff; font-size:12px; font-weight:600; cursor:pointer; color:#475569; transition:all .15s; display:inline-flex; align-items:center; gap:4px; }
+    .audit-chip:hover { background:#f8fafc; border-color:#cbd5e1; }
+    .audit-chip.active { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+    .audit-chip .chip-count { font-size:10px; background:rgba(0,0,0,.12); padding:1px 6px; border-radius:99px; font-weight:700; }
+    .audit-chip.active .chip-count { background:rgba(255,255,255,.25); }
+
+    /* ── Table ── */
+    .audit-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .audit-table th { background:#f1f5f9; color:#475569; font-weight:600; padding:8px 10px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.3px; position:sticky; top:0; z-index:1; }
+    .audit-table td { padding:7px 10px; border-bottom:1px solid #f1f5f9; }
+    .audit-table tr:hover td { background:#f8fafc; }
+    .audit-table tr.row-match td { opacity:.45; }
+    .audit-table tr.row-match:hover td { opacity:1; }
+
+    /* ── Status badges ── */
+    .audit-status { font-size:11px; padding:2px 8px; border-radius:999px; font-weight:600; white-space:nowrap; }
+    .audit-status.match { background:#dcfce7; color:#15803d; }
+    .audit-status.mismatch { background:#fef3c7; color:#b45309; }
+    .audit-status.cin7_only { background:#dbeafe; color:#1d4ed8; }
+    .audit-status.map_only { background:#fce7f3; color:#be185d; }
+
+    /* ── Diff colors ── */
+    .audit-diff-pos { color:#dc2626; font-weight:700; }
+    .audit-diff-neg { color:#2563eb; font-weight:700; }
+    .audit-diff-zero { color:#15803d; }
+
+    /* ── Section separator ── */
+    .audit-section-sep { padding:14px 16px; background:linear-gradient(90deg,#f1f5f9,#e2e8f0,#f1f5f9); text-align:center; font-size:13px; color:#64748b; font-weight:600; border-radius:8px; margin:20px 0 12px; }
+
+    /* ── Actions ── */
+    .audit-toolbar { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+    .audit-refresh { background:linear-gradient(135deg,#8b5cf6,#7c3aed); color:#fff; border:none; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; }
+    .audit-refresh:hover { filter:brightness(1.1); }
+    .audit-timestamp { font-size:11px; color:#94a3b8; }
+    .audit-search { padding:6px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; min-width:200px; outline:none; }
+    .audit-search:focus { border-color:#8b5cf6; box-shadow:0 0 0 2px rgba(139,92,246,.15); }
+    .audit-shelf-list { font-size:11px; color:#64748b; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav"><a href="/index.html" class="nav-link">Home</a></nav>
+    </div>
+  </header>
+
+  <div class="main-container wide-container">
+    <div id="auditRoot">
+      <div style="text-align:center;padding:60px;color:#94a3b8">
+        <div style="font-size:40px;margin-bottom:12px">🔍</div>
+        <div style="font-size:16px;font-weight:600">Loading audit data…</div>
+        <div style="font-size:13px;margin-top:4px">Comparing shelf map vs Cin7 Gateway location</div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
+  </footer>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // Detect iframe
+    if (window !== window.top) document.body.classList.add('in-iframe');
+
+    const API = '';
+    let auditData = null;
+    let currentFilter = 'all';
+    let searchQuery = '';
+
+    // ── API helper ──
+    async function api(path) {
+      const res = await fetch(`${API}${path}`, { headers: { 'Content-Type': 'application/json' } });
+      return res.json();
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Load audit ──
+    async function loadAudit() {
+      const root = document.getElementById('auditRoot');
+      root.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">🔄</div><div>Refreshing… comparing shelf map vs Cin7 Gateway location</div></div>`;
+
+      const data = await api('/api/gateway/audit');
+      if (!data.success) {
+        root.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444">❌ ${esc(data.error || 'Failed')}</div>`;
+        return;
+      }
+      auditData = data;
+      renderAudit();
+    }
+
+    // ── Render ──
+    function renderAudit() {
+      if (!auditData) return;
+      const { results, summary } = auditData;
+      const root = document.getElementById('auditRoot');
+      const now = new Date().toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+      // Apply search filter
+      let filtered = results;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = results.filter(r =>
+          (r.sku && r.sku.toLowerCase().includes(q)) ||
+          (r.product_name && r.product_name.toLowerCase().includes(q)) ||
+          (r.five_dc && r.five_dc.toLowerCase().includes(q)) ||
+          (r.shelves && r.shelves.some(s => s.shelf_id.toLowerCase().includes(q)))
+        );
+      }
+
+      // Apply status filter
+      if (currentFilter !== 'all') {
+        if (currentFilter === 'issues') {
+          filtered = filtered.filter(r => r.status !== 'match');
+        } else {
+          filtered = filtered.filter(r => r.status === currentFilter);
+        }
+      }
+
+      let html = '';
+
+      // ── Header ──
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">`;
+      html += `<div style="font-size:18px;font-weight:700;color:#1e293b">🔍 Gateway Stock Auditor</div>`;
+      html += `<div style="display:flex;align-items:center;gap:10px">`;
+      html += `<span class="audit-timestamp">Last check: ${now}</span>`;
+      html += `<button class="audit-refresh" onclick="window.__auditRefresh()">🔄 Refresh</button>`;
+      html += `</div></div>`;
+
+      // ── Summary stats ──
+      html += `<div class="audit-summary">`;
+      html += `<div class="audit-stat"><span class="audit-stat-val">${summary.total_skus}</span><span class="audit-stat-lbl">Total SKUs</span></div>`;
+      html += `<div class="audit-stat ok"><span class="audit-stat-val">${summary.total_match}</span><span class="audit-stat-lbl">✓ Match</span></div>`;
+      html += `<div class="audit-stat ${summary.total_mismatch > 0 ? 'warn' : 'ok'}"><span class="audit-stat-val">${summary.total_mismatch}</span><span class="audit-stat-lbl">⚠ Qty Mismatch</span></div>`;
+      html += `<div class="audit-stat ${summary.total_map_only > 0 ? 'danger' : 'ok'}"><span class="audit-stat-val">${summary.total_map_only}</span><span class="audit-stat-lbl">Map Only</span></div>`;
+      html += `<div class="audit-stat"><span class="audit-stat-val">${summary.total_cin7_only}</span><span class="audit-stat-lbl">Cin7 GW Only</span></div>`;
+      html += `<div class="audit-stat"><span class="audit-stat-val">${summary.cin7_gw_total_qty.toLocaleString()}</span><span class="audit-stat-lbl">Cin7 GW Qty</span></div>`;
+      html += `<div class="audit-stat"><span class="audit-stat-val">${summary.map_total_qty.toLocaleString()}</span><span class="audit-stat-lbl">Shelf Map Qty</span></div>`;
+      const diffCls = summary.qty_difference === 0 ? 'ok' : (Math.abs(summary.qty_difference) > 100 ? 'danger' : 'warn');
+      html += `<div class="audit-stat ${diffCls}"><span class="audit-stat-val">${summary.qty_difference > 0 ? '+' : ''}${summary.qty_difference.toLocaleString()}</span><span class="audit-stat-lbl">Difference</span></div>`;
+      html += `</div>`;
+
+      // ── Toolbar: search + filter chips ──
+      html += `<div class="audit-toolbar">`;
+      html += `<input type="text" class="audit-search" id="auditSearch" placeholder="Search SKU, product, 5DC, shelf…" value="${esc(searchQuery)}" oninput="window.__auditSearch(this.value)" />`;
+      html += `<div class="audit-chips">`;
+      const totalIssues = summary.total_mismatch + summary.total_cin7_only + summary.total_map_only;
+      const chips = [
+        { key:'all', label:'All', count: summary.total_skus },
+        { key:'issues', label:'⚠ Issues', count: totalIssues },
+        { key:'match', label:'✓ Match', count: summary.total_match },
+        { key:'mismatch', label:'Qty Mismatch', count: summary.total_mismatch },
+        { key:'map_only', label:'Map Only', count: summary.total_map_only },
+        { key:'cin7_only', label:'Cin7 GW Only', count: summary.total_cin7_only },
+      ];
+      for (const c of chips) {
+        html += `<button class="audit-chip ${currentFilter === c.key ? 'active' : ''}" onclick="window.__auditFilter('${c.key}')">${c.label} <span class="chip-count">${c.count}</span></button>`;
+      }
+      html += `</div></div>`;
+
+      // ── Results table ──
+      if (filtered.length > 0) {
+        html += `<div style="font-size:13px;color:#64748b;margin-bottom:8px">${filtered.length} product${filtered.length !== 1 ? 's' : ''}</div>`;
+        html += buildTable(filtered);
+      } else {
+        html += `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No results matching current filter / search</div>`;
+      }
+
+      root.innerHTML = html;
+    }
+
+    function buildTable(rows) {
+      let html = `<div style="max-height:600px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:12px">`;
+      html += `<table class="audit-table"><thead><tr>`;
+      html += `<th>Status</th><th>5DC</th><th>SKU</th><th>Product</th>`;
+      html += `<th style="text-align:right">Map Qty</th><th style="text-align:right">Cin7 GW</th>`;
+      html += `<th style="text-align:right">Diff</th><th>Shelves</th>`;
+      html += `</tr></thead><tbody>`;
+
+      for (const r of rows) {
+        const rowCls = r.status === 'match' ? ' class="row-match"' : '';
+        html += `<tr${rowCls}>`;
+        html += `<td><span class="audit-status ${r.status}">${esc(r.status_label)}</span></td>`;
+        html += `<td style="font-weight:600;font-size:12px;color:#8b5cf6">${esc(r.five_dc||'—')}</td>`;
+        html += `<td style="font-weight:600;font-size:12px">${esc(r.sku)}</td>`;
+        html += `<td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.product_name||'')}">${esc(r.product_name || '—')}</td>`;
+        html += `<td style="text-align:right;font-weight:600">${r.map_qty}</td>`;
+        html += `<td style="text-align:right;font-weight:600">${r.cin7_qty}</td>`;
+
+        if (r.difference === 0) {
+          html += `<td style="text-align:right" class="audit-diff-zero">0</td>`;
+        } else if (r.difference > 0) {
+          html += `<td style="text-align:right" class="audit-diff-pos">+${r.difference}</td>`;
+        } else {
+          html += `<td style="text-align:right" class="audit-diff-neg">${r.difference}</td>`;
+        }
+
+        const shelfStr = r.shelves.map(s => s.shelf_id).join(', ');
+        html += `<td class="audit-shelf-list" title="${esc(shelfStr)}">${shelfStr ? esc(shelfStr.substring(0,40)) + (shelfStr.length > 40 ? '…' : '') : '—'}</td>`;
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table></div>`;
+      return html;
+    }
+
+    // ── Global handlers ──
+    window.__auditRefresh = function() { loadAudit(); };
+    window.__auditFilter = function(f) { currentFilter = f; renderAudit(); };
+    window.__auditSearch = function(q) { searchQuery = q.trim(); renderAudit(); };
+
+    // ── Init ──
+    loadAudit();
+  })();
+  </script>
+</body>
+</html>

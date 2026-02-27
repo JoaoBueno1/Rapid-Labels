@@ -3,10 +3,12 @@
  * Creates a temporary RPC function, runs migration, then drops it
  */
 const fetch = require('node-fetch');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-const SB_URL = 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
-const SK = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTk1NzkzNCwiZXhwIjoyMDY3NTMzOTM0fQ.GPwNGNkEylgLB_GNnEy3bfGkf08DftzTfFQCbbOpFF4';
-const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5NTc5MzQsImV4cCI6MjA2NzUzMzkzNH0.k3G4Tc6U7XdYGmU9wTkcg3R1cLRij-CN6EbjSSbd9bE';
+const SB_URL = process.env.SUPABASE_URL || '';
+const SK = process.env.SUPABASE_SERVICE_KEY || '';
+const ANON = process.env.SUPABASE_ANON_KEY || '';
 
 async function main() {
   // Step 1: Check current state

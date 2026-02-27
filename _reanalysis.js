@@ -1,6 +1,7 @@
 const https = require('https');
 const fs = require('fs');
-const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5NTc5MzQsImV4cCI6MjA2NzUzMzkzNH0.k3G4Tc6U7XdYGmU9wTkcg3R1cLRij-CN6EbjSSbd9bE';
+require('dotenv').config();
+const KEY = process.env.SUPABASE_ANON_KEY || '';
 const MONTHS = 6.53;
 
 function parseCin7Export() {

@@ -1,6 +1,9 @@
 const fetch = require('node-fetch');
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTk1NzkzNCwiZXhwIjoyMDY3NTMzOTM0fQ.l6qjolSKgFG9H6zZvwJejzG9zsQFBQ9RtHN6S16TCR4';
-const URL = 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
+const URL = process.env.SUPABASE_URL || '';
 
 async function test() {
   const endpoints = ['/pg/query', '/sql', '/query', '/rest/v1/rpc/exec_sql', '/rest/v1/rpc/_exec_sql'];

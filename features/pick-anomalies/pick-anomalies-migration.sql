@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS public.pick_anomaly_sync (
   id               INT PRIMARY KEY DEFAULT 1,
   last_synced_date DATE,
   last_synced_at   TIMESTAMPTZ,
-  total_orders     INT DEFAULT 0
+  total_orders     INT DEFAULT 0,
+  last_new_orders  INT DEFAULT 0
 );
 
 -- Seed sync row

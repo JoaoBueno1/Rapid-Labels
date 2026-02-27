@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gateway Transfer — Rapid Label</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/icon-192.svg">
+  <style>
+    /* ── Layout ── */
+    .main-container.wide-container { max-width:none!important; width:100%!important; padding:20px 24px!important; }
+    .gt-header { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+    .gt-header h1 { margin:0; font-size:22px; }
+    .gt-badge { font-size:12px; background:linear-gradient(135deg,#8b5cf6,#7c3aed); color:#fff; padding:2px 10px; border-radius:999px; vertical-align:middle; font-weight:600; }
+    .gt-search { flex:1; min-width:200px; max-width:400px; padding:8px 14px; border:1px solid #e2e8f0; border-radius:8px; font-size:14px; outline:none; }
+    .gt-search:focus { border-color:#8b5cf6; box-shadow:0 0 0 2px rgba(139,92,246,.15); }
+
+    /* ── Stats Bar ── */
+    .gt-stats { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+    .gt-stat { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:8px 14px; display:flex; flex-direction:column; align-items:center; min-width:80px; }
+    .gt-stat-val { font-size:20px; font-weight:700; color:#0f172a; }
+    .gt-stat-lbl { font-size:11px; color:#64748b; font-weight:500; }
+    .gt-stat.alert { border-color:#fbbf24; background:#fffbeb; }
+    .gt-stat.danger { border-color:#f87171; background:#fef2f2; }
+
+    /* ── Tabs ── */
+    .gt-tabs { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:12px; }
+    .gt-tab { padding:10px 20px; font-size:14px; font-weight:600; color:#64748b; background:none; border:none; border-bottom:3px solid transparent; cursor:pointer; transition:all .2s; }
+    .gt-tab:hover { color:#334155; background:#f8fafc; }
+    .gt-tab.active { color:#8b5cf6; border-bottom-color:#8b5cf6; }
+    .gt-tab .badge { background:#ef4444; color:#fff; font-size:10px; padding:1px 6px; border-radius:99px; margin-left:6px; font-weight:700; }
+
+    /* ── Area Sections ── */
+    .gt-area-section { margin-bottom:16px; }
+    .gt-area-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; user-select:none; }
+    .gt-area-header:hover { opacity:.8; }
+    .gt-area-title { font-size:16px; font-weight:700; color:#1e293b; }
+    .gt-area-count { font-size:12px; color:#64748b; background:#f1f5f9; padding:2px 8px; border-radius:999px; }
+    .gt-area-toggle { font-size:14px; color:#94a3b8; transition:transform .2s; }
+    .gt-area-toggle.collapsed { transform:rotate(-90deg); }
+
+    /* ── Shelf Grid ── */
+    .gt-shelf-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px; }
+    .gt-shelf { border:1px solid #e2e8f0; border-radius:10px; padding:10px; background:#fff; cursor:pointer; transition:all .15s; position:relative; min-height:80px; overflow:hidden; }
+    .gt-shelf:hover { border-color:#8b5cf6; box-shadow:0 2px 8px rgba(139,92,246,.12); transform:translateY(-1px); }
+    .gt-shelf.selected { border-color:#8b5cf6; border-width:2px; background:#f5f3ff; }
+    .gt-shelf.empty { background:#f8fafc; border-style:dashed; opacity:.6; }
+    .gt-shelf.special { background:#fefce8; border-color:#fde68a; }
+    .gt-shelf-id { font-size:14px; font-weight:700; color:#1e293b; }
+    .gt-shelf-count { font-size:11px; color:#64748b; }
+    .gt-shelf-qty { font-size:11px; color:#475569; font-weight:600; }
+    .gt-shelf-age { position:absolute; top:6px; right:6px; width:8px; height:8px; border-radius:50%; }
+    .gt-shelf-age.fresh { background:#22c55e; }
+    .gt-shelf-age.warn { background:#f59e0b; }
+    .gt-shelf-age.old { background:#f97316; }
+    .gt-shelf-age.critical { background:#ef4444; }
+
+    /* ── Shelf Detail (separate panel below grid) ── */
+    .gt-shelf-detail-panel { display:none; margin-top:12px; padding:16px; background:#fff; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+    .gt-shelf-detail-panel.open { display:block; }
+    .gt-shelf-detail-panel .gt-detail-header { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+    .gt-shelf-detail-panel .gt-detail-title { font-size:16px; font-weight:700; color:#1e293b; }
+    .gt-shelf-detail-panel .gt-detail-close { background:none; border:none; font-size:18px; color:#94a3b8; cursor:pointer; margin-left:auto; padding:0 4px; }
+    .gt-shelf-detail-panel .gt-detail-close:hover { color:#475569; }
+    .gt-alloc-row { display:grid; grid-template-columns:18px 60px 1fr auto 80px auto; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:12px; }
+    .gt-alloc-row:last-child { border-bottom:none; }
+    .gt-alloc-sku { font-weight:600; color:#0f172a; min-width:140px; }
+    .gt-alloc-qty { font-weight:600; color:#475569; min-width:50px; text-align:right; }
+    .gt-alloc-date { color:#64748b; min-width:80px; }
+    .gt-alloc-cb { cursor:pointer; width:14px; height:14px; }
+    .gt-alloc-5dc { color:#94a3b8; font-size:11px; min-width:50px; }
+    .gt-alloc-badge { font-size:10px; padding:1px 6px; border-radius:999px; font-weight:600; }
+    .gt-alloc-badge.fresh { background:#dcfce7; color:#15803d; }
+    .gt-alloc-badge.warn { background:#fef3c7; color:#b45309; }
+    .gt-alloc-badge.old { background:#ffedd5; color:#c2410c; }
+    .gt-alloc-badge.critical { background:#fee2e2; color:#b91c1c; }
+
+    /* ── Transfer Cart ── */
+    .gt-cart { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
+    .gt-cart-empty { text-align:center; color:#94a3b8; font-size:14px; padding:40px 0; }
+    .gt-cart-item { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #f1f5f9; }
+    .gt-cart-item:last-child { border-bottom:none; }
+    .gt-cart-sku { font-weight:600; font-size:13px; color:#0f172a; }
+    .gt-cart-shelves { font-size:11px; color:#64748b; }
+    .gt-cart-qty { font-weight:700; font-size:14px; color:#8b5cf6; margin-left:auto; }
+    .gt-cart-remove { background:none; border:none; color:#ef4444; cursor:pointer; font-size:14px; padding:2px 6px; }
+
+    /* ── Mode Toggle ── */
+    .gt-mode { display:inline-flex; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; }
+    .gt-mode-btn { padding:6px 16px; font-size:12px; font-weight:600; border:none; cursor:pointer; background:#fff; color:#64748b; transition:all .15s; }
+    .gt-mode-btn.active { background:#8b5cf6; color:#fff; }
+
+    /* ── Transfer Action Bar ── */
+    .gt-action-bar { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:linear-gradient(135deg,#1e293b,#334155); color:#fff; padding:12px 24px; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:50; display:none; align-items:center; gap:16px; font-size:13px; animation:gtSlideUp .25s ease; }
+    @keyframes gtSlideUp { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+    .gt-action-bar button { border:none; border-radius:8px; padding:8px 18px; font-size:13px; font-weight:600; cursor:pointer; }
+    .gt-action-bar .btn-transfer { background:linear-gradient(135deg,#8b5cf6,#7c3aed); color:#fff; }
+    .gt-action-bar .btn-transfer:hover { filter:brightness(1.1); }
+    .gt-action-bar .btn-clear { background:rgba(255,255,255,.12); color:#fff; }
+
+    /* ── History Table ── */
+    .gt-history-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .gt-history-table th { background:#f1f5f9; color:#475569; font-weight:600; padding:8px 12px; text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.3px; }
+    .gt-history-table td { padding:8px 12px; border-bottom:1px solid #f1f5f9; }
+    .gt-history-table tr:hover td { background:#f8fafc; }
+    .gt-dir-badge { font-size:11px; padding:2px 8px; border-radius:999px; font-weight:600; }
+    .gt-dir-badge.inbound { background:#dbeafe; color:#1d4ed8; }
+    .gt-dir-badge.outbound { background:#fce7f3; color:#be185d; }
+
+    /* ── Allocate Modal ── */
+    .gt-modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.5); z-index:100; display:none; align-items:center; justify-content:center; }
+    .gt-modal-overlay.open { display:flex; }
+    .gt-modal { background:#fff; border-radius:14px; padding:24px; max-width:420px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+    .gt-modal h3 { margin:0 0 16px; font-size:17px; }
+    .gt-modal label { display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:4px; }
+    .gt-modal input, .gt-modal select { width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:14px; margin-bottom:12px; box-sizing:border-box; }
+    .gt-modal input:focus, .gt-modal select:focus { border-color:#8b5cf6; outline:none; }
+    .gt-modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+    .gt-modal-actions button { padding:8px 18px; border-radius:8px; font-weight:600; font-size:13px; cursor:pointer; border:none; }
+    .gt-btn-primary { background:#8b5cf6; color:#fff; }
+    .gt-btn-secondary { background:#f1f5f9; color:#475569; }
+    .gt-btn-seed { background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:600; cursor:pointer; font-size:13px; }
+    .gt-btn-seed:hover { filter:brightness(1.1); }
+
+    /* ── Responsive ── */
+    @media (max-width:768px) {
+      .gt-shelf-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); }
+      .gt-header { flex-direction:column; align-items:stretch; }
+      .gt-stats { justify-content:center; }
+    }
+
+    /* ── Iframe mode: hide chrome, remove page-like background ── */
+    body.in-iframe { background:transparent!important; margin:0; padding:0; }
+    body.in-iframe .site-header,
+    body.in-iframe .site-footer { display:none!important; }
+    body.in-iframe .main-container.wide-container { padding:0!important; margin:0; box-shadow:none; max-width:none!important; width:100%!important; }
+
+    /* ── Allocation action buttons ── */
+    .gt-alloc-actions { display:flex; gap:4px; align-items:center; }
+    .gt-alloc-actions button { background:none; border:none; cursor:pointer; font-size:13px; padding:2px 5px; border-radius:4px; opacity:.6; transition:all .15s; }
+    .gt-alloc-actions button:hover { opacity:1; }
+    .gt-alloc-actions .btn-edit-qty { color:#3b82f6; }
+    .gt-alloc-actions .btn-edit-qty:hover { background:#eff6ff; }
+    .gt-alloc-actions .btn-delete { color:#ef4444; }
+    .gt-alloc-actions .btn-delete:hover { background:#fef2f2; }
+    .gt-qty-inline { width:60px; padding:2px 6px; border:1px solid #8b5cf6; border-radius:4px; font-size:12px; text-align:center; outline:none; }
+
+
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="/index.html" class="nav-link">Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="main-container wide-container">
+    <!-- Header -->
+    <div class="gt-header">
+      <h1>Gateway Transfer <span class="gt-badge">NEW</span></h1>
+      <div class="gt-mode">
+        <button class="gt-mode-btn active" data-dir="outbound" onclick="gtSetMode('outbound')">📤 GW → Main</button>
+        <button class="gt-mode-btn" data-dir="inbound" onclick="gtSetMode('inbound')">📥 Main → GW</button>
+      </div>
+      <input type="text" class="gt-search" id="gtSearch" placeholder="Search shelf, SKU, 5DC…" oninput="gtFilter()" />
+      <button class="gt-btn-seed" id="gtSeedBtn" onclick="gtSeed()" title="Import Gateway location map data">🌱 Seed Data</button>
+      <button class="gt-btn-secondary" onclick="gtAddManual()" style="padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;border:1px solid #e2e8f0">+ Add Item</button>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="gt-stats" id="gtStats">
+      <div class="gt-stat"><span class="gt-stat-val" id="statShelves">-</span><span class="gt-stat-lbl">Shelves</span></div>
+      <div class="gt-stat"><span class="gt-stat-val" id="statUsed">-</span><span class="gt-stat-lbl">Used</span></div>
+      <div class="gt-stat"><span class="gt-stat-val" id="statEmpty">-</span><span class="gt-stat-lbl">Empty</span></div>
+      <div class="gt-stat"><span class="gt-stat-val" id="statSkus">-</span><span class="gt-stat-lbl">SKUs</span></div>
+      <div class="gt-stat"><span class="gt-stat-val" id="statQty">-</span><span class="gt-stat-lbl">Total Qty</span></div>
+      <div class="gt-stat alert" id="statFifo30"><span class="gt-stat-val" id="statFifo30Val">-</span><span class="gt-stat-lbl">&gt; 30 days</span></div>
+      <div class="gt-stat danger" id="statFifo90"><span class="gt-stat-val" id="statFifo90Val">-</span><span class="gt-stat-lbl">&gt; 90 days</span></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="gt-tabs">
+      <button class="gt-tab active" data-tab="map" onclick="gtSwitchTab('map')">🗺️ Shelf Map</button>
+      <button class="gt-tab" data-tab="cart" onclick="gtSwitchTab('cart')">🛒 Transfer Cart <span class="badge" id="cartBadge" style="display:none">0</span></button>
+      <button class="gt-tab" data-tab="history" onclick="gtSwitchTab('history')">📜 History</button>
+
+    </div>
+
+    <!-- Tab Content: Shelf Map -->
+    <div id="tabMap" class="gt-tab-content">
+      <div id="gtShelfMap">
+        <div style="text-align:center;padding:40px;color:#94a3b8">Loading shelves…</div>
+      </div>
+    </div>
+
+    <!-- Tab Content: Transfer Cart -->
+    <div id="tabCart" class="gt-tab-content" style="display:none">
+      <div class="gt-cart" id="gtCart">
+        <div class="gt-cart-empty">No items selected. Click shelves on the map to add items to the transfer cart.</div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end" id="gtCartActions" style="display:none">
+        <button class="gt-btn-secondary" onclick="gtClearCart()" style="cursor:pointer;border:1px solid #e2e8f0">Clear All</button>
+        <button class="gt-btn-primary" onclick="gtCreateTransfer()" style="cursor:pointer">📦 Create Cin7 Transfer</button>
+      </div>
+    </div>
+
+    <!-- Tab Content: History -->
+    <div id="tabHistory" class="gt-tab-content" style="display:none">
+      <div id="gtHistory">
+        <div style="text-align:center;padding:40px;color:#94a3b8">Loading history…</div>
+      </div>
+    </div>
+
+
+  </div>
+
+  <!-- Action Bar (bottom) -->
+  <div class="gt-action-bar" id="gtActionBar">
+    <span id="gtActionCount">0 items selected</span>
+    <span id="gtActionQty" style="color:#c4b5fd">0 qty</span>
+    <button class="btn-transfer" onclick="gtSwitchTab('cart')">🛒 View Cart</button>
+    <button class="btn-transfer" onclick="gtCreateTransfer()">📦 Create Transfer</button>
+    <button class="btn-clear" onclick="gtClearCart()">✕ Clear</button>
+  </div>
+
+  <!-- Allocate Modal -->
+  <div class="gt-modal-overlay" id="gtAllocModal">
+    <div class="gt-modal">
+      <h3 id="allocModalTitle">Add Allocation</h3>
+      <label>Shelf</label>
+      <select id="allocShelf"></select>
+      <label>SKU</label>
+      <input type="text" id="allocSku" placeholder="e.g. R3540-TRI" />
+      <label>Product Name (optional)</label>
+      <input type="text" id="allocName" placeholder="Product name" />
+      <label>5DC (optional)</label>
+      <input type="text" id="alloc5dc" placeholder="e.g. 29904" />
+      <label>Quantity</label>
+      <input type="number" id="allocQty" value="0" min="0" />
+      <label>Stock Date (optional)</label>
+      <input type="date" id="allocDate" />
+      <label>Number # (optional)</label>
+      <input type="text" id="allocPallet" placeholder="e.g. 25, 110, 56" />
+      <label>Transfer Ref (optional)</label>
+      <input type="text" id="allocTransfer" placeholder="e.g. TR-33264" />
+      <div class="gt-modal-actions">
+        <button class="gt-btn-secondary" onclick="gtCloseAllocModal()">Cancel</button>
+        <button class="gt-btn-primary" onclick="gtSaveAllocation()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
+  </footer>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // Detect iframe mode and strip page chrome
+    if (window !== window.top) {
+      document.body.classList.add('in-iframe');
+    }
+
+    const API = '';  // same origin
+
+    // ─── State ───
+    const state = {
+      shelves: [],
+      cart: [],           // [{ allocationId, shelf_id, sku, product_name, five_dc, qty, stock_date }]
+      mode: 'outbound',   // 'outbound' or 'inbound'
+      search: '',
+      activeTab: 'map',
+      expandedShelf: null,
+      history: [],
+    };
+
+    // ─── API Helpers ───
+    async function api(path, opts = {}) {
+      const res = await fetch(`${API}${path}`, {
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+      const data = await res.json();
+      if (!data.success && data.error === 'TABLES_NOT_CREATED') {
+        showMessage('⚠️ Tables not created yet. Run gateway-tables.sql in Supabase, then click Seed Data.', 'warn');
+        return data;
+      }
+      return data;
+    }
+
+    function showMessage(msg, type = 'info') {
+      const existing = document.querySelector('.gt-toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = 'gt-toast';
+      const colors = { info: '#3b82f6', success: '#22c55e', warn: '#f59e0b', error: '#ef4444' };
+      toast.style.cssText = `position:fixed;top:20px;right:20px;background:${colors[type]||'#3b82f6'};color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:400px;animation:gtSlideUp .25s ease`;
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 5000);
+    }
+
+    // ─── Load Data ───
+    async function loadShelves() {
+      const data = await api('/api/gateway/shelves');
+      if (data.shelves) {
+        state.shelves = data.shelves;
+        renderMap();
+      }
+    }
+
+    async function loadStats() {
+      const data = await api('/api/gateway/stats');
+      if (data.success) {
+        document.getElementById('statShelves').textContent = data.totalShelves || 0;
+        document.getElementById('statUsed').textContent = data.usedShelves || 0;
+        document.getElementById('statEmpty').textContent = data.emptyShelves || 0;
+        document.getElementById('statSkus').textContent = data.uniqueSkus || 0;
+        document.getElementById('statQty').textContent = (data.totalQty || 0).toLocaleString();
+        const fifo = data.fifo || {};
+        document.getElementById('statFifo30Val').textContent = (fifo.over30d || 0) + (fifo.over60d || 0) + (fifo.over90d || 0);
+        document.getElementById('statFifo90Val').textContent = fifo.over90d || 0;
+      }
+    }
+
+    async function loadHistory() {
+      const data = await api('/api/gateway/history?limit=200');
+      if (data.history) {
+        state.history = data.history;
+        renderHistory();
+      }
+    }
+
+    // ─── FIFO Age ───
+    function daysAgo(dateStr) {
+      if (!dateStr) return null;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return null;
+      return Math.floor((Date.now() - d.getTime()) / 86400000);
+    }
+
+    function ageBadge(days) {
+      if (days == null) return '';
+      if (days > 90) return '<span class="gt-alloc-badge critical">'+days+'d</span>';
+      if (days > 60) return '<span class="gt-alloc-badge old">'+days+'d</span>';
+      if (days > 30) return '<span class="gt-alloc-badge warn">'+days+'d</span>';
+      return '<span class="gt-alloc-badge fresh">'+days+'d</span>';
+    }
+
+    function shelfAgeDot(shelf) {
+      if (!shelf.oldestDate) return '';
+      const days = daysAgo(shelf.oldestDate);
+      if (days == null) return '';
+      let cls = 'fresh';
+      if (days > 90) cls = 'critical';
+      else if (days > 60) cls = 'old';
+      else if (days > 30) cls = 'warn';
+      return `<div class="gt-shelf-age ${cls}" title="Oldest: ${days}d ago"></div>`;
+    }
+
+    // ─── Render Shelf Map ───
+    function renderMap() {
+      const container = document.getElementById('gtShelfMap');
+      const q = state.search.toLowerCase();
+
+      // Group by area
+      const areas = {};
+      const areaOrder = ['A','B','C','D','E','E-FLOOR','F','G'];
+      for (const s of state.shelves) {
+        const area = s.area || 'OTHER';
+        if (!areas[area]) areas[area] = [];
+        areas[area].push(s);
+      }
+
+      let html = '';
+      for (const area of areaOrder) {
+        const shelves = areas[area];
+        if (!shelves || !shelves.length) continue;
+
+        // Filter
+        let filtered = shelves;
+        if (q) {
+          filtered = shelves.filter(s => {
+            if (s.id.toLowerCase().includes(q)) return true;
+            if (s.label && s.label.toLowerCase().includes(q)) return true;
+            return s.allocations.some(a =>
+              a.sku.toLowerCase().includes(q) ||
+              (a.five_dc && a.five_dc.includes(q)) ||
+              (a.product_name && a.product_name.toLowerCase().includes(q))
+            );
+          });
+        }
+        if (!filtered.length) continue;
+
+        const usedCount = filtered.filter(s => s.itemCount > 0).length;
+
+        html += `<div class="gt-area-section" data-area="${area}">`;
+        html += `<div class="gt-area-header" onclick="gtToggleArea('${area}')">`;
+        html += `<span class="gt-area-toggle" id="areaToggle_${area}">▼</span>`;
+        html += `<span class="gt-area-title">Area ${area}</span>`;
+        html += `<span class="gt-area-count">${usedCount}/${filtered.length} used</span>`;
+        html += `</div>`;
+        html += `<div class="gt-shelf-grid" id="areaGrid_${area}">`;
+
+        for (const s of filtered) {
+          const isEmpty = s.itemCount === 0;
+          const isSpecial = s.shelf_type === 'special';
+          let cls = 'gt-shelf';
+          if (isEmpty) cls += ' empty';
+          if (isSpecial) cls += ' special';
+          if (state.cart.some(c => c.shelf_id === s.id)) cls += ' selected';
+
+          html += `<div class="${cls}" onclick="gtExpandShelf('${s.id}')" data-shelf="${s.id}">`;
+          html += shelfAgeDot(s);
+          html += `<div class="gt-shelf-id">${esc(s.id)}</div>`;
+          if (isSpecial && s.label) {
+            html += `<div class="gt-shelf-count" style="color:#b45309">${esc(s.label)}</div>`;
+          } else if (isEmpty) {
+            html += `<div class="gt-shelf-count">Empty</div>`;
+          } else {
+            html += `<div class="gt-shelf-count">${s.itemCount} item${s.itemCount>1?'s':''}</div>`;
+            html += `<div class="gt-shelf-qty">${s.totalQty.toLocaleString()} units</div>`;
+          }
+
+          // No inline detail - rendered in panel below grid
+          html += `</div>`; // shelf
+        }
+
+        html += `</div>`;
+        html += `<div class="gt-shelf-detail-panel" id="gtDetailArea_${area}"></div>`;
+        html += `</div>`;
+      }
+
+      if (!html) {
+        html = `<div style="text-align:center;padding:60px;color:#94a3b8">
+          <div style="font-size:48px;margin-bottom:12px">📦</div>
+          <div style="font-size:16px;font-weight:600;margin-bottom:8px">No shelves found</div>
+          <div style="font-size:13px">Click "🌱 Seed Data" to import the Gateway location map.</div>
+        </div>`;
+      }
+
+      container.innerHTML = html;
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'2-digit' });
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+
+    // ─── Shelf Interaction ───
+    window.gtExpandShelf = function(shelfId) {
+      // Close all area detail panels
+      document.querySelectorAll('.gt-shelf-detail-panel').forEach(p => { p.classList.remove('open'); p.innerHTML = ''; });
+
+      if (state.expandedShelf === shelfId) {
+        state.expandedShelf = null;
+        document.querySelectorAll('.gt-shelf').forEach(s => s.classList.remove('expanded'));
+        return;
+      }
+      state.expandedShelf = shelfId;
+      document.querySelectorAll('.gt-shelf').forEach(s => s.classList.toggle('expanded', s.dataset.shelf === shelfId));
+
+      // Find shelf data and its area panel
+      const shelf = state.shelves.find(s => s.id === shelfId);
+      if (!shelf) return;
+      const area = shelf.area || 'OTHER';
+      const panel = document.getElementById('gtDetailArea_' + area);
+      if (!panel) return;
+
+      let html = `<div class="gt-detail-header">`;
+      html += `<span class="gt-detail-title">${esc(shelfId)}</span>`;
+      html += `<span style="font-size:12px;color:#64748b">${shelf.allocations.length} item${shelf.allocations.length !== 1 ? 's' : ''} · ${shelf.totalQty.toLocaleString()} units</span>`;
+      html += `<button class="gt-detail-close" onclick="gtExpandShelf('${shelfId}')">&times;</button>`;
+      html += `</div>`;
+
+      if (shelf.allocations.length) {
+        html += `<div style="display:grid;grid-template-columns:18px 60px 1fr auto 80px auto;gap:8px 10px;align-items:center;font-size:12px;padding:6px 0;border-bottom:1px solid #e2e8f0;font-weight:600;color:#475569">`;
+        html += `<span></span><span>5DC</span><span>SKU / Product</span><span style="text-align:right">Qty</span><span>Date</span><span>Age</span></div>`;
+        for (const a of shelf.allocations) {
+          const days = daysAgo(a.stock_date);
+          const inCart = state.cart.some(c => c.allocationId === a.id);
+          html += `<div style="display:grid;grid-template-columns:18px 60px 1fr auto 80px auto;gap:8px 10px;align-items:center;font-size:12px;padding:6px 0;border-bottom:1px solid #f1f5f9">`;
+          html += `<input type="checkbox" class="gt-alloc-cb" ${inCart?'checked':''} onclick="event.stopPropagation();gtToggleCartItem(${a.id},'${esc(shelf.id)}','${esc(a.sku)}','${esc(a.product_name||'')}','${esc(a.five_dc||'')}',${a.qty},'${a.stock_date||''}')" />`;
+          html += `<span class="gt-alloc-5dc">${esc(a.five_dc||'')}</span>`;
+          html += `<span><span class="gt-alloc-sku">${esc(a.sku)}</span>${a.product_name ? '<br><span style="font-size:11px;color:#94a3b8">' + esc(a.product_name.substring(0,50)) + '</span>' : ''}</span>`;
+          html += `<span class="gt-alloc-qty" style="text-align:right">${a.qty}</span>`;
+          html += `<span class="gt-alloc-date">${a.stock_date?formatDate(a.stock_date):'—'}</span>`;
+          html += ageBadge(days);
+          html += `</div>`;
+        }
+      } else {
+        html += `<div style="font-size:12px;color:#94a3b8;text-align:center;padding:16px">No items on this shelf</div>`;
+      }
+
+      panel.innerHTML = html;
+      panel.classList.add('open');
+      panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    };
+
+    window.gtToggleArea = function(area) {
+      const grid = document.getElementById(`areaGrid_${area}`);
+      const toggle = document.getElementById(`areaToggle_${area}`);
+      if (grid) {
+        const hidden = grid.style.display === 'none';
+        grid.style.display = hidden ? 'grid' : 'none';
+        if (toggle) toggle.classList.toggle('collapsed', !hidden);
+      }
+    };
+
+    // ─── Cart Management ───
+    window.gtToggleCartItem = function(allocId, shelfId, sku, productName, fiveDc, qty, stockDate) {
+      const idx = state.cart.findIndex(c => c.allocationId === allocId);
+      if (idx >= 0) {
+        state.cart.splice(idx, 1);
+      } else {
+        state.cart.push({ allocationId: allocId, shelf_id: shelfId, sku, product_name: productName, five_dc: fiveDc, qty, stock_date: stockDate });
+      }
+      updateCartUI();
+      renderMap(); // re-render to update selected state
+    };
+
+    function updateCartUI() {
+      const count = state.cart.length;
+      const totalQty = state.cart.reduce((s, c) => s + (c.qty || 0), 0);
+
+      // Badge
+      const badge = document.getElementById('cartBadge');
+      if (count > 0) {
+        badge.style.display = 'inline';
+        badge.textContent = count;
+      } else {
+        badge.style.display = 'none';
+      }
+
+      // Action bar
+      const bar = document.getElementById('gtActionBar');
+      bar.style.display = count > 0 ? 'flex' : 'none';
+      document.getElementById('gtActionCount').textContent = `${count} item${count !== 1 ? 's' : ''} selected`;
+      document.getElementById('gtActionQty').textContent = `${totalQty.toLocaleString()} qty`;
+
+      // Cart tab content
+      renderCart();
+    }
+
+    function renderCart() {
+      const container = document.getElementById('gtCart');
+      const actions = document.getElementById('gtCartActions');
+
+      if (!state.cart.length) {
+        container.innerHTML = '<div class="gt-cart-empty">No items selected. Click shelves on the map to add items to the transfer cart.</div>';
+        if (actions) actions.style.display = 'none';
+        return;
+      }
+
+      if (actions) actions.style.display = 'flex';
+
+      // Group by SKU (show consolidated view)
+      const bySku = {};
+      for (const item of state.cart) {
+        const key = item.sku;
+        if (!bySku[key]) bySku[key] = { sku: key, totalQty: 0, shelves: [], items: [] };
+        bySku[key].totalQty += item.qty || 0;
+        if (!bySku[key].shelves.includes(item.shelf_id)) bySku[key].shelves.push(item.shelf_id);
+        bySku[key].items.push(item);
+      }
+
+      let html = '<div style="font-size:12px;color:#64748b;margin-bottom:8px;font-weight:600">Consolidated transfer lines (same SKU → 1 line):</div>';
+      for (const [sku, group] of Object.entries(bySku)) {
+        html += `<div class="gt-cart-item">`;
+        html += `<div>`;
+        html += `<div class="gt-cart-sku">${esc(sku)}</div>`;
+        html += `<div class="gt-cart-shelves">From: ${group.shelves.join(', ')} (${group.items.length} allocation${group.items.length>1?'s':''})</div>`;
+        html += `</div>`;
+        html += `<span class="gt-cart-qty">${group.totalQty.toLocaleString()}</span>`;
+        html += `<button class="gt-cart-remove" onclick="gtRemoveSkuFromCart('${esc(sku)}')" title="Remove all ${esc(sku)}">✕</button>`;
+        html += `</div>`;
+      }
+
+      const dirLabel = state.mode === 'outbound' ? 'Gateway → Main Warehouse (MA-GA)' : 'MA-DOCK → Gateway';
+      html += `<div style="margin-top:12px;padding:10px;background:#f5f3ff;border-radius:8px;font-size:12px;color:#6d28d9">`;
+      html += `<strong>Direction:</strong> ${dirLabel}<br>`;
+      html += `<strong>Lines:</strong> ${Object.keys(bySku).length} (consolidated from ${state.cart.length} allocations)<br>`;
+      html += `<strong>Total Qty:</strong> ${state.cart.reduce((s,c)=>s+(c.qty||0),0).toLocaleString()}`;
+      html += `</div>`;
+
+      container.innerHTML = html;
+    }
+
+    window.gtRemoveSkuFromCart = function(sku) {
+      state.cart = state.cart.filter(c => c.sku !== sku);
+      updateCartUI();
+      renderMap();
+    };
+
+    window.gtClearCart = function() {
+      state.cart = [];
+      updateCartUI();
+      renderMap();
+    };
+
+    // ─── Create Transfer ───
+    window.gtCreateTransfer = async function() {
+      if (!state.cart.length) {
+        showMessage('No items in cart', 'warn');
+        return;
+      }
+
+      const count = state.cart.length;
+      const totalQty = state.cart.reduce((s, c) => s + (c.qty || 0), 0);
+      const dirLabel = state.mode === 'outbound' ? 'GW → Main' : 'Main → GW';
+
+      if (!confirm(`Create Cin7 transfer?\n\n${dirLabel}\n${count} items, ${totalQty} total qty\n\nThis will create a stock transfer in Cin7.`)) return;
+
+      showMessage('Creating transfer…', 'info');
+
+      const data = await api('/api/gateway/transfer', {
+        method: 'POST',
+        body: {
+          direction: state.mode,
+          items: state.cart,
+          createdBy: 'web-user',
+        },
+      });
+
+      if (data.success) {
+        showMessage(`✅ Transfer created: ${data.transferRef || data.transferId || 'OK'} (${data.transferStatus})`, 'success');
+        state.cart = [];
+        updateCartUI();
+        await loadShelves();
+        await loadStats();
+      } else {
+        showMessage(`❌ Transfer failed: ${data.error}`, 'error');
+      }
+    };
+
+    // ─── Render History ───
+    function renderHistory() {
+      const container = document.getElementById('gtHistory');
+      if (!state.history.length) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8">No transfer history yet.</div>';
+        return;
+      }
+
+      let html = '<table class="gt-history-table"><thead><tr>';
+      html += '<th>Date</th><th>Direction</th><th>SKU</th><th>5DC</th><th>Qty</th><th>From Shelves</th><th>To</th><th>Transfer Ref</th><th>By</th>';
+      html += '</tr></thead><tbody>';
+
+      for (const h of state.history) {
+        html += '<tr>';
+        html += `<td>${h.created_at ? new Date(h.created_at).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>`;
+        html += `<td><span class="gt-dir-badge ${h.direction}">${h.direction === 'inbound' ? '📥 IN' : '📤 OUT'}</span></td>`;
+        html += `<td style="font-weight:600">${esc(h.sku)}</td>`;
+        html += `<td style="color:#94a3b8">${esc(h.five_dc||'')}</td>`;
+        html += `<td style="font-weight:600">${h.qty}</td>`;
+        html += `<td>${esc(h.from_shelves||'—')}</td>`;
+        html += `<td>${esc(h.to_location||'—')}</td>`;
+        html += `<td style="color:#8b5cf6;font-weight:600">${esc(h.transfer_ref||'—')}</td>`;
+        html += `<td style="color:#64748b">${esc(h.created_by||'—')}</td>`;
+        html += '</tr>';
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // ─── Tabs ───
+    window.gtSwitchTab = function(tab) {
+      state.activeTab = tab;
+      document.querySelectorAll('.gt-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      document.getElementById('tabMap').style.display = tab === 'map' ? 'block' : 'none';
+      document.getElementById('tabCart').style.display = tab === 'cart' ? 'block' : 'none';
+      document.getElementById('tabHistory').style.display = tab === 'history' ? 'block' : 'none';
+      if (tab === 'history' && !state.history.length) loadHistory();
+    };
+
+    // ─── Mode Toggle ───
+    window.gtSetMode = function(mode) {
+      state.mode = mode;
+      document.querySelectorAll('.gt-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === mode));
+    };
+
+    // ─── Search/Filter ───
+    window.gtFilter = function() {
+      state.search = document.getElementById('gtSearch').value.trim();
+      renderMap();
+    };
+
+    // ─── Seed Data ───
+    window.gtSeed = async function() {
+      if (!confirm('This will clear existing gateway data and re-import from the "Gateway location map" file.\n\nContinue?')) return;
+      showMessage('Seeding data…', 'info');
+      const data = await api('/api/gateway/seed', { method: 'POST' });
+      if (data.success) {
+        showMessage(`✅ Seeded: ${data.shelves} shelves, ${data.allocations} allocations`, 'success');
+        await loadShelves();
+        await loadStats();
+      } else {
+        showMessage(`❌ Seed failed: ${data.error}`, 'error');
+      }
+    };
+
+    // ─── Add Manual Allocation ───
+    window.gtAddManual = function() {
+      // Populate shelf dropdown
+      const sel = document.getElementById('allocShelf');
+      sel.innerHTML = state.shelves.map(s => `<option value="${s.id}">${s.id}${s.label ? ' — '+s.label : ''}</option>`).join('');
+      document.getElementById('allocModalTitle').textContent = 'Add Allocation';
+      document.getElementById('allocSku').value = '';
+      document.getElementById('allocName').value = '';
+      document.getElementById('alloc5dc').value = '';
+      document.getElementById('allocQty').value = '0';
+      document.getElementById('allocDate').value = '';
+      document.getElementById('allocPallet').value = '';
+      document.getElementById('allocTransfer').value = '';
+      document.getElementById('gtAllocModal').classList.add('open');
+    };
+
+    window.gtCloseAllocModal = function() {
+      document.getElementById('gtAllocModal').classList.remove('open');
+    };
+
+    window.gtSaveAllocation = async function() {
+      const body = {
+        shelf_id: document.getElementById('allocShelf').value,
+        sku: document.getElementById('allocSku').value.trim(),
+        product_name: document.getElementById('allocName').value.trim() || null,
+        five_dc: document.getElementById('alloc5dc').value.trim() || null,
+        qty: parseInt(document.getElementById('allocQty').value) || 0,
+        stock_date: document.getElementById('allocDate').value || null,
+        pallet_number: document.getElementById('allocPallet').value.trim() || null,
+        transfer_ref: document.getElementById('allocTransfer').value.trim() || null,
+        allocated_by: 'manual',
+      };
+
+      if (!body.sku) { showMessage('SKU is required', 'warn'); return; }
+      if (!body.shelf_id) { showMessage('Select a shelf', 'warn'); return; }
+
+      const data = await api('/api/gateway/allocations', { method: 'POST', body });
+      if (data.success) {
+        showMessage('✅ Allocation added', 'success');
+        gtCloseAllocModal();
+        await loadShelves();
+        await loadStats();
+      } else {
+        showMessage(`❌ ${data.error}`, 'error');
+      }
+    };
+
+    // ─── Delete allocation ───
+    window.gtDeleteAlloc = async function(allocId, sku, qty) {
+      if (!confirm(`Remove ${sku} (${qty} units) from this shelf?\n\nThis only removes the record — no Cin7 transfer is created.`)) return;
+      showMessage('Removing…', 'info');
+      const data = await api(`/api/gateway/allocations/${allocId}`, { method: 'DELETE' });
+      if (data.success) {
+        showMessage('✅ Allocation removed', 'success');
+        // Remove from cart if present
+        state.cart = state.cart.filter(c => c.allocationId !== allocId);
+        updateCartUI();
+        await loadShelves();
+        await loadStats();
+        // Re-expand the same shelf
+        if (state.expandedShelf) {
+          const sid = state.expandedShelf;
+          state.expandedShelf = null;
+          gtExpandShelf(sid);
+        }
+      } else {
+        showMessage(`❌ ${data.error || 'Failed'}`, 'error');
+      }
+    };
+
+    // ─── Edit allocation qty ───
+    window.gtEditQty = function(allocId, currentQty) {
+      const span = document.getElementById('allocQtySpan_' + allocId);
+      if (!span) return;
+      // Replace with inline input
+      span.innerHTML = `<input type="number" class="gt-qty-inline" value="${currentQty}" min="0" id="qtyInput_${allocId}" onkeydown="if(event.key==='Enter')gtSaveQty(${allocId});if(event.key==='Escape'){gtCancelQtyEdit(${allocId},${currentQty})}" />`;
+      const inp = document.getElementById('qtyInput_' + allocId);
+      inp.focus();
+      inp.select();
+      // Save on blur
+      inp.addEventListener('blur', function() {
+        setTimeout(() => gtSaveQty(allocId), 150);
+      });
+    };
+
+    window.gtSaveQty = async function(allocId) {
+      const inp = document.getElementById('qtyInput_' + allocId);
+      if (!inp) return;
+      const newQty = parseInt(inp.value);
+      if (isNaN(newQty) || newQty < 0) { showMessage('Invalid qty', 'warn'); return; }
+      const data = await api(`/api/gateway/allocations/${allocId}`, {
+        method: 'PATCH',
+        body: { qty: newQty },
+      });
+      if (data.success) {
+        showMessage(`✅ Qty updated to ${newQty}`, 'success');
+        await loadShelves();
+        await loadStats();
+        if (state.expandedShelf) {
+          const sid = state.expandedShelf;
+          state.expandedShelf = null;
+          gtExpandShelf(sid);
+        }
+      } else {
+        showMessage(`❌ ${data.error || 'Failed'}`, 'error');
+      }
+    };
+
+    window.gtCancelQtyEdit = function(allocId, originalQty) {
+      const span = document.getElementById('allocQtySpan_' + allocId);
+      if (span) span.textContent = originalQty;
+    };
+
+
+
+    // ─── Init ───
+    async function init() {
+      await Promise.all([loadShelves(), loadStats()]);
+    }
+
+    init();
+
+  })();
+  </script>
+</body>
+</html>

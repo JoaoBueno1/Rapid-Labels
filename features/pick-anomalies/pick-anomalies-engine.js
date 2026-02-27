@@ -35,8 +35,8 @@ const CIN7 = {
 };
 
 // ─── Supabase Config ───
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
-const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5NTc5MzQsImV4cCI6MjA2NzUzMzkzNH0.k3G4Tc6U7XdYGmU9wTkcg3R1cLRij-CN6EbjSSbd9bE';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || '';
 
 const RATE_DELAY = 2500;   // 2.5s between Cin7 calls — safe margin, matches sync-service
 const MAX_ORDERS_PER_RUN = 50;
@@ -239,7 +239,7 @@ function classifyError(pickedBin, expectedBin) {
 
 async function getLastSyncDate() {
   try {
-    const rows = await sbGet('pick_anomaly_sync', 'select=last_synced_date,last_synced_at,total_orders&id=eq.1');
+    const rows = await sbGet('pick_anomaly_sync', 'select=*&id=eq.1');
     if (rows.length) return rows[0];
     return null;
   } catch (err) {
@@ -248,13 +248,26 @@ async function getLastSyncDate() {
   }
 }
 
-async function updateSyncMeta(lastDate, totalOrders) {
+async function updateSyncMeta(lastDate, totalOrders, lastNewOrders) {
   try {
-    await sbPatch('pick_anomaly_sync', 'id=eq.1', {
+    const patch = {
       last_synced_date: lastDate,
       last_synced_at: new Date().toISOString(),
       total_orders: totalOrders,
-    });
+    };
+    if (lastNewOrders !== undefined) patch.last_new_orders = lastNewOrders;
+    try {
+      await sbPatch('pick_anomaly_sync', 'id=eq.1', patch);
+    } catch (patchErr) {
+      // If last_new_orders column doesn't exist yet, retry without it
+      if (patchErr.message && patchErr.message.includes('last_new_orders')) {
+        delete patch.last_new_orders;
+        await sbPatch('pick_anomaly_sync', 'id=eq.1', patch);
+        console.warn('⚠️ last_new_orders column not found — run migration: ALTER TABLE public.pick_anomaly_sync ADD COLUMN last_new_orders INT DEFAULT 0;');
+      } else {
+        throw patchErr;
+      }
+    }
   } catch (err) {
     console.warn('⚠️ Could not update sync metadata:', err.message);
   }
@@ -671,7 +684,7 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   // The existingNumbers dedup prevents double-processing of already-saved orders.
   const totalInDb = (syncMeta?.total_orders || 0) + results.length;
   const syncDate = wasCapped ? dateFrom : dateTo;
-  await updateSyncMeta(syncDate, totalInDb);
+  await updateSyncMeta(syncDate, totalInDb, results.length);
 
   const lastSyncedAt = new Date().toISOString();
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1) + 's';
@@ -894,6 +907,7 @@ function registerPickAnomalyRoutes(app) {
         lastSyncedDate: meta?.last_synced_date || null,
         lastSyncedAt: meta?.last_synced_at || null,
         totalOrders: meta?.total_orders || 0,
+        lastNewOrders: meta?.last_new_orders || 0,
       });
     } catch (err) {
       res.json({ success: true, syncing: syncInProgress, lastSyncedDate: null, totalOrders: 0 });

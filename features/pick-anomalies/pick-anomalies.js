@@ -248,6 +248,41 @@
   }
 
   /* ═══════════════════════════════════════════════
+     FETCH SYNC STATUS (no Cin7 calls — just reads metadata)
+     ═══════════════════════════════════════════════ */
+  async function fetchSyncStatus() {
+    try {
+      const res = await fetch('/api/pick-anomalies/sync-status');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success) return;
+
+      if (data.lastSyncedAt) {
+        const syncDate = new Date(data.lastSyncedAt);
+        updateSyncAge(syncDate);
+
+        // Build status message
+        const parts = ['✅'];
+        if (data.lastNewOrders > 0) {
+          parts.push(`+${data.lastNewOrders} order${data.lastNewOrders > 1 ? 's' : ''} last sync`);
+        } else {
+          parts.push('Up to date');
+        }
+        parts.push(`· ${data.totalOrders} total`);
+        setSyncStatus('success', parts.join(' '));
+      } else {
+        setSyncStatus('idle', 'No sync data yet');
+      }
+
+      if (data.syncing) {
+        setSyncStatus('syncing', 'Backend sync running…');
+      }
+    } catch (err) {
+      console.warn('Could not fetch sync status:', err);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════
      AUTO-SYNC — Fetch new orders in background
      ═══════════════════════════════════════════════ */
   async function syncNewOrders(silent = false) {
@@ -272,7 +307,8 @@
       const data = await res.json();
 
       if (data.syncing) {
-        setSyncStatus('syncing', 'Sync already in progress...');
+        // Backend is already running a sync — just show status, don't alarm
+        setSyncStatus('syncing', 'Backend sync running…');
         return;
       }
 
@@ -1164,6 +1200,7 @@
     loadHistory,
     loadStats,
     syncNewOrders,
+    fetchSyncStatus,
     debounceSearch,
     setFilter,
     openDetail,
@@ -1186,10 +1223,10 @@
     await loadHistory();
     await loadStats();
 
-    // 2. Auto-sync new orders (silent — no progress bar, Cin7 API calls here)
-    await syncNewOrders(true);
+    // 2. Fetch sync status (shows "Xh Ym ago" + "+N orders" — no Cin7 API calls)
+    await fetchSyncStatus();
 
-    // Note: No frontend auto-sync interval.
+    // Note: No auto-sync on page open.
     // Backend scheduler syncs every 2h at :30. User can manually sync via button.
   });
 

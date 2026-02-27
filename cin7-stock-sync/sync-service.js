@@ -38,9 +38,9 @@ const CONFIG = {
     timeoutMs: 30000,      // 30s per request
   },
   supabase: {
-    url: 'https://iaqnxamnjftwqdbsnfyl.supabase.co',
+    url: process.env.SUPABASE_URL || '',
     // Service role key — required for writing to cin7_mirror schema
-    serviceKey: process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTk1NzkzNCwiZXhwIjoyMDY3NTMzOTM0fQ.l6qjolSKgFG9H6zZvwJejzG9zsQFBQ9RtHN6S16TCR4',
+    serviceKey: process.env.SUPABASE_SERVICE_KEY || '',
     batchSize: 500,        // Rows per Supabase upsert call
   },
   throttle: {

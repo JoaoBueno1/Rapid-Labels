@@ -1729,6 +1729,7 @@
   window.switchRestockView = function (view) {
     const restockView = document.getElementById('restockView');
     const insightsView = document.getElementById('insightsView');
+    const mapView = document.getElementById('mapView');
     const searchGroup = document.getElementById('restockSearchGroup');
     const syncCard = document.getElementById('syncStatusCard');
 
@@ -1740,14 +1741,19 @@
     // Sync banner always visible on all tabs
     if (syncCard) syncCard.style.display = '';
 
+    // Hide all views first
+    if (restockView) restockView.style.display = 'none';
+    if (insightsView) insightsView.style.display = 'none';
+    if (mapView) mapView.style.display = 'none';
+
     if (view === 'restock') {
-      // Show table, hide insights
       if (restockView) restockView.style.display = '';
-      if (insightsView) insightsView.style.display = 'none';
       if (searchGroup) searchGroup.style.display = '';
+    } else if (view === 'map') {
+      if (mapView) mapView.style.display = 'block';
+      if (searchGroup) searchGroup.style.display = 'none';
+      initWarehouseMap();
     } else {
-      // Show insights, hide table
-      if (restockView) restockView.style.display = 'none';
       if (insightsView) insightsView.style.display = 'block';
       if (searchGroup) searchGroup.style.display = 'none';
       insightState.activeTab = view;
@@ -1853,6 +1859,438 @@
       </div>`;
     }).join('');
   }
+
+  /* ═══════════════════════════════════════════════════
+     WAREHOUSE MAP — Visual grid of Main Warehouse bins
+     ═══════════════════════════════════════════════════ */
+
+  const mapState = {
+    loaded: false,
+    loading: false,
+    bins: {},          // { binName: [{ sku, product_name, five_dc, on_hand, allocated, available }] }
+    areas: {},         // { A: { maxRow, maxLevel, hasPositions } }
+    activeArea: 'A',
+    searchQ: '',
+    selectedBin: null,
+    showEmpty: false,
+    restockRows: null,
+  };
+
+  const MAP_AREAS = ['A','B','C','D','E','F','G','H'];
+  const SPECIAL_BINS = ['MA-DOCK','MA-GA','MA-PRODUCTION','MA-RETURNS','MA-SAMPLES'];
+
+  async function initWarehouseMap() {
+    if (mapState.loaded || mapState.loading) {
+      if (mapState.loaded) renderMap();
+      return;
+    }
+    mapState.loading = true;
+    const grid = document.getElementById('mapGrid');
+    if (grid) grid.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b">Loading warehouse bins…</div>';
+
+    try {
+      await window.supabaseReady;
+
+      // Fetch stock_snapshot
+      const all = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await window.supabase.schema('cin7_mirror')
+          .from('stock_snapshot')
+          .select('sku, product_name, bin, on_hand, allocated, available')
+          .eq('location_name', 'Main Warehouse')
+          .range(offset, offset + 999);
+        if (error) throw error;
+        if (!data || !data.length) break;
+        all.push(...data);
+        if (data.length < 1000) break;
+        offset += 1000;
+      }
+
+      // Build SKU → 5DC + attribute1 lookup from products if available
+      const skuTo5DC = {};
+      try {
+        let pOff = 0;
+        while (true) {
+          const { data: pd } = await window.supabase.schema('cin7_mirror')
+            .from('products')
+            .select('sku, attribute1, stock_locator')
+            .range(pOff, pOff + 999);
+          if (!pd || !pd.length) break;
+          for (const p of pd) {
+            if (p.sku) skuTo5DC[p.sku] = p.attribute1 || p.stock_locator || '';
+          }
+          if (pd.length < 1000) break;
+          pOff += 1000;
+        }
+      } catch (e) { /* ignore – 5DC lookup is optional */ }
+
+      // Index by bin
+      const bins = {};
+      const areaInfo = {};
+      for (const row of all) {
+        const bin = (row.bin || '').trim();
+        if (!bin) continue;
+        if (!bins[bin]) bins[bin] = [];
+        bins[bin].push({
+          sku: row.sku,
+          product_name: row.product_name,
+          five_dc: skuTo5DC[row.sku] || '',
+          on_hand: Number(row.on_hand) || 0,
+          allocated: Number(row.allocated) || 0,
+          available: Number(row.available) || 0
+        });
+
+        const m = bin.match(/^MA-([A-H])-(\d+)-L(\d)(?:-P(\d))?$/);
+        if (m) {
+          const area = m[1], rw = +m[2], lv = +m[3], pos = m[4] ? +m[4] : 0;
+          if (!areaInfo[area]) areaInfo[area] = { maxRow: 0, maxLevel: 0, hasPositions: false };
+          areaInfo[area].maxRow = Math.max(areaInfo[area].maxRow, rw);
+          areaInfo[area].maxLevel = Math.max(areaInfo[area].maxLevel, lv);
+          if (pos > 0) areaInfo[area].hasPositions = true;
+        }
+      }
+
+      mapState.bins = bins;
+      mapState.areas = areaInfo;
+      mapState.restockRows = state.allRows;
+      mapState.loaded = true;
+      mapState.loading = false;
+
+      buildAreaTabs();
+      renderMap();
+    } catch (e) {
+      mapState.loading = false;
+      if (grid) grid.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444">Error loading map: ${e.message}</div>`;
+    }
+  }
+
+  function buildAreaTabs() {
+    const container = document.getElementById('mapAreaTabs');
+    if (!container) return;
+    let html = '';
+    for (const a of MAP_AREAS) {
+      if (!mapState.areas[a]) continue;
+      const active = a === mapState.activeArea ? ' active' : '';
+      html += `<button class="map-area-btn${active}" onclick="mapSelectArea('${a}')">${a}</button>`;
+    }
+    html += `<button class="map-area-btn${mapState.activeArea === 'SPECIAL' ? ' active' : ''}" onclick="mapSelectArea('SPECIAL')">Special</button>`;
+    container.innerHTML = html;
+  }
+
+  window.mapSelectArea = function (area) {
+    mapState.activeArea = area;
+    mapState.selectedBin = null;
+    buildAreaTabs();
+    renderMap();
+    const detail = document.getElementById('mapBinDetail');
+    if (detail) detail.style.display = 'none';
+  };
+
+  window.mapSearchFilter = function (q) {
+    mapState.searchQ = (q || '').toUpperCase().trim();
+    renderMap();
+  };
+
+  window.mapToggleEmpty = function (checked) {
+    mapState.showEmpty = checked;
+    renderMap();
+  };
+
+  function getRestockStatus(sku) {
+    if (!mapState.restockRows) mapState.restockRows = state.allRows;
+    if (!mapState.restockRows || !sku) return null;
+    return mapState.restockRows.find(r => (r.sku || '').toUpperCase() === sku.toUpperCase()) || null;
+  }
+
+  /** Returns: 'full' | 'medium' | 'low' | 'over' | 'notconfigured' | 'empty' */
+  function binStatus(binName) {
+    const items = mapState.bins[binName];
+    if (!items || !items.length) return 'empty';
+    const totalOnHand = items.reduce((s, i) => s + i.on_hand, 0);
+    if (totalOnHand <= 0) return 'empty';
+
+    // Check restock status of the primary SKU (highest qty)
+    const primary = items.reduce((a, b) => a.on_hand >= b.on_hand ? a : b);
+    const rs = getRestockStatus(primary.sku);
+    if (rs) {
+      const ns = (rs.__norm_status || '').toUpperCase();
+      if (ns === 'FULL') return 'full';
+      if (ns === 'MEDIUM') return 'medium';
+      if (ns === 'LOW') return 'low';
+      if (ns === 'OVER') return 'over';
+      if (ns === 'NOT_CONFIGURED') return 'notconfigured';
+    }
+    // Has stock but no restock config
+    return 'notconfigured';
+  }
+
+  function renderMap() {
+    const grid = document.getElementById('mapGrid');
+    const statsBar = document.getElementById('mapStatsBar');
+    if (!grid) return;
+
+    const area = mapState.activeArea;
+    const searchQ = mapState.searchQ;
+
+    // Build set of highlighted bins from search
+    const highlightBins = new Set();
+    if (searchQ) {
+      for (const [binName, items] of Object.entries(mapState.bins)) {
+        if (binName.toUpperCase().includes(searchQ)) { highlightBins.add(binName); continue; }
+        for (const item of items) {
+          if ((item.sku || '').toUpperCase().includes(searchQ) ||
+              (item.product_name || '').toUpperCase().includes(searchQ) ||
+              (item.five_dc || '').toUpperCase().includes(searchQ)) {
+            highlightBins.add(binName);
+            break;
+          }
+        }
+      }
+    }
+
+    if (area === 'SPECIAL') {
+      renderSpecialBins(grid, highlightBins);
+      renderMapStats(statsBar, 'SPECIAL');
+      return;
+    }
+
+    const info = mapState.areas[area];
+    if (!info) { grid.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">No data for area ' + area + '</div>'; return; }
+
+    const maxRow = info.maxRow;
+    const maxLevel = info.maxLevel;
+
+    // Build existence set for this area so we only render real bins
+    const areaPrefix = `MA-${area}-`;
+    const existingBins = new Set();
+    for (const binName of Object.keys(mapState.bins)) {
+      if (binName.startsWith(areaPrefix)) existingBins.add(binName);
+    }
+
+    // Build table: Rows on Y-axis, Levels on X-axis
+    let html = '<table class="map-grid-table">';
+
+    // Header row with level labels
+    html += '<tr><th class="map-level-header"></th>';
+    for (let lvl = 1; lvl <= maxLevel; lvl++) {
+      html += `<th class="map-level-header">L${lvl}</th>`;
+    }
+    html += '</tr>';
+
+    // Data rows — only render bins that actually exist
+    for (let row = 1; row <= maxRow; row++) {
+      const rowStr = String(row).padStart(2, '0');
+      html += `<tr><td class="map-row-label">${area}${rowStr}</td>`;
+
+      for (let lvl = 1; lvl <= maxLevel; lvl++) {
+        const baseBin = `MA-${area}-${rowStr}-L${lvl}`;
+        const p1Bin = `${baseBin}-P1`;
+        const p2Bin = `${baseBin}-P2`;
+        const hasBase = existingBins.has(baseBin);
+        const hasP1 = existingBins.has(p1Bin);
+        const hasP2 = existingBins.has(p2Bin);
+
+        if (hasP1 || hasP2) {
+          // Split cell: render P1 + P2 stacked inside one td
+          html += `<td style="padding:0;vertical-align:top">`;
+          html += `<div style="display:flex;flex-direction:column;gap:2px">`;
+          if (hasP1) html += renderCell(p1Bin, highlightBins, true);
+          if (hasP2) html += renderCell(p2Bin, highlightBins, true);
+          html += `</div></td>`;
+        } else if (hasBase) {
+          html += renderCell(baseBin, highlightBins, false);
+        } else {
+          // No bin exists at this position
+          html += `<td class="map-cell st-empty" style="opacity:.15"></td>`;
+        }
+      }
+      html += '</tr>';
+    }
+    html += '</table>';
+    grid.innerHTML = html;
+
+    renderMapStats(statsBar, area);
+  }
+
+  function renderCell(binName, highlightBins, isInline) {
+    const items = mapState.bins[binName];
+    const st = binStatus(binName);
+    const isHighlighted = highlightBins.size > 0 && highlightBins.has(binName);
+    const isSelected = mapState.selectedBin === binName;
+    const isEmpty = st === 'empty';
+
+    // Position tag (P1/P2)
+    const posMatch = binName.match(/-P(\d)$/);
+    const posTag = posMatch ? `<span style="font-size:8px;opacity:.6;position:absolute;top:1px;right:3px">P${posMatch[1]}</span>` : '';
+
+    // Inline (stacked within a td) vs standalone td
+    const tag = isInline ? 'div' : 'td';
+
+    // When searching, dim non-matching bins
+    if (highlightBins.size > 0 && !isHighlighted) {
+      if (isEmpty && !mapState.showEmpty) return `<${tag} class="map-cell st-empty" style="opacity:.1">${posTag}</${tag}>`;
+      return `<${tag} class="map-cell st-${st}" style="opacity:.15" title="${binName}">${posTag}<div class="map-cell-qty">${isEmpty ? '' : items.reduce((s,i)=>s+i.on_hand,0)}</div></${tag}>`;
+    }
+
+    // Empty bins
+    if (isEmpty) {
+      if (!mapState.showEmpty && highlightBins.size === 0) {
+        return `<${tag} class="map-cell st-empty" title="${binName}" onclick="mapClickBin('${binName}')">${posTag}</${tag}>`;
+      }
+      return `<${tag} class="map-cell st-empty${isHighlighted ? ' highlighted' : ''}${isSelected ? ' selected' : ''}" title="${binName}" onclick="mapClickBin('${binName}')">${posTag}<div style="font-size:9px;color:#cbd5e1">—</div></${tag}>`;
+    }
+
+    // Occupied bins: show primary SKU info
+    const sorted = [...items].filter(i => i.on_hand > 0).sort((a, b) => b.on_hand - a.on_hand);
+    const primary = sorted[0];
+    const totalQty = sorted.reduce((s, i) => s + i.on_hand, 0);
+    const extraCount = sorted.length - 1;
+
+    // Cell label: 5DC or SKU (truncated) + qty
+    const label = primary.five_dc || primary.sku;
+    const displayLabel = label.length > 12 ? label.substring(0, 11) + '…' : label;
+
+    let cellContent = posTag;
+    cellContent += `<div class="map-cell-sku" title="${escapeHtml(primary.sku)}">${escapeHtml(displayLabel)}</div>`;
+    cellContent += `<div class="map-cell-qty">${totalQty}</div>`;
+    if (extraCount > 0) {
+      cellContent += `<div class="map-cell-more">+${extraCount} more</div>`;
+    }
+
+    const cls = `map-cell st-${st}${isHighlighted ? ' highlighted' : ''}${isSelected ? ' selected' : ''}`;
+    return `<${tag} class="${cls}" title="${binName}: ${escapeHtml(primary.sku)} (${totalQty})" onclick="mapClickBin('${binName}')">${cellContent}</${tag}>`;
+  }
+
+  function renderSpecialBins(grid, highlightBins) {
+    let html = '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+    for (const bn of SPECIAL_BINS) {
+      const items = mapState.bins[bn] || [];
+      const totalOh = items.reduce((s, i) => s + i.on_hand, 0);
+      const skuCount = items.filter(i => i.on_hand > 0).length;
+      const hl = highlightBins.size > 0 && highlightBins.has(bn) ? 'border-color:#6366f1;box-shadow:0 0 0 2px #6366f1;' : '';
+      html += `<div style="padding:12px 16px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;min-width:140px;cursor:pointer;${hl}" onclick="mapClickBin('${bn}')">
+        <div style="font-size:13px;font-weight:700;color:#0f172a">${bn.replace('MA-','')}</div>
+        <div style="font-size:24px;font-weight:700;color:${totalOh > 0 ? '#059669' : '#94a3b8'};margin:4px 0">${totalOh.toLocaleString()}</div>
+        <div style="font-size:11px;color:#64748b">${skuCount} SKUs</div>
+      </div>`;
+    }
+
+    // Non-standard bins
+    const otherBins = Object.keys(mapState.bins).filter(b => !b.match(/^MA-[A-H]-\d/) && !SPECIAL_BINS.includes(b)).sort();
+    for (const bn of otherBins) {
+      const items = mapState.bins[bn] || [];
+      const totalOh = items.reduce((s, i) => s + i.on_hand, 0);
+      if (totalOh <= 0) continue;
+      html += `<div style="padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;min-width:140px;cursor:pointer" onclick="mapClickBin('${bn}')">
+        <div style="font-size:12px;font-weight:600;color:#475569">${escapeHtml(bn)}</div>
+        <div style="font-size:18px;font-weight:700;color:#475569">${totalOh.toLocaleString()}</div>
+      </div>`;
+    }
+    html += '</div>';
+    grid.innerHTML = html;
+  }
+
+  function renderMapStats(container, area) {
+    if (!container) return;
+    let totalBins = 0, fullCount = 0, mediumCount = 0, lowCount = 0, overCount = 0, emptyCount = 0, ncCount = 0;
+    let totalOnHand = 0;
+    const totalSKUs = new Set();
+
+    for (const [binName, items] of Object.entries(mapState.bins)) {
+      if (area === 'SPECIAL') {
+        if (binName.match(/^MA-[A-H]-\d/)) continue;
+      } else {
+        const m = binName.match(/^MA-([A-H])-/);
+        if (!m || m[1] !== area) continue;
+      }
+      totalBins++;
+      const oh = items.reduce((s, i) => s + i.on_hand, 0);
+      if (oh > 0) {
+        totalOnHand += oh;
+        items.forEach(i => { if (i.on_hand > 0) totalSKUs.add(i.sku); });
+      }
+      const st = binStatus(binName);
+      if (st === 'full') fullCount++;
+      else if (st === 'medium') mediumCount++;
+      else if (st === 'low') lowCount++;
+      else if (st === 'over') overCount++;
+      else if (st === 'empty') emptyCount++;
+      else if (st === 'notconfigured') ncCount++;
+    }
+
+    container.innerHTML = `
+      <div style="font-size:12px;color:#64748b"><strong style="font-size:16px;color:#0f172a">${totalBins}</strong> bins</div>
+      <div style="font-size:12px;color:#22c55e"><strong style="font-size:16px">🟢 ${fullCount}</strong> Full</div>
+      <div style="font-size:12px;color:#f59e0b"><strong style="font-size:16px">🟡 ${mediumCount}</strong> Medium</div>
+      <div style="font-size:12px;color:#ef4444"><strong style="font-size:16px">🔴 ${lowCount}</strong> Low</div>
+      <div style="font-size:12px;color:#1e293b"><strong style="font-size:16px">⚫ ${overCount}</strong> Over</div>
+      <div style="font-size:12px;color:#94a3b8"><strong style="font-size:16px">⬜ ${emptyCount}</strong> Empty</div>
+      ${ncCount > 0 ? `<div style="font-size:12px;color:#64748b"><strong style="font-size:16px">${ncCount}</strong> N/C</div>` : ''}
+      <div style="font-size:12px;color:#64748b"><strong style="font-size:16px;color:#0f172a">${totalOnHand.toLocaleString()}</strong> units</div>
+      <div style="font-size:12px;color:#64748b"><strong style="font-size:16px;color:#0f172a">${totalSKUs.size}</strong> SKUs</div>
+    `;
+  }
+
+  window.mapClickBin = function (binName) {
+    mapState.selectedBin = binName;
+    renderMap();
+
+    const detail = document.getElementById('mapBinDetail');
+    if (!detail) return;
+    const items = mapState.bins[binName] || [];
+
+    if (items.length === 0) {
+      detail.style.display = 'block';
+      detail.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px;font-weight:700;color:#0f172a">${escapeHtml(binName)}</span>
+        <span style="font-size:13px;color:#94a3b8">Empty bin — no stock</span>
+        <button onclick="document.getElementById('mapBinDetail').style.display='none'" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8">&times;</button>
+      </div>`;
+      return;
+    }
+
+    const totalOh = items.reduce((s, i) => s + i.on_hand, 0);
+    const totalAlloc = items.reduce((s, i) => s + i.allocated, 0);
+
+    let html = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <span style="font-size:16px;font-weight:700;color:#0f172a">${escapeHtml(binName)}</span>
+      <span style="font-size:13px;color:#059669;font-weight:600">${totalOh.toLocaleString()} on hand</span>
+      ${totalAlloc ? `<span style="font-size:13px;color:#f59e0b">${totalAlloc} allocated</span>` : ''}
+      <span style="font-size:13px;color:#64748b">${items.length} SKU${items.length > 1 ? 's' : ''}</span>
+      <button onclick="document.getElementById('mapBinDetail').style.display='none'" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8">&times;</button>
+    </div>`;
+
+    const sorted = [...items].sort((a, b) => b.on_hand - a.on_hand);
+
+    html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+    html += '<tr style="background:#f8fafc"><th style="text-align:left;padding:6px 8px;font-weight:600;color:#475569">5DC</th><th style="text-align:left;padding:6px 8px;font-weight:600;color:#475569">SKU</th><th style="text-align:left;padding:6px 8px;font-weight:600;color:#475569">Product</th><th style="text-align:right;padding:6px 8px;font-weight:600;color:#475569">On Hand</th><th style="text-align:right;padding:6px 8px;font-weight:600;color:#475569">Allocated</th><th style="text-align:right;padding:6px 8px;font-weight:600;color:#475569">Available</th><th style="text-align:center;padding:6px 8px;font-weight:600;color:#475569">Status</th></tr>';
+
+    for (const item of sorted) {
+      const rs = getRestockStatus(item.sku);
+      let statusBadge = '<span style="padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;color:#fff;background:#94a3b8">N/C</span>';
+      if (rs && rs.__norm_status) {
+        const ns = rs.__norm_status.toUpperCase();
+        const colors = { LOW: '#ef4444', MEDIUM: '#f59e0b', FULL: '#22c55e', OVER: '#1e293b', NOT_CONFIGURED: '#94a3b8' };
+        const labels = { LOW: 'LOW', MEDIUM: 'MEDIUM', FULL: 'FULL', OVER: 'OVER', NOT_CONFIGURED: 'N/C' };
+        statusBadge = `<span style="padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;color:#fff;background:${colors[ns] || '#94a3b8'}">${labels[ns] || ns}</span>`;
+      }
+      html += `<tr style="border-top:1px solid #f1f5f9">
+        <td style="padding:6px 8px;font-weight:600;color:#6366f1">${escapeHtml(item.five_dc || '—')}</td>
+        <td style="padding:6px 8px;font-weight:600;color:#0f172a">${escapeHtml(item.sku)}</td>
+        <td style="padding:6px 8px;color:#64748b;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((item.product_name || '').substring(0, 60))}</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:600">${item.on_hand}</td>
+        <td style="padding:6px 8px;text-align:right;color:#f59e0b">${item.allocated || ''}</td>
+        <td style="padding:6px 8px;text-align:right;color:#059669">${item.available}</td>
+        <td style="padding:6px 8px;text-align:center">${statusBadge}</td>
+      </tr>`;
+    }
+    html += '</table>';
+
+    detail.style.display = 'block';
+    detail.innerHTML = html;
+    detail.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  };
 
   console.log('✅ Re-Stock V2 loaded — data source: cin7_mirror');
 })();

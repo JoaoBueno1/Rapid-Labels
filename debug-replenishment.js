@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient('https://iaqnxamnjftwqdbsnfyl.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5NTc5MzQsImV4cCI6MjA2NzUzMzkzNH0.k3G4Tc6U7XdYGmU9wTkcg3R1cLRij-CN6EbjSSbd9bE');
+require('dotenv').config();
+const supabase = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_ANON_KEY || '');
 
 const WEEKS_IN_MONTH = 4.345;
 const BRANCH_TARGET_WEEKS = 5;

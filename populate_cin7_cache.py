@@ -14,8 +14,8 @@ from datetime import datetime
 
 # Configuração
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:5050')
-SUPABASE_URL = 'https://iaqnxamnjftwqdbsnfyl.supabase.co'
-SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcxOTE1NzkzNCwiZXhwIjoyMDM0NzMzOTM0fQ.BRHXp3ywILpNjslPDvZ51kC2PmQhxvEJOQd2KGLiB0g'
+SUPABASE_URL = os.getenv('SUPABASE_URL', '')
+SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY', '')
 
 def print_status(message, status='info'):
     """Print colored status message."""

@@ -14,8 +14,8 @@ const PRINTER_HOST = process.env.PRINTER_HOST || '127.0.0.1';
 const PRINTER_PORT = parseInt(process.env.PRINTER_PORT || '9100', 10);
 
 // Supabase setup for backend endpoints
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTk1NzkzNCwiZXhwIjoyMDY3NTMzOTM0fQ.l6qjolSKgFG9H6zZvwJejzG9zsQFBQ9RtHN6S16TCR4';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 let supabaseBackend = null;
 
 if (SUPABASE_SERVICE_KEY) {
@@ -99,6 +99,14 @@ try {
   registerPickAnomalyRoutes(app);
 } catch (e) {
   console.warn('⚠️  Could not register pick anomaly routes:', e.message);
+}
+
+// ── Gateway Transfer routes ──
+try {
+  const { registerGatewayRoutes } = require('./features/gateway/gateway-engine');
+  registerGatewayRoutes(app);
+} catch (e) {
+  console.warn('⚠️  Could not register gateway routes:', e.message);
 }
 
 app.listen(PORT, () => {

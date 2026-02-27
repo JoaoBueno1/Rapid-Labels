@@ -34,6 +34,9 @@
         <button class="rv2-nav-tab" data-view="consolidate" onclick="switchRestockView('consolidate')">
           🔧 Consolidate <span id="insightCountConsolidate" class="rv2-nav-badge" style="background:#0ea5e9">0</span>
         </button>
+        <button class="rv2-nav-tab" data-view="map" onclick="switchRestockView('map')">
+          🗺️ Map
+        </button>
       </div>
       <div class="header-actions">
         <div class="search-input-group" id="restockSearchGroup">
@@ -200,6 +203,32 @@
       <button id="restockNextPage" class="pages-btn" type="button" aria-label="Next page" onclick="restockNextPage()">›</button>
     </div>
     </div><!-- /restockView -->
+
+    <!-- Map View (warehouse visual grid) -->
+    <div id="mapView" style="display:none;margin-top:8px">
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;flex-wrap:wrap">
+        <span style="font-weight:700;font-size:14px;color:#0f172a">🗺️ Warehouse Map</span>
+        <div style="display:flex;gap:4px" id="mapAreaTabs"></div>
+        <div style="flex:1"></div>
+        <input type="text" id="mapSearch" placeholder="Search SKU, product or bin…" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;width:240px" oninput="mapSearchFilter(this.value)" />
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#64748b;cursor:pointer">
+          <input type="checkbox" id="mapShowEmpty" onchange="mapToggleEmpty(this.checked)" /> Show empty
+        </label>
+      </div>
+      <!-- Legend -->
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 0;flex-wrap:wrap">
+        <span class="map-legend-dot" style="background:#22c55e"></span> <span style="font-size:11px;color:#64748b">Full</span>
+        <span class="map-legend-dot" style="background:#f59e0b"></span> <span style="font-size:11px;color:#64748b">Medium</span>
+        <span class="map-legend-dot" style="background:#ef4444"></span> <span style="font-size:11px;color:#64748b">Low</span>
+        <span class="map-legend-dot" style="background:#1e293b"></span> <span style="font-size:11px;color:#64748b">Over</span>
+        <span class="map-legend-dot" style="background:#e2e8f0"></span> <span style="font-size:11px;color:#64748b">Not Configured</span>
+        <span class="map-legend-dot" style="background:#f8fafc;border:1px solid #cbd5e1"></span> <span style="font-size:11px;color:#64748b">Empty</span>
+        <span class="map-legend-dot" style="background:#c7d2fe;border:1px solid #818cf8"></span> <span style="font-size:11px;color:#64748b">Search match</span>
+      </div>
+      <div id="mapStatsBar" style="display:flex;gap:16px;padding:8px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:8px;flex-wrap:wrap"></div>
+      <div id="mapGrid" style="overflow-x:auto"></div>
+      <div id="mapBinDetail" style="display:none;margin-top:12px;padding:16px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)"></div>
+    </div>
 
     <!-- Insights View (replaces table when Redistribute or Consolidate active) -->
     <div id="insightsView" style="display:none;margin-top:8px">
@@ -432,6 +461,27 @@
   .rv2-nav-tab.active{ color:#6366f1; border-bottom-color:#6366f1 }
   .rv2-nav-tab.active[data-view="redistribute"]{ color:#b45309; border-bottom-color:#f59e0b }
   .rv2-nav-tab.active[data-view="consolidate"]{ color:#0369a1; border-bottom-color:#0ea5e9 }
+  .rv2-nav-tab.active[data-view="map"]{ color:#059669; border-bottom-color:#10b981 }
+  .map-legend-dot{ width:10px; height:10px; border-radius:50%; display:inline-block }
+  .map-area-btn{ padding:4px 12px; font-size:12px; font-weight:600; border-radius:6px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s }
+  .map-area-btn:hover{ background:#f1f5f9 }
+  .map-area-btn.active{ background:#059669; color:#fff; border-color:#059669 }
+  .map-grid-table{ border-collapse:separate; border-spacing:4px }
+  .map-grid-table td.map-row-label{ font-size:11px; font-weight:700; color:#475569; min-width:48px; text-align:right; padding-right:8px; vertical-align:middle; white-space:nowrap }
+  .map-grid-table th.map-level-header{ font-size:10px; font-weight:600; color:#94a3b8; text-align:center; padding:2px 0 4px }
+  .map-cell{ min-width:90px; max-width:130px; height:auto; min-height:44px; border-radius:6px; border:1px solid #e2e8f0; padding:4px 6px; cursor:pointer; transition:all .15s; position:relative; vertical-align:top; font-size:10px; line-height:1.3 }
+  .map-cell:hover{ transform:scale(1.05); box-shadow:0 2px 8px rgba(0,0,0,.18); z-index:2 }
+  .map-cell.st-empty{ background:#f8fafc; color:#94a3b8; border-color:#e2e8f0 }
+  .map-cell.st-full{ background:#dcfce7; color:#166534; border-color:#86efac }
+  .map-cell.st-medium{ background:#fef3c7; color:#92400e; border-color:#fde68a }
+  .map-cell.st-low{ background:#fee2e2; color:#991b1b; border-color:#fca5a5 }
+  .map-cell.st-over{ background:#1e293b; color:#f8fafc; border-color:#334155 }
+  .map-cell.st-notconfigured{ background:#e2e8f0; color:#64748b; border-color:#cbd5e1 }
+  .map-cell.highlighted{ box-shadow:0 0 0 2px #6366f1; background:#e0e7ff !important; color:#3730a3 !important; border-color:#818cf8 !important }
+  .map-cell.selected{ box-shadow:0 0 0 3px #059669; transform:scale(1.06) }
+  .map-cell-sku{ font-weight:700; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100% }
+  .map-cell-qty{ font-size:11px; font-weight:700 }
+  .map-cell-more{ font-size:9px; opacity:.7; font-style:italic }
   .rv2-nav-badge{ display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:99px; font-size:10px; font-weight:700; color:#fff }
       `;
       const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
@@ -815,6 +865,6 @@ tr:nth-child(even){background:#f8fafc}
     </div>
   </div>
 
-  <script src="restock-v2.js?v=20260224a"></script>
+  <script src="restock-v2.js?v=20260227c"></script>
 </body>
 </html>

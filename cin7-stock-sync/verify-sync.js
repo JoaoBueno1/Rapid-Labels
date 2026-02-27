@@ -13,6 +13,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 // ============================================================
 // CONFIG (same as sync-service.js)
@@ -24,8 +26,8 @@ const CIN7_CONFIG = {
   baseUrl: 'https://inventory.dearsystems.com/ExternalApi/v2',
 };
 
-const SUPABASE_URL = 'https://iaqnxamnjftwqdbsnfyl.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhcW54YW1uamZ0d3FkYnNuZnlsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcxOTE1NzkzNCwiZXhwIjoyMDM0NzMzOTM0fQ.BRHXp3ywILpNjslPDvZ51kC2PmQhxvEJOQd2KGLiB0g';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 
 // ============================================================
 // CLI

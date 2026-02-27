@@ -55,6 +55,12 @@
       <button class="gw-nav-tab" data-view="pickface_restock" onclick="switchGwView('pickface_restock')">
         🏬 Pickface Restock
       </button>
+      <button class="gw-nav-tab" data-view="transfer" onclick="switchGwView('transfer')">
+        🚚 Transfer
+      </button>
+      <button class="gw-nav-tab" data-view="auditor" onclick="switchGwView('auditor')">
+        🔍 Auditor
+      </button>
     </div>
 
     <!-- Filters -->
@@ -286,16 +292,68 @@
       if(el) el.classList.add('active');
     };
     window.switchGwView = function(mode){
-      if(window.gwSwitchView) window.gwSwitchView(mode);
+      // Elements to show/hide for transfer mode
+      var gwContentEls = ['gwFilters','gwPrintHeader','gwBulkBar','gwPagination'].map(id=>document.getElementById(id));
+      var tableWrapper = document.querySelector('.table-wrapper');
+      var transferFrame = document.getElementById('gwTransferFrame');
+      var filtersParent = document.getElementById('gwFilters')?.parentNode; // the margin-top div
+
+      var auditorFrame = document.getElementById('gwAuditorFrame');
+
+      var isIframeMode = (mode === 'transfer' || mode === 'auditor');
+
+      if(isIframeMode){
+        // Hide table/filters content
+        gwContentEls.forEach(el => { if(el) el.style.display = 'none'; });
+        if(tableWrapper) tableWrapper.style.display = 'none';
+        if(filtersParent) filtersParent.style.display = 'none';
+        document.getElementById('gwChipsMainStock').style.display = 'none';
+        document.getElementById('gwChipsPickface').style.display = 'none';
+
+        // Transfer iframe
+        if(mode === 'transfer'){
+          if(!transferFrame){
+            transferFrame = document.createElement('iframe');
+            transferFrame.id = 'gwTransferFrame';
+            transferFrame.src = 'features/gateway/gateway-transfer.html';
+            transferFrame.style.cssText = 'width:100%;border:none;border-radius:12px;margin-top:8px;min-height:80vh;';
+            var insertRef = tableWrapper || filtersParent;
+            if(insertRef) insertRef.parentNode.insertBefore(transferFrame, insertRef);
+          }
+          transferFrame.style.display = 'block';
+          if(auditorFrame) auditorFrame.style.display = 'none';
+        }
+
+        // Auditor iframe
+        if(mode === 'auditor'){
+          if(!auditorFrame){
+            auditorFrame = document.createElement('iframe');
+            auditorFrame.id = 'gwAuditorFrame';
+            auditorFrame.src = 'features/gateway/gateway-auditor.html';
+            auditorFrame.style.cssText = 'width:100%;border:none;border-radius:12px;margin-top:8px;min-height:80vh;';
+            var insertRef = tableWrapper || filtersParent;
+            if(insertRef) insertRef.parentNode.insertBefore(auditorFrame, insertRef);
+          }
+          auditorFrame.style.display = 'block';
+          if(transferFrame) transferFrame.style.display = 'none';
+        }
+      } else {
+        if(transferFrame) transferFrame.style.display = 'none';
+        if(auditorFrame) auditorFrame.style.display = 'none';
+        gwContentEls.forEach(el => { if(el) el.style.display = ''; });
+        if(tableWrapper) tableWrapper.style.display = '';
+        if(filtersParent) filtersParent.style.display = '';
+        if(window.gwSwitchView) window.gwSwitchView(mode);
+        document.getElementById('gwChipsMainStock').style.display = mode === 'main_stock' ? 'inline-flex' : 'none';
+        document.getElementById('gwChipsPickface').style.display = mode === 'pickface_restock' ? 'inline-flex' : 'none';
+      }
       document.querySelectorAll('.gw-nav-tab').forEach(t => t.classList.toggle('active', t.dataset.view === mode));
-      document.getElementById('gwChipsMainStock').style.display = mode === 'main_stock' ? 'inline-flex' : 'none';
-      document.getElementById('gwChipsPickface').style.display = mode === 'pickface_restock' ? 'inline-flex' : 'none';
       // Update Weeks header text
       var wh = document.getElementById('gwWeeksHeader');
       if(wh) wh.textContent = mode === 'pickface_restock' ? 'Pickface Fill' : 'Weeks Avail.';
       // Reset active chip in newly shown set
       if(mode==='main_stock'){document.querySelectorAll('#gwChipsMainStock .chip').forEach(b=>b.classList.remove('active'));document.querySelector('#gwChipsMainStock .chip[data-weeks-filter="ALL"]').classList.add('active');}
-      else{document.querySelectorAll('#gwChipsPickface .chip').forEach(b=>b.classList.remove('active'));document.querySelector('#gwChipsPickface .chip[data-pf-filter="ALL"]').classList.add('active');}
+      else if(mode==='pickface_restock'){document.querySelectorAll('#gwChipsPickface .chip').forEach(b=>b.classList.remove('active'));document.querySelector('#gwChipsPickface .chip[data-pf-filter="ALL"]').classList.add('active');}
     };
     window.toggleGwFiltersDropdown = function(){
       const dd = document.getElementById('gwFiltersDropdown');
