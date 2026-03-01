@@ -109,9 +109,12 @@ try {
   console.warn('⚠️  Could not register gateway routes:', e.message);
 }
 
-app.listen(PORT, () => {
-  console.log(`🚀 Rapid Label server running at http://localhost:${PORT}`);
-});
+// Only listen on port when running locally (not on Vercel serverless)
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Rapid Label server running at http://localhost:${PORT}`);
+  });
+}
 
 // ZPL print endpoint: POST /api/print-zpl { zpl: string, host?: string, port?: number }
 app.post('/api/print-zpl', async (req, res) => {
@@ -440,3 +443,6 @@ app.post('/api/fetch-product', async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// Export for Vercel serverless
+module.exports = app;
