@@ -10,14 +10,6 @@
     {
       "src": "/api/(.*)",
       "dest": "server.js"
-    },
-    {
-      "src": "/(.*\\.(js|css|html|svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|eot|json|map))",
-      "dest": "/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "server.js"
     }
   ]
 }
