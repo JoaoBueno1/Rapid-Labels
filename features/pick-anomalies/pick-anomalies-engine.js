@@ -40,7 +40,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_ANON = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 const RATE_DELAY = 2500;   // 2.5s between Cin7 calls — safe margin, matches sync-service
-const MAX_ORDERS_PER_RUN = 50;
+const MAX_ORDERS_PER_RUN = 200;
 const MW_LOCATION_ID = '907821e3-c06b-4bf1-a8af-888bc3a2031f';
 
 // ─── In-memory caches ───
@@ -135,8 +135,9 @@ async function sbGet(table, query = '') {
   return res.json();
 }
 
-async function sbPost(table, body) {
-  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+async function sbPost(table, body, conflictColumn) {
+  let url = `${SUPABASE_URL}/rest/v1/${table}`;
+  if (conflictColumn) url += `?on_conflict=${conflictColumn}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { ...SB_HEADERS, 'Prefer': 'return=representation,resolution=merge-duplicates' },
@@ -453,12 +454,19 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   let existingNumbers = new Set();
   if (orders.length > 0) {
     try {
-      const nums = orders.map(o => `"${o.OrderNumber}"`).join(',');
-      const existing = await sbGet('pick_anomaly_orders',
-        `select=order_number&order_number=in.(${encodeURIComponent(nums)})`
-      );
-      existingNumbers = new Set(existing.map(e => e.order_number));
-    } catch { /* ignore */ }
+      // Batch in groups of 100 to avoid URL length limits
+      const allNums = orders.map(o => o.OrderNumber);
+      for (let b = 0; b < allNums.length; b += 100) {
+        const batch = allNums.slice(b, b + 100);
+        const nums = batch.map(n => `"${n}"`).join(',');
+        const existing = await sbGet('pick_anomaly_orders',
+          `select=order_number&order_number=in.(${nums})`
+        );
+        for (const e of existing) existingNumbers.add(e.order_number);
+      }
+    } catch (err) {
+      console.warn('⚠️ Dedup check failed, will rely on upsert:', err.message);
+    }
   }
 
   const newOrders = orders.filter(o => !existingNumbers.has(o.OrderNumber));
@@ -663,9 +671,9 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
 
     results.push(orderResult);
 
-    // Save to Supabase immediately (upsert)
+    // Save to Supabase immediately (upsert on order_number)
     try {
-      await sbPost('pick_anomaly_orders', orderResult);
+      await sbPost('pick_anomaly_orders', orderResult, 'order_number');
       // Log the sync action
       await logAction({
         order_number: order.OrderNumber,
