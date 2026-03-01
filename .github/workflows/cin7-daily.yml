@@ -1,0 +1,73 @@
+# ============================================================
+# Cin7 Daily Maintenance — Products, Locations, Full Rebuild
+# ============================================================
+# Runs daily maintenance syncs that don't need to run every 2h.
+#
+# Schedule (UTC → AEST is UTC+10):
+#   Full Rebuild:  2:00 AM AEST = 16:00 UTC (prev day)
+#   Products:      3:00 AM AEST = 17:00 UTC (prev day)
+#   Locations:     4:00 AM AEST = 18:00 UTC (prev day)
+# ============================================================
+
+name: Cin7 Daily Maintenance
+
+on:
+  schedule:
+    # Full rebuild at 2 AM AEST (16:00 UTC previous day)
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Which daily task to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - products
+          - locations
+
+jobs:
+  daily-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      # Determine which sync to run based on current UTC hour
+      # 16:00 UTC = full, 17:00 UTC = products, 18:00 UTC = locations
+      - name: Run Daily Sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TASK="${{ github.event.inputs.task }}"
+          else
+            TASK="full"
+          fi
+
+          echo "🔄 Running $TASK sync..."
+
+          case "$TASK" in
+            full)
+              node cin7-stock-sync/sync-service.js --verbose
+              ;;
+            products)
+              node cin7-stock-sync/sync-service.js --products-only --verbose
+              ;;
+            locations)
+              node cin7-stock-sync/sync-service.js --locations-only --verbose
+              ;;
+          esac
+
+          echo "✅ $TASK sync completed"

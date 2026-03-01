@@ -1,0 +1,43 @@
+# ============================================================
+# Pick Anomalies Sync — every 2h at :30 (offset from stock)
+# ============================================================
+# Syncs pick anomalies from Cin7 orders into Supabase.
+# Offset 30 min from stock sync to avoid API rate limits.
+# ============================================================
+
+name: Pick Anomalies Sync
+
+on:
+  schedule:
+    # Every 2 hours at :30 (offset from stock sync at :00)
+    - cron: '30 */2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  pick-anomalies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Sync Pick Anomalies
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+        run: |
+          node -e "
+            const { syncNewOrders } = require('./features/pick-anomalies/pick-anomalies-engine');
+            syncNewOrders().then(r => {
+              console.log('✅ Pick anomalies sync result:', JSON.stringify(r, null, 2));
+              process.exit(r.success ? 0 : 1);
+            }).catch(e => { console.error('❌ Pick anomalies sync failed:', e); process.exit(1); });
+          "

@@ -1,0 +1,42 @@
+# ============================================================
+# Cin7 Stock Sync — GitHub Actions Cron Scheduler
+# ============================================================
+# Replaces the background scheduler that can't run on Vercel (serverless).
+# Runs sync-service.js on a schedule, writing directly to Supabase.
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   SUPABASE_URL          — Supabase project URL
+#   SUPABASE_SERVICE_KEY  — Supabase service role key
+#   CIN7_ACCOUNT_ID       — Cin7 (DEAR) account ID
+#   CIN7_API_KEY          — Cin7 (DEAR) API key
+# ============================================================
+
+name: Cin7 Sync Scheduler
+
+on:
+  schedule:
+    # Stock sync: every 2 hours at :00 (UTC)
+    - cron: '0 */2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  stock-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Run Stock Sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+        run: node cin7-stock-sync/sync-service.js --stock-only --verbose
