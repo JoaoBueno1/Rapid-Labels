@@ -392,10 +392,15 @@ async function syncNewOrders() {
     const today = new Date().toISOString().split('T')[0];
 
     // ── FIX: Use lastDate directly (NOT +1 day) to avoid gap ──
-    // UpdatedSince=lastDate re-fetches the same day, but existingNumbers
-    // dedup ensures we never double-process. This catches any orders
-    // modified on lastDate AFTER the previous sync ran.
-    const dateFrom = lastDate;
+    // ── Use a rolling 7-day lookback window ──
+    // Instead of relying on last_synced_date (which could get stuck),
+    // always look back 7 days. The existingNumbers dedup prevents
+    // double-processing. This ensures we always catch recent orders.
+    const lookback = new Date();
+    lookback.setDate(lookback.getDate() - 7);
+    const lookbackDate = lookback.toISOString().split('T')[0];
+    // Use whichever is earlier: lastDate or 7-day lookback
+    const dateFrom = lastDate < lookbackDate ? lookbackDate : lastDate;
     const dateTo = today;
 
     console.log(`🔄 Syncing orders: ${dateFrom} → ${dateTo} (last sync: ${syncMeta?.last_synced_at || 'never'})`);
@@ -470,6 +475,17 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   }
 
   const newOrders = orders.filter(o => !existingNumbers.has(o.OrderNumber));
+
+  // ── CRITICAL: Sort newest orders first ──
+  // Cin7 saleList returns orders in arbitrary order. When capped at 200,
+  // older modified orders would block newer ones from ever being processed.
+  // By sorting newest-first, the page always shows the most recent data.
+  newOrders.sort((a, b) => {
+    const da = (a.OrderDate || '').split('T')[0];
+    const db = (b.OrderDate || '').split('T')[0];
+    return db.localeCompare(da); // descending: newest first
+  });
+
   console.log(`📋 ${newOrders.length} new orders to process (${existingNumbers.size} already in history)`);
 
   let wasCapped = false;
@@ -688,17 +704,19 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     console.log(`  [${i + 1}/${newOrders.length}] ${order.OrderNumber}: ${correctCount}✅ ${anomalyCount}⚠️ ${fgOrders.length}🔧`);
   }
 
-  // ── FIX: Only advance last_synced_date when ALL orders were processed ──
-  // If capped at 50, keep the same dateFrom so next sync re-fetches remaining orders.
-  // The existingNumbers dedup prevents double-processing of already-saved orders.
+  // ── Always advance last_synced_date to today ──
+  // Since we now sort newest-first, the most recent orders are always processed.
+  // Keeping dateFrom stuck caused the old behavior where the sync window grew
+  // infinitely and the queue of modified-old-orders blocked new ones.
+  // The dedup (existingNumbers) ensures no double-processing on re-fetches.
   const totalInDb = (syncMeta?.total_orders || 0) + results.length;
-  const syncDate = wasCapped ? dateFrom : dateTo;
+  const syncDate = dateTo; // Always advance to today
   await updateSyncMeta(syncDate, totalInDb, results.length);
 
   const lastSyncedAt = new Date().toISOString();
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1) + 's';
   if (wasCapped) {
-    console.log(`✅ Sync complete (CAPPED): ${results.length} new orders saved, more remaining. Date NOT advanced (stays ${syncDate}). ${apiCallCount} API calls, ${elapsed}`);
+    console.log(`✅ Sync complete (CAPPED): ${results.length} new orders saved, ${newOrders.length - results.length} skipped (no picks). ${orders.length - newOrders.length - existingNumbers.size} remaining. Synced to ${syncDate}. ${apiCallCount} API calls, ${elapsed}`);
   } else {
     console.log(`✅ Sync complete: ${results.length} new orders saved, synced to ${syncDate}. ${apiCallCount} API calls, ${elapsed}`);
   }
