@@ -36,7 +36,8 @@ const CIN7 = {
 
 // ─── Supabase Config ───
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || '';
+// Use service key (GitHub Actions) with fallback to anon key (local dev)
+const SUPABASE_ANON = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 const RATE_DELAY = 2500;   // 2.5s between Cin7 calls — safe margin, matches sync-service
 const MAX_ORDERS_PER_RUN = 50;
