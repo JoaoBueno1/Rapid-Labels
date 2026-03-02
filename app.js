@@ -301,13 +301,13 @@ async function performSearch() {
 
 function printBarcodes3Up(){
     // Business rules enforcement:
-    // - Product mode: do NOT check DB. Allow print when either SKU is exactly 5 digits OR EAN-13 is valid (13 digits). Name is optional and printed as title.
+    // - Product mode: do NOT check DB. Allow print when either SKU is exactly 5 digits OR barcode is valid (8-14 digits). Name is optional and printed as title.
     // - Location mode: must exist in DB (kept, as locations are more constrained operationally).
-    // - Manual mode: must have 5-digit code AND a valid 13-digit EAN-13.
-    // - EAN-13 fields (product/manual) are valid only with 13 numeric digits; otherwise ignored (Product) or blocked (Manual) per above.
+    // - Manual mode: must have 5-digit code AND a valid barcode (8-14 digits).
+    // - Barcode fields accept: EAN-8 (8), UPC (12), EAN-13 (13), ITF-14 (14) digits.
     try {
         const skuRegex = /^\d{5}$/;
-        const eanRegex = /^\d{13}$/;
+        const barcodeRegex = /^\d{8,14}$/;
         const getMode = (name)=> document.querySelector(`input[name="${name}"]:checked`)?.value || 'product';
 
         const checkLocationInDB = async (loc)=>{
@@ -354,12 +354,12 @@ function printBarcodes3Up(){
             if(r.mode === 'product'){
                 const { sku, name, ean13 } = r.product;
                 const hasSku = sku && skuRegex.test(sku);
-                const hasEan = ean13 && eanRegex.test(ean13);
+                const hasBarcode = ean13 && barcodeRegex.test(ean13);
                 // If nothing filled in this section, skip silently
                 if(!(sku||name||ean13)) { return; }
-                // Require at least a barcodable identifier: EAN-13 or 5-digit SKU
-                if(!hasSku && !hasEan){ errors.push(`Section ${i} (Product): provide a 5-digit SKU or a valid EAN-13.`); return; }
-                finalSections.push({ mode:'product', sku: hasSku ? sku : '', name, ean13: hasEan ? ean13 : '' });
+                // Require at least a barcodable identifier: barcode or 5-digit SKU
+                if(!hasSku && !hasBarcode){ errors.push(`Section ${i} (Product): provide a 5-digit SKU or a valid barcode.`); return; }
+                finalSections.push({ mode:'product', sku: hasSku ? sku : '', name, ean13: hasBarcode ? ean13 : '' });
             } else if(r.mode === 'location') {
                 const { code } = r.location;
                 if(!code){ return; }
@@ -369,7 +369,7 @@ function printBarcodes3Up(){
             } else if(r.mode === 'manual') {
                 const { code, title, ean13 } = r.manual;
                 if(!skuRegex.test(code)) { if(code||title||ean13) errors.push(`Section ${i} (Manual): code must be exactly 5 digits.`); return; }
-                if(!eanRegex.test(ean13)) { errors.push(`Section ${i} (Manual): EAN-13 must be exactly 13 digits.`); return; }
+                if(!barcodeRegex.test(ean13)) { errors.push(`Section ${i} (Manual): barcode must be 8-14 digits.`); return; }
                 finalSections.push({ mode:'manual', code, title, ean13 });
             }
         });
@@ -1497,11 +1497,11 @@ function setupBarcodesAutocompleteAndValidation(){
         const err = document.getElementById(manEanErrIds[i]);
     if (input){
             input.addEventListener('input', ()=>{
-                // digits only, max 13
+                // digits only, max 14 (supports EAN-8, UPC-12, EAN-13, ITF-14)
                 const raw = input.value.replace(/\D+/g,'');
-                input.value = raw.slice(0,13);
-                if (input.value && input.value.length < 13){
-            if (err){ err.textContent = 'Must be 13 digits'; err.style.display = 'block'; }
+                input.value = raw.slice(0,14);
+                if (input.value && input.value.length < 8){
+            if (err){ err.textContent = 'Must be 8-14 digits'; err.style.display = 'block'; }
             input.classList.add('error');
                 } else {
             if (err){ err.textContent = ''; err.style.display = 'none'; }

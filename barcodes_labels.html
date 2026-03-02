@@ -145,12 +145,13 @@
 
     function getEanForJsBarcode(raw){
       const d = String(raw||'').replace(/\D+/g,'');
-      if (d.length >= 13){
+      if (d.length === 14) return { format:'ITF14', value:d };
+      if (d.length === 13){
         if (isValidEan13(d)) return { format:'EAN13', value:d };
-        // Fall back to 12-digit body, JsBarcode will compute checksum
         return { format:'EAN13', value:d.slice(0,12) };
       }
       if (d.length === 12){ return { format:'EAN13', value:d }; }
+      if (d.length === 8){ return { format:'EAN8', value:d }; }
       return null;
     }
 
@@ -178,7 +179,7 @@
   s.textContent = '';
         const eanObj = getEanForJsBarcode(section.ean13);
         if (eanObj){ bcFormat = eanObj.format; bcValue = eanObj.value; }
-        else { bcFormat='CODE128'; bcValue = sku || name || ''; }
+        else { bcFormat='CODE128'; bcValue = name || sku || ''; }
       } else if (section.mode === 'location'){
         const code = section.location||section.code||'';
         // Layout like Location.svg: only barcode with single caption under (avoid duplicate HRI)
