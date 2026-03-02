@@ -130,6 +130,7 @@
     const ageEl = document.getElementById('paSyncAge');
     if (!ageEl) return;
     _refreshSyncAge();
+    _refreshCountdown();
   }
 
   function _refreshSyncAge() {
@@ -154,29 +155,37 @@
     const el = document.getElementById('paSyncCountdown');
     if (!el) return;
     const now = new Date();
-    // GitHub Actions cron: '30 */2 * * *' → even UTC hours at :30
-    const utcH = now.getUTCHours();
-    const utcM = now.getUTCMinutes();
-    const utcS = now.getUTCSeconds();
-    let nextH = utcH;
-    // If past :30 in current hour, move to next
-    if (utcM > 30 || (utcM === 30 && utcS > 0)) nextH++;
-    // Align to next even UTC hour
-    if (nextH % 2 !== 0) nextH++;
-    // Build next sync as UTC date
-    let nextSync = new Date(Date.UTC(
-      now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
-      nextH, 30, 0, 0
-    ));
-    if (nextSync <= now) nextSync = new Date(nextSync.getTime() + 2 * 3600000);
+    const INTERVAL_MS = 2 * 3600000; // 2 hours
+
+    let nextSync;
+    if (_lastSyncTime) {
+      nextSync = new Date(_lastSyncTime.getTime() + INTERVAL_MS);
+      if (nextSync <= now) {
+        const elapsed = now - nextSync;
+        nextSync = new Date(nextSync.getTime() + Math.ceil(elapsed / INTERVAL_MS) * INTERVAL_MS);
+      }
+    } else {
+      // Fallback: cron schedule '30 */2 * * *' → even UTC hours at :30
+      const utcH = now.getUTCHours();
+      const utcM = now.getUTCMinutes();
+      const utcS = now.getUTCSeconds();
+      let nextH = utcH;
+      if (utcM > 30 || (utcM === 30 && utcS > 0)) nextH++;
+      if (nextH % 2 !== 0) nextH++;
+      nextSync = new Date(Date.UTC(
+        now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+        nextH, 30, 0, 0
+      ));
+      if (nextSync <= now) nextSync = new Date(nextSync.getTime() + INTERVAL_MS);
+    }
 
     const diffMs = nextSync - now;
-    const diffMin = Math.floor(diffMs / 60000);
+    const diffMin = Math.max(0, Math.floor(diffMs / 60000));
     const h = Math.floor(diffMin / 60);
     const m = diffMin % 60;
     const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
     el.textContent = `🛡️ Next sync in ${countdown}`;
-    el.title = `Next sync at ${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })} (cron UTC even hours at :30). May delay ~5-15 min (GitHub Actions).`;
+    el.title = `Next sync ~${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })} (every 2h from last sync). May vary ~5-15 min.`;
   }
 
   // Refresh "time ago" + countdown every 60s

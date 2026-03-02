@@ -795,12 +795,6 @@ function generateLabelHTML(labelData) {
                             <span class="sku-value">${sku}</span>
                         </div>
                         <div class="barcodes-stack">
-                            ${hasProductBarcode ? `
-                            <div class="barcode-box">
-                                <div class="barcode-box-label">Barcode</div>
-                                <svg class="barcode-ean"></svg>
-                            </div>
-                            ` : ''}
                             <div class="barcode-box">
                                 <div class="barcode-box-label">Product Code</div>
                                 <svg class="barcode-code"></svg>
@@ -977,11 +971,6 @@ function generateLabelHTML(labelData) {
                     margin-left: 20px;
                 }
                 
-                body.a4-mode .barcode-ean {
-                    height: 110px;
-                    max-width: 300px;
-                }
-                
                 body.a4-mode .barcode-code {
                     height: 110px;
                     max-width: 300px;
@@ -1025,11 +1014,6 @@ function generateLabelHTML(labelData) {
                 body.a3-mode .qty-value {
                     font-size: 200px;
                     margin-left: 30px;
-                }
-                
-                body.a3-mode .barcode-ean {
-                    height: 150px;
-                    max-width: 400px;
                 }
                 
                 body.a3-mode .barcode-code {
@@ -1086,49 +1070,6 @@ function generateLabelHTML(labelData) {
                     
                     var barcodeHeight = isA3 ? 130 : 100;
                     
-                    // Generate product barcode (EAN-13, ITF-14, etc.) if available
-                    if (productBarcode) {
-                        var eanElements = document.querySelectorAll('.barcode-ean');
-                        var format = detectBarcodeFormat(productBarcode);
-                        console.log('Product barcode:', productBarcode, 'Format:', format);
-                        
-                        eanElements.forEach(function(el, idx) {
-                            try {
-                                JsBarcode(el, productBarcode, {
-                                    format: format,
-                                    width: 2,
-                                    height: barcodeHeight,
-                                    displayValue: true,
-                                    fontSize: 14,
-                                    textAlign: "center",
-                                    textPosition: "bottom",
-                                    background: "#ffffff",
-                                    lineColor: "#000000"
-                                });
-                                console.log('Product barcode generated (EAN)', idx);
-                            } catch (error) {
-                                console.error('Error generating product barcode', idx, error);
-                                // Fallback to CODE128 if format fails
-                                try {
-                                    JsBarcode(el, productBarcode, {
-                                        format: "CODE128",
-                                        width: 2,
-                                        height: barcodeHeight,
-                                        displayValue: true,
-                                        fontSize: 14,
-                                        textAlign: "center",
-                                        textPosition: "bottom",
-                                        background: "#ffffff",
-                                        lineColor: "#000000"
-                                    });
-                                    console.log('Product barcode fallback CODE128 OK', idx);
-                                } catch (e2) {
-                                    console.error('Product barcode fallback also failed', idx, e2);
-                                }
-                            }
-                        });
-                    }
-                    
                     // Generate CODE128 barcode for product code (Cin7 SKU)
                     var codeElements = document.querySelectorAll('.barcode-code');
                     console.log('Found', codeElements.length, 'product code barcode elements');
@@ -1156,8 +1097,7 @@ function generateLabelHTML(labelData) {
                 }
                 
                 function allBarcodesReady() {
-                    // Check both barcode types
-                    var allSvgs = document.querySelectorAll('.barcode-ean, .barcode-code');
+                    var allSvgs = document.querySelectorAll('.barcode-code');
                     if (!allSvgs.length) return false;
                     return [].slice.call(allSvgs).every(function(svg) {
                         return svg.childElementCount > 0 || svg.querySelector('rect,g');
