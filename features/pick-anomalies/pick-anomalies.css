@@ -302,13 +302,17 @@
   gap:10px; flex-wrap:wrap;
 }
 .pa-anomaly-detail{
-  margin-top:12px; display:flex; gap:16px; flex-wrap:wrap;
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:12px;
+  align-items:start;
 }
-.pa-bin-compare{ flex:1; min-width:220px; }
+.pa-bin-compare{ min-width:0; }
 .pa-bin-line{
   display:flex; align-items:center; gap:8px;
-  padding:6px 10px; font-size:13px; border-radius:8px;
-  margin:3px 0;
+  padding:8px 12px; font-size:13px; border-radius:8px;
+  margin:4px 0;
 }
 .pa-bin-wrong{
   background:rgba(220,38,38,.06);
@@ -316,16 +320,17 @@
 .pa-bin-expected{
   background:rgba(22,163,74,.06);
 }
-.pa-bin-icon{ font-size:15px; width:22px; text-align:center; flex-shrink:0; }
-.pa-bin-label{ font-weight:700; color:#64748b; min-width:105px; font-size:12px; text-transform:uppercase; letter-spacing:.3px; }
+.pa-bin-icon{ font-size:15px; width:20px; text-align:center; flex-shrink:0; }
+.pa-bin-label{ font-weight:700; color:#64748b; white-space:nowrap; font-size:11px; text-transform:uppercase; letter-spacing:.3px; flex-shrink:0; }
 .pa-bin-value{
   font-weight:800; font-family:'Courier New',monospace; font-size:14px;
   padding:2px 8px; border-radius:6px; background:#f1f5f9;
+  white-space:nowrap;
 }
 .pa-bin-wrong .pa-bin-value{ color:#dc2626; background:#fef2f2; }
 .pa-bin-expected .pa-bin-value{ color:#16a34a; background:#f0fdf4; }
 .pa-fix-preview{
-  flex:1; min-width:220px;
+  min-width:0;
   background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);
   border:1px solid #bbf7d0; border-radius:10px;
   padding:14px 18px;
@@ -334,8 +339,49 @@
   font-size:10px; font-weight:800; color:#16a34a;
   text-transform:uppercase; letter-spacing:.8px; margin-bottom:6px;
 }
-.pa-fix-detail{ font-size:13px; color:#1e293b; line-height:1.5; }
-.pa-fix-qty{ font-size:12px; color:#64748b; margin-top:6px; }
+.pa-fix-detail{ font-size:13px; color:#1e293b; line-height:1.6; }
+.pa-fix-detail strong{ font-family:'Courier New',monospace; }
+.pa-fix-qty{ font-size:12px; color:#64748b; margin-top:6px; word-break:break-all; }
+
+/* ─────────── Stock Snapshot ─────────── */
+.pa-stock-info{
+  border-radius:8px; font-size:12px; min-width:0;
+}
+.pa-stock-loading{
+  padding:6px 10px; background:#f1f5f9; color:#64748b;
+}
+.pa-stock-snapshot{
+  padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0;
+}
+.pa-stock-title{
+  font-weight:700; color:#15803d; margin-bottom:6px; font-size:12px;
+}
+.pa-stock-sync-label{
+  font-weight:400; color:#64748b; margin-left:6px; font-size:11px;
+}
+.pa-stock-row{
+  display:flex; flex-direction:column; gap:6px;
+}
+.pa-stock-col{
+  display:flex; flex-direction:column; gap:2px;
+}
+.pa-stock-bin-label{
+  font-weight:700; font-size:12px; font-family:'Courier New',monospace;
+}
+.pa-stock-from{ color:#dc2626; }
+.pa-stock-to{ color:#2563eb; }
+.pa-stock-numbers{
+  font-size:11px; color:#475569; line-height:1.4;
+}
+.pa-stock-empty{
+  font-size:11px; color:#94a3b8; font-style:italic;
+}
+.pa-stock-warn{
+  font-weight:600; margin-top:4px; font-size:11px;
+}
+.pa-stock-warn-red{ color:#dc2626; }
+.pa-stock-warn-amber{ color:#f59e0b; }
+
 .pa-anomaly-actions{
   margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;
   padding-top:12px; border-top:1px solid #f1f5f9;
@@ -348,10 +394,11 @@
   opacity:.85;
 }
 .pa-correction-status{
-  flex:1; min-width:220px;
+  min-width:0;
   background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);
   border:1px solid #86efac; border-radius:10px;
   padding:14px 18px;
+  grid-column: span 2;
 }
 .pa-correction-title{
   font-size:13px; font-weight:800; color:#16a34a;
@@ -470,11 +517,14 @@
 @media(max-width:900px){
   #paKpis.kpi-row.six{ grid-template-columns:repeat(3,1fr); }
 }
+@media(max-width:1000px){
+  .pa-anomaly-detail{ grid-template-columns:1fr 1fr; }
+}
 @media(max-width:768px){
   .pa-toolbar-row{ flex-direction:column; align-items:stretch; }
   .pa-search-group{ max-width:100%; }
   .pa-spacer{ display:none; }
-  .pa-anomaly-detail{ flex-direction:column; }
+  .pa-anomaly-detail{ grid-template-columns:1fr; }
   #paKpis.kpi-row.six{ grid-template-columns:1fr 1fr; }
   .pa-modal-dialog{ width:98vw; }
   .pa-modal-body{ padding:12px 16px; }

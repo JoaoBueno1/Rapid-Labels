@@ -620,7 +620,7 @@
   /* Build stock-snapshot info block for an anomaly card */
   function _stockInfoHtml(sku, expectedBin, pickedBin, qty) {
     if (!state.stockData || !state.stockData.stock) {
-      return '<div class="pa-stock-info" style="padding:6px 10px;margin:6px 0;background:#f1f5f9;border-radius:6px;font-size:12px;color:#64748b">⏳ Loading stock data…</div>';
+      return '<div class="pa-stock-info pa-stock-loading">⏳ Loading stock data…</div>';
     }
     const sd = state.stockData.stock;
     const fromKey = `${sku}|${expectedBin}`;
@@ -635,26 +635,26 @@
 
     let warnings = '';
     if (fromStock && fromStock.available != null && fromStock.available < qty) {
-      warnings += `<div style="color:#dc2626;font-weight:600;margin-top:4px">⚠️ FROM bin only has ${fromStock.available} available (need ${qty}) — may have been restocked already</div>`;
+      warnings += `<div class="pa-stock-warn pa-stock-warn-red">⚠️ FROM only has ${fromStock.available} avail (need ${qty})</div>`;
     }
     if (toStock && toStock.on_hand != null && toStock.on_hand === 0) {
-      warnings += `<div style="color:#f59e0b;font-weight:600;margin-top:4px">⚠️ TO bin is empty — stock may have been moved/consumed</div>`;
+      warnings += `<div class="pa-stock-warn pa-stock-warn-amber">⚠️ TO bin empty — may have been moved</div>`;
     }
 
-    return `<div class="pa-stock-info" style="padding:8px 10px;margin:8px 0 4px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px">
-      <div style="font-weight:700;margin-bottom:4px;color:#15803d">📦 Current Stock Snapshot ${syncLabel ? `<span style="font-weight:400;color:#64748b;margin-left:8px">${syncLabel}</span>` : ''}</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <div style="flex:1;min-width:140px">
-          <div style="font-weight:600;color:#dc2626">FROM: ${esc(expectedBin)}</div>
+    return `<div class="pa-stock-info pa-stock-snapshot">
+      <div class="pa-stock-title">📦 Stock Snapshot ${syncLabel ? `<span class="pa-stock-sync-label">${syncLabel}</span>` : ''}</div>
+      <div class="pa-stock-row">
+        <div class="pa-stock-col">
+          <div class="pa-stock-bin-label pa-stock-from">FROM: ${esc(expectedBin)}</div>
           ${fromStock
-            ? `<div>On Hand: <strong>${fmtNum(fromStock.on_hand)}</strong> · Allocated: <strong>${fmtNum(fromStock.allocated)}</strong> · Available: <strong>${fmtNum(fromStock.available)}</strong></div>`
-            : `<div style="color:#94a3b8">No stock data for this bin</div>`}
+            ? `<div class="pa-stock-numbers">OH: <strong>${fmtNum(fromStock.on_hand)}</strong> · Alloc: <strong>${fmtNum(fromStock.allocated)}</strong> · Avail: <strong>${fmtNum(fromStock.available)}</strong></div>`
+            : `<div class="pa-stock-empty">No stock data</div>`}
         </div>
-        <div style="flex:1;min-width:140px">
-          <div style="font-weight:600;color:#2563eb">TO: ${esc(pickedBin)}</div>
+        <div class="pa-stock-col">
+          <div class="pa-stock-bin-label pa-stock-to">TO: ${esc(pickedBin)}</div>
           ${toStock
-            ? `<div>On Hand: <strong>${fmtNum(toStock.on_hand)}</strong> · Allocated: <strong>${fmtNum(toStock.allocated)}</strong> · Available: <strong>${fmtNum(toStock.available)}</strong></div>`
-            : `<div style="color:#94a3b8">No stock data for this bin</div>`}
+            ? `<div class="pa-stock-numbers">OH: <strong>${fmtNum(toStock.on_hand)}</strong> · Alloc: <strong>${fmtNum(toStock.allocated)}</strong> · Avail: <strong>${fmtNum(toStock.available)}</strong></div>`
+            : `<div class="pa-stock-empty">No stock data</div>`}
         </div>
       </div>
       ${warnings}
