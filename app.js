@@ -1567,28 +1567,29 @@ function attachProductAutocomplete(srcInputId, otherInputId){
             // Map suggestions
             const items = res.items.map(p=>({
                 sku: p.sku || '',
-                product: p.product || '',
+                code: p.code || '',
+                name: p.name || '',
                 barcode: p.barcode || ''
             }));
             const fg = srcInput.closest('.field-group');
             if (!fg) return;
             const panel = ensureAcPanel(fg);
             renderSuggestions(panel, items, (it)=>{
-                const left = it.sku ? `SKU ${it.sku}` : '';
-                const right = it.product ? `${it.product}` : '';
+                const left = it.sku ? `5DC ${it.sku}` : '';
+                const right = it.code ? `${it.code}` : '';
                 return `<div class="ac-left">${escapeHtml(left)}</div><div class="ac-right">${escapeHtml(right)}</div>`;
             });
             panel.querySelectorAll('.ac-item').forEach((row, idx)=>{
                 row.addEventListener('mousedown', (e)=>{
                     e.preventDefault();
                     const it = items[idx];
-                    // Fill fields
+                    // Fill fields: SKU/5DC field gets 5DC, Name field gets Cin7 SKU code
                     if (srcInputId.toLowerCase().includes('name')){
-                        srcInput.value = it.product || '';
+                        srcInput.value = it.code || '';
                         if (otherInput) otherInput.value = it.sku || '';
                     } else {
                         srcInput.value = it.sku || '';
-                        if (otherInput) otherInput.value = it.product || '';
+                        if (otherInput) otherInput.value = it.code || '';
                     }
                     // Also store EAN in hidden field if present
                     try {

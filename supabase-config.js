@@ -186,16 +186,17 @@ window.supabaseReady = (async () => {
             const { data, error } = await supabaseClient
                 .schema('cin7_mirror')
                 .from('products')
-                .select('sku, name, barcode')
+                .select('sku, name, barcode, attribute1')
                 .or(
-                    `sku.ilike.${pattern},name.ilike.${pattern},barcode.ilike.${pattern}`
+                    `sku.ilike.${pattern},name.ilike.${pattern},barcode.ilike.${pattern},attribute1.ilike.${pattern}`
                 )
                 .limit(50);
             if (error) return { success:false, error: error.message };
-            // Map to expected shape: sku, product (name), barcode
+            // Map: sku = 5DC (attribute1), code = Cin7 SKU, barcode = EAN
             const items = Array.isArray(data) ? data.map(r => ({
-                sku: r.sku || '',
-                product: r.name || '',
+                sku: r.attribute1 || '',
+                code: r.sku || '',
+                name: r.name || '',
                 barcode: r.barcode || ''
             })) : [];
             return { success:true, items };
