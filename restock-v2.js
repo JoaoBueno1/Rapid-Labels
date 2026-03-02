@@ -548,19 +548,21 @@
     const el = document.getElementById('syncCountdown');
     if (!el) return;
     const now = new Date();
-    // Stock cron: minute 00 of every even hour (0:00, 2:00, 4:00, ...)
-    let nextSync = new Date(now);
-    nextSync.setSeconds(0, 0);
-    nextSync.setMinutes(0);
-    // Move to next hour if past :00
-    if (now.getMinutes() > 0 || now.getSeconds() > 0) {
-      nextSync.setHours(nextSync.getHours() + 1);
-    }
-    // Align to even hour
-    while (nextSync.getHours() % 2 !== 0) {
-      nextSync.setHours(nextSync.getHours() + 1);
-    }
-    if (nextSync <= now) nextSync.setHours(nextSync.getHours() + 2);
+    // GitHub Actions cron: '0 */2 * * *' → even UTC hours at :00
+    const utcH = now.getUTCHours();
+    const utcM = now.getUTCMinutes();
+    const utcS = now.getUTCSeconds();
+    let nextH = utcH;
+    // If past :00 in current hour, move to next
+    if (utcM > 0 || utcS > 0) nextH++;
+    // Align to next even UTC hour
+    if (nextH % 2 !== 0) nextH++;
+    // Build next sync as UTC date
+    let nextSync = new Date(Date.UTC(
+      now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+      nextH, 0, 0, 0
+    ));
+    if (nextSync <= now) nextSync = new Date(nextSync.getTime() + 2 * 3600000);
 
     const diffMs = nextSync - now;
     const diffMin = Math.floor(diffMs / 60000);
@@ -568,7 +570,7 @@
     const m = diffMin % 60;
     const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
     el.textContent = `🛡️ Next sync in ${countdown}`;
-    el.title = `Next stock sync at ${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}. Auto-sync every 2h at :00.`;
+    el.title = `Next stock sync at ${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })} (cron UTC even hours at :00). May delay ~5-15 min (GitHub Actions).`;
   }
 
   function _refreshSyncAge() {
