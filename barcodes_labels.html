@@ -230,94 +230,93 @@
       // Generate barcode
       const format = bcFormat;
       if (bcValue){
-        try {
-          // Ajuste de moduleWidth para caber dentro das dimensoes alvo sem overflow perceptivel
-          // EAN-13 tem numero fixo de barras; reduzir moduleWidth se largura real ultrapassar container.
-          // Valores anteriores estaveis de espessura
-          // ---- Ajuste MILIMETRICO de largura ----
-          // Requisitos fornecidos (atualizados):
-          // Product/Manual barcode box: 59.7mm x 26.4mm
-          // Location barcode box: 91.6mm x 26.5mm
-          // Ajuste dinamico de largura anterior
-          const hriFontSize = (section.mode === 'location') ? 0 : 20; // mantem HRI para product/manual
-          const containerEl = svg.parentElement; // barcode-box ou loc-barcode-box
-          let targetPx = containerEl ? containerEl.clientWidth : 0;
-          if (!targetPx) { // fallback aproximado usando mm declarados
-            // Fallback aproximado em mm quando largura real ainda não foi medida (flex layout):
-            // location ~100mm (quase largura total), product/manual ~70mm (restante depois da SKU)
-            const mmFallback = (section.mode === 'location') ? 91.6 : 59.7;
-            targetPx = mmFallback * (96/25.4);
-          }
+        // Try the detected format first; if it fails (bad check digit etc.), retry with CODE128
+        var generateOk = false;
+        var formatsToTry = [format];
+        if (format !== 'CODE128') formatsToTry.push('CODE128');
+        
+        for (var fi = 0; fi < formatsToTry.length && !generateOk; fi++) {
+          var tryFormat = formatsToTry[fi];
+          try {
+            var hriFontSize = (section.mode === 'location') ? 0 : 20;
+            var containerEl = svg.parentElement;
+            var targetPx = containerEl ? containerEl.clientWidth : 0;
+            if (!targetPx) {
+              var mmFallback = (section.mode === 'location') ? 91.6 : 59.7;
+              targetPx = mmFallback * (96/25.4);
+            }
 
-          let moduleWidth;
-          if (format === 'EAN13' && (section.mode === 'product' || section.mode === 'manual')) {
-            // EAN-13 sempre 95 módulos (barras + espaços). Ajustar width aproximado.
-            moduleWidth = (targetPx / 95);
-            // Evita barras exageradamente grossas em impressoras térmicas
-            if (moduleWidth > 4) moduleWidth = 4;
-            if (moduleWidth < 1) moduleWidth = 1; // limite inferior
-            JsBarcode(svg, bcValue, {
-              format,
-              width: moduleWidth,
-              height: 100, // ajustado para aproximar 26.4mm fisicos
-              displayValue: true,
-              fontSize: hriFontSize,
-              textMargin: 0,
-              margin: 0,
-              background: '#ffffff',
-              lineColor: '#000000'
-            });
-            // Aproxima ainda mais HRI das barras deslocando o texto levemente para cima
-            try {
-              const txt = svg.querySelector('text');
-              if (txt) {
-                const y = parseFloat(txt.getAttribute('y')||'0');
-                if (!isNaN(y)) txt.setAttribute('y', (y - 2).toString());
-              }
-            } catch(e){}
-            // Removido centramento para manter alinhado totalmente à direita
-          } else {
-            // CODE128 (location) ou fallback product/manual sem EAN: gerar e escalar se necessário
-            moduleWidth = (section.mode === 'location') ? 2 : 2.2;
-            JsBarcode(svg, bcValue, {
-              format,
-              width: moduleWidth,
-              height: (section.mode === 'location') ? 100 : 100, // altura uniforme aproximando 26.4/26.5mm
-              displayValue: (section.mode !== 'location'),
-              fontSize: hriFontSize,
-              textMargin: (section.mode !== 'location') ? 0 : 1,
-              margin: 0,
-              background: '#ffffff',
-              lineColor: '#000000'
-            });
-            if (section.mode !== 'location') {
+            var moduleWidth;
+            if (tryFormat === 'EAN13' && (section.mode === 'product' || section.mode === 'manual')) {
+              moduleWidth = (targetPx / 95);
+              if (moduleWidth > 4) moduleWidth = 4;
+              if (moduleWidth < 1) moduleWidth = 1;
+              JsBarcode(svg, bcValue, {
+                format: tryFormat,
+                width: moduleWidth,
+                height: 100,
+                displayValue: true,
+                fontSize: hriFontSize,
+                textMargin: 0,
+                margin: 0,
+                background: '#ffffff',
+                lineColor: '#000000'
+              });
               try {
-                const txt = svg.querySelector('text');
+                var txt = svg.querySelector('text');
                 if (txt) {
-                  const y = parseFloat(txt.getAttribute('y')||'0');
+                  var y = parseFloat(txt.getAttribute('y')||'0');
                   if (!isNaN(y)) txt.setAttribute('y', (y - 2).toString());
                 }
               } catch(e){}
-            }
-            // Escalar horizontalmente para preencher largura target sem alterar altura
-            try {
-              const boxW = svg.getBBox().width;
-              if (boxW && targetPx) {
-                const scale = targetPx / boxW;
-                if (Math.abs(scale - 1) > 0.02) {
-                  if (section.mode === 'location') {
-                    svg.style.transformOrigin = 'center center';
-                  } else {
-                    svg.style.transformOrigin = 'left center';
+            } else {
+              moduleWidth = (section.mode === 'location') ? 2 : 2.2;
+              JsBarcode(svg, bcValue, {
+                format: tryFormat,
+                width: moduleWidth,
+                height: (section.mode === 'location') ? 100 : 100,
+                displayValue: (section.mode !== 'location'),
+                fontSize: hriFontSize,
+                textMargin: (section.mode !== 'location') ? 0 : 1,
+                margin: 0,
+                background: '#ffffff',
+                lineColor: '#000000'
+              });
+              if (section.mode !== 'location') {
+                try {
+                  var txt2 = svg.querySelector('text');
+                  if (txt2) {
+                    var y2 = parseFloat(txt2.getAttribute('y')||'0');
+                    if (!isNaN(y2)) txt2.setAttribute('y', (y2 - 2).toString());
                   }
-                  svg.style.transform = 'scaleX(' + scale + ')';
-                }
+                } catch(e){}
               }
-            } catch(e){}
+              try {
+                var boxW = svg.getBBox().width;
+                if (boxW && targetPx) {
+                  var scale = targetPx / boxW;
+                  if (Math.abs(scale - 1) > 0.02) {
+                    if (section.mode === 'location') {
+                      svg.style.transformOrigin = 'center center';
+                    } else {
+                      svg.style.transformOrigin = 'left center';
+                    }
+                    svg.style.transform = 'scaleX(' + scale + ')';
+                  }
+                }
+              } catch(e){}
+            }
+            generateOk = true;
+          } catch(e) {
+            // If specific format failed, clear svg and try next (CODE128)
+            svg.innerHTML = '';
+            console.warn('Barcode format ' + tryFormat + ' failed for "' + bcValue + '", trying next...', e.message);
           }
-        } catch(e) {
-          // Fallback: show as plain text
-          barWrap.innerHTML = `<div style="font-size:12px; text-align:center">${bcValue}</div>`;
+        }
+        // If all formats failed, show plain text in the barcode container
+        if (!generateOk) {
+          var parent = svg.parentElement;
+          if (parent) parent.innerHTML = '<div style="font-size:12px; text-align:center">' + bcValue + '</div>';
         }
       } else {
         barWrap.innerHTML = `<div style="font-size:12px; text-align:center; color:#666">(no data)</div>`;
