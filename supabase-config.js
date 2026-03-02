@@ -37,10 +37,10 @@ window.supabaseReady = (async () => {
         if (!data || data.length === 0) {
             return { success: false, error: 'No products found matching your search', searchTerm: cleanTerm };
         }
-        // Normalize to uppercase keys for backward compatibility with app.js
+        // Map: SKU = 5DC (attribute1), Code = Cin7 SKU
         const products = data.map(row => ({
-            SKU: row.sku || '',
-            Code: row.attribute1 || '',
+            SKU: row.attribute1 || '',
+            Code: row.sku || '',
             name: row.name || '',
             barcode: row.barcode || ''
         }));
@@ -48,13 +48,14 @@ window.supabaseReady = (async () => {
     }
 
     async function searchBySKU(sku) {
-        console.log('🔍 Searching by SKU:', sku);
+        console.log('🔍 Searching by SKU (5DC):', sku);
         try {
+            // SKU in our business = attribute1 (5DC code)
             const { data, error } = await supabaseClient
                 .schema('cin7_mirror')
                 .from('products')
                 .select('sku, name, barcode, attribute1, category')
-                .eq('sku', sku)
+                .eq('attribute1', sku)
                 .limit(50);
             if (error) {
                 console.error('❌ SKU query error:', error);
@@ -62,18 +63,18 @@ window.supabaseReady = (async () => {
             }
             if (Array.isArray(data) && data.length > 0) {
                 const row = data[0];
-                console.log('✅ SKU found (first match):', row);
+                console.log('✅ SKU (5DC) found (first match):', row);
                 return {
                     success: true,
                     product: {
-                        sku: row.sku || '',
-                        code: row.attribute1 || '',
+                        sku: row.attribute1 || '',
+                        code: row.sku || '',
                         name: row.name || 'Product Name',
                         description: row.category || row.name || 'Product'
                     }
                 };
             }
-            console.log('❌ SKU not found');
+            console.log('❌ SKU (5DC) not found');
             return { success: false, error: 'SKU not found' };
         } catch (error) {
             console.error('❌ Error searching by SKU:', error);
@@ -82,16 +83,20 @@ window.supabaseReady = (async () => {
     }
 
     async function searchBySKUAndCode(sku, code) {
-        console.log('🔍 Searching by SKU and Code:', sku, code);
+        // sku param = 5DC (attribute1), code param = Cin7 SKU
+        console.log('🔍 Searching by SKU(5DC) and Code(cin7sku):', sku, code);
         try {
             let query = supabaseClient
                 .schema('cin7_mirror')
                 .from('products')
-                .select('sku, name, barcode, attribute1, category')
-                .eq('sku', sku);
-            // Only filter by attribute1 (Code) if it's non-empty
+                .select('sku, name, barcode, attribute1, category');
+            // SKU = attribute1 (5DC)
+            if (sku) {
+                query = query.eq('attribute1', sku);
+            }
+            // Code = cin7 sku
             if (code) {
-                query = query.eq('attribute1', code);
+                query = query.eq('sku', code);
             }
             const { data, error } = await query.limit(1);
             if (error) {
@@ -104,8 +109,8 @@ window.supabaseReady = (async () => {
                 return {
                     success: true,
                     product: {
-                        sku: row.sku || '',
-                        code: row.attribute1 || '',
+                        sku: row.attribute1 || '',
+                        code: row.sku || '',
                         name: row.name || 'Product Name',
                         description: row.category || row.name || 'Product'
                     }
@@ -120,13 +125,14 @@ window.supabaseReady = (async () => {
     }
 
     async function searchByCode(code) {
-        console.log('🔍 Searching by Code:', code);
+        // Code in our business = Cin7 SKU
+        console.log('🔍 Searching by Code (cin7 sku):', code);
         try {
             const { data, error } = await supabaseClient
                 .schema('cin7_mirror')
                 .from('products')
                 .select('sku, name, barcode, attribute1, category')
-                .eq('attribute1', code)
+                .eq('sku', code)
                 .limit(50);
             if (error) {
                 console.error('❌ Code query error:', error);
@@ -134,12 +140,12 @@ window.supabaseReady = (async () => {
             }
             if (Array.isArray(data) && data.length > 0) {
                 const row = data[0];
-                console.log('✅ Code found (first match):', row);
+                console.log('✅ Code (cin7 sku) found (first match):', row);
                 return {
                     success: true,
                     product: {
-                        sku: row.sku || '',
-                        code: row.attribute1 || '',
+                        sku: row.attribute1 || '',
+                        code: row.sku || '',
                         name: row.name || 'Product Name',
                         description: row.category || row.name || 'Product'
                     }

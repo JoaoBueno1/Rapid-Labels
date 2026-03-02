@@ -407,7 +407,7 @@ function printBarcodes3Up(){
 }
 // (Removed stray duplicated search error block accidentally inserted after printBarcodes3Up)
 
-// Display search results (cin7_mirror.products: SKU, Code=attribute1, name, barcode)
+// Display search results — SKU = 5DC (attribute1), Code = Cin7 SKU
 function displaySearchResults(results) {
     const resultsDiv = document.getElementById('searchResults');
     
@@ -416,12 +416,11 @@ function displaySearchResults(results) {
         // Escape single quotes in values passed to onclick
         const safeSku = (product.SKU || '').replace(/'/g, "\\'");
         const safeCode = (product.Code || '').replace(/'/g, "\\'");
-        const codePart = product.Code ? `<span class="result-code">🏷️ ${product.Code}</span>` : '';
         html += `
             <div class="search-result-item" onclick="selectProduct('${safeSku}', '${safeCode}')">
                 <div style="display:flex;justify-content:space-between;align-items:center">
-                    <span class="result-sku">📦 ${product.SKU}</span>
-                    ${codePart}
+                    <span class="result-sku" style="font-weight:700;font-size:15px">📦 ${product.SKU || '—'}</span>
+                    <span class="result-code" style="color:#475569;font-size:13px">🏷️ ${product.Code || ''}</span>
                 </div>
                 ${product.name ? `<div class="result-name" style="font-size:12px;color:#64748b;margin-top:2px">${product.name}</div>` : ''}
             </div>
