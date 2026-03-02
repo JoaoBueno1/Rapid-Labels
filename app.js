@@ -307,7 +307,7 @@ function printBarcodes3Up(){
     // - Barcode fields accept: EAN-8 (8), UPC (12), EAN-13 (13), ITF-14 (14) digits.
     try {
         const skuRegex = /^\d{5}$/;
-        const barcodeRegex = /^\d{8,14}$/;
+        const barcodeRegex = /^\d+$/;  // any numeric string is a valid barcode (CODE128 fallback)
         const getMode = (name)=> document.querySelector(`input[name="${name}"]:checked`)?.value || 'product';
 
         const checkLocationInDB = async (loc)=>{
@@ -369,7 +369,7 @@ function printBarcodes3Up(){
             } else if(r.mode === 'manual') {
                 const { code, title, ean13 } = r.manual;
                 if(!skuRegex.test(code)) { if(code||title||ean13) errors.push(`Section ${i} (Manual): code must be exactly 5 digits.`); return; }
-                if(!barcodeRegex.test(ean13)) { errors.push(`Section ${i} (Manual): barcode must be 8-14 digits.`); return; }
+                if(!barcodeRegex.test(ean13)) { errors.push(`Section ${i} (Manual): barcode must be numeric.`); return; }
                 finalSections.push({ mode:'manual', code, title, ean13 });
             }
         });
@@ -1497,16 +1497,11 @@ function setupBarcodesAutocompleteAndValidation(){
         const err = document.getElementById(manEanErrIds[i]);
     if (input){
             input.addEventListener('input', ()=>{
-                // digits only, max 14 (supports EAN-8, UPC-12, EAN-13, ITF-14)
+                // digits only, no max limit (CODE128 handles any length)
                 const raw = input.value.replace(/\D+/g,'');
-                input.value = raw.slice(0,14);
-                if (input.value && input.value.length < 8){
-            if (err){ err.textContent = 'Must be 8-14 digits'; err.style.display = 'block'; }
-            input.classList.add('error');
-                } else {
-            if (err){ err.textContent = ''; err.style.display = 'none'; }
-            input.classList.remove('error');
-                }
+                input.value = raw;
+                if (err){ err.textContent = ''; err.style.display = 'none'; }
+                input.classList.remove('error');
             });
         }
     });

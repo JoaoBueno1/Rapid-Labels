@@ -145,6 +145,7 @@
 
     function getEanForJsBarcode(raw){
       const d = String(raw||'').replace(/\D+/g,'');
+      if (!d) return null;
       if (d.length === 14) return { format:'ITF14', value:d };
       if (d.length === 13){
         if (isValidEan13(d)) return { format:'EAN13', value:d };
@@ -152,7 +153,8 @@
       }
       if (d.length === 12){ return { format:'EAN13', value:d }; }
       if (d.length === 8){ return { format:'EAN8', value:d }; }
-      return null;
+      // Non-standard length: fallback to CODE128
+      return { format:'CODE128', value: String(raw||'').trim() };
     }
 
     function renderSection(root, section){
