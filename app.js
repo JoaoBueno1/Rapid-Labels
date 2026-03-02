@@ -978,23 +978,23 @@ function generateLabelHTML(labelData) {
                 }
                 
                 body.a4-mode .barcode-ean {
-                    height: 70px;
-                    max-width: 220px;
+                    height: 110px;
+                    max-width: 300px;
                 }
                 
                 body.a4-mode .barcode-code {
-                    height: 70px;
-                    max-width: 220px;
+                    height: 110px;
+                    max-width: 300px;
                 }
                 
                 body.a4-mode .barcode-box {
-                    min-width: 120px;
-                    max-width: 240px;
-                    padding: 4px 8px 6px;
+                    min-width: 180px;
+                    max-width: 320px;
+                    padding: 6px 12px 8px;
                 }
                 
                 body.a4-mode .barcode-box-label {
-                    font-size: 10px;
+                    font-size: 12px;
                 }
                 
                 /* A3 Styles */
@@ -1028,23 +1028,23 @@ function generateLabelHTML(labelData) {
                 }
                 
                 body.a3-mode .barcode-ean {
-                    height: 100px;
-                    max-width: 300px;
+                    height: 150px;
+                    max-width: 400px;
                 }
                 
                 body.a3-mode .barcode-code {
-                    height: 100px;
-                    max-width: 300px;
+                    height: 150px;
+                    max-width: 400px;
                 }
                 
                 body.a3-mode .barcode-box {
-                    min-width: 160px;
-                    max-width: 320px;
-                    padding: 5px 10px 7px;
+                    min-width: 220px;
+                    max-width: 420px;
+                    padding: 8px 14px 10px;
                 }
                 
                 body.a3-mode .barcode-box-label {
-                    font-size: 12px;
+                    font-size: 15px;
                 }
                 
                 @media print {
