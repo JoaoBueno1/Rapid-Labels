@@ -413,16 +413,13 @@ function displaySearchResults(results) {
     
     let html = '<div class="search-results-list">';
     results.forEach(product => {
-        // Escape single quotes in values passed to onclick
         const safeSku = (product.SKU || '').replace(/'/g, "\\'");
         const safeCode = (product.Code || '').replace(/'/g, "\\'");
         html += `
-            <div class="search-result-item" onclick="selectProduct('${safeSku}', '${safeCode}')">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <span class="result-sku" style="font-weight:700;font-size:15px">📦 ${product.SKU || '—'}</span>
-                    <span class="result-code" style="color:#475569;font-size:13px">🏷️ ${product.Code || ''}</span>
-                </div>
-                ${product.name ? `<div class="result-name" style="font-size:12px;color:#64748b;margin-top:2px">${product.name}</div>` : ''}
+            <div class="search-result-item" onclick="selectProduct('${safeSku}', '${safeCode}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #e2e8f0">
+                <div style="font-weight:700;font-size:16px;color:#0f172a">${product.SKU || '—'}</div>
+                <div style="font-size:13px;color:#334155;margin-top:2px">${product.Code || ''}</div>
+                ${product.name ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${product.name}</div>` : ''}
             </div>
         `;
     });
