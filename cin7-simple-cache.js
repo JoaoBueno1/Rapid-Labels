@@ -1,75 +1,84 @@
 /**
- * Cin7 Simple Cache - Usa backend Flask para acessar PostgreSQL
- * Lógica: Tenta cache primeiro (via backend), se não encontra vai para API Cin7
+ * Cin7 Simple Cache - Queries Supabase (Rapid-Express-Web DB) directly via REST
+ * Logic: Try cache first (Supabase cin7_orders_cache), fallback to direct Cin7 API
  */
 
+const _CIN7_CACHE_SB_URL = 'https://psczzrhmolxifgzgzswh.supabase.co';
+const _CIN7_CACHE_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzY3p6cmhtb2x4aWZnemd6c3doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAxMzgzNzUsImV4cCI6MjA2NTcxNDM3NX0.laN6Z5jMRpP-oH9-R72i-HhsJGrO756DN9ntNYNweWw';
+const _CIN7_CACHE_FIELDS = 'delivery_company,delivery_contact,delivery_email,delivery_phone,delivery_address1,delivery_address2,delivery_suburb,delivery_city,delivery_state,delivery_postcode,delivery_country,notes,sales_rep';
+
 window.cin7SimpleCache = {
-    /**
-     * Busca ordem - tenta cache primeiro, depois API
-     */
     lookupOrder: async function(reference) {
-        console.log('[Cin7 Simple] Buscando:', reference);
-        
+        console.log('[Cin7 Cache] Looking up:', reference);
         const normalized = reference.trim().toUpperCase();
-        const soNumber = normalized.startsWith('SO-') ? normalized : `SO-${normalized}`;
+        const soNumber = normalized.startsWith('SO-') ? normalized : 'SO-' + normalized;
         
-        // STEP 1: Tentar cache primeiro (via backend Flask)
+        // STEP 1: Try Supabase cache
         const cacheResult = await this.searchCache(soNumber);
         if (cacheResult) {
-            console.log('[Cin7 Simple] ✅ CACHE HIT!');
+            console.log('[Cin7 Cache] ✅ CACHE HIT');
             return cacheResult;
         }
         
-        // STEP 2: Fallback para API Cin7
-        console.log('[Cin7 Simple] Cache miss, tentando API Cin7...');
-        if (window.cin7Service && window.cin7Service.lookupOrder) {
+        // STEP 2: Fallback to direct Cin7 API (if configured)
+        if (window.cin7Service && window.cin7Service.isEnabled && window.cin7Service.isEnabled()) {
+            console.log('[Cin7 Cache] Cache miss, trying Cin7 API...');
             return await window.cin7Service.lookupOrder(reference);
         }
         
-        console.error('[Cin7 Simple] ❌ Nem cache nem API disponível');
-        return { success: false, error: 'Order not found' };
+        return { success: false, error: 'Order not found in cache' };
     },
     
-    /**
-     * Busca no cache via backend Flask
-     */
     searchCache: async function(soNumber) {
-        const BACKEND_URL = 'http://localhost:5050';
-        
         try {
-            const response = await fetch(`${BACKEND_URL}/api/cin7/cache/lookup/${encodeURIComponent(soNumber)}`);
+            const row = await this._fetchRow(soNumber);
+            if (row) return this._mapRow(row);
             
-            if (!response.ok) {
-                console.log('[Cin7 Simple] Cache miss (HTTP', response.status + ')');
-                return null;
+            // Also try without SO- prefix
+            const bare = soNumber.replace(/^SO-/, '');
+            if (bare !== soNumber) {
+                const row2 = await this._fetchRow(bare);
+                if (row2) return this._mapRow(row2);
             }
-            
-            const data = await response.json();
-            
-            // Converter para formato esperado
-            return {
-                success: true,
-                source: 'cache',
-                customer_name: data.delivery_company,
-                contact_name: data.delivery_contact,
-                email: data.delivery_email,
-                phone: data.delivery_phone,
-                address: data.delivery_address1,
-                address2: data.delivery_address2,
-                suburb: data.delivery_suburb,
-                city: data.delivery_city,
-                state: data.delivery_state,
-                postcode: data.delivery_postcode,
-                country: data.delivery_country || 'Australia',
-                notes: data.notes || '',
-                sales_rep: data.sales_rep || ''
-            };
-            
+            return null;
         } catch (err) {
-            console.error('[Cin7 Simple] Erro ao acessar backend:', err.message);
+            console.warn('[Cin7 Cache] Lookup error:', err.message);
             return null;
         }
+    },
+    
+    _fetchRow: async function(ref) {
+        const url = _CIN7_CACHE_SB_URL + '/rest/v1/cin7_orders_cache'
+            + '?cin7_reference=ilike.' + encodeURIComponent(ref)
+            + '&select=' + _CIN7_CACHE_FIELDS
+            + '&limit=1';
+        const resp = await fetch(url, {
+            headers: { 'apikey': _CIN7_CACHE_SB_KEY, 'Authorization': 'Bearer ' + _CIN7_CACHE_SB_KEY }
+        });
+        if (!resp.ok) return null;
+        const rows = await resp.json();
+        return (rows && rows.length) ? rows[0] : null;
+    },
+    
+    _mapRow: function(r) {
+        return {
+            success: true,
+            source: 'cache',
+            customer_name: r.delivery_company || '',
+            contact_name: r.delivery_contact || '',
+            email: r.delivery_email || '',
+            phone: r.delivery_phone || '',
+            address: r.delivery_address1 || '',
+            address2: r.delivery_address2 || '',
+            suburb: r.delivery_suburb || '',
+            city: r.delivery_city || '',
+            state: r.delivery_state || '',
+            postcode: r.delivery_postcode || '',
+            country: r.delivery_country || 'Australia',
+            notes: r.notes || '',
+            sales_rep: r.sales_rep || ''
+        };
     }
 };
 
-console.log('[Cin7 Simple Cache] ✅ Carregado');
+console.log('[Cin7 Simple Cache] ✅ Loaded (Supabase REST)');
