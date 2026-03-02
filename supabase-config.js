@@ -70,7 +70,8 @@ window.supabaseReady = (async () => {
                         sku: row.attribute1 || '',
                         code: row.sku || '',
                         name: row.name || 'Product Name',
-                        description: row.category || row.name || 'Product'
+                        description: row.category || row.name || 'Product',
+                        barcode: row.barcode || ''
                     }
                 };
             }
@@ -112,7 +113,8 @@ window.supabaseReady = (async () => {
                         sku: row.attribute1 || '',
                         code: row.sku || '',
                         name: row.name || 'Product Name',
-                        description: row.category || row.name || 'Product'
+                        description: row.category || row.name || 'Product',
+                        barcode: row.barcode || ''
                     }
                 };
             }
@@ -147,7 +149,8 @@ window.supabaseReady = (async () => {
                         sku: row.attribute1 || '',
                         code: row.sku || '',
                         name: row.name || 'Product Name',
-                        description: row.category || row.name || 'Product'
+                        description: row.category || row.name || 'Product',
+                        barcode: row.barcode || ''
                     }
                 };
             }

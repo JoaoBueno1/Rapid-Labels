@@ -722,6 +722,7 @@ function printSearchLabel() {
     const labelData = {
         sku: selectedProduct.sku,
         code: selectedProduct.code,
+        barcode: selectedProduct.barcode || '',
         qty: document.getElementById('editQty').value,
         date: document.getElementById('editDate').value,
         size: selectedSearchSize,
@@ -778,8 +779,10 @@ function generateAndPrintLabel(labelData) {
 
 function generateLabelHTML(labelData) {
     const { sku, code, qty, date } = labelData;
+    const productBarcode = labelData.barcode || '';
     // Default size to A4 unless explicitly A3
     const size = (labelData && labelData.size === 'A3') ? 'A3' : 'A4';
+    const hasProductBarcode = productBarcode.length > 0;
     
     let pagesHTML = '';
     for (let i = 1; i <= labelData.pages; i++) {
@@ -791,8 +794,17 @@ function generateLabelHTML(labelData) {
                             <span class="sku-label">SKU:</span>
                             <span class="sku-value">${sku}</span>
                         </div>
-                        <div class="sku-barcode-right">
-                            <svg class="barcode"></svg>
+                        <div class="barcodes-right">
+                            ${hasProductBarcode ? `
+                            <div class="barcode-box">
+                                <div class="barcode-box-label">Barcode</div>
+                                <svg class="barcode-ean"></svg>
+                            </div>
+                            ` : ''}
+                            <div class="barcode-box">
+                                <div class="barcode-box-label">Product Code</div>
+                                <svg class="barcode-code"></svg>
+                            </div>
                         </div>
                     </div>
                     <div class="code-line">
@@ -885,11 +897,34 @@ function generateLabelHTML(labelData) {
                     display: flex;
                     align-items: baseline;
                     flex: 1;
+                    min-width: 0;
                 }
                 
-                .sku-barcode-right {
+                /* Dual barcode boxes container */
+                .barcodes-right {
                     flex-shrink: 0;
-                    text-align: right;
+                    display: flex;
+                    gap: 8px;
+                    align-items: stretch;
+                }
+                
+                .barcode-box {
+                    border: 2px solid #000;
+                    border-radius: 6px;
+                    padding: 6px 10px 8px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                }
+                
+                .barcode-box-label {
+                    font-size: 11px;
+                    font-weight: bold;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    margin-bottom: 4px;
+                    color: #333;
                 }
                 
                 .qty-line {
@@ -941,9 +976,23 @@ function generateLabelHTML(labelData) {
                     margin-left: 20px;
                 }
                 
-                body.a4-mode .barcode {
-                    height: 120px;
-                    max-width: 300px;
+                body.a4-mode .barcode-ean {
+                    height: 100px;
+                    max-width: 220px;
+                }
+                
+                body.a4-mode .barcode-code {
+                    height: 100px;
+                    max-width: 250px;
+                }
+                
+                body.a4-mode .barcode-box {
+                    min-width: 140px;
+                    max-width: 270px;
+                }
+                
+                body.a4-mode .barcode-box-label {
+                    font-size: 11px;
                 }
                 
                 /* A3 Styles */
@@ -976,9 +1025,23 @@ function generateLabelHTML(labelData) {
                     margin-left: 30px;
                 }
                 
-                body.a3-mode .barcode {
-                    height: 150px;
-                    max-width: 400px;
+                body.a3-mode .barcode-ean {
+                    height: 130px;
+                    max-width: 300px;
+                }
+                
+                body.a3-mode .barcode-code {
+                    height: 130px;
+                    max-width: 340px;
+                }
+                
+                body.a3-mode .barcode-box {
+                    min-width: 180px;
+                    max-width: 360px;
+                }
+                
+                body.a3-mode .barcode-box-label {
+                    font-size: 14px;
                 }
                 
                 @media print {
@@ -994,46 +1057,108 @@ function generateLabelHTML(labelData) {
             ${pagesHTML}
             
             <script>
+                var productBarcode = "${productBarcode}";
+                var productCode = "${code}";
+                var isA3 = ${size === 'A3'};
+                
+                // Detect the best barcode format for the product barcode
+                function detectBarcodeFormat(value) {
+                    if (!value) return null;
+                    var clean = value.replace(/[^0-9]/g, '');
+                    if (clean.length === 13) return 'EAN13';
+                    if (clean.length === 14) return 'ITF14';
+                    if (clean.length === 12) return 'UPC';
+                    if (clean.length === 8) return 'EAN8';
+                    // Fallback to CODE128 for non-standard lengths
+                    return 'CODE128';
+                }
+                
                 // Generate barcodes after page loads with proper timing
                 function generateBarcodes() {
                     // Check if JsBarcode is loaded
                     if (typeof JsBarcode === 'undefined') {
-                        // If not loaded, wait a bit and try again
                         setTimeout(generateBarcodes, 100);
                         return;
                     }
                     
-                    // Find all barcode elements by class instead of ID to avoid duplicates
-                    const barcodeElements = document.querySelectorAll('.barcode');
-                    console.log('Found', barcodeElements.length, 'barcode elements');
+                    var barcodeHeight = isA3 ? 130 : 100;
                     
-                    barcodeElements.forEach(function(barcodeElement, index) {
-                        if (barcodeElement) {
+                    // Generate product barcode (EAN-13, ITF-14, etc.) if available
+                    if (productBarcode) {
+                        var eanElements = document.querySelectorAll('.barcode-ean');
+                        var format = detectBarcodeFormat(productBarcode);
+                        console.log('Product barcode:', productBarcode, 'Format:', format);
+                        
+                        eanElements.forEach(function(el, idx) {
                             try {
-                                JsBarcode(barcodeElement, "${code}", {
-                                    format: "CODE128",
-                                    width: 3,
-                                    height: ${size === 'A3' ? '150' : '120'},
+                                JsBarcode(el, productBarcode, {
+                                    format: format,
+                                    width: 2,
+                                    height: barcodeHeight,
                                     displayValue: true,
-                                    fontSize: 16,
+                                    fontSize: 14,
                                     textAlign: "center",
                                     textPosition: "bottom",
                                     background: "#ffffff",
                                     lineColor: "#000000"
                                 });
-                                console.log('Barcode generated for element', index);
+                                console.log('Product barcode generated (EAN)', idx);
                             } catch (error) {
-                                console.error('Error generating barcode for element', index, error);
+                                console.error('Error generating product barcode', idx, error);
+                                // Fallback to CODE128 if format fails
+                                try {
+                                    JsBarcode(el, productBarcode, {
+                                        format: "CODE128",
+                                        width: 2,
+                                        height: barcodeHeight,
+                                        displayValue: true,
+                                        fontSize: 14,
+                                        textAlign: "center",
+                                        textPosition: "bottom",
+                                        background: "#ffffff",
+                                        lineColor: "#000000"
+                                    });
+                                    console.log('Product barcode fallback CODE128 OK', idx);
+                                } catch (e2) {
+                                    console.error('Product barcode fallback also failed', idx, e2);
+                                }
                             }
+                        });
+                    }
+                    
+                    // Generate CODE128 barcode for product code (Cin7 SKU)
+                    var codeElements = document.querySelectorAll('.barcode-code');
+                    console.log('Found', codeElements.length, 'product code barcode elements');
+                    
+                    codeElements.forEach(function(el, idx) {
+                        try {
+                            JsBarcode(el, productCode, {
+                                format: "CODE128",
+                                width: 2,
+                                height: barcodeHeight,
+                                displayValue: true,
+                                fontSize: 14,
+                                textAlign: "center",
+                                textPosition: "bottom",
+                                background: "#ffffff",
+                                lineColor: "#000000"
+                            });
+                            console.log('Product code barcode generated', idx);
+                        } catch (error) {
+                            console.error('Error generating product code barcode', idx, error);
                         }
                     });
+                    
                     if (!window.__wfStarted) { window.__wfStarted = true; waitForBarcodes(performance.now()); }
                 }
                 
                 function allBarcodesReady() {
-                    const svgs = document.querySelectorAll('.barcode');
-                    if (!svgs.length) return false;
-                    return [...svgs].every(svg => svg.childElementCount > 0 || svg.querySelector('rect,g'));
+                    // Check both barcode types
+                    var allSvgs = document.querySelectorAll('.barcode-ean, .barcode-code');
+                    if (!allSvgs.length) return false;
+                    return [].slice.call(allSvgs).every(function(svg) {
+                        return svg.childElementCount > 0 || svg.querySelector('rect,g');
+                    });
                 }
                 
                 function waitForBarcodes(startTs) {
@@ -1047,8 +1172,8 @@ function generateLabelHTML(labelData) {
                         }
                         return;
                     }
-                    const elapsed = performance.now() - startTs;
-                    if (elapsed > 5000) { // fallback after 5s
+                    var elapsed = performance.now() - startTs;
+                    if (elapsed > 5000) {
                         console.warn('Timeout waiting for barcodes, proceeding to print');
                         if (!window.__printed) {
                             window.__printed = true;
@@ -1058,7 +1183,7 @@ function generateLabelHTML(labelData) {
                         }
                         return;
                     }
-                    setTimeout(() => waitForBarcodes(startTs), 120);
+                    setTimeout(function() { waitForBarcodes(startTs); }, 120);
                 }
                 
                 // Start generation when page loads
