@@ -790,19 +790,21 @@ function generateLabelHTML(labelData) {
             <div class="label-page">
                 <div class="label-content">
                     <div class="sku-line">
-                        <span class="sku-label">SKU:</span>
-                        <span class="sku-value">${sku}</span>
-                    </div>
-                    <div class="barcodes-line">
-                        ${hasProductBarcode ? `
-                        <div class="barcode-box">
-                            <div class="barcode-box-label">Barcode</div>
-                            <svg class="barcode-ean"></svg>
+                        <div class="sku-left">
+                            <span class="sku-label">SKU:</span>
+                            <span class="sku-value">${sku}</span>
                         </div>
-                        ` : ''}
-                        <div class="barcode-box">
-                            <div class="barcode-box-label">Product Code</div>
-                            <svg class="barcode-code"></svg>
+                        <div class="barcodes-stack">
+                            ${hasProductBarcode ? `
+                            <div class="barcode-box">
+                                <div class="barcode-box-label">Barcode</div>
+                                <svg class="barcode-ean"></svg>
+                            </div>
+                            ` : ''}
+                            <div class="barcode-box">
+                                <div class="barcode-box-label">Product Code</div>
+                                <svg class="barcode-code"></svg>
+                            </div>
                         </div>
                     </div>
                     <div class="code-line">
@@ -880,23 +882,31 @@ function generateLabelHTML(labelData) {
                 
                 .sku-line, .code-line {
                     display: block;
-                    margin-bottom: 8mm;
+                    margin-bottom: 10mm;
                     text-align: left;
                 }
                 
                 .sku-line {
                     display: flex;
-                    align-items: baseline;
+                    justify-content: space-between;
+                    align-items: center;
                     width: 100%;
                 }
                 
-                /* Barcodes on their own line */
-                .barcodes-line {
+                .sku-left {
                     display: flex;
-                    gap: 12px;
+                    align-items: baseline;
+                    flex: 1;
+                    min-width: 0;
+                }
+                
+                /* Barcodes stacked vertically on right */
+                .barcodes-stack {
+                    flex-shrink: 0;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
                     align-items: stretch;
-                    justify-content: flex-end;
-                    margin-bottom: 10mm;
                 }
                 
                 .barcode-box {
@@ -951,7 +961,7 @@ function generateLabelHTML(labelData) {
                 }
                 
                 body.a4-mode .sku-value {
-                    font-size: 180px;
+                    font-size: 140px;
                     margin-left: 20px;
                 }
                 
@@ -968,22 +978,23 @@ function generateLabelHTML(labelData) {
                 }
                 
                 body.a4-mode .barcode-ean {
-                    height: 100px;
+                    height: 70px;
                     max-width: 220px;
                 }
                 
                 body.a4-mode .barcode-code {
-                    height: 100px;
-                    max-width: 250px;
+                    height: 70px;
+                    max-width: 220px;
                 }
                 
                 body.a4-mode .barcode-box {
-                    min-width: 140px;
-                    max-width: 270px;
+                    min-width: 120px;
+                    max-width: 240px;
+                    padding: 4px 8px 6px;
                 }
                 
                 body.a4-mode .barcode-box-label {
-                    font-size: 11px;
+                    font-size: 10px;
                 }
                 
                 /* A3 Styles */
@@ -1000,7 +1011,7 @@ function generateLabelHTML(labelData) {
                 }
                 
                 body.a3-mode .sku-value {
-                    font-size: 220px;
+                    font-size: 180px;
                     margin-left: 30px;
                 }
                 
@@ -1017,22 +1028,23 @@ function generateLabelHTML(labelData) {
                 }
                 
                 body.a3-mode .barcode-ean {
-                    height: 130px;
+                    height: 100px;
                     max-width: 300px;
                 }
                 
                 body.a3-mode .barcode-code {
-                    height: 130px;
-                    max-width: 340px;
+                    height: 100px;
+                    max-width: 300px;
                 }
                 
                 body.a3-mode .barcode-box {
-                    min-width: 180px;
-                    max-width: 360px;
+                    min-width: 160px;
+                    max-width: 320px;
+                    padding: 5px 10px 7px;
                 }
                 
                 body.a3-mode .barcode-box-label {
-                    font-size: 14px;
+                    font-size: 12px;
                 }
                 
                 @media print {
