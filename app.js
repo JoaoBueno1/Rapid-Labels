@@ -790,21 +790,19 @@ function generateLabelHTML(labelData) {
             <div class="label-page">
                 <div class="label-content">
                     <div class="sku-line">
-                        <div class="sku-left">
-                            <span class="sku-label">SKU:</span>
-                            <span class="sku-value">${sku}</span>
+                        <span class="sku-label">SKU:</span>
+                        <span class="sku-value">${sku}</span>
+                    </div>
+                    <div class="barcodes-line">
+                        ${hasProductBarcode ? `
+                        <div class="barcode-box">
+                            <div class="barcode-box-label">Barcode</div>
+                            <svg class="barcode-ean"></svg>
                         </div>
-                        <div class="barcodes-right">
-                            ${hasProductBarcode ? `
-                            <div class="barcode-box">
-                                <div class="barcode-box-label">Barcode</div>
-                                <svg class="barcode-ean"></svg>
-                            </div>
-                            ` : ''}
-                            <div class="barcode-box">
-                                <div class="barcode-box-label">Product Code</div>
-                                <svg class="barcode-code"></svg>
-                            </div>
+                        ` : ''}
+                        <div class="barcode-box">
+                            <div class="barcode-box-label">Product Code</div>
+                            <svg class="barcode-code"></svg>
                         </div>
                     </div>
                     <div class="code-line">
@@ -882,30 +880,23 @@ function generateLabelHTML(labelData) {
                 
                 .sku-line, .code-line {
                     display: block;
-                    margin-bottom: 15mm;
+                    margin-bottom: 8mm;
                     text-align: left;
                 }
                 
                 .sku-line {
                     display: flex;
-                    justify-content: space-between;
-                    align-items: center;
+                    align-items: baseline;
                     width: 100%;
                 }
                 
-                .sku-left {
+                /* Barcodes on their own line */
+                .barcodes-line {
                     display: flex;
-                    align-items: baseline;
-                    flex: 1;
-                    min-width: 0;
-                }
-                
-                /* Dual barcode boxes container */
-                .barcodes-right {
-                    flex-shrink: 0;
-                    display: flex;
-                    gap: 8px;
+                    gap: 12px;
                     align-items: stretch;
+                    justify-content: flex-end;
+                    margin-bottom: 10mm;
                 }
                 
                 .barcode-box {
