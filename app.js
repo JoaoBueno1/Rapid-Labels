@@ -418,7 +418,7 @@ function displaySearchResults(results) {
         html += `
             <div class="search-result-item" onclick="selectProduct('${safeSku}', '${safeCode}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #e2e8f0">
                 <div style="font-weight:700;font-size:16px;color:#0f172a">${product.SKU || '—'}</div>
-                <div style="font-size:13px;color:#334155;margin-top:2px">${product.Code || ''}</div>
+                <div style="font-weight:700;font-size:14px;color:#334155;margin-top:3px">${product.Code || ''}</div>
                 ${product.name ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${product.name}</div>` : ''}
             </div>
         `;
