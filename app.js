@@ -868,7 +868,7 @@ function generateLabelHTML(labelData) {
             </script>
             <style>
                 @page {
-                    margin: 15mm 8mm;
+                    margin: 8mm;
                     size: ${size === 'A3' ? 'A3 landscape' : 'A4 landscape'};
                 }
                 
@@ -885,24 +885,13 @@ function generateLabelHTML(labelData) {
                     line-height: 1;
                 }
                 
-                body.a4-mode .label-page {
-                    width: 100%;
-                    min-height: calc(210mm - 30mm);
-                }
-                
-                body.a3-mode .label-page {
-                    width: 100%;
-                    min-height: calc(297mm - 30mm);
-                }
-                
                 .label-page {
                     width: 100%;
-                    height: 100%;
+                    height: 100vh;
                     display: flex;
                     align-items: stretch;
                     justify-content: stretch;
                     page-break-inside: avoid;
-                    overflow: hidden;
                 }
                 
                 .label-content {
@@ -923,7 +912,7 @@ function generateLabelHTML(labelData) {
                 .sku-line {
                     display: flex;
                     justify-content: space-between;
-                    align-items: center;
+                    align-items: flex-start;
                     width: 100%;
                 }
                 
@@ -1084,20 +1073,14 @@ function generateLabelHTML(labelData) {
                 }
                 
                 @media print {
-                    body { margin: 0; padding: 0; overflow: hidden; }
+                    body { margin: 0; padding: 0; }
                     .label-page { 
-                        margin: 0 !important;
                         page-break-after: always;
                         page-break-inside: avoid;
                         break-inside: avoid;
-                        overflow: hidden;
                     }
                     .label-page:last-child {
                         page-break-after: auto;
-                    }
-                    .label-content {
-                        overflow: hidden;
-                        max-height: 100%;
                     }
                 }
             </style>
