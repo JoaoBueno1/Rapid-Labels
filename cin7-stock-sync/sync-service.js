@@ -467,6 +467,9 @@ function mapProductRow(raw) {
     pick_zones: raw.PickZones || null,
     sellable: raw.Status !== 'Deprecated',
     last_modified_on: raw.LastModifiedOn || null,
+    // Cin7 AdditionalAttribute1 = 5DC code, AdditionalAttribute2 = e.g. brand/supplier
+    attribute1: raw.AdditionalAttribute1 || null,
+    attribute2: raw.AdditionalAttribute2 || null,
     synced_at: new Date().toISOString(),
   };
 }
