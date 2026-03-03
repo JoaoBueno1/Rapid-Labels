@@ -34,11 +34,60 @@
         .nav-link { color:var(--header-text); text-decoration:none; padding:8px 10px; border-radius:8px; opacity:.9; }
         .nav-link:hover { background:rgba(255,255,255,.08); opacity:1; }
         .nav-link.active { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); opacity:1; }
-        .main-container { background:var(--surface)!important; padding:28px!important; border-radius:16px!important; box-shadow:0 10px 28px rgba(0,0,0,.10)!important; max-width:1100px!important; width:92%!important; margin:24px auto!important; text-align:left!important; }
-        .home-container { max-width:920px!important; }
-        h1 { font-size:1.7rem!important; color:var(--text)!important; margin-bottom:22px!important; font-weight:800!important; text-shadow:none!important; }
+        .main-container { background:var(--surface)!important; padding:24px 28px!important; border-radius:0!important; box-shadow:none!important; max-width:100%!important; width:100%!important; margin:0 auto!important; text-align:left!important; flex:1; }
+        .home-container { max-width:100%!important; }
+        h1 { font-size:1.7rem!important; color:var(--text)!important; margin-bottom:18px!important; font-weight:800!important; text-shadow:none!important; }
         .home-subtitle { color:var(--muted); font-size:.85rem; font-weight:500; margin-left:6px; }
-        .category-grid { display:grid!important; grid-template-columns:1fr 1fr!important; gap:18px!important; }
+
+        /* ─── Split Layout: Dashboard (left) + Actions (right) ─── */
+        .home-split { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; }
+
+        /* ─── Dashboard Panel (left) ─── */
+        .dash-panel { display:flex; flex-direction:column; gap:16px; }
+
+        /* KPI Cards Row */
+        .kpi-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; }
+        .kpi-card { background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:14px 16px; text-align:center; transition:all .2s; position:relative; overflow:hidden; }
+        .kpi-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.06); }
+        .kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+        .kpi-card.kpi-blue::before { background:linear-gradient(90deg,#3b82f6,#60a5fa); }
+        .kpi-card.kpi-amber::before { background:linear-gradient(90deg,#f59e0b,#fbbf24); }
+        .kpi-card.kpi-green::before { background:linear-gradient(90deg,#22c55e,#4ade80); }
+        .kpi-card.kpi-red::before { background:linear-gradient(90deg,#ef4444,#f87171); }
+        .kpi-card.kpi-purple::before { background:linear-gradient(90deg,#8b5cf6,#a78bfa); }
+        .kpi-value { font-size:1.6rem; font-weight:800; color:var(--text); line-height:1.1; }
+        .kpi-label { font-size:.7rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-top:4px; }
+        .kpi-sub { font-size:.65rem; color:var(--muted); margin-top:3px; opacity:.8; }
+        .kpi-value.loading { color:#cbd5e1; }
+
+        /* Dashboard Sections */
+        .dash-section { background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:16px; }
+        .dash-section-title { font-size:.8rem; font-weight:700; color:var(--text); margin:0 0 12px 0; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:.3px; }
+        .dash-section-title .icon { font-size:1rem; }
+
+        /* System Health */
+        .health-grid { display:flex; flex-direction:column; gap:8px; }
+        .health-row { display:flex; align-items:center; gap:10px; padding:8px 12px; background:#fff; border:1px solid var(--border); border-radius:8px; font-size:.8rem; }
+        .health-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+        .health-dot.green { background:#22c55e; box-shadow:0 0 6px rgba(34,197,94,.4); }
+        .health-dot.yellow { background:#f59e0b; box-shadow:0 0 6px rgba(245,158,11,.4); }
+        .health-dot.red { background:#ef4444; box-shadow:0 0 6px rgba(239,68,68,.4); }
+        .health-dot.gray { background:#94a3b8; }
+        .health-name { font-weight:600; color:var(--text); min-width:110px; }
+        .health-detail { color:var(--muted); font-size:.75rem; margin-left:auto; white-space:nowrap; }
+
+        /* Activity Feed */
+        .activity-feed { display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto; }
+        .activity-item { display:flex; align-items:flex-start; gap:10px; padding:8px 10px; background:#fff; border:1px solid var(--border); border-radius:8px; font-size:.78rem; line-height:1.4; }
+        .activity-icon { font-size:.9rem; flex-shrink:0; width:22px; text-align:center; margin-top:1px; }
+        .activity-text { color:var(--text); flex:1; }
+        .activity-text .time { color:var(--muted); font-size:.7rem; font-weight:500; }
+        .activity-empty { color:var(--muted); font-size:.78rem; text-align:center; padding:16px 0; opacity:.7; }
+
+        /* ─── Actions Panel (right) ─── */
+        .actions-panel { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; align-content:start; }
+
+        /* Category cards — original size */
         .category-card { background:#e2e8f0!important; border:1px solid #cbd5e1!important; border-radius:14px!important; padding:0!important; overflow:hidden!important; box-shadow:0 2px 8px rgba(0,0,0,.06)!important; transition:box-shadow .2s, transform .2s; }
         .category-card:hover { box-shadow:0 6px 24px rgba(0,0,0,.08)!important; transform:translateY(-2px); }
         .category-header { display:flex!important; align-items:center!important; gap:10px!important; padding:14px 18px!important; border-bottom:1px solid #e2e8f0!important; }
@@ -66,7 +115,22 @@
         .home-sync-badge .sync-dot { display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:middle; }
         .site-footer { margin-top:auto; background:var(--header); color:var(--header-text); border-top:1px solid rgba(255,255,255,.08); }
         .footer-inner { width:100%; padding:14px 16px; text-align:center; }
-        @media (max-width:640px) { .category-grid { grid-template-columns:1fr!important; } .home-container { max-width:100%!important; } }
+
+        /* ─── Responsive ─── */
+        @media (max-width:1100px) {
+            .home-split { grid-template-columns:1fr!important; }
+            .actions-panel { order:-1; grid-template-columns:1fr 1fr!important; }
+            .kpi-row { grid-template-columns:repeat(2, 1fr)!important; }
+        }
+        @media (max-width:640px) {
+            .kpi-row { grid-template-columns:1fr!important; }
+            .actions-panel { grid-template-columns:1fr!important; }
+            .home-container { max-width:100%!important; width:100%!important; padding:12px!important; }
+        }
+
+        /* Loading skeleton pulse */
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        .skeleton { animation:pulse 1.5s ease-in-out infinite; background:#e2e8f0; border-radius:6px; }
     </style>
     <!-- Supabase CDN -->
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -94,116 +158,189 @@
 
         <h1>Rapid Led <span class="home-subtitle">WMS Lite</span></h1>
 
-        <!-- Category Cards Grid -->
-        <div class="category-grid">
+        <!-- ═══ SPLIT LAYOUT ═══ -->
+        <div class="home-split">
 
-            <!-- 1. Labels & Barcodes -->
-            <div class="category-card category-labels">
-                <div class="category-header">
-                    <span class="category-icon">🏷️</span>
-                    <h2 class="category-title">Labels & Barcodes</h2>
-                </div>
-                <div class="category-items">
-                    <button class="cat-btn" onclick="openSearchModal()">
-                        <span class="cat-btn-icon">🏷️</span>
-                        <span>Search & Print Label</span>
-                    </button>
-                    <button class="cat-btn" onclick="openManualModal()">
-                        <span class="cat-btn-icon">✏️</span>
-                        <span>Custom Label</span>
-                    </button>
-                    <button class="cat-btn" type="button" onclick="openBarcodesModal()">
-                        <span class="cat-btn-icon">🏷️</span>
-                        <span>Barcodes</span>
-                    </button>
-                    <button class="cat-btn" type="button" onclick="openMultiLabelModal()">
-                        <span class="cat-btn-icon">📋</span>
-                        <span>Multi-Label</span>
-                    </button>
-                </div>
-            </div>
+            <!-- ═══ LEFT: Dashboard Panel ═══ -->
+            <div class="dash-panel">
 
-            <!-- 2. Warehouse Operations -->
-            <div class="category-card category-warehouse">
-                <div class="category-header">
-                    <span class="category-icon">📦</span>
-                    <h2 class="category-title">Warehouse Ops</h2>
-                </div>
-                <div class="category-items">
-                    <a class="cat-btn" href="collections.html">
-                        <span class="cat-btn-icon">📦</span>
-                        <span>Collections</span>
-                        <span class="cat-badge" id="collectionsCount" style="display:none"></span>
-                    </a>
-                    <a class="cat-btn" href="restock.html">
-                        <span class="cat-btn-icon">♻️</span>
-                        <span>Re-Stock V1 (legacy)</span>
-                    </a>
-                    <a class="cat-btn" href="https://www.rapidexpress.com.au/" target="_blank" rel="noopener" style="border:1px solid #bbf7d0!important;background:#f0fdf4!important">
-                        <span class="cat-btn-icon" style="background:#fff!important;padding:2px!important;border-radius:10px!important;box-shadow:0 1px 4px rgba(0,0,0,.08)"><img src="rapid-express-icon.png" alt="Rapid Express" style="width:24px;height:24px;object-fit:contain;border-radius:6px"></span>
-                        <span style="font-weight:700">Rapid Express</span>
-                        <span style="margin-left:auto;font-size:10px;color:#94a3b8">↗</span>
-                    </a>
-                    <a class="cat-btn" href="restock-v2.html" style="border:1px dashed #93c5fd!important;background:#eff6ff!important;opacity:.85;flex-wrap:wrap">
-                        <span class="cat-btn-icon">♻️</span>
-                        <span>Re-Stock V2</span>
-                        <span style="margin-left:auto;font-size:9px;font-weight:700;color:#3b82f6;background:#dbeafe;padding:2px 6px;border-radius:6px;letter-spacing:.5px">BETA</span>
-                        <span id="syncBadgeRestock" class="home-sync-badge" style="display:none"></span>
-                    </a>
-                </div>
-            </div>
-
-            <!-- 3. Quality & Compliance -->
-            <div class="category-card category-quality" style="position:relative">
-                <div class="category-header">
-                    <span class="category-icon">🔍</span>
-                    <h2 class="category-title">Quality & Compliance</h2>
-                </div>
-                <div class="category-items">
-                    <a class="cat-btn" href="features/pick-anomalies/pick-anomalies.html" style="flex-wrap:wrap">
-                        <span class="cat-btn-icon">📋</span>
-                        <span>Pick Anomalies</span>
-                        <span id="syncBadgePA" class="home-sync-badge" style="display:none"></span>
-                    </a>
-                    <a class="cat-btn" href="replacements/replacements.html">
-                        <span class="cat-btn-icon">🔄</span>
-                        <span>Replacements</span>
-                    </a>
-                    <a class="cat-btn" href="features/replenishment/replenishment.html">
-                        <span class="cat-btn-icon">📦</span>
-                        <span>Branch Replenishment</span>
-                    </a>
-                    <a class="cat-btn" href="gateway-main.html" style="flex-wrap:wrap">
-                        <span class="cat-btn-icon">🏭</span>
-                        <span>Gateway</span>
-                        <span id="syncBadgeGateway" class="home-sync-badge" style="display:none"></span>
-                    </a>
-                </div>
-                <!-- Password overlay – covers items, sits on top -->
-                <div id="qcLocked" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:14px;gap:6px">
-                    <div style="font-size:32px">🔒</div>
-                    <div style="display:flex;gap:6px;align-items:center">
-                        <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN" style="width:80px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font-size:15px;outline:none" onkeydown="if(event.key==='Enter')document.getElementById('qcUnlockBtn').click()">
-                        <button id="qcUnlockBtn" type="button" onclick="if(document.getElementById('qcPin').value==='4209'){document.getElementById('qcLocked').remove()}else{document.getElementById('qcPin').style.borderColor='#ef4444';document.getElementById('qcPin').value='';document.getElementById('qcPin').placeholder='Wrong'}" style="padding:6px 14px;background:#eab308;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Unlock</button>
+                <!-- KPI Cards -->
+                <div class="kpi-row">
+                    <div class="kpi-card kpi-blue" id="kpiSkus">
+                        <div class="kpi-value loading" id="kpiSkusVal">—</div>
+                        <div class="kpi-label">Total SKUs</div>
+                        <div class="kpi-sub" id="kpiSkusSub">Main Warehouse</div>
+                    </div>
+                    <div class="kpi-card kpi-amber" id="kpiLow">
+                        <div class="kpi-value loading" id="kpiLowVal">—</div>
+                        <div class="kpi-label">Low Stock</div>
+                        <div class="kpi-sub" id="kpiLowSub">items below min</div>
+                    </div>
+                    <div class="kpi-card kpi-green" id="kpiAccuracy">
+                        <div class="kpi-value loading" id="kpiAccuracyVal">—</div>
+                        <div class="kpi-label">Pick Accuracy</div>
+                        <div class="kpi-sub" id="kpiAccuracySub">loading...</div>
+                    </div>
+                    <div class="kpi-card kpi-red" id="kpiCollections">
+                        <div class="kpi-value loading" id="kpiCollVal">—</div>
+                        <div class="kpi-label">Pending Coll.</div>
+                        <div class="kpi-sub" id="kpiCollSub">awaiting pickup</div>
                     </div>
                 </div>
-            </div>
 
-            <!-- 4. Analytics -->
-            <div class="category-card category-analytics">
-                <div class="category-header">
-                    <span class="category-icon">📊</span>
-                    <h2 class="category-title">Analytics</h2>
+                <!-- Today's Activity / Quick Stats -->
+                <div class="dash-section">
+                    <div class="dash-section-title"><span class="icon">⚡</span> Today's Activity</div>
+                    <div class="activity-feed" id="activityFeed">
+                        <div class="activity-empty">Loading activity...</div>
+                    </div>
                 </div>
-                <div class="category-items">
-                    <button class="cat-btn" type="button" onclick="openAnalyticsAndRegisters()">
-                        <span class="cat-btn-icon">📊</span>
-                        <span>Analytics & Registers</span>
-                    </button>
+
+                <!-- System Health -->
+                <div class="dash-section">
+                    <div class="dash-section-title"><span class="icon">🔗</span> System Health</div>
+                    <div class="health-grid">
+                        <div class="health-row">
+                            <span class="health-dot gray" id="healthStockDot"></span>
+                            <span class="health-name">Stock Sync</span>
+                            <span class="health-detail" id="healthStockDetail">loading...</span>
+                        </div>
+                        <div class="health-row">
+                            <span class="health-dot gray" id="healthPickDot"></span>
+                            <span class="health-name">Pick Analysis</span>
+                            <span class="health-detail" id="healthPickDetail">loading...</span>
+                        </div>
+                        <div class="health-row">
+                            <span class="health-dot gray" id="healthGatewayDot"></span>
+                            <span class="health-name">Gateway FIFO</span>
+                            <span class="health-detail" id="healthGatewayDetail">loading...</span>
+                        </div>
+                        <div class="health-row">
+                            <span class="health-dot gray" id="healthReplDot"></span>
+                            <span class="health-name">Replacements</span>
+                            <span class="health-detail" id="healthReplDetail">loading...</span>
+                        </div>
+                    </div>
                 </div>
+
             </div>
+            <!-- /dash-panel -->
+
+            <!-- ═══ RIGHT: Actions Panel (2×2 grid, original size) ═══ -->
+            <div class="actions-panel">
+
+                <!-- 1. Labels & Barcodes -->
+                <div class="category-card category-labels">
+                    <div class="category-header">
+                        <span class="category-icon">🏷️</span>
+                        <h2 class="category-title">Labels & Barcodes</h2>
+                    </div>
+                    <div class="category-items">
+                        <button class="cat-btn" onclick="openSearchModal()">
+                            <span class="cat-btn-icon">🏷️</span>
+                            <span>Search & Print Label</span>
+                        </button>
+                        <button class="cat-btn" onclick="openManualModal()">
+                            <span class="cat-btn-icon">✏️</span>
+                            <span>Custom Label</span>
+                        </button>
+                        <button class="cat-btn" type="button" onclick="openBarcodesModal()">
+                            <span class="cat-btn-icon">🏷️</span>
+                            <span>Barcodes</span>
+                        </button>
+                        <button class="cat-btn" type="button" onclick="openMultiLabelModal()">
+                            <span class="cat-btn-icon">📋</span>
+                            <span>Multi-Label</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Warehouse Operations -->
+                <div class="category-card category-warehouse">
+                    <div class="category-header">
+                        <span class="category-icon">📦</span>
+                        <h2 class="category-title">Warehouse Ops</h2>
+                    </div>
+                    <div class="category-items">
+                        <a class="cat-btn" href="collections.html">
+                            <span class="cat-btn-icon">📦</span>
+                            <span>Collections</span>
+                            <span class="cat-badge" id="collectionsCount" style="display:none"></span>
+                        </a>
+                        <a class="cat-btn" href="restock-v2.html" style="flex-wrap:wrap">
+                            <span class="cat-btn-icon">♻️</span>
+                            <span>Re-Stock V2</span>
+                            <span style="margin-left:auto;font-size:9px;font-weight:700;color:#3b82f6;background:#dbeafe;padding:2px 6px;border-radius:6px;letter-spacing:.5px">BETA</span>
+                            <span id="syncBadgeRestock" class="home-sync-badge" style="display:none"></span>
+                        </a>
+                        <a class="cat-btn" href="https://www.rapidexpress.com.au/" target="_blank" rel="noopener" style="border:1px solid #bbf7d0!important;background:#f0fdf4!important">
+                            <span class="cat-btn-icon" style="background:#fff!important;padding:2px!important;border-radius:10px!important;box-shadow:0 1px 4px rgba(0,0,0,.08)"><img src="rapid-express-icon.png" alt="Rapid Express" style="width:24px;height:24px;object-fit:contain;border-radius:6px"></span>
+                            <span style="font-weight:700">Rapid Express</span>
+                            <span style="margin-left:auto;font-size:10px;color:#94a3b8">↗</span>
+                        </a>
+                        <a class="cat-btn" href="restock.html" style="opacity:.6;border-style:dashed!important">
+                            <span class="cat-btn-icon">♻️</span>
+                            <span>Re-Stock V1 (legacy)</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 3. Quality & Compliance -->
+                <div class="category-card category-quality" style="position:relative">
+                    <div class="category-header">
+                        <span class="category-icon">🔍</span>
+                        <h2 class="category-title">Quality & Compliance</h2>
+                    </div>
+                    <div class="category-items">
+                        <a class="cat-btn" href="features/pick-anomalies/pick-anomalies.html" style="flex-wrap:wrap">
+                            <span class="cat-btn-icon">📋</span>
+                            <span>Pick Anomalies</span>
+                            <span id="syncBadgePA" class="home-sync-badge" style="display:none"></span>
+                        </a>
+                        <a class="cat-btn" href="replacements/replacements.html">
+                            <span class="cat-btn-icon">🔄</span>
+                            <span>Replacements</span>
+                        </a>
+                        <a class="cat-btn" href="features/replenishment/replenishment.html">
+                            <span class="cat-btn-icon">📦</span>
+                            <span>Branch Replenishment</span>
+                        </a>
+                        <a class="cat-btn" href="gateway-main.html" style="flex-wrap:wrap">
+                            <span class="cat-btn-icon">🏭</span>
+                            <span>Gateway</span>
+                            <span id="syncBadgeGateway" class="home-sync-badge" style="display:none"></span>
+                        </a>
+                    </div>
+                    <!-- Password overlay -->
+                    <div id="qcLocked" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:14px;gap:6px">
+                        <div style="font-size:32px">🔒</div>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN" style="width:80px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font-size:15px;outline:none" onkeydown="if(event.key==='Enter')document.getElementById('qcUnlockBtn').click()">
+                            <button id="qcUnlockBtn" type="button" onclick="if(document.getElementById('qcPin').value==='4209'){document.getElementById('qcLocked').remove()}else{document.getElementById('qcPin').style.borderColor='#ef4444';document.getElementById('qcPin').value='';document.getElementById('qcPin').placeholder='Wrong'}" style="padding:6px 14px;background:#eab308;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Unlock</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Analytics -->
+                <div class="category-card category-analytics">
+                    <div class="category-header">
+                        <span class="category-icon">📊</span>
+                        <h2 class="category-title">Analytics</h2>
+                    </div>
+                    <div class="category-items">
+                        <button class="cat-btn" type="button" onclick="openAnalyticsAndRegisters()">
+                            <span class="cat-btn-icon">📊</span>
+                            <span>Analytics & Registers</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+            <!-- /actions-panel -->
 
         </div>
+        <!-- /home-split -->
+
         </main>
 
             // Proactively update SW (v3) and reload if a new controller takes over
@@ -524,86 +661,258 @@
         
         // Hash routing handled by app.js (DOMContentLoaded + hashchange)
 
-        // Fetch pending collections count
-            (async () => {
+        // ══════════════════════════════════════════════════════
+        // DASHBOARD DATA LOADER
+        // ══════════════════════════════════════════════════════
+        (async () => {
+            try {
+                await window.supabaseReady;
+                const sb = window.supabase;
+                if (!sb) return;
+
+                const pad = n => String(n).padStart(2, '0');
+                const fmtAgo = (ts) => {
+                    if (!ts) return { str: 'N/A', min: 999 };
+                    const agoMs = Date.now() - ts.getTime();
+                    const agoMin = Math.floor(agoMs / 60000);
+                    const str = agoMin < 1 ? 'just now' : agoMin < 60 ? `${agoMin}m ago` : `${Math.floor(agoMin/60)}h${agoMin%60 > 0 ? ' '+agoMin%60+'m' : ''} ago`;
+                    return { str, min: agoMin };
+                };
+                const setKpi = (id, val, sub) => {
+                    const el = document.getElementById(id + 'Val');
+                    if (el) { el.textContent = val; el.classList.remove('loading'); }
+                    if (sub) { const s = document.getElementById(id + 'Sub'); if (s) s.textContent = sub; }
+                };
+                const setHealth = (id, color, detail) => {
+                    const dot = document.getElementById(id + 'Dot');
+                    const det = document.getElementById(id + 'Detail');
+                    if (dot) { dot.className = 'health-dot ' + color; }
+                    if (det) det.textContent = detail;
+                };
+
+                const activities = [];
+                const addActivity = (icon, text, time) => activities.push({ icon, text, time });
+
+                // ─── 1. Collections Count (pending) ───
                 try {
-                    const sb = window.supabase;
-                    if (!sb || !sb.from) return;
                     const { count, error } = await sb
                         .from('collections_active')
                         .select('id', { count: 'exact', head: true });
-                    if (error) return;
-                    const badge = document.getElementById('collectionsCount');
-                    if (badge && typeof count === 'number') {
-                        badge.textContent = count;
-                        badge.style.display = '';
-                        if (count === 0) badge.classList.add('zero');
+                    if (!error && typeof count === 'number') {
+                        setKpi('kpiColl', count, count === 0 ? 'none pending' : 'awaiting pickup');
+                        const badge = document.getElementById('collectionsCount');
+                        if (badge) { badge.textContent = count; badge.style.display = ''; if (count === 0) badge.classList.add('zero'); }
+                        if (count > 0) addActivity('📦', `${count} collection${count>1?'s':''} awaiting pickup`, '');
                     }
-                } catch(e) { /* silent */ }
-            })();
+                } catch(e) {}
 
-            // Fetch sync status for Home page buttons
-            (async () => {
+                // ─── 2. Collections completed today ───
+                let collToday = 0;
                 try {
-                    await window.supabaseReady;
-                    const sb = window.supabase;
-                    if (!sb) return;
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const { count, error } = await sb
+                        .from('collections_history')
+                        .select('id', { count: 'exact', head: true })
+                        .gte('collected_at', todayStr + 'T00:00:00')
+                        .lte('collected_at', todayStr + 'T23:59:59');
+                    if (!error && typeof count === 'number') {
+                        collToday = count;
+                        if (collToday > 0) addActivity('✅', `${collToday} collection${collToday>1?'s':''} completed today`, '');
+                    }
+                } catch(e) {}
 
-                    // ─── Stock sync (Restock V2 + Gateway) ───
-                    try {
-                        const { data, error } = await sb
-                            .schema('cin7_mirror')
-                            .from('sync_runs')
-                            .select('ended_at, status, duration_ms')
-                            .order('ended_at', { ascending: false })
-                            .limit(1);
-                        if (!error && data && data.length) {
-                            const run = data[0];
-                            const ok = run.status === 'success';
-                            const ts = run.ended_at ? new Date(run.ended_at) : null;
-                            if (ts) {
-                                const pad = n => String(n).padStart(2, '0');
-                                const timeStr = `${pad(ts.getDate())}/${pad(ts.getMonth()+1)} ${pad(ts.getHours())}:${pad(ts.getMinutes())}`;
-                                const agoMs = Date.now() - ts.getTime();
-                                const agoMin = Math.floor(agoMs / 60000);
-                                const agoStr = agoMin < 1 ? 'just now' : agoMin < 60 ? `${agoMin}m ago` : `${Math.floor(agoMin/60)}h ${agoMin%60}m ago`;
-                                const dotColor = ok ? '#22c55e' : '#ef4444';
-                                const agoColor = agoMin > 180 ? '#ef4444' : agoMin > 130 ? '#f59e0b' : '#64748b';
-                                const html = `<span class="sync-dot" style="background:${dotColor}"></span>Last sync: ${timeStr} · <span style="color:${agoColor}">${agoStr}</span>`;
-                                ['syncBadgeRestock', 'syncBadgeGateway'].forEach(id => {
-                                    const el = document.getElementById(id);
-                                    if (el) { el.innerHTML = html; el.style.display = ''; }
-                                });
-                            }
-                        }
-                    } catch(e) { /* cin7_mirror may not be exposed */ }
-
-                    // ─── Pick Anomalies sync ───
-                    try {
-                        const { data, error } = await sb
-                            .from('pick_anomaly_sync')
-                            .select('last_synced_at, total_orders, last_new_orders')
-                            .eq('id', 1)
-                            .limit(1);
-                        if (!error && data && data.length) {
-                            const meta = data[0];
-                            const ts = meta.last_synced_at ? new Date(meta.last_synced_at) : null;
-                            if (ts) {
-                                const pad = n => String(n).padStart(2, '0');
-                                const timeStr = `${pad(ts.getDate())}/${pad(ts.getMonth()+1)} ${pad(ts.getHours())}:${pad(ts.getMinutes())}`;
-                                const agoMs = Date.now() - ts.getTime();
-                                const agoMin = Math.floor(agoMs / 60000);
-                                const agoStr = agoMin < 1 ? 'just now' : agoMin < 60 ? `${agoMin}m ago` : `${Math.floor(agoMin/60)}h ${agoMin%60}m ago`;
-                                const agoColor = agoMin > 180 ? '#ef4444' : agoMin > 130 ? '#f59e0b' : '#64748b';
-                                const total = meta.total_orders || 0;
-                                const html = `<span class="sync-dot" style="background:#22c55e"></span>Last sync: ${timeStr} · <span style="color:${agoColor}">${agoStr}</span> · ${total} orders`;
-                                const el = document.getElementById('syncBadgePA');
+                // ─── 3. Stock Sync (cin7_mirror.sync_runs) ───
+                try {
+                    const { data, error } = await sb
+                        .schema('cin7_mirror')
+                        .from('sync_runs')
+                        .select('ended_at, status, duration_ms, products_synced, stock_rows_synced')
+                        .order('ended_at', { ascending: false })
+                        .limit(1);
+                    if (!error && data && data.length) {
+                        const run = data[0];
+                        const ok = run.status === 'success';
+                        const ts = run.ended_at ? new Date(run.ended_at) : null;
+                        const ago = fmtAgo(ts);
+                        const color = !ok ? 'red' : ago.min > 180 ? 'red' : ago.min > 130 ? 'yellow' : 'green';
+                        setHealth('healthStock', color, `${ago.str}${run.products_synced ? ' · ' + run.products_synced + ' products' : ''}`);
+                        // Sync badges for buttons
+                        if (ts) {
+                            const timeStr = `${pad(ts.getDate())}/${pad(ts.getMonth()+1)} ${pad(ts.getHours())}:${pad(ts.getMinutes())}`;
+                            const dotColor = ok ? '#22c55e' : '#ef4444';
+                            const agoColor = ago.min > 180 ? '#ef4444' : ago.min > 130 ? '#f59e0b' : '#64748b';
+                            const html = `<span class="sync-dot" style="background:${dotColor}"></span>Last sync: ${timeStr} · <span style="color:${agoColor}">${ago.str}</span>`;
+                            ['syncBadgeRestock', 'syncBadgeGateway'].forEach(id => {
+                                const el = document.getElementById(id);
                                 if (el) { el.innerHTML = html; el.style.display = ''; }
-                            }
+                            });
                         }
-                    } catch(e) { /* silent */ }
-                } catch(e) { /* silent */ }
-            })();
+                    }
+                } catch(e) { setHealth('healthStock', 'gray', 'unavailable'); }
+
+                // ─── 4. Total SKUs in Main Warehouse ───
+                try {
+                    const { count, error } = await sb
+                        .schema('cin7_mirror')
+                        .from('stock_snapshot')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('location_name', 'Main Warehouse')
+                        .gt('available', 0);
+                    if (!error && typeof count === 'number') {
+                        setKpi('kpiSkus', count.toLocaleString(), 'in Main Warehouse');
+                    }
+                } catch(e) { setKpi('kpiSkus', '—', 'unavailable'); }
+
+                // ─── 5. Low Stock items (available <= minimum_before_reorder) ───
+                try {
+                    // Get products with minimum_before_reorder > 0 AND available <= minimum_before_reorder
+                    const { data: products, error: pErr } = await sb
+                        .schema('cin7_mirror')
+                        .from('products')
+                        .select('sku, minimum_before_reorder')
+                        .gt('minimum_before_reorder', 0);
+                    if (!pErr && products && products.length) {
+                        // Get stock for those SKUs
+                        const skus = products.map(p => p.sku);
+                        const minMap = {};
+                        products.forEach(p => { minMap[p.sku] = p.minimum_before_reorder; });
+                        const { data: stock, error: sErr } = await sb
+                            .schema('cin7_mirror')
+                            .from('stock_snapshot')
+                            .select('sku, available')
+                            .eq('location_name', 'Main Warehouse')
+                            .in('sku', skus);
+                        if (!sErr && stock) {
+                            let lowCount = 0;
+                            stock.forEach(s => {
+                                if (s.available <= (minMap[s.sku] || 0)) lowCount++;
+                            });
+                            setKpi('kpiLow', lowCount, lowCount === 0 ? 'all healthy' : 'items below min');
+                            if (lowCount > 0) addActivity('⚠️', `${lowCount} SKU${lowCount>1?'s':''} below minimum stock level`, '');
+                        }
+                    } else {
+                        // Fallback: count items with available = 0
+                        const { count, error } = await sb
+                            .schema('cin7_mirror')
+                            .from('stock_snapshot')
+                            .select('id', { count: 'exact', head: true })
+                            .eq('location_name', 'Main Warehouse')
+                            .lte('available', 0);
+                        if (!error) setKpi('kpiLow', count || 0, 'out of stock');
+                    }
+                } catch(e) { setKpi('kpiLow', '—', 'unavailable'); }
+
+                // ─── 6. Pick Anomalies Stats ───
+                try {
+                    const { data, error } = await sb
+                        .from('pick_anomaly_sync')
+                        .select('last_synced_at, total_orders, last_new_orders')
+                        .eq('id', 1)
+                        .limit(1);
+                    if (!error && data && data.length) {
+                        const meta = data[0];
+                        const ts = meta.last_synced_at ? new Date(meta.last_synced_at) : null;
+                        const ago = fmtAgo(ts);
+                        const color = ago.min > 180 ? 'red' : ago.min > 130 ? 'yellow' : 'green';
+                        setHealth('healthPick', color, `${ago.str} · ${meta.total_orders || 0} orders`);
+                        // Sync badge for PA button
+                        if (ts) {
+                            const timeStr = `${pad(ts.getDate())}/${pad(ts.getMonth()+1)} ${pad(ts.getHours())}:${pad(ts.getMinutes())}`;
+                            const agoColor = ago.min > 180 ? '#ef4444' : ago.min > 130 ? '#f59e0b' : '#64748b';
+                            const html = `<span class="sync-dot" style="background:#22c55e"></span>Last sync: ${timeStr} · <span style="color:${agoColor}">${ago.str}</span> · ${meta.total_orders||0} orders`;
+                            const el = document.getElementById('syncBadgePA');
+                            if (el) { el.innerHTML = html; el.style.display = ''; }
+                        }
+                    }
+
+                    // Get accuracy stats
+                    const { data: orders, error: oErr } = await sb
+                        .from('pick_anomaly_orders')
+                        .select('total_picks, correct_picks, anomaly_picks');
+                    if (!oErr && orders && orders.length) {
+                        let totalPicks = 0, correctPicks = 0, anomalyOrders = 0;
+                        orders.forEach(o => {
+                            totalPicks += (o.total_picks || 0);
+                            correctPicks += (o.correct_picks || 0);
+                            if ((o.anomaly_picks || 0) > 0) anomalyOrders++;
+                        });
+                        const accuracy = totalPicks > 0 ? ((correctPicks / totalPicks) * 100).toFixed(1) : 0;
+                        setKpi('kpiAccuracy', accuracy + '%', `${orders.length} orders · ${anomalyOrders} with issues`);
+                        if (anomalyOrders > 0) addActivity('📋', `${anomalyOrders} order${anomalyOrders>1?'s':''} with pick anomalies detected`, '');
+                    } else {
+                        setKpi('kpiAccuracy', '—', 'no data yet');
+                    }
+                } catch(e) {
+                    setHealth('healthPick', 'gray', 'unavailable');
+                    setKpi('kpiAccuracy', '—', 'unavailable');
+                }
+
+                // ─── 7. Gateway Stats ───
+                try {
+                    const { data: allocs, error: aErr } = await sb
+                        .from('gateway_allocations')
+                        .select('id, shelf_id, qty, stock_date')
+                        .eq('status', 'active');
+                    if (!aErr && allocs) {
+                        const totalItems = allocs.length;
+                        const totalQty = allocs.reduce((s, a) => s + (a.qty || 0), 0);
+                        const now = Date.now();
+                        let fifo30 = 0, fifo60 = 0;
+                        allocs.forEach(a => {
+                            if (a.stock_date) {
+                                const days = (now - new Date(a.stock_date).getTime()) / 86400000;
+                                if (days > 60) fifo60++;
+                                else if (days > 30) fifo30++;
+                            }
+                        });
+                        const fifoTotal = fifo30 + fifo60;
+                        const color = fifo60 > 0 ? 'red' : fifo30 > 0 ? 'yellow' : 'green';
+                        setHealth('healthGateway', color, `${totalItems} items · ${fifoTotal > 0 ? fifoTotal + ' aging' : 'all fresh'}`);
+                        if (fifoTotal > 0) addActivity('🏭', `Gateway: ${fifo30} items >30d, ${fifo60} items >60d`, '');
+                    } else {
+                        setHealth('healthGateway', 'green', 'no active items');
+                    }
+                } catch(e) { setHealth('healthGateway', 'gray', 'unavailable'); }
+
+                // ─── 8. Replacements Stats ───
+                try {
+                    const { count: activeCount, error: rErr } = await sb
+                        .from('replacements_requests')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('status', 'ACTIVE');
+                    if (!rErr && typeof activeCount === 'number') {
+                        const color = activeCount > 3 ? 'red' : activeCount > 0 ? 'yellow' : 'green';
+                        setHealth('healthRepl', color, activeCount > 0 ? `${activeCount} active request${activeCount>1?'s':''}` : 'none open');
+                        if (activeCount > 0) addActivity('🔄', `${activeCount} replacement request${activeCount>1?'s':''} open`, '');
+                    }
+                } catch(e) { setHealth('healthRepl', 'gray', 'unavailable'); }
+
+                // ─── 9. Recent Gateway Movements (today) ───
+                try {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const { count, error } = await sb
+                        .from('gateway_movement_history')
+                        .select('id', { count: 'exact', head: true })
+                        .gte('created_at', todayStr + 'T00:00:00');
+                    if (!error && count > 0) {
+                        addActivity('🏭', `${count} gateway transfer${count>1?'s':''} today`, '');
+                    }
+                } catch(e) {}
+
+                // ─── Render Activity Feed ───
+                const feed = document.getElementById('activityFeed');
+                if (feed) {
+                    if (activities.length === 0) {
+                        feed.innerHTML = '<div class="activity-empty">No activity yet today — all quiet! 🎉</div>';
+                    } else {
+                        feed.innerHTML = activities.map(a =>
+                            `<div class="activity-item"><span class="activity-icon">${a.icon}</span><span class="activity-text">${a.text}${a.time ? ' <span class="time">' + a.time + '</span>' : ''}</span></div>`
+                        ).join('');
+                    }
+                }
+
+            } catch(e) { console.warn('Dashboard load error:', e); }
+        })();
     </script>
 </body>
 </html>
