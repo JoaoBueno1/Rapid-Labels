@@ -44,6 +44,26 @@ window.supabaseReady = (async () => {
             name: row.name || '',
             barcode: row.barcode || ''
         }));
+
+        // Sort: exact matches first, then starts-with, then contains
+        const lowerTerm = cleanTerm.toLowerCase();
+        products.sort((a, b) => {
+            const aCode = (a.Code || '').toLowerCase();
+            const bCode = (b.Code || '').toLowerCase();
+            const aSku = (a.SKU || '').toLowerCase();
+            const bSku = (b.SKU || '').toLowerCase();
+            // Exact match on Code or SKU
+            const aExact = (aCode === lowerTerm || aSku === lowerTerm) ? 0 : 1;
+            const bExact = (bCode === lowerTerm || bSku === lowerTerm) ? 0 : 1;
+            if (aExact !== bExact) return aExact - bExact;
+            // Starts-with on Code or SKU
+            const aStarts = (aCode.startsWith(lowerTerm) || aSku.startsWith(lowerTerm)) ? 0 : 1;
+            const bStarts = (bCode.startsWith(lowerTerm) || bSku.startsWith(lowerTerm)) ? 0 : 1;
+            if (aStarts !== bStarts) return aStarts - bStarts;
+            // Shorter Code first (more specific match)
+            return aCode.length - bCode.length;
+        });
+
         return { success: true, products };
     }
 

@@ -868,7 +868,7 @@ function generateLabelHTML(labelData) {
             </script>
             <style>
                 @page {
-                    margin: 0;
+                    margin: 15mm 8mm;
                     size: ${size === 'A3' ? 'A3 landscape' : 'A4 landscape'};
                 }
                 
@@ -880,19 +880,19 @@ function generateLabelHTML(labelData) {
                 
                 body {
                     margin: 0;
-                    padding: 15mm 8mm;
+                    padding: 0;
                     font-family: Arial, sans-serif;
                     line-height: 1;
                 }
                 
-                body.a4-mode {
-                    width: 297mm;
-                    height: 210mm;
+                body.a4-mode .label-page {
+                    width: 100%;
+                    min-height: calc(210mm - 30mm);
                 }
                 
-                body.a3-mode {
-                    width: 420mm;
-                    height: 297mm;
+                body.a3-mode .label-page {
+                    width: 100%;
+                    min-height: calc(297mm - 30mm);
                 }
                 
                 .label-page {
@@ -1084,12 +1084,16 @@ function generateLabelHTML(labelData) {
                 }
                 
                 @media print {
-                    body { margin: 0; padding: 15mm 8mm; overflow: hidden; }
+                    body { margin: 0; padding: 0; overflow: hidden; }
                     .label-page { 
                         margin: 0 !important;
+                        page-break-after: always;
                         page-break-inside: avoid;
                         break-inside: avoid;
                         overflow: hidden;
+                    }
+                    .label-page:last-child {
+                        page-break-after: auto;
                     }
                     .label-content {
                         overflow: hidden;
