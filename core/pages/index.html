@@ -485,30 +485,25 @@
           // navigator.serviceWorker.register('service-worker.js');
         });
       }
-            // Open modals via hash shortcuts (from secondary pages)
-            document.addEventListener('DOMContentLoaded', () => {
-                if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
-                if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
-                if (location.hash === '#barcodes') { try { openBarcodesModal(); } catch(e){} }
+            // Hash routing handled by app.js (DOMContentLoaded + hashchange)
 
-                // Fetch pending collections count
-                (async () => {
-                    try {
-                        const sb = window.supabase;
-                        if (!sb || !sb.from) return;
-                        const { count, error } = await sb
-                            .from('collections_active')
-                            .select('id', { count: 'exact', head: true });
-                        if (error) return;
-                        const badge = document.getElementById('collectionsCount');
-                        if (badge && typeof count === 'number') {
-                            badge.textContent = count;
-                            badge.style.display = '';
-                            if (count === 0) badge.classList.add('zero');
-                        }
-                    } catch(e) { /* silent */ }
-                })();
-            });
+            // Fetch pending collections count
+            (async () => {
+                try {
+                    const sb = window.supabase;
+                    if (!sb || !sb.from) return;
+                    const { count, error } = await sb
+                        .from('collections_active')
+                        .select('id', { count: 'exact', head: true });
+                    if (error) return;
+                    const badge = document.getElementById('collectionsCount');
+                    if (badge && typeof count === 'number') {
+                        badge.textContent = count;
+                        badge.style.display = '';
+                        if (count === 0) badge.classList.add('zero');
+                    }
+                } catch(e) { /* silent */ }
+            })();
     </script>
 </body>
 </html>

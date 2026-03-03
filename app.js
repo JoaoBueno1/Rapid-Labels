@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (h === '#search') { try { openSearchModal(); } catch(_){} }
         else if (h === '#manual') { try { openManualModal(); } catch(_){} }
         else if (h === '#barcodes') { try { openBarcodesModal(); } catch(_){} }
+        else if (h === '#multilabel') { try { openMultiLabelModal(); } catch(_){} }
     }
     try {
         // Open on initial load if hash is present
@@ -191,12 +192,25 @@ function debounce(func, wait) {
     };
 }
 
+// ==================== CLOSE ALL MODALS (prevent z-index stacking) ====================
+function closeAllModals() {
+    const ids = ['searchModal','manualModal','scanModal','barcodesModal','multiLabelModal'];
+    ids.forEach(id => {
+        try { const m = document.getElementById(id); if (m) m.classList.add('hidden'); } catch(_){}
+    });
+}
+
 // ==================== MODAL SEARCH ====================
 
 function openSearchModal() {
+    closeAllModals();
     document.getElementById('searchModal').classList.remove('hidden');
-    document.getElementById('productSearch').focus();
     resetSearchModal();
+    // Delay focus so DOM is settled after reset (prevents unresponsive input)
+    setTimeout(() => {
+        const input = document.getElementById('productSearch');
+        if (input) input.focus();
+    }, 100);
 }
 
 // Close the Product Search modal and clear its state
@@ -454,6 +468,10 @@ async function selectProduct(sku, code) {
         document.getElementById('productDetails').classList.remove('hidden');
         document.getElementById('searchResults').innerHTML = '';
         
+        // Auto-select A4 as default paper size
+        selectedSearchSize = 'A4';
+        updateSizeButtons('search');
+        
         // Focus on QTY field
         document.getElementById('editQty').focus();
         
@@ -473,30 +491,20 @@ async function searchProduct() {
 // ==================== MODAL MANUAL ====================
 
 function openManualModal() {
-    console.log('🔧 Opening manual modal...');
+    closeAllModals();
     const modal = document.getElementById('manualModal');
     const skuField = document.getElementById('manualSku');
-    
-    if (!modal) {
-        console.error('❌ Manual modal not found!');
-        return;
-    }
-    
-    if (!skuField) {
-        console.error('❌ Manual SKU field not found!');
-        return;
-    }
+    if (!modal || !skuField) return;
     
     modal.classList.remove('hidden');
-    console.log('✅ Modal opened, focusing on SKU field...');
-    
-    // Small delay to ensure modal is visible before focusing
-    setTimeout(() => {
-        skuField.focus();
-        console.log('✅ SKU field focused');
-    }, 100);
-    
     resetManualModal();
+    
+    // Auto-select A4 as default paper size
+    selectedManualSize = 'A4';
+    updateSizeButtons('manual');
+    updatePrintButton('manual');
+    
+    setTimeout(() => { skuField.focus(); }, 100);
 }
 
 function closeManualModal() {
@@ -607,9 +615,34 @@ function setupValidation() {
         });
     }
     
-    // Special handling for QTY fields - limit to 5 digits (max 99999)
-    // Para type=number, não precisa JS para bloquear letras, o input já faz isso
-    // Só adiciona validação visual e alerta no submit
+    // Special handling for QTY fields - enforce max 5 digits (99999) at input level
+    ['editQty', 'manualQty'].forEach(id => {
+        const qtyField = document.getElementById(id);
+        if (qtyField) {
+            qtyField.addEventListener('input', function() {
+                // Strip non-digits (covers paste / drag-drop)
+                let v = this.value.replace(/[^0-9]/g, '');
+                // Max 5 digits — this is what physically fits on the printed label
+                if (v.length > 5) v = v.slice(0, 5);
+                if (v !== this.value) this.value = v;
+                validateField(id);
+            });
+            // Also block via keydown for extra safety (prevents spinner arrows going past 99999)
+            qtyField.addEventListener('keydown', function(e) {
+                // Allow: backspace, delete, tab, escape, enter, arrows
+                if ([8,9,13,27,46,37,38,39,40].includes(e.keyCode)) return;
+                // Allow Ctrl+A / Ctrl+C / Ctrl+V / Ctrl+X
+                if ((e.ctrlKey || e.metaKey) && [65,67,86,88].includes(e.keyCode)) return;
+                // Block non-digit keys
+                if (!/^[0-9]$/.test(e.key)) { e.preventDefault(); return; }
+                // Block if already at 5 digits and no selection
+                const sel = this.selectionEnd - this.selectionStart;
+                if (this.value.replace(/[^0-9]/g, '').length >= 5 && sel === 0) {
+                    e.preventDefault();
+                }
+            });
+        }
+    });
 }
 
 function validateField(fieldId) {
@@ -802,8 +835,10 @@ function generateLabelHTML(labelData) {
                         </div>
                     </div>
                     <div class="code-line">
-                        <span class="code-label">Code:</span>
-                        <span class="code-value">${code}</span>
+                        <div class="code-line-inner">
+                            <span class="code-label">Code:</span>
+                            <span class="code-value">${code}</span>
+                        </div>
                     </div>
                     <div class="qty-line">
                         <div class="qty-left">
@@ -845,7 +880,7 @@ function generateLabelHTML(labelData) {
                 
                 body {
                     margin: 0;
-                    padding: 20mm;
+                    padding: 15mm 8mm;
                     font-family: Arial, sans-serif;
                     line-height: 1;
                 }
@@ -864,20 +899,25 @@ function generateLabelHTML(labelData) {
                     width: 100%;
                     height: 100%;
                     display: flex;
-                    align-items: flex-start;
-                    justify-content: flex-start;
+                    align-items: stretch;
+                    justify-content: stretch;
                     page-break-inside: avoid;
+                    overflow: hidden;
                 }
                 
                 .label-content {
                     width: 100%;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
                     text-align: left;
+                    overflow: hidden;
                 }
                 
                 .sku-line, .code-line {
                     display: block;
-                    margin-bottom: 10mm;
                     text-align: left;
+                    flex-shrink: 0;
                 }
                 
                 .sku-line {
@@ -922,12 +962,26 @@ function generateLabelHTML(labelData) {
                     color: #333;
                 }
                 
+                .code-line {
+                    flex: 1 1 auto;
+                    display: flex;
+                    align-items: center;
+                    min-height: 0;
+                    overflow: hidden;
+                }
+                
+                .code-line-inner {
+                    width: 100%;
+                }
+                
                 .qty-line {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-bottom: 15mm;
+                    margin-top: auto;
+                    margin-bottom: 0;
                     width: 100%;
+                    flex-shrink: 0;
                 }
                 
                 .qty-left {
@@ -961,9 +1015,8 @@ function generateLabelHTML(labelData) {
                 
                 body.a4-mode .code-value {
                     font-size: 90px;
-                    margin-left: 20px;
-                    max-width: 80%;
-                    word-break: break-word;
+                    margin-left: 10px;
+                    word-break: break-all;
                 }
                 
                 body.a4-mode .qty-value {
@@ -1006,9 +1059,8 @@ function generateLabelHTML(labelData) {
                 
                 body.a3-mode .code-value {
                     font-size: 150px;
-                    margin-left: 30px;
-                    max-width: 80%;
-                    word-break: break-word;
+                    margin-left: 15px;
+                    word-break: break-all;
                 }
                 
                 body.a3-mode .qty-value {
@@ -1032,10 +1084,16 @@ function generateLabelHTML(labelData) {
                 }
                 
                 @media print {
-                    body { margin: 0; padding: 20mm; }
+                    body { margin: 0; padding: 15mm 8mm; overflow: hidden; }
                     .label-page { 
                         margin: 0 !important;
                         page-break-inside: avoid;
+                        break-inside: avoid;
+                        overflow: hidden;
+                    }
+                    .label-content {
+                        overflow: hidden;
+                        max-height: 100%;
                     }
                 }
             </style>
@@ -1206,6 +1264,7 @@ document.addEventListener('keydown', function(e) {
 // ==================== MODAL BARCODES (3-UP) ====================
 function openBarcodesModal(){
     try {
+        closeAllModals();
         resetBarcodesModal();
         document.getElementById('barcodesModal').classList.remove('hidden');
     } catch(e){}

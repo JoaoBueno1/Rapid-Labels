@@ -522,14 +522,9 @@
     <script>
         // Service worker disabled for production stability
         
-        // Open modals via hash shortcuts (from secondary pages)
-        document.addEventListener('DOMContentLoaded', () => {
-            if (location.hash === '#search') { try { openSearchModal(); } catch(e){} }
-            if (location.hash === '#manual') { try { openManualModal(); } catch(e){} }
-            if (location.hash === '#barcodes') { try { openBarcodesModal(); } catch(e){} }
-            if (location.hash === '#multilabel') { try { openMultiLabelModal(); } catch(e){} }
+        // Hash routing handled by app.js (DOMContentLoaded + hashchange)
 
-            // Fetch pending collections count
+        // Fetch pending collections count
             (async () => {
                 try {
                     const sb = window.supabase;
@@ -609,7 +604,6 @@
                     } catch(e) { /* silent */ }
                 } catch(e) { /* silent */ }
             })();
-        });
     </script>
 </body>
 </html>

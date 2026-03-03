@@ -15,6 +15,7 @@ const mlState = {
 
 // ── Modal open/close ──
 function openMultiLabelModal() {
+  if (typeof closeAllModals === 'function') closeAllModals();
   document.getElementById('multiLabelModal').classList.remove('hidden');
   mlUpdateSlots();
   // Pre-load cin7_mirror products
