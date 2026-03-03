@@ -199,7 +199,7 @@
       candidates.sort((a,b) => b.qty - a.qty);
       for (const c of candidates) { if (extras.length >= 50) break; if (!setIncluded.has(c.location.toUpperCase())) { extras.push(c); setIncluded.add(c.location.toUpperCase()); } }
     }
-    return top.concat(extras).map(item => `${item.location}${item.sameLane ? ' (Same Lane)' : ''}  •  QTY = ${item.qty}`);
+    return top.concat(extras).map(item => `${item.location}${item.sameLane ? ' (Same Lane)' : ''} = ${item.qty}`);
   }
 
   /* ═══════════════════════════════════════════════
@@ -355,7 +355,7 @@
 
         return `<tr>
           <td>${star}</td>
-          <td style="font-variant-numeric:tabular-nums;font-size:12px;color:#64748b">${fiveDC}</td>
+          <td style="font-variant-numeric:tabular-nums;font-size:12px;font-weight:700">${fiveDC}</td>
           <td>${skuDisplay}</td>
           <td>${productHtml}</td>
           <td>${avgMthHtml}</td>
@@ -951,26 +951,39 @@
                 if (oh !== 0) reserveLocations.push({ location: 'Unassigned', qty: oh });
               }
             }
-          } else {
-            // ── FALLBACK: no bin matched the pickface ──
-            // Use TOTAL on_hand as pickface stock.
-            // This handles:
-            //   a) No bin tracking (all bins empty) → total IS the pickface
-            //   b) Bin format mismatch → total as best approximation
-            // Same behavior as V1 when Excel only has one row per SKU.
-            pickfaceOnHand = totalOnHand;
+          } else if (setup && setupPickface) {
+            // ── USER-CONFIGURED PICKFACE: trust it ──
+            // The user manually set the pickface location in our system.
+            // No bin in Cin7 matched → pickface is truly empty (0).
+            // ALL stock goes to reserve so the user sees the real picture.
+            pickfaceOnHand = 0;
             reserveLocations.length = 0;
-            matchMethod = totalOnHand > 0 ? 'total-fallback' : 'zero';
-            if (totalOnHand > 0) _dbg.totalFallback++;
-            else _dbg.zeroStock++;
+            for (const s of stocks) {
+              const binVal = (s.bin || '').trim();
+              const oh = Number(s.on_hand) || 0;
+              if (oh !== 0) {
+                reserveLocations.push({ location: binVal || 'Unassigned', qty: oh });
+              }
+            }
+            matchMethod = 'setup-no-bin-match';
+            _dbg.totalFallback++;
 
-            // Log mismatches for debugging (first 30)
-            if (setup && totalOnHand > 0 && window.__v2PickfaceMisses.length < 30) {
+            // Log for debugging (first 30)
+            if (totalOnHand > 0 && window.__v2PickfaceMisses.length < 30) {
               window.__v2PickfaceMisses.push({
                 sku: stockSku, pickface: pickfaceSource, normPickface,
                 bins: stocks.map(s => ({ bin: s.bin || '(empty)', on_hand: Number(s.on_hand) || 0 })),
               });
             }
+          } else {
+            // ── NO SETUP: use total as pickface (best guess) ──
+            // No user configuration exists, so we can't distinguish pickface vs reserve.
+            // Use total on_hand as pickface stock (same as V1 Excel-only behavior).
+            pickfaceOnHand = totalOnHand;
+            reserveLocations.length = 0;
+            matchMethod = totalOnHand > 0 ? 'total-fallback' : 'zero';
+            if (totalOnHand > 0) _dbg.totalFallback++;
+            else _dbg.zeroStock++;
           }
         }
 
@@ -1187,20 +1200,11 @@
       __beforePrintCache = { rows: state.rows.slice(), page: state.page, perPage: state.perPage };
       const start = (state.page - 1) * state.perPage;
       const subset = state.rows.slice(start, start + state.perPage);
-      const sorter = (a, b) => {
-        const pa = parseLocation(a.stock_locator) || { site:'', area:'', row:0, level:0, pos:0 };
-        const pb = parseLocation(b.stock_locator) || { site:'', area:'', row:0, level:0, pos:0 };
-        if (pa.site !== pb.site) return pa.site.localeCompare(pb.site);
-        if (pa.area !== pb.area) return pa.area.localeCompare(pb.area);
-        if (pa.row !== pb.row) return pa.row - pb.row;
-        if (pa.level !== pb.level) return pa.level - pb.level;
-        return pa.pos - pb.pos;
-      };
-      const sorted = subset.slice().sort(sorter);
+      // Keep the exact same order the user sees on screen — no re-sorting
       const prevPP = state.perPage;
       state.page = 1;
-      state.perPage = sorted.length;
-      render(sorted);
+      state.perPage = subset.length;
+      render(subset);
       state.perPage = prevPP;
     } catch {}
   };
@@ -1356,6 +1360,10 @@
       await window.supabaseReady;
       const { data, error } = await window.supabase.from('restock_setup').select('*').eq('sku', sku).single();
       if (!error && data) {
+        // Overwrite pickface with the saved value from DB (source of truth)
+        if (data.pickface_location) {
+          document.getElementById('productPickface').value = data.pickface_location;
+        }
         document.getElementById('productPickfaceQty').value = data.pickface_qty || '';
         document.getElementById('productCapMin').value = data.cap_min || '';
         document.getElementById('productCapMed').value = data.cap_med || '';
