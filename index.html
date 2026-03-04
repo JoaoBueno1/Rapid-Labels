@@ -128,6 +128,79 @@
             .home-container { max-width:100%!important; width:100%!important; padding:12px!important; }
         }
 
+        /* ─── Warehouse Pipeline Row ─── */
+        .wh-pipeline { background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+        .wh-pipeline-title { font-size:.8rem; font-weight:700; color:var(--text); margin:0 0 12px 0; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:.3px; }
+        .wh-pipeline-title .icon { font-size:1rem; }
+        .wh-pipeline-title .wh-sync-info { margin-left:auto; font-size:.65rem; color:var(--muted); font-weight:500; text-transform:none; letter-spacing:0; }
+        .wh-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+        .wh-kpi { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 10px; text-align:center; transition:all .2s; position:relative; }
+        .wh-kpi:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,.06); }
+        .wh-kpi.clickable { cursor:pointer; border-color:#93c5fd; }
+        .wh-kpi.clickable:hover { border-color:#3b82f6; background:#eff6ff; }
+        .wh-kpi-val { font-size:1.5rem; font-weight:800; color:var(--text); line-height:1.1; }
+        .wh-kpi-label { font-size:.65rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-top:3px; }
+        .wh-kpi-sub { font-size:.6rem; color:var(--muted); margin-top:2px; opacity:.7; }
+        .wh-kpi-val.loading { color:#cbd5e1; }
+        .wh-kpi.wh-orders .wh-kpi-val { color:#1e40af; }
+        .wh-kpi.wh-picking .wh-kpi-val { color:#d97706; }
+        .wh-kpi.wh-topack .wh-kpi-val { color:#059669; }
+        .wh-kpi.wh-completed .wh-kpi-val { color:#059669; }
+
+        /* ─── Inline System Health ─── */
+        .health-inline { display:flex; flex-wrap:wrap; gap:6px 16px; padding:8px 12px; background:#f8fafc; border:1px solid var(--border); border-radius:10px; font-size:.72rem; align-items:center; }
+        .health-inline-item { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+        .health-inline-item .health-dot { width:7px; height:7px; }
+        .health-inline-label { font-weight:600; color:var(--text); }
+        .health-inline-detail { color:var(--muted); }
+        .health-inline-sep { color:#cbd5e1; font-size:.8rem; }
+
+        /* ─── Orders Modal ─── */
+        .orders-modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.5); z-index:1000; justify-content:center; align-items:center; padding:20px; }
+        .orders-modal-overlay.active { display:flex; }
+        .orders-modal { background:#fff; border-radius:16px; max-width:1100px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.15); }
+        .orders-modal-header { padding:18px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+        .orders-modal-header h2 { font-size:1.1rem; font-weight:800; margin:0; flex:1; }
+        .orders-modal-close { background:none; border:none; font-size:1.3rem; cursor:pointer; padding:4px 8px; border-radius:6px; color:var(--muted); }
+        .orders-modal-close:hover { background:#f1f5f9; color:var(--text); }
+        .orders-modal-filters { padding:12px 24px; border-bottom:1px solid var(--border); display:flex; flex-wrap:wrap; gap:8px; align-items:center; flex-shrink:0; }
+        .orders-filter-btn { padding:5px 12px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:.75rem; font-weight:600; cursor:pointer; transition:all .15s; }
+        .orders-filter-btn:hover { border-color:#94a3b8; }
+        .orders-filter-btn.active { background:#1e40af; color:#fff; border-color:#1e40af; }
+        .orders-search { padding:6px 12px; border:1px solid var(--border); border-radius:8px; font-size:.75rem; width:200px; outline:none; }
+        .orders-search:focus { border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.15); }
+        .orders-modal-body { flex:1; overflow-y:auto; padding:0; }
+        .orders-table { width:100%; border-collapse:collapse; font-size:.78rem; }
+        .orders-table th { position:sticky; top:0; background:#f8fafc; padding:10px 12px; text-align:left; font-weight:700; color:var(--text); border-bottom:2px solid var(--border); font-size:.7rem; text-transform:uppercase; letter-spacing:.3px; cursor:pointer; white-space:nowrap; user-select:none; }
+        .orders-table th:hover { color:#1e40af; }
+        .orders-table td { padding:8px 12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+        .orders-table tr:hover { background:#f8fafc; }
+        .orders-table .order-num { font-weight:700; color:#1e40af; }
+        .orders-table .order-tr { font-weight:700; color:#059669; }
+        .orders-badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+        .orders-badge.ordering { background:#dbeafe; color:#1e40af; }
+        .orders-badge.picking { background:#fef3c7; color:#92400e; }
+        .orders-badge.picked { background:#d1fae5; color:#065f46; }
+        .orders-badge.backordered { background:#fee2e2; color:#991b1b; }
+        .orders-badge.ordered { background:#e0e7ff; color:#3730a3; }
+        .orders-badge.in-transit { background:#cffafe; color:#155e75; }
+        .orders-badge.completed { background:#f1f5f9; color:#64748b; }
+        .orders-badge.packing { background:#fce7f3; color:#9d174d; }
+        .orders-empty { text-align:center; padding:40px; color:var(--muted); font-size:.85rem; }
+        .orders-count { font-size:.75rem; color:var(--muted); font-weight:500; }
+
+        /* ─── Pipeline 7d Stats Line ─── */
+        .wh-stats-line { display:flex; flex-wrap:wrap; gap:3px 12px; font-size:.72rem; align-items:center; padding:10px 12px 0; margin-top:10px; border-top:1px solid var(--border); }
+        .wh-stats-line .ws-k { font-weight:700; color:var(--text); }
+        .wh-stats-line .ws-v { color:var(--muted); }
+        .wh-stats-line .ws-hi { color:#1e40af; font-weight:800; }
+        .wh-stats-line .ws-sep { color:#cbd5e1; }
+        .wh-stats-line .ws-warn { color:#d97706; font-weight:700; }
+        .wh-stats-line .ws-ok { color:#059669; font-weight:700; }
+
+        @media (max-width:900px) { .wh-kpi-row { grid-template-columns:repeat(2,1fr)!important; } }
+        @media (max-width:640px) { .wh-kpi-row { grid-template-columns:repeat(2,1fr)!important; } }
+
         /* Loading skeleton pulse */
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
         .skeleton { animation:pulse 1.5s ease-in-out infinite; background:#e2e8f0; border-radius:6px; }
@@ -196,30 +269,61 @@
                     </div>
                 </div>
 
-                <!-- System Health -->
-                <div class="dash-section">
-                    <div class="dash-section-title"><span class="icon">🔗</span> System Health</div>
-                    <div class="health-grid">
-                        <div class="health-row">
-                            <span class="health-dot gray" id="healthStockDot"></span>
-                            <span class="health-name">Stock Sync</span>
-                            <span class="health-detail" id="healthStockDetail">loading...</span>
+                <!-- System Health (inline) -->
+                <div class="health-inline" id="healthInline">
+                    <span style="font-weight:700;color:var(--text);font-size:.72rem">🔗 Health</span>
+                    <div class="health-inline-item">
+                        <span class="health-dot gray" id="healthStockDot"></span>
+                        <span class="health-inline-label">Sync</span>
+                        <span class="health-inline-detail" id="healthStockDetail">...</span>
+                    </div>
+                    <span class="health-inline-sep">·</span>
+                    <div class="health-inline-item">
+                        <span class="health-dot gray" id="healthPickDot"></span>
+                        <span class="health-inline-label">Picks</span>
+                        <span class="health-inline-detail" id="healthPickDetail">...</span>
+                    </div>
+                    <span class="health-inline-sep">·</span>
+                    <div class="health-inline-item">
+                        <span class="health-dot gray" id="healthGatewayDot"></span>
+                        <span class="health-inline-label">Gateway</span>
+                        <span class="health-inline-detail" id="healthGatewayDetail">...</span>
+                    </div>
+                    <span class="health-inline-sep">·</span>
+                    <div class="health-inline-item">
+                        <span class="health-dot gray" id="healthReplDot"></span>
+                        <span class="health-inline-label">Repl.</span>
+                        <span class="health-inline-detail" id="healthReplDetail">...</span>
+                    </div>
+                </div>
+
+                <!-- Warehouse Pipeline -->
+                <div class="wh-pipeline">
+                    <div class="wh-pipeline-title"><span class="icon">📦</span> Warehouse Pipeline <span class="wh-sync-info" id="whSyncInfo">loading...</span></div>
+                    <div class="wh-kpi-row">
+                        <div class="wh-kpi wh-orders clickable" id="whOrders" onclick="openOrdersModal()">
+                            <div class="wh-kpi-val loading" id="whOrdersVal">—</div>
+                            <div class="wh-kpi-label">Orders</div>
+                            <div class="wh-kpi-sub" id="whOrdersSub">open pipeline</div>
                         </div>
-                        <div class="health-row">
-                            <span class="health-dot gray" id="healthPickDot"></span>
-                            <span class="health-name">Pick Analysis</span>
-                            <span class="health-detail" id="healthPickDetail">loading...</span>
+                        <div class="wh-kpi wh-picking">
+                            <div class="wh-kpi-val loading" id="whPickingVal">—</div>
+                            <div class="wh-kpi-label">Picking</div>
+                            <div class="wh-kpi-sub" id="whPickingSub">in progress</div>
                         </div>
-                        <div class="health-row">
-                            <span class="health-dot gray" id="healthGatewayDot"></span>
-                            <span class="health-name">Gateway FIFO</span>
-                            <span class="health-detail" id="healthGatewayDetail">loading...</span>
+                        <div class="wh-kpi wh-topack">
+                            <div class="wh-kpi-val loading" id="whToPackVal">—</div>
+                            <div class="wh-kpi-label">To Pack</div>
+                            <div class="wh-kpi-sub" id="whToPackSub">awaiting</div>
                         </div>
-                        <div class="health-row">
-                            <span class="health-dot gray" id="healthReplDot"></span>
-                            <span class="health-name">Replacements</span>
-                            <span class="health-detail" id="healthReplDetail">loading...</span>
+                        <div class="wh-kpi wh-completed">
+                            <div class="wh-kpi-val loading" id="whCompletedVal">—</div>
+                            <div class="wh-kpi-label">Completed</div>
+                            <div class="wh-kpi-sub" id="whCompletedSub">today</div>
                         </div>
+                    </div>
+                    <div class="wh-stats-line" id="whStatsLine">
+                        <span class="ws-v" style="opacity:.5">loading 7d stats...</span>
                     </div>
                 </div>
 
@@ -358,7 +462,6 @@
                 <div class="search-input-group">
                     <input type="text" id="productSearch" placeholder="Ex: 30429 or R1069-BK">
                     <button onclick="searchProduct()" class="search-btn-small">Search</button>
-                    <button type="button" class="search-btn-small secondary" onclick="openScanModal('productSearch', searchProduct)" aria-label="Open camera">📷</button>
                 </div>
                 <div class="search-results" id="searchResults"></div>
                 <div class="search-error" id="searchError"></div>
@@ -368,11 +471,11 @@
                 <h3>📦 Product Selected</h3>
                 <div class="product-info"> 
                     <div class="info-item">
-                        <label>SKU:</label>
+                        <label>🔢 5DC:</label>
                         <span id="foundSku"></span>
                     </div>
                     <div class="info-item">
-                        <label>CODE:</label>
+                        <label>📦 Code:</label>
                         <span id="foundCode"></span>
                     </div>
                 </div>
@@ -647,6 +750,48 @@
         </div>
     </div>
 
+    <!-- ═══ Orders Pipeline Modal ═══ -->
+    <div class="orders-modal-overlay" id="ordersModalOverlay" onclick="if(event.target===this)closeOrdersModal()">
+        <div class="orders-modal">
+            <div class="orders-modal-header">
+                <h2>📦 Order Pipeline</h2>
+                <span class="orders-count" id="ordersCount"></span>
+                <button class="orders-modal-close" onclick="closeOrdersModal()">&times;</button>
+            </div>
+            <div class="orders-modal-filters">
+                <input class="orders-search" id="ordersSearch" placeholder="Search customer, order #..." oninput="renderOrdersTable()">
+                <button class="orders-filter-btn active" data-filter="all" onclick="toggleOrderFilter(this)">All</button>
+                <button class="orders-filter-btn" data-filter="SO" onclick="toggleOrderFilter(this)">Sales Orders</button>
+                <button class="orders-filter-btn" data-filter="TR" onclick="toggleOrderFilter(this)">Transfers</button>
+                <span style="color:#cbd5e1">|</span>
+                <button class="orders-filter-btn" data-filter="PICKING" onclick="toggleOrderFilter(this,'stage')">Picking</button>
+                <button class="orders-filter-btn" data-filter="PICKED" onclick="toggleOrderFilter(this,'stage')">Picked</button>
+                <button class="orders-filter-btn" data-filter="ORDERED" onclick="toggleOrderFilter(this,'stage')">Ordered</button>
+                <button class="orders-filter-btn" data-filter="COMPLETED" onclick="toggleOrderFilter(this,'stage')">Completed</button>
+                <button class="orders-filter-btn" data-filter="INVOICED" onclick="toggleOrderFilter(this,'stage')">Invoiced</button>
+                <button class="orders-filter-btn" data-filter="IN TRANSIT" onclick="toggleOrderFilter(this,'stage')">In Transit</button>
+            </div>
+            <div class="orders-modal-body">
+                <table class="orders-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortOrders('number')">Order # ↕</th>
+                            <th onclick="sortOrders('type')">Type ↕</th>
+                            <th onclick="sortOrders('customer')">Customer ↕</th>
+                            <th onclick="sortOrders('status')">Status ↕</th>
+                            <th onclick="sortOrders('pick_status')">Pick ↕</th>
+                            <th onclick="sortOrders('pack_status')">Pack ↕</th>
+                            <th onclick="sortOrders('order_date')">Date ↕</th>
+                            <th onclick="sortOrders('from_location')">From ↕</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ordersTableBody"></tbody>
+                </table>
+                <div class="orders-empty" id="ordersEmpty" style="display:none">No orders match your filters</div>
+            </div>
+        </div>
+    </div>
+
         <footer class="site-footer">
             <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
         </footer>
@@ -671,6 +816,12 @@
                 if (!sb) return;
 
                 const pad = n => String(n).padStart(2, '0');
+                // AEST (UTC+11) helper — warehouse is in Sydney
+                const AEST_OFFSET = 11;
+                const aestNow = () => new Date(Date.now() + AEST_OFFSET * 3600000);
+                const aestToday = () => aestNow().toISOString().split('T')[0];
+                const aestDayStart = (d) => d + 'T00:00:00+11:00';
+                const aestDayEnd = (d) => d + 'T23:59:59+11:00';
                 const fmtAgo = (ts) => {
                     if (!ts) return { str: 'N/A', min: 999 };
                     const agoMs = Date.now() - ts.getTime();
@@ -709,12 +860,12 @@
                 // ─── 2. Collections completed today ───
                 let collToday = 0;
                 try {
-                    const todayStr = new Date().toISOString().split('T')[0];
+                    const todayAest = aestToday();
                     const { count, error } = await sb
                         .from('collections_history')
                         .select('id', { count: 'exact', head: true })
-                        .gte('collected_at', todayStr + 'T00:00:00')
-                        .lte('collected_at', todayStr + 'T23:59:59');
+                        .gte('collected_at', aestDayStart(todayAest))
+                        .lte('collected_at', aestDayEnd(todayAest));
                     if (!error && typeof count === 'number') {
                         collToday = count;
                         if (collToday > 0) addActivity('✅', `${collToday} collection${collToday>1?'s':''} completed today`, '');
@@ -889,15 +1040,106 @@
 
                 // ─── 9. Recent Gateway Movements (today) ───
                 try {
-                    const todayStr = new Date().toISOString().split('T')[0];
+                    const gwTodayAest = aestToday();
                     const { count, error } = await sb
                         .from('gateway_movement_history')
                         .select('id', { count: 'exact', head: true })
-                        .gte('created_at', todayStr + 'T00:00:00');
+                        .gte('created_at', aestDayStart(gwTodayAest));
                     if (!error && count > 0) {
                         addActivity('🏭', `${count} gateway transfer${count>1?'s':''} today`, '');
                     }
                 } catch(e) {}
+
+                // ─── 10. Warehouse Pipeline (cin7_mirror.order_pipeline) ───
+                try {
+                    const { data: pipeline, error: plErr } = await sb
+                        .schema('cin7_mirror')
+                        .from('order_pipeline')
+                        .select('*');
+                    if (!plErr && pipeline) {
+                        window.__pipelineData = pipeline;
+                        const _completedStatuses = ['COMPLETED','VOIDED','CLOSED','INVOICED'];
+                        const active = pipeline.filter(r => !_completedStatuses.includes(r.status));
+                        const completed = pipeline.filter(r => _completedStatuses.includes(r.status));
+                        const total = active.length;
+                        const soCount = active.filter(r => r.type === 'SO').length;
+                        const trCount = active.filter(r => r.type === 'TR').length;
+                        const picking = active.filter(r => r.status === 'PICKING' || r.pick_status === 'PICKING').length;
+                        const picked = active.filter(r => r.status === 'PICKED' || r.pick_status === 'PICKED').length;
+                        const toPack = picked;
+
+                        // Completed today (AEST)
+                        const todayAestStr = aestToday();
+                        const todayStart = new Date(aestDayStart(todayAestStr));
+                        const todayEnd = new Date(aestDayEnd(todayAestStr));
+                        const completedToday = completed.filter(r => {
+                            if (!r.completed_at) return false;
+                            const t = new Date(r.completed_at);
+                            return t >= todayStart && t <= todayEnd;
+                        }).length;
+
+                        setKpi('whOrders', total, `${soCount} SO · ${trCount} TR`);
+                        setKpi('whPicking', picking, 'in progress');
+                        setKpi('whToPack', toPack, 'awaiting pack');
+                        setKpi('whCompleted', completedToday, 'today (AEST)');
+
+                        // 7-day stats line
+                        const sevenDaysAgo = new Date(todayStart.getTime() - 6 * 86400000);
+                        const completed7d = completed.filter(r => r.completed_at && new Date(r.completed_at) >= sevenDaysAgo).length;
+                        const avg7d = completed7d > 0 ? (completed7d / 7).toFixed(0) : 0;
+                        // Find peak day
+                        const dayBuckets = {};
+                        const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                        completed.forEach(r => {
+                            if (!r.completed_at) return;
+                            const d = new Date(r.completed_at);
+                            if (d < sevenDaysAgo) return;
+                            // AEST day
+                            const aestD = new Date(d.getTime() + AEST_OFFSET * 3600000);
+                            const key = aestD.toISOString().split('T')[0];
+                            dayBuckets[key] = (dayBuckets[key] || 0) + 1;
+                        });
+                        let peakDay = '', peakCount = 0;
+                        for (const [k, v] of Object.entries(dayBuckets)) {
+                            if (v > peakCount) { peakCount = v; peakDay = dayNames[new Date(k + 'T12:00:00').getDay()]; }
+                        }
+                        const statsEl = document.getElementById('whStatsLine');
+                        if (statsEl) {
+                            const parts = [
+                                `<span class="ws-k">7d:</span> <span class="ws-hi">${completed7d}</span> <span class="ws-v">completed</span>`,
+                                `<span class="ws-sep">&middot;</span>`,
+                                `<span class="ws-k">avg</span> <span class="ws-v">${avg7d}/day</span>`,
+                            ];
+                            if (peakDay) parts.push(`<span class="ws-sep">&middot;</span>`, `<span class="ws-k">peak</span> <span class="ws-v">${peakDay} (${peakCount})</span>`);
+                            parts.push(`<span class="ws-sep">&middot;</span>`);
+                            parts.push(`<span class="ws-k">today</span> <span class="ws-hi">${completedToday}</span>`);
+                            if (picking > 0) parts.push(`<span class="ws-sep">&middot;</span>`, `<span class="ws-warn">${picking}</span> <span class="ws-v">picking</span>`);
+                            if (toPack > 0) parts.push(`<span class="ws-sep">&middot;</span>`, `<span class="ws-ok">${toPack}</span> <span class="ws-v">packed</span>`);
+                            statsEl.innerHTML = parts.join(' ');
+                        }
+
+                        // Last sync info
+                        const syncTimes = pipeline.map(r => r.synced_at).filter(Boolean).sort();
+                        if (syncTimes.length) {
+                            const lastSync = new Date(syncTimes[syncTimes.length - 1]);
+                            const syncAgo = fmtAgo(lastSync);
+                            const syncEl = document.getElementById('whSyncInfo');
+                            if (syncEl) syncEl.textContent = `synced ${syncAgo.str}`;
+                        }
+
+                        if (total > 0) addActivity('📦', `Pipeline: ${total} active (${picking} picking, ${toPack} to pack) · ${completedToday} completed today`, '');
+                    } else {
+                        setKpi('whOrders', '—', 'table not ready');
+                        setKpi('whPicking', '—', '');
+                        setKpi('whToPack', '—', '');
+                        setKpi('whCompleted', '—', '');
+                        const syncEl = document.getElementById('whSyncInfo');
+                        if (syncEl) syncEl.textContent = 'not synced yet';
+                    }
+                } catch(e) {
+                    console.warn('Pipeline load error:', e);
+                    setKpi('whOrders', '—', 'error');
+                }
 
                 // ─── Render Activity Feed ───
                 const feed = document.getElementById('activityFeed');
@@ -913,6 +1155,104 @@
 
             } catch(e) { console.warn('Dashboard load error:', e); }
         })();
+
+        // ══════════════════════════════════════════════════════
+        // ORDERS MODAL LOGIC
+        // ══════════════════════════════════════════════════════
+        let _ordersTypeFilter = 'all';
+        let _ordersStageFilters = new Set();
+        let _ordersSortCol = 'order_date';
+        let _ordersSortAsc = false;
+
+        function openOrdersModal() {
+            document.getElementById('ordersModalOverlay').classList.add('active');
+            document.body.style.overflow = 'hidden';
+            renderOrdersTable();
+        }
+        function closeOrdersModal() {
+            document.getElementById('ordersModalOverlay').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+        function toggleOrderFilter(btn, group) {
+            const val = btn.dataset.filter;
+            if (group === 'stage') {
+                btn.classList.toggle('active');
+                if (btn.classList.contains('active')) _ordersStageFilters.add(val);
+                else _ordersStageFilters.delete(val);
+            } else {
+                // type filter (All / SO / TR) — single select
+                document.querySelectorAll('.orders-filter-btn[data-filter="all"],.orders-filter-btn[data-filter="SO"],.orders-filter-btn[data-filter="TR"]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                _ordersTypeFilter = val;
+            }
+            renderOrdersTable();
+        }
+        function sortOrders(col) {
+            if (_ordersSortCol === col) _ordersSortAsc = !_ordersSortAsc;
+            else { _ordersSortCol = col; _ordersSortAsc = true; }
+            renderOrdersTable();
+        }
+
+        function renderOrdersTable() {
+            const data = window.__pipelineData || [];
+            const search = (document.getElementById('ordersSearch')?.value || '').toLowerCase();
+            let rows = data.filter(r => {
+                if (_ordersTypeFilter !== 'all' && r.type !== _ordersTypeFilter) return false;
+                if (_ordersStageFilters.size > 0 && !_ordersStageFilters.has(r.status)) return false;
+                if (search) {
+                    const hay = `${r.number} ${r.customer||''} ${r.status} ${r.reference||''} ${r.from_location||''} ${r.to_location||''}`.toLowerCase();
+                    if (!hay.includes(search)) return false;
+                }
+                return true;
+            });
+            // Sort
+            rows.sort((a, b) => {
+                let va = a[_ordersSortCol] || '', vb = b[_ordersSortCol] || '';
+                if (typeof va === 'string') va = va.toLowerCase();
+                if (typeof vb === 'string') vb = vb.toLowerCase();
+                if (va < vb) return _ordersSortAsc ? -1 : 1;
+                if (va > vb) return _ordersSortAsc ? 1 : -1;
+                return 0;
+            });
+
+            const tbody = document.getElementById('ordersTableBody');
+            const empty = document.getElementById('ordersEmpty');
+            const countEl = document.getElementById('ordersCount');
+            if (countEl) countEl.textContent = `${rows.length} of ${data.length} orders`;
+
+            if (rows.length === 0) {
+                tbody.innerHTML = '';
+                empty.style.display = '';
+                return;
+            }
+            empty.style.display = 'none';
+
+            const statusClass = s => (s || '').toLowerCase().replace(/\s+/g, '-');
+            const fmtDate = d => {
+                if (!d) return '—';
+                const dt = new Date(d);
+                return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
+            };
+
+            tbody.innerHTML = rows.map(r => {
+                const numClass = r.type === 'TR' ? 'order-tr' : 'order-num';
+                const typeLabel = r.type === 'TR' ? '🔄 TR' : '🛒 SO';
+                const custOrLoc = r.type === 'TR' ? `${r.from_location || '?'} → ${r.to_location || '?'}` : (r.customer || '—');
+                return `<tr>
+                    <td class="${numClass}">${r.number || '—'}</td>
+                    <td>${typeLabel}</td>
+                    <td>${custOrLoc}</td>
+                    <td><span class="orders-badge ${statusClass(r.status)}">${r.status || '—'}</span></td>
+                    <td>${r.pick_status || '—'}</td>
+                    <td>${r.pack_status || '—'}</td>
+                    <td>${fmtDate(r.order_date)}</td>
+                    <td>${r.from_location || '—'}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOrdersModal(); });
     </script>
 </body>
 </html>

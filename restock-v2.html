@@ -143,6 +143,9 @@
                   <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#64748b">
                     <input type="checkbox" id="hideMAR_ETURNS" onchange="restockToggleHideLocation('MA-RETURNS', this.checked)" /> MA-RETURNS
                   </label>
+                  <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#64748b">
+                    <input type="checkbox" id="hideUNASSIGNED" onchange="restockToggleHideLocation('UNASSIGNED', this.checked)" /> Unassigned
+                  </label>
                 </div>
               </div>
             </div>
@@ -401,8 +404,8 @@
     .print-header, .table-wrapper, .table-wrapper * { visibility: visible; }
     .print-header { position: relative; }
   .table-wrapper { position: relative; background:#fff !important; box-shadow:none !important; }
-  #restockTable { font-size: 11px; border-collapse: collapse; background:#fff !important; width:100%; table-layout:fixed; }
-  #restockTable th, #restockTable td { border:1px solid #333 !important; padding:4px 6px !important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #restockTable { font-size: 11px; border-collapse: collapse; background:#fff !important; }
+  #restockTable th, #restockTable td { border:1px solid #333 !important; padding:4px 6px !important; }
   #restockTable thead th { background:#f3f4f6 !important; color:#111827 !important; }
     thead { display: table-header-group; }
     tfoot { display: table-footer-group; }
@@ -423,18 +426,18 @@
   #restockTable th:nth-child(13), #restockTable td:nth-child(13) { display: none !important; }
   /* Show print-only cells */
   .print-only{ display: table-cell !important; }
-  /* Print column widths — visible: 5DC(2) SKU(3) Product(4) Pickface(6) Stock(7) Capacity(8) Status(9) Reserve(10) Restock(11) NearestReserve(14) Notes(15) */
-  #restockTable th:nth-child(2), #restockTable td:nth-child(2) { width:5%; }   /* 5DC */
-  #restockTable th:nth-child(3), #restockTable td:nth-child(3) { width:10%; }  /* SKU */
-  #restockTable th:nth-child(4), #restockTable td:nth-child(4) { width:12%; }  /* Product */
-  #restockTable th:nth-child(6), #restockTable td:nth-child(6) { width:8%; }   /* Pickface */
-  #restockTable th:nth-child(7), #restockTable td:nth-child(7) { width:5%; }   /* Stock */
-  #restockTable th:nth-child(8), #restockTable td:nth-child(8) { width:5%; }   /* Capacity */
-  #restockTable th:nth-child(9), #restockTable td:nth-child(9) { width:6%; }   /* Status */
-  #restockTable th:nth-child(10), #restockTable td:nth-child(10) { width:5%; } /* Reserve */
-  #restockTable th:nth-child(11), #restockTable td:nth-child(11) { width:5%; } /* Restock */
-  #restockTable th:nth-child(14), #restockTable td:nth-child(14) { width:30%; white-space:normal !important; word-break:break-word; } /* Nearest Reserve */
-  #restockTable th:nth-child(15), #restockTable td:nth-child(15) { width:9%; white-space:normal !important; }  /* Notes */
+  /* Override col-hidden classes in print — always show standard columns */
+  [class*="col-hidden"] #restockTable th, [class*="col-hidden"] #restockTable td { display: table-cell !important; }
+  #restockTable th:first-child, #restockTable td:first-child { display: none !important; }
+  #restockTable th:last-child, #restockTable td:last-child { display: none !important; }
+  #restockTable th:nth-child(5), #restockTable td:nth-child(5) { display: none !important; }
+  #restockTable th:nth-child(12), #restockTable td:nth-child(12) { display: none !important; }
+  #restockTable th:nth-child(13), #restockTable td:nth-child(13) { display: none !important; }
+  /* Nearest Reserve & Notes — allow word wrap, no excessive whitespace */
+  #restockTable td { white-space:nowrap; }
+  #restockTable thead th { white-space:normal !important; word-break:break-word; font-size:10px; text-align:center; }
+  #restockTable th:nth-child(14), #restockTable td:nth-child(14) { white-space:normal !important; word-break:break-word; }
+  #restockTable th:nth-child(15), #restockTable td:nth-child(15) { white-space:normal !important; word-break:break-word; max-width:70px; }
   }
   @page { size: A4 landscape; margin: 12mm }
   /* Column visibility — dynamically toggled via JS */
@@ -556,7 +559,7 @@
       if (dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
     }
     function clearAllFilters(){
-      ['toggleOnlyFavorites','toggleOnlyConfigured','toggleCapacityReview','togglePickfaceMismatch','toggleOnlyReserveInfo','toggleHideNoReserve','hideMAGA','hideMAPRODUCTION','hideMASAMPLES','hideMADOCK','hideMAR_ETURNS'].forEach(id=>{
+      ['toggleOnlyFavorites','toggleOnlyConfigured','toggleCapacityReview','togglePickfaceMismatch','toggleOnlyReserveInfo','toggleHideNoReserve','hideMAGA','hideMAPRODUCTION','hideMASAMPLES','hideMADOCK','hideMAR_ETURNS','hideUNASSIGNED'].forEach(id=>{
         const el = document.getElementById(id);
         if (el) { el.checked = false; el.dispatchEvent(new Event('change')); }
       });

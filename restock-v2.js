@@ -38,7 +38,8 @@
       'MA-PRODUCTION': false,
       'MA-SAMPLES': false,
       'MA-DOCK': false,
-      'MA-RETURNS': false
+      'MA-RETURNS': false,
+      'UNASSIGNED': false
     },
     syncStatus: null,          // latest sync_runs row
     mirrorAvailable: null,     // null = unknown, true/false after first fetch
@@ -172,8 +173,23 @@
   function normalizeLocation(loc) { return String(loc || '').replace(/\s+/g, '').toUpperCase(); }
 
   function computeNearestReserveLines(pickface, reserveLocs) {
+    if (!Array.isArray(reserveLocs) || !reserveLocs.length) return [];
     const p = parseLocation(pickface);
-    if (!p || !Array.isArray(reserveLocs) || !reserveLocs.length) return [];
+    if (!p) {
+      // Pickface doesn't parse (empty or non-standard format)
+      // Still show all reserve locations sorted by qty descending
+      const lines = [];
+      for (const r of reserveLocs) {
+        if (!r || !r.location || !Number.isFinite(r.qty) || r.qty <= 0) continue;
+        lines.push(`${String(r.location)} = ${r.qty}`);
+      }
+      lines.sort((a, b) => {
+        const qtyA = parseInt(a.split('= ')[1]) || 0;
+        const qtyB = parseInt(b.split('= ')[1]) || 0;
+        return qtyB - qtyA;
+      });
+      return lines;
+    }
     const scored = [];
     for (const r of reserveLocs) {
       if (!r || !r.location || !Number.isFinite(r.qty) || r.qty <= 0) continue;
@@ -185,7 +201,7 @@
     }
     scored.sort((a,b) => a.dist - b.dist);
     const top = scored.slice(0, 3);
-    const specials = ['MA-RETURNS','MA-GA','MA-SAMPLES','MA-DOCK','MA-PRODUCTION'];
+    const specials = ['MA-RETURNS','MA-GA','MA-SAMPLES','MA-DOCK','MA-PRODUCTION','UNASSIGNED'];
     const setIncluded = new Set(top.map(x => x.location.toUpperCase()));
     const extras = [];
     for (const zone of specials) {
@@ -462,10 +478,26 @@
   }
   function applyLocationFilters(rows) {
     const hideList = Object.keys(state.hideLocations).filter(loc => state.hideLocations[loc]);
+
+    // Always restore original reserve data first (undo previous mutations)
+    for (const row of rows) {
+      if (row.__reserve_locations_original) {
+        row.__reserve_locations = row.__reserve_locations_original;
+        row.__reserve_total = row.__reserve_locations.reduce((s, l) => s + (Number(l.qty) || 0), 0);
+      }
+    }
+
     if (!hideList.length) return rows;
+
     const filtered = [];
     for (const row of rows) {
       const locations = row.__reserve_locations || [];
+
+      // Save original on first filter — never overwrite
+      if (!row.__reserve_locations_original) {
+        row.__reserve_locations_original = locations.slice();
+      }
+
       const visible = locations.filter(loc => {
         const locName = String(loc.location || '').toUpperCase();
         return !hideList.some(h => locName.includes(h));

@@ -430,10 +430,15 @@ function displaySearchResults(results) {
         const safeSku = (product.SKU || '').replace(/'/g, "\\'");
         const safeCode = (product.Code || '').replace(/'/g, "\\'");
         html += `
-            <div class="search-result-item" onclick="selectProduct('${safeSku}', '${safeCode}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #e2e8f0">
-                <div style="font-weight:700;font-size:16px;color:#0f172a">${product.SKU || '—'}</div>
-                <div style="font-weight:700;font-size:14px;color:#334155;margin-top:3px">${product.Code || ''}</div>
-                ${product.name ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${product.name}</div>` : ''}
+            <div class="search-result-item" onclick="selectProduct('${safeSku}', '${safeCode}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-end;gap:24px;transition:background .15s" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">
+                <div style="min-width:60px">
+                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:2px">🔢 5DC</div>
+                    <div style="font-weight:700;font-size:15px;color:#0f172a;font-variant-numeric:tabular-nums">${product.SKU || '—'}</div>
+                </div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:2px">📦 Code</div>
+                    <div style="font-weight:700;font-size:15px;color:#1e40af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${product.Code || ''}</div>
+                </div>
             </div>
         `;
     });
