@@ -269,10 +269,13 @@ async function syncSalesOrders(sb) {
     ...(isCompleted(o.Status) ? { completed_at: nowIso } : {}),
   }));
 
+  // Collect all synced IDs for completion detection
+  const freshIds = new Set(rows.map(r => r.id));
+
   if (FLAGS.dryRun) {
     log('info', '[DRY RUN] Would upsert ' + rows.length + ' sales orders');
     rows.slice(0, 5).forEach(r => log('info', `  ${r.number} | ${r.status} | ${r.customer?.substring(0, 30)}`));
-    return rows.length;
+    return { count: rows.length, ids: freshIds };
   }
 
   // Upsert in batches
@@ -291,7 +294,7 @@ async function syncSalesOrders(sb) {
   }
 
   log('info', `✅ Upserted ${upserted} sales orders`);
-  return upserted;
+  return { count: upserted, ids: freshIds };
 }
 
 // ============================================================
@@ -371,10 +374,13 @@ async function syncStockTransfers(sb) {
     };
   });
 
+  // Collect all synced IDs for completion detection
+  const freshIds = new Set(rows.map(r => r.id));
+
   if (FLAGS.dryRun) {
     log('info', '[DRY RUN] Would upsert ' + rows.length + ' stock transfers');
     rows.slice(0, 5).forEach(r => log('info', `  ${r.number} | ${r.status} | ${r.from_location} → ${r.to_location}`));
-    return rows.length;
+    return { count: rows.length, ids: freshIds };
   }
 
   // Upsert in batches
@@ -392,7 +398,68 @@ async function syncStockTransfers(sb) {
   }
 
   log('info', `✅ Upserted ${upserted} stock transfers`);
-  return upserted;
+  return { count: upserted, ids: freshIds };
+}
+
+// ============================================================
+// DETECT COMPLETED: Mark orders that disappeared from active
+// ============================================================
+
+async function detectCompleted(sb, freshSoIds, freshTrIds) {
+  const nowIso = new Date().toISOString();
+  const completedStatuses = [...CONFIG.completedStatuses, 'INVOICED'];
+
+  // Find SO in cache that are still marked active but weren't in the fresh fetch
+  const { data: cachedSo, error: soErr } = await sb
+    .from('order_pipeline')
+    .select('id, status')
+    .eq('type', 'SO')
+    .not('status', 'in', `(${completedStatuses.join(',')})`);
+
+  let soMarked = 0;
+  if (!soErr && cachedSo) {
+    const disappeared = cachedSo.filter(r => !freshSoIds.has(r.id));
+    if (disappeared.length > 0) {
+      log('info', `🔍 Detected ${disappeared.length} SO completed since last sync`);
+      const ids = disappeared.map(r => r.id);
+      const { error } = await sb
+        .from('order_pipeline')
+        .update({ status: 'COMPLETED', completed_at: nowIso, synced_at: nowIso })
+        .in('id', ids);
+      if (error) log('warn', 'Failed to mark SO completed', { error: error.message });
+      else soMarked = ids.length;
+    }
+  }
+
+  // Find TR in cache that are still marked active but weren't in the fresh fetch
+  const { data: cachedTr, error: trErr } = await sb
+    .from('order_pipeline')
+    .select('id, status')
+    .eq('type', 'TR')
+    .not('status', 'in', `(${completedStatuses.join(',')})`);
+
+  let trMarked = 0;
+  if (!trErr && cachedTr) {
+    const disappeared = cachedTr.filter(r => !freshTrIds.has(r.id));
+    if (disappeared.length > 0) {
+      log('info', `🔍 Detected ${disappeared.length} TR completed since last sync`);
+      const ids = disappeared.map(r => r.id);
+      const { error } = await sb
+        .from('order_pipeline')
+        .update({ status: 'COMPLETED', completed_at: nowIso, synced_at: nowIso })
+        .in('id', ids);
+      if (error) log('warn', 'Failed to mark TR completed', { error: error.message });
+      else trMarked = ids.length;
+    }
+  }
+
+  if (soMarked + trMarked > 0) {
+    log('info', `✅ Marked ${soMarked} SO + ${trMarked} TR as completed`);
+  } else {
+    log('info', '  No newly completed orders detected');
+  }
+
+  return soMarked + trMarked;
 }
 
 // ============================================================
@@ -462,14 +529,19 @@ async function main() {
   const sb = getSupabaseClient();
 
   try {
-    const soCount = await syncSalesOrders(sb);
-    const trCount = await syncStockTransfers(sb);
+    const soResult = await syncSalesOrders(sb);
+    const trResult = await syncStockTransfers(sb);
+
+    // Detect orders that left active status (now COMPLETED/INVOICED in Cin7)
+    const completed = await detectCompleted(sb, soResult.ids, trResult.ids);
+
     const cleaned = await cleanupCompleted(sb);
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     log('info', '═══ Order Pipeline Sync Complete ═══', {
-      salesOrders: soCount,
-      transfers: trCount,
+      salesOrders: soResult.count,
+      transfers: trResult.count,
+      newlyCompleted: completed,
       cleaned,
       apiCalls: callCount,
       durationSec: duration,

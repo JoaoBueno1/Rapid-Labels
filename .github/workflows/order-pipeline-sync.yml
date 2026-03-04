@@ -1,0 +1,44 @@
+# ============================================================
+# Order Pipeline Sync — GitHub Actions Cron Scheduler
+# ============================================================
+# Syncs Cin7 Sales Orders + Stock Transfers into Supabase
+# cin7_mirror.order_pipeline table for warehouse dashboard KPIs.
+#
+# Runs every 30 minutes so the dashboard is always fresh.
+#
+# Required GitHub Secrets (same as cin7-sync):
+#   SUPABASE_URL          — Supabase project URL
+#   SUPABASE_SERVICE_KEY  — Supabase service role key
+#   CIN7_ACCOUNT_ID       — Cin7 (DEAR) account ID
+#   CIN7_API_KEY          — Cin7 (DEAR) API key
+# ============================================================
+
+name: Order Pipeline Sync
+
+on:
+  schedule:
+    # Every 30 minutes (UTC)
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  pipeline-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Run Order Pipeline Sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+        run: node order-pipeline-sync.js --verbose
