@@ -796,7 +796,7 @@
                                 Status ▾
                                 <div class="status-dropdown" id="statusDropdown"></div>
                             </th>
-                            <th class="sortable" onclick="toggleDateSort()" id="dateHeader">Date ▼</th>
+                            <th class="sortable" onclick="toggleDateSort()" id="dateHeader">Created ▼</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody"></tbody>
@@ -1172,11 +1172,14 @@
             btn.classList.add('active');
             _ordersViewFilter = btn.dataset.view;
             _ordersStatusFilter = 'all'; // reset status filter on view change
+            const label = _ordersViewFilter === 'completed' ? 'Completed' : 'Created';
+            document.getElementById('dateHeader').innerHTML = label + ' ' + (_ordersDateSort === 'desc' ? '▼' : '▲');
             renderOrdersTable();
         }
         function toggleDateSort() {
             _ordersDateSort = _ordersDateSort === 'desc' ? 'asc' : 'desc';
-            document.getElementById('dateHeader').innerHTML = 'Date ' + (_ordersDateSort === 'desc' ? '▼' : '▲');
+            const label = _ordersViewFilter === 'completed' ? 'Completed' : 'Created';
+            document.getElementById('dateHeader').innerHTML = label + ' ' + (_ordersDateSort === 'desc' ? '▼' : '▲');
             renderOrdersTable();
         }
         function toggleStatusDropdown(e) {
@@ -1241,7 +1244,7 @@
             if (isCompleted) {
                 rows.sort((a, b) => dir * (a.completed_at || '').localeCompare(b.completed_at || ''));
             } else {
-                rows.sort((a, b) => dir * (a.updated_at || a.order_date || '').localeCompare(b.updated_at || b.order_date || ''));
+                rows.sort((a, b) => dir * (a.order_date || '').localeCompare(b.order_date || ''));
             }
 
             const tbody = document.getElementById('ordersTableBody');
@@ -1264,16 +1267,8 @@
                 const h12 = h24 % 12 || 12;
                 return `${h12}:${mi}${ampm}`;
             };
-            // Format date in AEST — use updated_at as primary (full AEST date+time), fallback to order_date
-            const fmtDate = (orderDate, updatedAt) => {
-                if (updatedAt) {
-                    const utc = new Date(updatedAt);
-                    const aest = new Date(utc.getTime() + 10 * 3600000);
-                    const dd = String(aest.getUTCDate()).padStart(2, '0');
-                    const mm = String(aest.getUTCMonth() + 1).padStart(2, '0');
-                    const timeStr = to12h(aest.getUTCHours(), String(aest.getUTCMinutes()).padStart(2, '0'));
-                    return `${dd}/${mm} <span style="color:#94a3b8;font-size:.7rem">${timeStr}</span>`;
-                }
+            // Format created date — order_date only (Cin7 has no creation time)
+            const fmtDate = (orderDate) => {
                 if (!orderDate) return '—';
                 const [y, m, d] = orderDate.split('-');
                 return `${d}/${m}`;
@@ -1293,7 +1288,7 @@
                 const fNum = r.fulfilment_number || 1;
                 const numDisplay = fNum > 1 ? `${r.number} <span style="color:#94a3b8;font-weight:600;font-size:.78rem">#${fNum}</span>` : (r.number || '—');
                 const custOrLoc = r.type === 'TR' ? `→ ${r.to_location || '?'}` : (r.customer || '—');
-                const dateCell = isCompleted ? fmtCompletedDate(r.completed_at) : fmtDate(r.order_date, r.updated_at);
+                const dateCell = isCompleted ? fmtCompletedDate(r.completed_at) : fmtDate(r.order_date);
                 return `<tr>
                     <td class="${numClass}">${numDisplay}</td>
                     <td>${custOrLoc}</td>
