@@ -46,6 +46,23 @@ const CONFIG = {
   activeTransferStatuses: ['ORDERED', 'IN TRANSIT'],
   // Only sync orders created since this date
   sinceDate: '2026-03-01',
+  // Known warehouse location IDs → names (for SO from_location)
+  locationMap: {
+    '907821e3-c06b-4bf1-a8af-888bc3a2031f': 'Main Warehouse',
+    '2d84ecb5-69a0-467a-bd2c-7f84ebb5be92': 'Cairns',
+    'a124b68b-afe1-41ec-9f1a-a9b33aca9b17': 'Brisbane',
+    'f63dbc3c-c231-4c52-86cc-cc5275b2be72': 'Sydney',
+    '12c1f2e6-1b8a-41e7-930a-e16b84131553': 'Sunshine Coast Warehouse',
+    'e25742d4-bb13-4469-9128-3845daba98e8': 'Project Warehouse',
+    'df40b7a5-5b68-476f-8fb6-37fd53b3f46d': 'Melbourne',
+    '1096df99-f6b2-44e1-8550-bcc7fc6c7f98': 'Hobart',
+    '28d235a5-c612-43b5-a737-5e2c922eea1d': 'Gold Coast',
+    '4382b5c2-bb80-475d-a02e-18a73abee862': 'Gold Coast',
+    'ed7ffa65-6d00-41de-9526-c27fcb2e3feb': 'Coffs Harbour',
+    'f199081c-c20f-4af0-804f-b4696d881624': 'Coffs Harbour',
+    'e4803ce0-384d-4c43-bffb-2f072793cc4e': 'Hobart',
+    '1c74f86f-6170-4a9f-b253-3290a3a990c0': 'Gateway',
+  },
 };
 
 // ============================================================
@@ -181,6 +198,57 @@ function getSupabaseClient() {
 }
 
 // ============================================================
+// FULFILMENT STATUS HELPERS (Advanced Sales)
+// ============================================================
+
+/**
+ * Derive warehouse dashboard status from a single fulfilment's sub-statuses.
+ * In Dear Systems, each fulfilment step goes NOT AVAILABLE → (active) → AUTHORISED.
+ * AUTHORISED means that step is signed off / complete.
+ */
+function deriveFulfilmentStatus(f, soStatus) {
+  // Fulfilled = everything done (picked + packed + shipped)
+  if (f.FulFilmentStatus === 'FULFILLED') return 'COMPLETED';
+
+  // Check from latest stage backwards
+  const ship = f.Ship?.Status || '';
+  const pack = f.Pack?.Status || '';
+  const pick = f.Pick?.Status || '';
+
+  // Ship authorized = shipped
+  if (ship === 'AUTHORISED') return 'COMPLETED';
+  // Pack authorized but not shipped = packed / ready to ship
+  if (pack === 'AUTHORISED') return 'PACKING';
+  // Pick authorized but not packed = picked
+  if (pick === 'AUTHORISED') return 'PICKED';
+
+  // Pick not available = waiting for stock / authorization
+  if (pick === 'NOT AVAILABLE') return 'ORDERED';
+
+  // Any other pick state (NOT AUTHORISED, etc.) = in picking phase
+  // Use SO-level status if it gives us more info
+  if (['PICKING', 'PICKED', 'PACKING'].includes(soStatus)) return soStatus;
+
+  return 'PICKING';
+}
+
+/** Map fulfilment Pick sub-status to our dashboard vocabulary */
+function deriveFulfilmentPickStatus(f) {
+  const s = f.Pick?.Status || '';
+  if (s === 'AUTHORISED') return 'PICKED';
+  if (s === 'NOT AVAILABLE' || s === 'NOT AUTHORISED') return 'NOT PICKED';
+  return 'PICKING'; // in progress
+}
+
+/** Map fulfilment Pack sub-status to our dashboard vocabulary */
+function deriveFulfilmentPackStatus(f) {
+  const s = f.Pack?.Status || '';
+  if (s === 'AUTHORISED') return 'PACKED';
+  if (s === 'NOT AVAILABLE' || s === 'NOT AUTHORISED') return 'NOT PACKED';
+  return 'PACKING';
+}
+
+// ============================================================
 // SYNC: SALES ORDERS
 // ============================================================
 
@@ -247,7 +315,14 @@ async function syncSalesOrders(sb) {
   // Map to our schema
   const nowIso = new Date().toISOString();
   const isCompleted = (s) => CONFIG.completedStatuses.includes(s) || s === 'INVOICED';
-  const rows = unique.map(o => ({
+
+  // ── Separate Simple vs Advanced Sales ──
+  const simpleSales = unique.filter(o => o.Type !== 'Advanced Sale');
+  const advancedSales = unique.filter(o => o.Type === 'Advanced Sale');
+  log('info', `  Simple: ${simpleSales.length}, Advanced: ${advancedSales.length}`);
+
+  // Map Simple Sales (always 1 fulfilment)
+  const rows = simpleSales.map(o => ({
     id: o.SaleID,
     type: 'SO',
     number: o.OrderNumber,
@@ -258,16 +333,107 @@ async function syncSalesOrders(sb) {
     pack_status: o.CombinedPackingStatus || null,
     ship_status: o.CombinedShippingStatus || null,
     invoice_status: o.CombinedInvoiceStatus || null,
-    from_location: null,
+    from_location: CONFIG.locationMap[o.OrderLocationID] || null,
     to_location: null,
     reference: o.CustomerReference || null,
-    line_count: null, // not available from list endpoint
+    line_count: null,
     total_qty: null,
     updated_at: o.Updated || null,
     synced_at: nowIso,
-    // Track when order completed (for daily stats) — only set on first completion
+    fulfilment_number: 1,
     ...(isCompleted(o.Status) ? { completed_at: nowIso } : {}),
   }));
+
+  // ── Advanced Sales: fetch detail and create per-fulfilment rows ──
+  for (const o of advancedSales) {
+    try {
+      const detail = await cin7Get('sale', { ID: o.SaleID });
+      const fulfilments = detail.Fulfilments || [];
+
+      if (fulfilments.length <= 1) {
+        // Single fulfilment — treat like Simple Sale
+        rows.push({
+          id: o.SaleID,
+          type: 'SO',
+          number: o.OrderNumber,
+          status: o.Status,
+          order_date: o.OrderDate ? o.OrderDate.split('T')[0] : null,
+          customer: o.Customer || null,
+          pick_status: o.CombinedPickingStatus || null,
+          pack_status: o.CombinedPackingStatus || null,
+          ship_status: o.CombinedShippingStatus || null,
+          invoice_status: o.CombinedInvoiceStatus || null,
+          from_location: CONFIG.locationMap[o.OrderLocationID] || null,
+          to_location: null,
+          reference: o.CustomerReference || null,
+          line_count: null,
+          total_qty: null,
+          updated_at: o.Updated || null,
+          synced_at: nowIso,
+          fulfilment_number: 1,
+          ...(isCompleted(o.Status) ? { completed_at: nowIso } : {}),
+        });
+        continue;
+      }
+
+      // Multiple fulfilments — create one row per active fulfilment
+      log('info', `  🔀 ${o.OrderNumber}: ${fulfilments.length} fulfilments`);
+      for (const f of fulfilments) {
+        const fNum = f.FulfillmentNumber || 1;
+        if (f.FulFilmentStatus === 'VOIDED') continue; // skip voided
+
+        // Derive per-fulfilment status from Pick/Pack/Ship authorization
+        const fStatus = deriveFulfilmentStatus(f, o.Status);
+        const fCompleted = fStatus === 'COMPLETED' || f.FulFilmentStatus === 'FULFILLED';
+
+        rows.push({
+          id: fNum === 1 ? o.SaleID : `${o.SaleID}_F${fNum}`,
+          type: 'SO',
+          number: o.OrderNumber,
+          status: fCompleted ? 'COMPLETED' : fStatus,
+          order_date: o.OrderDate ? o.OrderDate.split('T')[0] : null,
+          customer: o.Customer || null,
+          pick_status: deriveFulfilmentPickStatus(f),
+          pack_status: deriveFulfilmentPackStatus(f),
+          ship_status: f.Ship?.Status || null,
+          invoice_status: null,
+          from_location: CONFIG.locationMap[o.OrderLocationID] || null,
+          to_location: null,
+          reference: o.CustomerReference || null,
+          line_count: f.Pick?.Lines?.length || null,
+          total_qty: null,
+          updated_at: o.Updated || null,
+          synced_at: nowIso,
+          fulfilment_number: fNum,
+          ...(fCompleted ? { completed_at: o.Updated || nowIso } : {}),
+        });
+      }
+    } catch (err) {
+      // If detail fetch fails, fall back to single row from list data
+      log('warn', `Failed to fetch detail for ${o.OrderNumber}: ${err.message}`);
+      rows.push({
+        id: o.SaleID,
+        type: 'SO',
+        number: o.OrderNumber,
+        status: o.Status,
+        order_date: o.OrderDate ? o.OrderDate.split('T')[0] : null,
+        customer: o.Customer || null,
+        pick_status: o.CombinedPickingStatus || null,
+        pack_status: o.CombinedPackingStatus || null,
+        ship_status: o.CombinedShippingStatus || null,
+        invoice_status: o.CombinedInvoiceStatus || null,
+        from_location: CONFIG.locationMap[o.OrderLocationID] || null,
+        to_location: null,
+        reference: o.CustomerReference || null,
+        line_count: null,
+        total_qty: null,
+        updated_at: o.Updated || null,
+        synced_at: nowIso,
+        fulfilment_number: 1,
+        ...(isCompleted(o.Status) ? { completed_at: nowIso } : {}),
+      });
+    }
+  }
 
   // Collect all synced IDs for completion detection
   const freshIds = new Set(rows.map(r => r.id));
@@ -412,7 +578,7 @@ async function detectCompleted(sb, freshSoIds, freshTrIds) {
   // Find SO in cache that are still marked active but weren't in the fresh fetch
   const { data: cachedSo, error: soErr } = await sb
     .from('order_pipeline')
-    .select('id, status')
+    .select('id, status, updated_at')
     .eq('type', 'SO')
     .not('status', 'in', `(${completedStatuses.join(',')})`);
 
@@ -421,20 +587,23 @@ async function detectCompleted(sb, freshSoIds, freshTrIds) {
     const disappeared = cachedSo.filter(r => !freshSoIds.has(r.id));
     if (disappeared.length > 0) {
       log('info', `🔍 Detected ${disappeared.length} SO completed since last sync`);
-      const ids = disappeared.map(r => r.id);
-      const { error } = await sb
-        .from('order_pipeline')
-        .update({ status: 'COMPLETED', completed_at: nowIso, synced_at: nowIso })
-        .in('id', ids);
-      if (error) log('warn', 'Failed to mark SO completed', { error: error.message });
-      else soMarked = ids.length;
+      // Use updated_at from cached row as approximate completion time
+      for (const row of disappeared) {
+        const completedAt = row.updated_at || nowIso;
+        const { error } = await sb
+          .from('order_pipeline')
+          .update({ status: 'COMPLETED', completed_at: completedAt, synced_at: nowIso })
+          .eq('id', row.id);
+        if (error) log('warn', 'Failed to mark SO completed', { id: row.id, error: error.message });
+        else soMarked++;
+      }
     }
   }
 
   // Find TR in cache that are still marked active but weren't in the fresh fetch
   const { data: cachedTr, error: trErr } = await sb
     .from('order_pipeline')
-    .select('id, status')
+    .select('id, status, updated_at')
     .eq('type', 'TR')
     .not('status', 'in', `(${completedStatuses.join(',')})`);
 
@@ -443,13 +612,15 @@ async function detectCompleted(sb, freshSoIds, freshTrIds) {
     const disappeared = cachedTr.filter(r => !freshTrIds.has(r.id));
     if (disappeared.length > 0) {
       log('info', `🔍 Detected ${disappeared.length} TR completed since last sync`);
-      const ids = disappeared.map(r => r.id);
-      const { error } = await sb
-        .from('order_pipeline')
-        .update({ status: 'COMPLETED', completed_at: nowIso, synced_at: nowIso })
-        .in('id', ids);
-      if (error) log('warn', 'Failed to mark TR completed', { error: error.message });
-      else trMarked = ids.length;
+      for (const row of disappeared) {
+        const completedAt = row.updated_at || nowIso;
+        const { error } = await sb
+          .from('order_pipeline')
+          .update({ status: 'COMPLETED', completed_at: completedAt, synced_at: nowIso })
+          .eq('id', row.id);
+        if (error) log('warn', 'Failed to mark TR completed', { id: row.id, error: error.message });
+        else trMarked++;
+      }
     }
   }
 

@@ -164,20 +164,25 @@
         .orders-modal-close { background:none; border:none; font-size:1.3rem; cursor:pointer; padding:4px 8px; border-radius:6px; color:var(--muted); }
         .orders-modal-close:hover { background:#f1f5f9; color:var(--text); }
         .orders-modal-filters { padding:12px 24px; border-bottom:1px solid var(--border); display:flex; flex-wrap:wrap; gap:8px; align-items:center; flex-shrink:0; }
-        .orders-filter-btn { padding:5px 12px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:.75rem; font-weight:600; cursor:pointer; transition:all .15s; }
-        .orders-filter-btn:hover { border-color:#94a3b8; }
-        .orders-filter-btn.active { background:#1e40af; color:#fff; border-color:#1e40af; }
-        .orders-search { padding:6px 12px; border:1px solid var(--border); border-radius:8px; font-size:.75rem; width:200px; outline:none; }
+        .orders-filter-group { display:flex; gap:4px; align-items:center; padding:2px; background:#f1f5f9; border-radius:10px; }
+        .orders-filter-group-label { font-size:.73rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-right:2px; padding-left:6px; }
+        .orders-filter-btn { padding:5px 12px; border:1px solid transparent; border-radius:8px; background:transparent; font-size:.82rem; font-weight:600; cursor:pointer; transition:all .15s; }
+        .orders-filter-btn:hover { background:#e2e8f0; }
+        .orders-filter-btn.active { background:#1e40af; color:#fff; border-color:#1e40af; box-shadow:0 1px 3px rgba(30,64,175,.2); }
+        .orders-search { padding:7px 14px; border:1px solid var(--border); border-radius:8px; font-size:.85rem; width:240px; outline:none; }
         .orders-search:focus { border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.15); }
+        .orders-table .order-date { white-space:nowrap; font-variant-numeric:tabular-nums; }
+        .orders-table th.sortable { cursor:pointer; }
+        .orders-table th.sortable:hover { color:#1e40af; }
+        .orders-table th:not(.sortable) { cursor:default; }
         .orders-modal-body { flex:1; overflow-y:auto; padding:0; }
-        .orders-table { width:100%; border-collapse:collapse; font-size:.78rem; }
-        .orders-table th { position:sticky; top:0; background:#f8fafc; padding:10px 12px; text-align:left; font-weight:700; color:var(--text); border-bottom:2px solid var(--border); font-size:.7rem; text-transform:uppercase; letter-spacing:.3px; cursor:pointer; white-space:nowrap; user-select:none; }
-        .orders-table th:hover { color:#1e40af; }
-        .orders-table td { padding:8px 12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+        .orders-table { width:100%; border-collapse:collapse; font-size:.88rem; }
+        .orders-table th { position:sticky; top:0; background:#f8fafc; padding:10px 14px; text-align:left; font-weight:700; color:var(--text); border-bottom:2px solid var(--border); font-size:.78rem; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; user-select:none; }
+        .orders-table td { padding:9px 14px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
         .orders-table tr:hover { background:#f8fafc; }
         .orders-table .order-num { font-weight:700; color:#1e40af; }
         .orders-table .order-tr { font-weight:700; color:#059669; }
-        .orders-badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+        .orders-badge { display:inline-block; padding:3px 10px; border-radius:6px; font-size:.73rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
         .orders-badge.ordering { background:#dbeafe; color:#1e40af; }
         .orders-badge.picking { background:#fef3c7; color:#92400e; }
         .orders-badge.picked { background:#d1fae5; color:#065f46; }
@@ -187,10 +192,19 @@
         .orders-badge.completed { background:#f1f5f9; color:#64748b; }
         .orders-badge.packing { background:#fce7f3; color:#9d174d; }
         .orders-empty { text-align:center; padding:40px; color:var(--muted); font-size:.85rem; }
-        .orders-count { font-size:.75rem; color:var(--muted); font-weight:500; }
+        .orders-count { font-size:.82rem; color:var(--muted); font-weight:500; }
+
+        /* Status filter dropdown */
+        .status-header-wrap { position:relative; cursor:pointer; }
+        .status-header-wrap:hover { color:#1e40af; }
+        .status-dropdown { display:none; position:absolute; top:100%; left:0; z-index:10; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.12); padding:6px; min-width:150px; margin-top:4px; }
+        .status-dropdown.open { display:flex; flex-direction:column; gap:2px; }
+        .status-dropdown-btn { padding:7px 14px; border:none; background:transparent; border-radius:6px; font-size:.8rem; font-weight:600; cursor:pointer; text-align:left; text-transform:uppercase; letter-spacing:.3px; transition:all .12s; }
+        .status-dropdown-btn:hover { background:#f1f5f9; }
+        .status-dropdown-btn.active { background:#1e40af; color:#fff; }
 
         /* ─── Pipeline 7d Stats Line ─── */
-        .wh-stats-line { display:flex; flex-wrap:wrap; gap:3px 12px; font-size:.72rem; align-items:center; padding:10px 12px 0; margin-top:10px; border-top:1px solid var(--border); }
+        .wh-stats-line { display:flex; flex-wrap:wrap; gap:3px 12px; font-size:.8rem; align-items:center; padding:10px 12px 0; margin-top:10px; border-top:1px solid var(--border); }
         .wh-stats-line .ws-k { font-weight:700; color:var(--text); }
         .wh-stats-line .ws-v { color:var(--muted); }
         .wh-stats-line .ws-hi { color:#1e40af; font-weight:800; }
@@ -759,30 +773,30 @@
                 <button class="orders-modal-close" onclick="closeOrdersModal()">&times;</button>
             </div>
             <div class="orders-modal-filters">
-                <input class="orders-search" id="ordersSearch" placeholder="Search customer, order #..." oninput="renderOrdersTable()">
-                <button class="orders-filter-btn active" data-filter="all" onclick="toggleOrderFilter(this)">All</button>
-                <button class="orders-filter-btn" data-filter="SO" onclick="toggleOrderFilter(this)">Sales Orders</button>
-                <button class="orders-filter-btn" data-filter="TR" onclick="toggleOrderFilter(this)">Transfers</button>
-                <span style="color:#cbd5e1">|</span>
-                <button class="orders-filter-btn" data-filter="PICKING" onclick="toggleOrderFilter(this,'stage')">Picking</button>
-                <button class="orders-filter-btn" data-filter="PICKED" onclick="toggleOrderFilter(this,'stage')">Picked</button>
-                <button class="orders-filter-btn" data-filter="ORDERED" onclick="toggleOrderFilter(this,'stage')">Ordered</button>
-                <button class="orders-filter-btn" data-filter="COMPLETED" onclick="toggleOrderFilter(this,'stage')">Completed</button>
-                <button class="orders-filter-btn" data-filter="INVOICED" onclick="toggleOrderFilter(this,'stage')">Invoiced</button>
-                <button class="orders-filter-btn" data-filter="IN TRANSIT" onclick="toggleOrderFilter(this,'stage')">In Transit</button>
+                <input class="orders-search" id="ordersSearch" placeholder="Search order #, customer, ref..." oninput="renderOrdersTable()">
+                <div class="orders-filter-group">
+                    <span class="orders-filter-group-label">View</span>
+                    <button class="orders-filter-btn active" data-view="active" onclick="toggleViewFilter(this)">📋 Active</button>
+                    <button class="orders-filter-btn" data-view="completed" onclick="toggleViewFilter(this)">✅ Completed</button>
+                </div>
+                <div class="orders-filter-group">
+                    <span class="orders-filter-group-label">Type</span>
+                    <button class="orders-filter-btn active" data-filter="all" onclick="toggleOrderFilter(this)">All</button>
+                    <button class="orders-filter-btn" data-filter="SO" onclick="toggleOrderFilter(this)">🛒 Sales</button>
+                    <button class="orders-filter-btn" data-filter="TR" onclick="toggleOrderFilter(this)">🔄 Transfers</button>
+                </div>
             </div>
             <div class="orders-modal-body">
                 <table class="orders-table">
                     <thead>
                         <tr>
-                            <th onclick="sortOrders('number')">Order # ↕</th>
-                            <th onclick="sortOrders('type')">Type ↕</th>
-                            <th onclick="sortOrders('customer')">Customer ↕</th>
-                            <th onclick="sortOrders('status')">Status ↕</th>
-                            <th onclick="sortOrders('pick_status')">Pick ↕</th>
-                            <th onclick="sortOrders('pack_status')">Pack ↕</th>
-                            <th onclick="sortOrders('order_date')">Date ↕</th>
-                            <th onclick="sortOrders('from_location')">From ↕</th>
+                            <th>Order #</th>
+                            <th>Customer / Destination</th>
+                            <th class="status-header-wrap" onclick="toggleStatusDropdown(event)">
+                                Status ▾
+                                <div class="status-dropdown" id="statusDropdown"></div>
+                            </th>
+                            <th class="sortable" onclick="toggleDateSort()" id="dateHeader">Date ▼</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody"></tbody>
@@ -816,12 +830,12 @@
                 if (!sb) return;
 
                 const pad = n => String(n).padStart(2, '0');
-                // AEST (UTC+11) helper — warehouse is in Sydney
-                const AEST_OFFSET = 11;
+                // AEST (UTC+10) helper — warehouse is in Brisbane (no DST)
+                const AEST_OFFSET = 10;
                 const aestNow = () => new Date(Date.now() + AEST_OFFSET * 3600000);
                 const aestToday = () => aestNow().toISOString().split('T')[0];
-                const aestDayStart = (d) => d + 'T00:00:00+11:00';
-                const aestDayEnd = (d) => d + 'T23:59:59+11:00';
+                const aestDayStart = (d) => d + 'T00:00:00+10:00';
+                const aestDayEnd = (d) => d + 'T23:59:59+10:00';
                 const fmtAgo = (ts) => {
                     if (!ts) return { str: 'N/A', min: 999 };
                     const agoMs = Date.now() - ts.getTime();
@@ -1057,10 +1071,15 @@
                         .from('order_pipeline')
                         .select('*');
                     if (!plErr && pipeline) {
-                        window.__pipelineData = pipeline;
+                        // Only show Main Warehouse data (strict — null location excluded)
+                        const MAIN_WH = 'Main Warehouse';
+                        const mainPipeline = pipeline.filter(r => r.from_location === MAIN_WH);
+                        window.__pipelineData = mainPipeline;
                         const _completedStatuses = ['COMPLETED','VOIDED','CLOSED','INVOICED'];
-                        const active = pipeline.filter(r => !_completedStatuses.includes(r.status));
-                        const completed = pipeline.filter(r => _completedStatuses.includes(r.status));
+                        // For KPIs: only active statuses visible to warehouse team
+                        const _visibleStatuses = ['PICKING','PICKED','PACKING','ORDERED'];
+                        const active = mainPipeline.filter(r => _visibleStatuses.includes(r.status));
+                        const completed = mainPipeline.filter(r => _completedStatuses.includes(r.status));
                         const total = active.length;
                         const soCount = active.filter(r => r.type === 'SO').length;
                         const trCount = active.filter(r => r.type === 'TR').length;
@@ -1068,7 +1087,7 @@
                         const picked = active.filter(r => r.status === 'PICKED' || r.pick_status === 'PICKED').length;
                         const toPack = picked;
 
-                        // Completed today (AEST)
+                        // Completed today
                         const todayAestStr = aestToday();
                         const todayStart = new Date(aestDayStart(todayAestStr));
                         const todayEnd = new Date(aestDayEnd(todayAestStr));
@@ -1081,41 +1100,14 @@
                         setKpi('whOrders', total, `${soCount} SO · ${trCount} TR`);
                         setKpi('whPicking', picking, 'in progress');
                         setKpi('whToPack', toPack, 'awaiting pack');
-                        setKpi('whCompleted', completedToday, 'today (AEST)');
+                        setKpi('whCompleted', completedToday, 'today');
 
-                        // 7-day stats line
+                        // 7-day stats line (just total completed)
                         const sevenDaysAgo = new Date(todayStart.getTime() - 6 * 86400000);
                         const completed7d = completed.filter(r => r.completed_at && new Date(r.completed_at) >= sevenDaysAgo).length;
-                        const avg7d = completed7d > 0 ? (completed7d / 7).toFixed(0) : 0;
-                        // Find peak day
-                        const dayBuckets = {};
-                        const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                        completed.forEach(r => {
-                            if (!r.completed_at) return;
-                            const d = new Date(r.completed_at);
-                            if (d < sevenDaysAgo) return;
-                            // AEST day
-                            const aestD = new Date(d.getTime() + AEST_OFFSET * 3600000);
-                            const key = aestD.toISOString().split('T')[0];
-                            dayBuckets[key] = (dayBuckets[key] || 0) + 1;
-                        });
-                        let peakDay = '', peakCount = 0;
-                        for (const [k, v] of Object.entries(dayBuckets)) {
-                            if (v > peakCount) { peakCount = v; peakDay = dayNames[new Date(k + 'T12:00:00').getDay()]; }
-                        }
                         const statsEl = document.getElementById('whStatsLine');
                         if (statsEl) {
-                            const parts = [
-                                `<span class="ws-k">7d:</span> <span class="ws-hi">${completed7d}</span> <span class="ws-v">completed</span>`,
-                                `<span class="ws-sep">&middot;</span>`,
-                                `<span class="ws-k">avg</span> <span class="ws-v">${avg7d}/day</span>`,
-                            ];
-                            if (peakDay) parts.push(`<span class="ws-sep">&middot;</span>`, `<span class="ws-k">peak</span> <span class="ws-v">${peakDay} (${peakCount})</span>`);
-                            parts.push(`<span class="ws-sep">&middot;</span>`);
-                            parts.push(`<span class="ws-k">today</span> <span class="ws-hi">${completedToday}</span>`);
-                            if (picking > 0) parts.push(`<span class="ws-sep">&middot;</span>`, `<span class="ws-warn">${picking}</span> <span class="ws-v">picking</span>`);
-                            if (toPack > 0) parts.push(`<span class="ws-sep">&middot;</span>`, `<span class="ws-ok">${toPack}</span> <span class="ws-v">packed</span>`);
-                            statsEl.innerHTML = parts.join(' ');
+                            statsEl.innerHTML = `<span class="ws-k">7d:</span> <span class="ws-hi">${completed7d}</span> <span class="ws-v">completed</span>`;
                         }
 
                         // Last sync info
@@ -1160,9 +1152,11 @@
         // ORDERS MODAL LOGIC
         // ══════════════════════════════════════════════════════
         let _ordersTypeFilter = 'all';
-        let _ordersStageFilters = new Set();
-        let _ordersSortCol = 'order_date';
-        let _ordersSortAsc = false;
+        let _ordersViewFilter = 'active'; // 'active' or 'completed'
+        let _ordersStatusFilter = 'all'; // 'all' or specific status
+        let _ordersDateSort = 'desc'; // 'desc' = newest first, 'asc' = oldest first
+        const _activeStatuses = ['PICKING', 'PICKED', 'PACKING', 'ORDERED'];
+        const _completedModalStatuses = ['COMPLETED'];
 
         function openOrdersModal() {
             document.getElementById('ordersModalOverlay').classList.add('active');
@@ -1173,52 +1167,88 @@
             document.getElementById('ordersModalOverlay').classList.remove('active');
             document.body.style.overflow = '';
         }
-        function toggleOrderFilter(btn, group) {
-            const val = btn.dataset.filter;
-            if (group === 'stage') {
-                btn.classList.toggle('active');
-                if (btn.classList.contains('active')) _ordersStageFilters.add(val);
-                else _ordersStageFilters.delete(val);
-            } else {
-                // type filter (All / SO / TR) — single select
-                document.querySelectorAll('.orders-filter-btn[data-filter="all"],.orders-filter-btn[data-filter="SO"],.orders-filter-btn[data-filter="TR"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                _ordersTypeFilter = val;
-            }
+        function toggleViewFilter(btn) {
+            document.querySelectorAll('.orders-filter-btn[data-view]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            _ordersViewFilter = btn.dataset.view;
+            _ordersStatusFilter = 'all'; // reset status filter on view change
             renderOrdersTable();
         }
-        function sortOrders(col) {
-            if (_ordersSortCol === col) _ordersSortAsc = !_ordersSortAsc;
-            else { _ordersSortCol = col; _ordersSortAsc = true; }
+        function toggleDateSort() {
+            _ordersDateSort = _ordersDateSort === 'desc' ? 'asc' : 'desc';
+            document.getElementById('dateHeader').innerHTML = 'Date ' + (_ordersDateSort === 'desc' ? '▼' : '▲');
+            renderOrdersTable();
+        }
+        function toggleStatusDropdown(e) {
+            e.stopPropagation();
+            const dd = document.getElementById('statusDropdown');
+            const isOpen = dd.classList.contains('open');
+            dd.classList.toggle('open');
+            if (!isOpen) buildStatusDropdown();
+        }
+        function buildStatusDropdown() {
+            const dd = document.getElementById('statusDropdown');
+            const isCompleted = _ordersViewFilter === 'completed';
+            const statuses = isCompleted ? ['COMPLETED'] : _activeStatuses;
+            const options = ['all', ...statuses];
+            dd.innerHTML = options.map(s => {
+                const label = s === 'all' ? 'All Statuses' : s;
+                const cls = _ordersStatusFilter === s ? 'active' : '';
+                return `<button class="status-dropdown-btn ${cls}" onclick="selectStatusFilter('${s}', event)">${label}</button>`;
+            }).join('');
+        }
+        function selectStatusFilter(status, e) {
+            e.stopPropagation();
+            _ordersStatusFilter = status;
+            document.getElementById('statusDropdown').classList.remove('open');
+            renderOrdersTable();
+        }
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            const dd = document.getElementById('statusDropdown');
+            if (dd) dd.classList.remove('open');
+        });
+        function toggleOrderFilter(btn) {
+            document.querySelectorAll('.orders-filter-btn[data-filter="all"],.orders-filter-btn[data-filter="SO"],.orders-filter-btn[data-filter="TR"]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            _ordersTypeFilter = btn.dataset.filter;
             renderOrdersTable();
         }
 
         function renderOrdersTable() {
             const data = window.__pipelineData || [];
             const search = (document.getElementById('ordersSearch')?.value || '').toLowerCase();
+            const isCompleted = _ordersViewFilter === 'completed';
+            const allowedStatuses = isCompleted ? _completedModalStatuses : _activeStatuses;
+
+            // For completed view, limit to last 7 days
+            const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
             let rows = data.filter(r => {
+                if (!allowedStatuses.includes(r.status)) return false;
+                if (isCompleted && r.completed_at && r.completed_at < sevenDaysAgo) return false;
+                if (_ordersStatusFilter !== 'all' && r.status !== _ordersStatusFilter) return false;
                 if (_ordersTypeFilter !== 'all' && r.type !== _ordersTypeFilter) return false;
-                if (_ordersStageFilters.size > 0 && !_ordersStageFilters.has(r.status)) return false;
                 if (search) {
-                    const hay = `${r.number} ${r.customer||''} ${r.status} ${r.reference||''} ${r.from_location||''} ${r.to_location||''}`.toLowerCase();
+                    const hay = `${r.number} ${r.customer||''} ${r.status} ${r.reference||''} ${r.to_location||''}`.toLowerCase();
                     if (!hay.includes(search)) return false;
                 }
                 return true;
             });
-            // Sort
-            rows.sort((a, b) => {
-                let va = a[_ordersSortCol] || '', vb = b[_ordersSortCol] || '';
-                if (typeof va === 'string') va = va.toLowerCase();
-                if (typeof vb === 'string') vb = vb.toLowerCase();
-                if (va < vb) return _ordersSortAsc ? -1 : 1;
-                if (va > vb) return _ordersSortAsc ? 1 : -1;
-                return 0;
-            });
+
+            // Sort by date using current direction
+            const dir = _ordersDateSort === 'desc' ? -1 : 1;
+            if (isCompleted) {
+                rows.sort((a, b) => dir * (a.completed_at || '').localeCompare(b.completed_at || ''));
+            } else {
+                rows.sort((a, b) => dir * (a.updated_at || a.order_date || '').localeCompare(b.updated_at || b.order_date || ''));
+            }
 
             const tbody = document.getElementById('ordersTableBody');
             const empty = document.getElementById('ordersEmpty');
             const countEl = document.getElementById('ordersCount');
-            if (countEl) countEl.textContent = `${rows.length} of ${data.length} orders`;
+            const totalInView = data.filter(r => allowedStatuses.includes(r.status)).length;
+            if (countEl) countEl.textContent = `${rows.length}` + (rows.length < totalInView ? ` of ${totalInView}` : '');
 
             if (rows.length === 0) {
                 tbody.innerHTML = '';
@@ -1228,27 +1258,50 @@
             empty.style.display = 'none';
 
             const statusClass = s => (s || '').toLowerCase().replace(/\s+/g, '-');
-            const fmtDate = d => {
-                if (!d) return '—';
-                const dt = new Date(d);
-                return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
+            // Convert 24h to 12h AM/PM
+            const to12h = (h24, mi) => {
+                const ampm = h24 >= 12 ? 'pm' : 'am';
+                const h12 = h24 % 12 || 12;
+                return `${h12}:${mi}${ampm}`;
+            };
+            // Format date in AEST — use updated_at as primary (full AEST date+time), fallback to order_date
+            const fmtDate = (orderDate, updatedAt) => {
+                if (updatedAt) {
+                    const utc = new Date(updatedAt);
+                    const aest = new Date(utc.getTime() + 10 * 3600000);
+                    const dd = String(aest.getUTCDate()).padStart(2, '0');
+                    const mm = String(aest.getUTCMonth() + 1).padStart(2, '0');
+                    const timeStr = to12h(aest.getUTCHours(), String(aest.getUTCMinutes()).padStart(2, '0'));
+                    return `${dd}/${mm} <span style="color:#94a3b8;font-size:.7rem">${timeStr}</span>`;
+                }
+                if (!orderDate) return '—';
+                const [y, m, d] = orderDate.split('-');
+                return `${d}/${m}`;
+            };
+            const fmtCompletedDate = (completedAt) => {
+                if (!completedAt) return '—';
+                const dt = new Date(completedAt);
+                const aest = new Date(dt.getTime() + 10 * 3600000);
+                const dd = String(aest.getUTCDate()).padStart(2, '0');
+                const mm = String(aest.getUTCMonth() + 1).padStart(2, '0');
+                const timeStr = to12h(aest.getUTCHours(), String(aest.getUTCMinutes()).padStart(2, '0'));
+                return `${dd}/${mm} <span style="color:#94a3b8;font-size:.7rem">${timeStr}</span>`;
             };
 
             tbody.innerHTML = rows.map(r => {
                 const numClass = r.type === 'TR' ? 'order-tr' : 'order-num';
-                const typeLabel = r.type === 'TR' ? '🔄 TR' : '🛒 SO';
-                const custOrLoc = r.type === 'TR' ? `${r.from_location || '?'} → ${r.to_location || '?'}` : (r.customer || '—');
+                const fNum = r.fulfilment_number || 1;
+                const numDisplay = fNum > 1 ? `${r.number} <span style="color:#94a3b8;font-weight:600;font-size:.78rem">#${fNum}</span>` : (r.number || '—');
+                const custOrLoc = r.type === 'TR' ? `→ ${r.to_location || '?'}` : (r.customer || '—');
+                const dateCell = isCompleted ? fmtCompletedDate(r.completed_at) : fmtDate(r.order_date, r.updated_at);
                 return `<tr>
-                    <td class="${numClass}">${r.number || '—'}</td>
-                    <td>${typeLabel}</td>
+                    <td class="${numClass}">${numDisplay}</td>
                     <td>${custOrLoc}</td>
                     <td><span class="orders-badge ${statusClass(r.status)}">${r.status || '—'}</span></td>
-                    <td>${r.pick_status || '—'}</td>
-                    <td>${r.pack_status || '—'}</td>
-                    <td>${fmtDate(r.order_date)}</td>
-                    <td>${r.from_location || '—'}</td>
+                    <td class="order-date">${dateCell}</td>
                 </tr>`;
             }).join('');
+
         }
 
         // Close modal with Escape key
