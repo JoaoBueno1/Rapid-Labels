@@ -130,6 +130,7 @@
 
         /* ─── Warehouse Pipeline Row ─── */
         .wh-pipeline { background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+        .wh-pipeline.wh-locked > * { visibility:hidden; }
         .wh-pipeline-title { font-size:.8rem; font-weight:700; color:var(--text); margin:0 0 12px 0; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:.3px; }
         .wh-pipeline-title .icon { font-size:1rem; }
         .wh-pipeline-title .wh-sync-info { margin-left:auto; font-size:.65rem; color:var(--muted); font-weight:500; text-transform:none; letter-spacing:0; }
@@ -312,7 +313,7 @@
                 </div>
 
                 <!-- Warehouse Pipeline -->
-                <div class="wh-pipeline">
+                <div class="wh-pipeline wh-locked" id="whPipelineCard">
                     <div class="wh-pipeline-title"><span class="icon">📦</span> Warehouse Pipeline <span class="wh-sync-info" id="whSyncInfo">loading...</span></div>
                     <div class="wh-kpi-row">
                         <div class="wh-kpi wh-orders clickable" id="whOrders" onclick="openOrdersModal()">
@@ -434,7 +435,7 @@
                         <div style="font-size:32px">🔒</div>
                         <div style="display:flex;gap:6px;align-items:center">
                             <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN" style="width:80px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font-size:15px;outline:none" onkeydown="if(event.key==='Enter')document.getElementById('qcUnlockBtn').click()">
-                            <button id="qcUnlockBtn" type="button" onclick="if(document.getElementById('qcPin').value==='4209'){document.getElementById('qcLocked').remove()}else{document.getElementById('qcPin').style.borderColor='#ef4444';document.getElementById('qcPin').value='';document.getElementById('qcPin').placeholder='Wrong'}" style="padding:6px 14px;background:#eab308;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Unlock</button>
+                            <button id="qcUnlockBtn" type="button" onclick="if(document.getElementById('qcPin').value==='4209'){document.getElementById('qcLocked').remove();var pc=document.getElementById('whPipelineCard');if(pc)pc.classList.remove('wh-locked')}else{document.getElementById('qcPin').style.borderColor='#ef4444';document.getElementById('qcPin').value='';document.getElementById('qcPin').placeholder='Wrong'}" style="padding:6px 14px;background:#eab308;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Unlock</button>
                         </div>
                     </div>
                 </div>
