@@ -1118,6 +1118,9 @@
       state.allRows = rows.slice();
       state.palletCapacity = palletCapacity;
       state.setupByProduct = setupByProduct;
+      state.rawStockRows = stockRows;       // raw stock_snapshot rows for Print Locations
+      state.productMap = productMap;         // product info lookup by sku
+      state.setupBy5DC = setupBy5DC;         // 5DC lookup
       updateStatusCounters();
 
       // Apply filters & render
@@ -1255,6 +1258,14 @@
     rebuildView();
   };
   window.restockGetAllRows = function () { return state.allRows || []; };
+  window.restockGetRawStock = function () {
+    return {
+      stockRows: state.rawStockRows || [],
+      productMap: state.productMap || {},
+      setupByProduct: state.setupByProduct || {},
+      setupBy5DC: state.setupBy5DC || {},
+    };
+  };
   window.restockToggleHideNoReserve = function (flag) { state.hideNoReserve = !!flag; rebuildView(); };
   window.restockToggleOnlyNeedsAdjustment = function (flag) { state.onlyNeedsAdjustment = !!flag; rebuildView(); };
   window.restockToggleOnlyFavorites = function (flag) { state.onlyFavorites = !!flag; rebuildView(); };

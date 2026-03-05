@@ -601,6 +601,10 @@
             <span style="color: #a16207; font-weight: 600">MA-SAMPLES</span>
           </label>
           <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; background: #f8fafc">
+            <input type="checkbox" id="locMA-PRODUCTION" value="MA-PRODUCTION" onchange="updateLocationsPrint()">
+            <span style="color: #7c3aed; font-weight: 600">MA-PRODUCTION</span>
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; cursor: pointer; background: #f8fafc">
             <input type="checkbox" id="locUnassigned" value="Unassigned" onchange="updateLocationsPrint()">
             <span style="color: #6b7280; font-weight: 600">Unassigned</span>
           </label>
@@ -646,33 +650,43 @@
     }
 
     function buildLocationRows(selectedLocations) {
-      if (!window.restockGetAllRows) return [];
-      const allRows = window.restockGetAllRows();
+      // Use raw stock_snapshot data so we show ALL items in a location,
+      // not just items that are in the restock view.
+      if (!window.restockGetRawStock) return [];
+      const { stockRows, productMap, setupByProduct, setupBy5DC } = window.restockGetRawStock();
+      if (!stockRows || stockRows.length === 0) return [];
+
       const result = [];
 
-      for (const row of allRows) {
-        const reserves = Array.isArray(row.__reserve_locations) ? row.__reserve_locations : [];
-        for (const loc of reserves) {
-          if (!loc || !loc.location) continue;
-          const locStr = String(loc.location).toUpperCase();
-          const qty = Number(loc.qty) || 0;
-          if (qty <= 0) continue;
+      for (const s of stockRows) {
+        const bin = (s.bin || '').trim();
+        const oh = Number(s.on_hand) || 0;
+        if (oh <= 0) continue;
 
-          const matched = selectedLocations.some(sl => {
-            if (sl === 'Unassigned') return locStr === 'UNASSIGNED';
-            return locStr.startsWith(sl.toUpperCase());
-          });
-          if (!matched) continue;
+        const binUpper = bin.toUpperCase() || 'UNASSIGNED';
+        const matched = selectedLocations.some(sl => {
+          if (sl === 'Unassigned') return binUpper === 'UNASSIGNED' || binUpper === '';
+          return binUpper.startsWith(sl.toUpperCase());
+        });
+        if (!matched) continue;
 
-          result.push({
-            fiveDC: row.__5dc || '',
-            sku: row.__stock_sku || row.sku || '',
-            pickface: String(row.stock_locator || '').trim() || '—',
-            location: loc.location,
-            qty: qty,
-            product: row.__full_description || row.product || '',
-          });
-        }
+        const sku = s.sku || '';
+        const prod = productMap[sku] || {};
+        const setup = setupByProduct[sku];
+
+        // 5DC: from setup or from product attribute1
+        const fiveDC = (setup ? setup.sku5dc : '') || (prod.attribute1 || '').trim();
+        // Pickface location: from setup or cin7 stock_locator
+        const pickface = (setup ? setup.pickface_location : '') || (prod.stock_locator || '').trim();
+
+        result.push({
+          fiveDC: fiveDC,
+          sku: sku,
+          pickface: pickface || '—',
+          location: bin || 'Unassigned',
+          qty: oh,
+          product: prod.name || sku,
+        });
       }
 
       // Sort by location, then SKU
