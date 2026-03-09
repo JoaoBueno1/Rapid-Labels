@@ -4,10 +4,19 @@
    Prints a table-format page (1 product per row) for warehouse visibility
    ═══════════════════════════════════════════════════ */
 
+// ── Layout configs per paper+orientation ──
+const ML_CONFIGS = {
+  'A4-portrait':   { maxSlots: 8,  font5dc: 34, fontSku: 22, fontQty: 34, bcH: 18, cellH: 30, pageSz: 'A4 portrait',  w5dc: '18%', wsku: '28%', wbc: '36%', wqty: '18%', bcW: 1.5 },
+  'A4-landscape':  { maxSlots: 5,  font5dc: 42, fontSku: 26, fontQty: 42, bcH: 22, cellH: 32, pageSz: 'A4 landscape', w5dc: '16%', wsku: '28%', wbc: '38%', wqty: '18%', bcW: 1.8 },
+  'A3-portrait':   { maxSlots: 14, font5dc: 40, fontSku: 26, fontQty: 40, bcH: 22, cellH: 27, pageSz: 'A3 portrait',  w5dc: '16%', wsku: '28%', wbc: '38%', wqty: '18%', bcW: 1.8 },
+  'A3-landscape':  { maxSlots: 10, font5dc: 44, fontSku: 28, fontQty: 44, bcH: 22, cellH: 27, pageSz: 'A3 landscape', w5dc: '15%', wsku: '26%', wbc: '40%', wqty: '19%', bcW: 1.8 },
+};
+
 // ── State ──
 const mlState = {
   slots: [],          // [{sku, fiveDC, barcode, name, qty}]
   maxSlots: 8,        // portrait default
+  paperSize: 'A4',
   orientation: 'portrait',
   productsCache: null, // cin7_mirror.products cached
   loading: false,
@@ -60,11 +69,24 @@ async function mlLoadProducts() {
   }
 }
 
-// ── Update slots when orientation changes ──
+// ── Update slots when paper size or orientation changes ──
 function mlUpdateSlots() {
   const orient = document.querySelector('input[name="mlOrientation"]:checked').value;
+  const paper  = document.querySelector('input[name="mlPaperSize"]:checked').value;
   mlState.orientation = orient;
-  mlState.maxSlots = orient === 'portrait' ? 8 : 5;
+  mlState.paperSize   = paper;
+
+  const key = paper + '-' + orient;
+  const cfg = ML_CONFIGS[key] || ML_CONFIGS['A4-portrait'];
+  mlState.maxSlots = cfg.maxSlots;
+
+  // Update the product count hints in the UI
+  document.querySelectorAll('.ml-orient-count').forEach(el => {
+    const o = el.dataset.orient;
+    const k = paper + '-' + o;
+    const c = ML_CONFIGS[k];
+    if (c) el.textContent = '(' + c.maxSlots + ' products)';
+  });
 
   // Preserve existing data, trim or extend
   while (mlState.slots.length > mlState.maxSlots) mlState.slots.pop();
@@ -81,27 +103,36 @@ function mlRenderSlots() {
   container.innerHTML = '';
 
   mlState.slots.forEach((slot, i) => {
+    const filled = !!(slot.sku || slot.fiveDC);
+    const complete = filled && slot.qty;
+
+    // Visual states: empty → neutral gray, has product → light green, product+qty → solid green
+    const rowBg    = complete ? '#ecfdf5' : filled ? '#f0fdf4' : '#f8fafc';
+    const rowBdr   = complete ? '#86efac' : filled ? '#bbf7d0' : '#e2e8f0';
+    const numColor = complete ? '#16a34a' : filled ? '#4ade80' : '#94a3b8';
+    const numIcon  = complete ? '✓' : (i + 1) + '.';
+
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;position:relative';
+    row.style.cssText = `display:flex;gap:6px;align-items:center;padding:6px 8px;background:${rowBg};border:1px solid ${rowBdr};border-radius:8px;font-size:12px;position:relative;transition:all .2s ease`;
     row.innerHTML = `
-      <span style="font-weight:700;color:#94a3b8;min-width:18px">${i + 1}.</span>
+      <span style="font-weight:700;color:${numColor};min-width:18px;font-size:${complete ? '14px' : '12px'};text-align:center">${numIcon}</span>
       <div style="flex:0 0 80px;position:relative">
         <input type="text" placeholder="5DC" value="${_esc(slot.fiveDC)}" data-idx="${i}" data-field="fiveDC"
-               style="width:100%;padding:5px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-weight:600"
+               style="width:100%;padding:5px 6px;border:1px solid ${filled ? '#86efac' : '#cbd5e1'};border-radius:6px;font-size:12px;font-weight:600;background:${filled ? '#fff' : '#fff'};transition:border .2s"
                oninput="mlOnInput(this)" onfocus="mlOnFocus(this)" autocomplete="off">
       </div>
       <div style="flex:1 1 140px;position:relative">
         <input type="text" placeholder="SKU / Product code" value="${_esc(slot.sku)}" data-idx="${i}" data-field="sku"
-               style="width:100%;padding:5px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px"
+               style="width:100%;padding:5px 6px;border:1px solid ${filled ? '#86efac' : '#cbd5e1'};border-radius:6px;font-size:12px;transition:border .2s"
                oninput="mlOnInput(this)" onfocus="mlOnFocus(this)" autocomplete="off">
         <div class="ml-ac-panel" data-idx="${i}" style="display:none;position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);z-index:3000;max-height:140px;overflow-y:auto;margin-top:2px;padding:4px 0"></div>
       </div>
       <div style="flex:0 0 60px">
         <input type="number" placeholder="QTY" value="${slot.qty}" data-idx="${i}" data-field="qty" min="1"
-               style="width:100%;padding:5px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-weight:600;text-align:center"
+               style="width:100%;padding:5px 6px;border:1px solid ${complete ? '#86efac' : '#cbd5e1'};border-radius:6px;font-size:12px;font-weight:600;text-align:center;transition:border .2s"
                oninput="mlOnQtyChange(this)">
       </div>
-      <button type="button" onclick="mlClearSlot(${i})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;opacity:.5" title="Clear">✕</button>
+      <button type="button" onclick="mlClearSlot(${i})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;opacity:${filled ? '.7' : '.3'};transition:opacity .2s" title="Clear">✕</button>
     `;
     container.appendChild(row);
   });
@@ -297,19 +328,21 @@ function mlPrint() {
   var items = mlState.slots.filter(function(s) { return s.sku || s.fiveDC; });
   if (items.length === 0) return;
 
-  var isLandscape = mlState.orientation === 'landscape';
+  var key = mlState.paperSize + '-' + mlState.orientation;
+  var cfg = ML_CONFIGS[key] || ML_CONFIGS['A4-portrait'];
 
-  var font5dc = isLandscape ? 42 : 34;
-  var fontSku = isLandscape ? 26 : 22;
-  var fontQty = isLandscape ? 42 : 34;
-  var bcH     = isLandscape ? 22 : 18;
-  var cellH   = isLandscape ? 32 : 30;
-  var pageSz  = isLandscape ? 'A4 landscape' : 'A4 portrait';
+  var font5dc  = cfg.font5dc;
+  var fontSku  = cfg.fontSku;
+  var fontQty  = cfg.fontQty;
+  var bcH      = cfg.bcH;
+  var cellH    = cfg.cellH;
+  var pageSz   = cfg.pageSz;
   var bcPixelH = Math.round(bcH * 2.5);
-  var w5dc = isLandscape ? '16%' : '18%';
-  var wsku = '28%';
-  var wbc  = isLandscape ? '38%' : '36%';
-  var wqty = isLandscape ? '18%' : '18%';
+  var bcW      = cfg.bcW || 1.5;
+  var w5dc     = cfg.w5dc;
+  var wsku     = cfg.wsku;
+  var wbc      = cfg.wbc;
+  var wqty     = cfg.wqty;
 
   // Build table rows
   var rowsHtml = '';
@@ -318,7 +351,7 @@ function mlPrint() {
     rowsHtml += '<tr>';
     rowsHtml += '<td class="ml-cell ml-5dc">' + _esc(item.fiveDC) + '</td>';
     rowsHtml += '<td class="ml-cell ml-sku">' + _esc(item.sku) + '</td>';
-    rowsHtml += '<td class="ml-cell ml-bc"><svg data-bc="' + _esc(item.barcode) + '"></svg></td>';
+    rowsHtml += '<td class="ml-cell ml-bc"><svg data-bc="' + _esc(item.barcode) + '" data-sku="' + _esc(item.sku) + '"></svg></td>';
     rowsHtml += '<td class="ml-cell ml-qty">' + _esc(String(item.qty || '')) + '</td>';
     rowsHtml += '</tr>';
   }
@@ -326,20 +359,23 @@ function mlPrint() {
   var dateStr = new Date().toLocaleDateString('en-AU');
 
   var parts = [];
+  var isA3 = mlState.paperSize === 'A3';
+  var pageMargin = isA3 ? '4mm 6mm' : '6mm 8mm';
+
   parts.push('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Multi-Label Print</title>');
   parts.push('<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></scr' + 'ipt>');
   parts.push('<style>');
-  parts.push('@page { size: ' + pageSz + '; margin: 6mm 8mm; }');
+  parts.push('@page { size: ' + pageSz + '; margin: ' + pageMargin + '; }');
   parts.push('* { margin:0; padding:0; box-sizing:border-box; }');
   parts.push('body { font-family: Arial, Helvetica, sans-serif; }');
   parts.push('table { width:100%; border-collapse:collapse; table-layout:fixed; }');
-  parts.push('thead th { font-size:10pt; font-weight:700; color:#334155; text-align:center; padding:2mm 2mm; border-bottom:2px solid #334155; text-transform:uppercase; letter-spacing:0.5px; }');
-  parts.push('.ml-cell { text-align:center; vertical-align:middle; border-bottom:1px solid #cbd5e1; padding:1.5mm 2mm; height:' + cellH + 'mm; }');
-  parts.push('.ml-5dc { font-size:' + font5dc + 'pt; font-weight:800; color:#0f172a; width:' + w5dc + '; }');
-  parts.push('.ml-sku { font-size:' + fontSku + 'pt; font-weight:600; color:#1e293b; width:' + wsku + '; word-break:break-all; }');
+  parts.push('thead th { font-size:10pt; font-weight:700; color:#334155; text-align:center; padding:1.5mm 2mm; border-bottom:2px solid #334155; text-transform:uppercase; letter-spacing:0.5px; }');
+  parts.push('.ml-cell { text-align:center; vertical-align:middle; border-bottom:1px solid #cbd5e1; padding:1mm 2mm; height:' + cellH + 'mm; overflow:hidden; }');
+  parts.push('.ml-5dc { font-size:' + font5dc + 'pt; font-weight:800; color:#0f172a; width:' + w5dc + '; line-height:1; }');
+  parts.push('.ml-sku { font-size:' + fontSku + 'pt; font-weight:600; color:#1e293b; width:' + wsku + '; word-break:break-all; line-height:1.1; }');
   parts.push('.ml-bc { width:' + wbc + '; }');
   parts.push('.ml-bc svg { height:' + bcH + 'mm; width:auto; max-width:100%; }');
-  parts.push('.ml-qty { font-size:' + fontQty + 'pt; font-weight:800; color:#0f172a; width:' + wqty + '; }');
+  parts.push('.ml-qty { font-size:' + fontQty + 'pt; font-weight:800; color:#0f172a; width:' + wqty + '; line-height:1; }');
   parts.push('tr:last-child .ml-cell { border-bottom:2px solid #334155; }');
   parts.push('@media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }');
   parts.push('.ml-footer { position:fixed; bottom:3mm; right:8mm; font-size:7pt; color:#94a3b8; }');
@@ -353,12 +389,14 @@ function mlPrint() {
   parts.push('  for (var i = 0; i < svgs.length; i++) {');
   parts.push('    var svg = svgs[i];');
   parts.push('    var val = svg.getAttribute("data-bc") || "";');
-  parts.push('    if (!val) { svg.style.display="none"; continue; }');
+  parts.push('    var skuFallback = svg.getAttribute("data-sku") || "";');
+  parts.push('    if (!val && !skuFallback) { svg.style.display="none"; continue; }');
+  parts.push('    if (!val) { val = skuFallback; }');
   parts.push('    try {');
   parts.push('      var fmt = val.length === 13 ? "EAN13" : (val.length === 12 ? "UPC" : "CODE128");');
-  parts.push('      JsBarcode(svg, val, { format:fmt, height:' + bcPixelH + ', width:1.5, displayValue:true, fontSize:11, margin:2, textMargin:1 });');
+  parts.push('      JsBarcode(svg, val, { format:fmt, height:' + bcPixelH + ', width:' + bcW + ', displayValue:true, fontSize:11, margin:2, textMargin:1 });');
   parts.push('    } catch(e) {');
-  parts.push('      try { JsBarcode(svg, val, { format:"CODE128", height:' + bcPixelH + ', width:1.5, displayValue:true, fontSize:11, margin:2, textMargin:1 }); }');
+  parts.push('      try { JsBarcode(svg, val, { format:"CODE128", height:' + bcPixelH + ', width:' + bcW + ', displayValue:true, fontSize:11, margin:2, textMargin:1 }); }');
   parts.push('      catch(e2) { svg.style.display="none"; }');
   parts.push('    }');
   parts.push('  }');
