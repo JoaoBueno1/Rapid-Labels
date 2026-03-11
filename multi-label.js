@@ -113,26 +113,28 @@ function mlRenderSlots() {
     const numIcon  = complete ? '✓' : (i + 1) + '.';
 
     const row = document.createElement('div');
-    row.style.cssText = `display:flex;gap:6px;align-items:center;padding:6px 8px;background:${rowBg};border:1px solid ${rowBdr};border-radius:8px;font-size:12px;position:relative;transition:all .2s ease`;
+    row.className = 'ml-slot-row';
+    row.style.background = rowBg;
+    row.style.borderColor = rowBdr;
     row.innerHTML = `
-      <span style="font-weight:700;color:${numColor};min-width:18px;font-size:${complete ? '14px' : '12px'};text-align:center">${numIcon}</span>
-      <div style="flex:0 0 80px;position:relative">
-        <input type="text" placeholder="5DC" value="${_esc(slot.fiveDC)}" data-idx="${i}" data-field="fiveDC"
-               style="width:100%;padding:5px 6px;border:1px solid ${filled ? '#86efac' : '#cbd5e1'};border-radius:6px;font-size:12px;font-weight:600;background:${filled ? '#fff' : '#fff'};transition:border .2s"
+      <span class="ml-slot-num" style="color:${numColor};font-size:${complete ? '14px' : '12px'}">${numIcon}</span>
+      <div class="ml-slot-5dc">
+        <input type="text" class="ml-slot-input ml-slot-input-5dc" placeholder="5DC" value="${_esc(slot.fiveDC)}" data-idx="${i}" data-field="fiveDC"
+               style="border-color:${filled ? '#86efac' : '#cbd5e1'}"
                oninput="mlOnInput(this)" onfocus="mlOnFocus(this)" autocomplete="off">
       </div>
-      <div style="flex:1 1 140px;position:relative">
-        <input type="text" placeholder="SKU / Product code" value="${_esc(slot.sku)}" data-idx="${i}" data-field="sku"
-               style="width:100%;padding:5px 6px;border:1px solid ${filled ? '#86efac' : '#cbd5e1'};border-radius:6px;font-size:12px;transition:border .2s"
+      <div class="ml-slot-sku">
+        <input type="text" class="ml-slot-input" placeholder="SKU / Product code" value="${_esc(slot.sku)}" data-idx="${i}" data-field="sku"
+               style="border-color:${filled ? '#86efac' : '#cbd5e1'}"
                oninput="mlOnInput(this)" onfocus="mlOnFocus(this)" autocomplete="off">
         <div class="ml-ac-panel" data-idx="${i}" style="display:none;position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);z-index:3000;max-height:140px;overflow-y:auto;margin-top:2px;padding:4px 0"></div>
       </div>
-      <div style="flex:0 0 60px">
-        <input type="number" placeholder="QTY" value="${slot.qty}" data-idx="${i}" data-field="qty" min="1"
-               style="width:100%;padding:5px 6px;border:1px solid ${complete ? '#86efac' : '#cbd5e1'};border-radius:6px;font-size:12px;font-weight:600;text-align:center;transition:border .2s"
+      <div class="ml-slot-qty">
+        <input type="number" class="ml-slot-input ml-slot-input-qty" placeholder="QTY" value="${slot.qty}" data-idx="${i}" data-field="qty" min="1"
+               style="border-color:${complete ? '#86efac' : '#cbd5e1'}"
                oninput="mlOnQtyChange(this)">
       </div>
-      <button type="button" onclick="mlClearSlot(${i})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;opacity:${filled ? '.7' : '.3'};transition:opacity .2s" title="Clear">✕</button>
+      <button type="button" class="ml-slot-clear" onclick="mlClearSlot(${i})" style="opacity:${filled ? '.7' : '.3'}" title="Clear">✕</button>
     `;
     container.appendChild(row);
   });

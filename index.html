@@ -219,6 +219,84 @@
         /* Loading skeleton pulse */
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
         .skeleton { animation:pulse 1.5s ease-in-out infinite; background:#e2e8f0; border-radius:6px; }
+
+        /* ─── Multi-label slot classes (desktop base) ─── */
+        .ml-slot-row { display:flex;gap:6px;align-items:center;padding:6px 8px;border:1px solid;border-radius:8px;font-size:12px;position:relative;transition:all .2s ease; }
+        .ml-slot-num { font-weight:700;min-width:18px;text-align:center; }
+        .ml-slot-5dc { flex:0 0 80px;position:relative; }
+        .ml-slot-sku { flex:1 1 140px;position:relative; }
+        .ml-slot-qty { flex:0 0 60px; }
+        .ml-slot-input { width:100%;padding:5px 6px;border:1px solid;border-radius:6px;font-size:12px;transition:border .2s;background:#fff;box-sizing:border-box; }
+        .ml-slot-input-5dc { font-weight:600; }
+        .ml-slot-input-qty { font-weight:600;text-align:center; }
+        .ml-slot-clear { background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;transition:opacity .2s; }
+
+        /* ─── Mobile Responsive (≤640px) ─── */
+        @media (max-width:640px) {
+            /* Header */
+            .header-inner { padding:8px 12px; }
+            .brand span { font-size:.85rem; }
+            h1 { font-size:1.3rem!important; }
+
+            /* Touch-friendly action buttons */
+            .cat-btn { min-height:48px!important; }
+
+            /* PIN overlay */
+            #qcPin { min-height:44px; font-size:16px; width:100px; }
+            #qcUnlockBtn { min-height:44px; }
+
+            /* Health inline — hide separators on wrap */
+            .health-inline { gap:4px 10px; font-size:.65rem; padding:6px 10px; }
+            .health-inline-sep { display:none; }
+
+            /* Pipeline stats */
+            .wh-stats-line { font-size:.72rem; }
+
+            /* ── Orders Modal ── */
+            .orders-modal-overlay { padding:0; align-items:flex-end; }
+            .orders-modal { max-height:95vh; border-radius:14px 14px 0 0; max-width:100%; }
+            .orders-modal-header { padding:14px 16px; }
+            .orders-modal-header h2 { font-size:.95rem; }
+            .orders-modal-filters { flex-direction:column; padding:10px 14px; gap:6px; align-items:stretch; }
+            .orders-search { width:100%!important; font-size:16px; min-height:44px; }
+            .orders-filter-group { width:100%; justify-content:flex-start; }
+            .orders-filter-btn { padding:6px 10px; font-size:.78rem; min-height:36px; }
+            .orders-table { font-size:.78rem; }
+            .orders-table th { padding:8px 6px; font-size:.68rem; }
+            .orders-table td { padding:7px 6px; }
+            .orders-modal-body { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+            /* ── Barcodes Modal ── */
+            #barcodesModal .modal-content { width:98%!important; max-width:100%!important; padding:14px!important; }
+            #barcodesModal .inline-row { flex-wrap:wrap!important; gap:8px!important; }
+            #barcodesModal .inline-row > .field-group { flex:1 1 100%!important; min-width:0!important; }
+            #barcodesModal .mode-row { flex-direction:column; align-items:stretch; gap:6px; }
+            #barcodesModal .mode-left { flex-wrap:wrap; }
+            #barcodesModal .mode-preview { display:none; }
+            #barcodesModal input[type="text"] { font-size:16px!important; min-height:40px; }
+
+            /* ── Multi-Label Modal ── */
+            #multiLabelModal .modal-content { max-width:100%!important; width:98%!important; padding:14px!important; }
+            /* Paper/Orientation selectors — stack vertically, full width */
+            #multiLabelModal .modal-content > div[style*="display:flex"][style*="flex-wrap"] { flex-direction:column!important; gap:10px!important; align-items:stretch!important; }
+            #multiLabelModal .modal-content > div[style*="display:flex"][style*="flex-wrap"] > div { flex-wrap:wrap!important; gap:6px!important; }
+            #multiLabelModal .modal-content > div[style*="display:flex"][style*="flex-wrap"] label[style*="cursor:pointer"] { padding:8px 10px!important; font-size:13px!important; flex:1 1 0!important; min-width:0!important; justify-content:center; }
+            .ml-orient-count { font-size:10px!important; display:block!important; }
+            /* Slot rows */
+            .ml-slot-row { flex-wrap:wrap!important; gap:4px!important; padding:8px 6px!important; }
+            .ml-slot-5dc { flex:1 1 40%!important; }
+            .ml-slot-qty { flex:1 1 25%!important; }
+            .ml-slot-sku { flex:1 1 100%!important; order:3; }
+            .ml-slot-row input { font-size:16px!important; min-height:38px!important; padding:8px!important; }
+            .ml-slot-clear { position:absolute!important; top:4px!important; right:2px!important; font-size:18px!important; min-height:32px!important; min-width:32px!important; }
+            .ml-ac-5dc, .ml-ac-panel { min-width:0!important; max-width:100%!important; width:100%!important; }
+
+            /* ── Search & Manual Modals ── */
+            .modal-content { width:96%!important; max-width:100%!important; }
+            .search-input-group { flex-direction:column; gap:8px; }
+            .search-input-group input { font-size:16px!important; min-height:44px; }
+            .search-btn-small { min-height:44px; }
+        }
     </style>
     <!-- Supabase CDN -->
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
