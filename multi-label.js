@@ -366,6 +366,7 @@ function mlPrint() {
 
   parts.push('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Multi-Label Print</title>');
   parts.push('<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></scr' + 'ipt>');
+  parts.push('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></scr' + 'ipt>');
   parts.push('<style>');
   parts.push('@page { size: ' + pageSz + '; margin: ' + pageMargin + '; }');
   parts.push('* { margin:0; padding:0; box-sizing:border-box; }');
@@ -402,7 +403,20 @@ function mlPrint() {
   parts.push('      catch(e2) { svg.style.display="none"; }');
   parts.push('    }');
   parts.push('  }');
-  parts.push('  setTimeout(function(){ window.print(); }, 400);');
+  parts.push('  var __isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);');
+  parts.push('  setTimeout(function(){');
+  parts.push('    if (!__isMobile) { window.print(); return; }');
+  parts.push('    html2pdf().from(document.body).set({');
+  parts.push('      margin: ' + (isA3 ? 4 : 6) + ',');
+  parts.push('      filename: "multi-label.pdf",');
+  parts.push('      image: { type: "jpeg", quality: 0.95 },');
+  parts.push('      html2canvas: { scale: 2, useCORS: true },');
+  parts.push('      jsPDF: { unit: "mm", format: "' + mlState.paperSize.toLowerCase() + '", orientation: "' + mlState.orientation + '" }');
+  parts.push('    }).output("blob").then(function(blob) {');
+  parts.push('      var url = URL.createObjectURL(blob);');
+  parts.push('      window.location.href = url;');
+  parts.push('    });');
+  parts.push('  }, 400);');
   parts.push('});');
   parts.push('</scr' + 'ipt></body></html>');
 

@@ -867,9 +867,11 @@ function generateLabelHTML(labelData) {
             <title>Label - ${sku}</title>
             <!-- JsBarcode Library for barcode generation - load synchronously -->
             <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
             <script>
                 // Ensure library is loaded
                 console.log('JsBarcode loaded:', typeof JsBarcode !== 'undefined');
+                var __isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
             </script>
             <style>
                 @page {
@@ -1154,14 +1156,33 @@ function generateLabelHTML(labelData) {
                     });
                 }
                 
+                function doPrintOrPdf() {
+                    if (!__isMobile) {
+                        try { window.focus(); } catch(e){}
+                        window.print();
+                        window.onafterprint = function(){ try { window.close(); } catch(e){} };
+                        return;
+                    }
+                    var orient = isA3 ? 'landscape' : 'landscape';
+                    var fmt = isA3 ? 'a3' : 'a4';
+                    html2pdf().from(document.body).set({
+                        margin: 8,
+                        filename: 'label-' + productCode + '.pdf',
+                        image: { type: 'jpeg', quality: 0.95 },
+                        html2canvas: { scale: 2, useCORS: true },
+                        jsPDF: { unit: 'mm', format: fmt, orientation: orient }
+                    }).output('blob').then(function(blob) {
+                        var url = URL.createObjectURL(blob);
+                        window.location.href = url;
+                    });
+                }
+
                 function waitForBarcodes(startTs) {
                     if (allBarcodesReady()) {
                         if (!window.__printed) {
                             window.__printed = true;
                             console.log('All barcodes ready -> printing');
-                            try { window.focus(); } catch(e){}
-                            window.print();
-                            window.onafterprint = function(){ try { window.close(); } catch(e){} };
+                            doPrintOrPdf();
                         }
                         return;
                     }
@@ -1170,9 +1191,7 @@ function generateLabelHTML(labelData) {
                         console.warn('Timeout waiting for barcodes, proceeding to print');
                         if (!window.__printed) {
                             window.__printed = true;
-                            try { window.focus(); } catch(e){}
-                            window.print();
-                            window.onafterprint = function(){ try { window.close(); } catch(e){} };
+                            doPrintOrPdf();
                         }
                         return;
                     }

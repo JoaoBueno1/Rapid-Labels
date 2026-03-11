@@ -130,6 +130,26 @@
   @media print { @page { size:100mm 150mm; margin:0; } .label{ margin:0; } }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script>
+    var __isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    function doPrintOrPdf() {
+      if (!__isMobile) {
+        try { window.print(); window.onafterprint = ()=>window.close(); } catch(e){}
+        return;
+      }
+      html2pdf().from(document.getElementById('labelRoot')).set({
+        margin: 0,
+        filename: 'barcode-label.pdf',
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 3, useCORS: true },
+        jsPDF: { unit: 'mm', format: [100, 150], orientation: 'portrait' }
+      }).output('blob').then(function(blob) {
+        var url = URL.createObjectURL(blob);
+        window.location.href = url;
+      });
+    }
+  </script>
   <script>
     function byId(id){ return document.getElementById(id); }
 
@@ -358,7 +378,7 @@
           label.style.paddingBottom = pad + 'px';
         } catch(e){}
       });
-      setTimeout(()=>{ try { window.print(); window.onafterprint = ()=>window.close(); } catch(e){} }, 200);
+      setTimeout(()=>{ try { doPrintOrPdf(); } catch(e){} }, 200);
     }
 
     window.addEventListener('load', ()=>{
