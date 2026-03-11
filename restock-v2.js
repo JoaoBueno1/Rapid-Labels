@@ -240,7 +240,7 @@
     for (let i = 0; i < limited.length; i += 30) {
       const slice = limited.slice(i, i + 30);
       const rowsHtml = slice.map(r => {
-        const skuKey = escapeHtml(r.sku);               // action identifier (5DC || product code)
+        const skuKey = escapeHtml(r.__stock_sku || r.sku); // action identifier = stable product code
         const fiveDC = escapeHtml(r.__5dc || '');        // 5-digit code column
         const skuDisplay = escapeHtml(r.__stock_sku || r.sku);  // cin7 product code (e.g. R6078-BK-TRI)
         const product = escapeHtml(r.product);           // product code (for reserve info lines)
@@ -353,7 +353,7 @@
 
         const nearestLines = computeNearestReserveLines(r.stock_locator, r.__reserve_locations);
         const nearestHtml = nearestLines.length ? nearestLines.map(l => `<div>${escapeHtml(l)}</div>`).join('') : '';
-        const favOn = favorites.has(String(r.sku));
+        const favOn = favorites.has(String(r.__stock_sku || r.sku));
         const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${skuKey}" onclick="restockToggleFavorite('${skuKey}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
         const actionButtons = `
           <div class="action-buttons">
@@ -450,7 +450,7 @@
   }
   function applyFavoritesFilter(rows) {
     if (!state.onlyFavorites) return rows;
-    return rows.filter(r => favorites.has(String(r.sku)));
+    return rows.filter(r => favorites.has(String(r.__stock_sku || r.sku)));
   }
   function hasReserveInfoBadge(r) {
     const reserveQty = Number(r.__reserve_total || 0);
@@ -900,8 +900,8 @@
         // V1 convention:  SKU column = 5-digit code,  Product column = product code (e.g. R6078-BK-TRI)
         // V2 follows the same convention for consistency.
         // cin7_mirror.products.name has the full description → shown as tooltip
-        // 5DC source priority: 1) restock_setup.sku  2) cin7_mirror.products.attribute1
-        const display5DC     = (setup ? setup.sku5dc : '') || (prod.attribute1 || '').trim();
+        // 5DC source priority: 1) cin7_mirror.products.attribute1 (Cin7 = source of truth)  2) restock_setup.sku
+        const display5DC     = (prod.attribute1 || '').trim() || (setup ? setup.sku5dc : '');
         const displayProduct = setup ? setup.productCode : stockSku;  // product code (matches V1)
         const fullDescription = prod.name || '';                       // long description → tooltip
 
@@ -1293,8 +1293,8 @@
   /* ═══════════════════════════════════════════════
      FAVORITES toggle
      ═══════════════════════════════════════════════ */
-  window.restockToggleFavorite = async function (sku) {
-    const key = String(sku);
+  window.restockToggleFavorite = async function (productCode) {
+    const key = String(productCode);
     const isAdding = !favorites.has(key);
     if (isAdding) favorites.add(key); else favorites.delete(key);
     updateFavoriteStars();
@@ -1319,9 +1319,9 @@
   // V2: Add Product removed — products come from Cin7 API sync.
   // Use Edit to configure capacity thresholds for mirror products.
 
-  window.openEditProductModal = function (sku) {
-    currentEditingSku = sku;
-    const row = state.allRows.find(r => String(r.sku) === String(sku));
+  window.openEditProductModal = function (productCode) {
+    currentEditingSku = productCode;
+    const row = state.allRows.find(r => String(r.__stock_sku || r.sku) === String(productCode));
     if (!row) { showToast('Product not found', 'error'); return; }
 
     document.getElementById('addEditProductTitle').textContent = 'Edit Setup';
@@ -1348,7 +1348,7 @@
 
     // Editable fields
     document.getElementById('productPickface').value = row.stock_locator || '';
-    loadProductSetupData(sku);
+    loadProductSetupData(productCode);
 
     clearFormErrors();
     document.getElementById('addEditProductModal').classList.remove('hidden');
@@ -1359,8 +1359,8 @@
     currentEditingSku = null;
   };
 
-  window.openDeleteConfirmModal = function (sku) {
-    const row = state.allRows.find(r => String(r.sku) === String(sku));
+  window.openDeleteConfirmModal = function (productCode) {
+    const row = state.allRows.find(r => String(r.__stock_sku || r.sku) === String(productCode));
     const dc = row ? (row.__5dc || '') : '';
     const skuCode = row ? (row.__stock_sku || row.product || '') : '';
     const displayLabel = dc ? `${dc} — ${skuCode}` : skuCode || 'this product';
@@ -1370,7 +1370,7 @@
       return;
     }
     document.getElementById('deleteConfirmText').innerHTML = `Remove capacity configuration for <strong>${escapeHtml(displayLabel)}</strong>?<br><br><span style="font-size:13px;color:#64748b">The product will become <strong>Not Configured</strong>. No data is deleted — you can reconfigure it anytime via Edit.</span>`;
-    document.getElementById('confirmDeleteBtn').dataset.sku = sku;
+    document.getElementById('confirmDeleteBtn').dataset.productCode = productCode;
     document.getElementById('deleteConfirmModal').classList.remove('hidden');
   };
 
@@ -1379,14 +1379,14 @@
   };
 
   window.confirmDelete = async function () {
-    const sku = document.getElementById('confirmDeleteBtn').dataset.sku;
-    if (!sku) return;
+    const productCode = document.getElementById('confirmDeleteBtn').dataset.productCode;
+    if (!productCode) return;
     try {
       await window.supabaseReady;
       // Deconfigure: clear capacity fields (don't delete the row)
       const { error } = await window.supabase.from('restock_setup').update({
         pickface_qty: null, cap_min: null, cap_med: null, cap_max: null
-      }).eq('sku', sku);
+      }).eq('product', productCode);
       if (error) {
         // If row doesn't exist, nothing to deconfigure
         showToast('Could not deconfigure: ' + error.message, 'error');
@@ -1398,10 +1398,10 @@
     } catch (e) { showToast('Error: ' + e.message, 'error'); }
   };
 
-  async function loadProductSetupData(sku) {
+  async function loadProductSetupData(productCode) {
     try {
       await window.supabaseReady;
-      const { data, error } = await window.supabase.from('restock_setup').select('*').eq('sku', sku).single();
+      const { data, error } = await window.supabase.from('restock_setup').select('*').eq('product', productCode).maybeSingle();
       if (!error && data) {
         // Overwrite pickface with the saved value from DB (source of truth)
         if (data.pickface_location) {
@@ -1422,15 +1422,15 @@
         window.updateMaxCapacity();
         window.validateCapacities();
       }
-    } catch (e) { console.warn('Could not load setup for', sku, e); }
+    } catch (e) { console.warn('Could not load setup for', productCode, e); }
   }
 
   document.getElementById('addEditProductForm').addEventListener('submit', async function (e) {
     e.preventDefault();
     const row = window.__editRowRef;
     const fd = {
-      sku: row ? (row.__5dc || row.sku) : currentEditingSku,
-      product: row ? (row.__stock_sku || row.product) : '',
+      sku: row ? (row.__5dc || row.sku) : '',
+      product: row ? (row.__stock_sku || row.product) : currentEditingSku,
       pickface_location: document.getElementById('productPickface').value.trim(),
       pickface_qty: parseInt(document.getElementById('productPickfaceQty').value) || 0,
       cap_min: parseInt(document.getElementById('productCapMin').value) || 0,
@@ -1445,22 +1445,23 @@
     try {
       await window.supabaseReady;
       if (currentEditingSku) {
-        // Check if row exists
-        const { data: existing } = await window.supabase.from('restock_setup').select('sku').eq('sku', currentEditingSku).maybeSingle();
+        // Check if setup row exists by product code (stable key)
+        const { data: existing } = await window.supabase.from('restock_setup').select('sku,product').eq('product', currentEditingSku).maybeSingle();
         if (existing) {
+          // Update existing — also update sku (5DC) to current cin7 value
           const updateData = {
-            product: fd.product, pickface_location: fd.pickface_location, pickface_qty: fd.pickface_qty,
+            sku: fd.sku, product: fd.product, pickface_location: fd.pickface_location, pickface_qty: fd.pickface_qty,
             cap_min: fd.cap_min, cap_med: fd.cap_med, cap_max: fd.cap_max, notes: fd.notes
           };
           // Add new columns if they have values (graceful if columns don't exist yet)
           if (fd.qty_per_ctn != null) updateData.qty_per_ctn = fd.qty_per_ctn;
           if (fd.qty_per_pallet != null) updateData.qty_per_pallet = fd.qty_per_pallet;
-          let { error } = await window.supabase.from('restock_setup').update(updateData).eq('sku', currentEditingSku);
+          let { error } = await window.supabase.from('restock_setup').update(updateData).eq('product', currentEditingSku);
           // If error is about missing column, retry without new fields
           if (error && error.message && error.message.includes('column')) {
             delete updateData.qty_per_ctn;
             delete updateData.qty_per_pallet;
-            const retry = await window.supabase.from('restock_setup').update(updateData).eq('sku', currentEditingSku);
+            const retry = await window.supabase.from('restock_setup').update(updateData).eq('product', currentEditingSku);
             error = retry.error;
           }
           if (error) { showToast('Error updating: ' + error.message, 'error'); return; }
@@ -2064,7 +2065,7 @@
   function getRestockStatus(sku) {
     if (!mapState.restockRows) mapState.restockRows = state.allRows;
     if (!mapState.restockRows || !sku) return null;
-    return mapState.restockRows.find(r => (r.sku || '').toUpperCase() === sku.toUpperCase()) || null;
+    return mapState.restockRows.find(r => (r.__stock_sku || r.sku || '').toUpperCase() === sku.toUpperCase()) || null;
   }
 
   /** Returns: 'full' | 'medium' | 'low' | 'over' | 'notconfigured' | 'empty' */
