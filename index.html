@@ -213,6 +213,22 @@
         .wh-stats-line .ws-warn { color:#d97706; font-weight:700; }
         .wh-stats-line .ws-ok { color:#059669; font-weight:700; }
 
+        /* ─── 7-Day Daily Breakdown Chart ─── */
+        .wh-7d-chart { padding:12px 12px 4px; margin-top:8px; border-top:1px solid var(--border); }
+        .wh-7d-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+        .wh-7d-title { font-size:.7rem; font-weight:700; color:var(--text); text-transform:uppercase; letter-spacing:.3px; }
+        .wh-7d-avg { font-size:.65rem; color:var(--muted); font-weight:500; }
+        .wh-7d-bars { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; align-items:end; }
+        .wh-7d-col { display:flex; flex-direction:column; align-items:center; gap:3px; }
+        .wh-7d-val { font-size:.7rem; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+        .wh-7d-bar { width:100%; min-height:4px; border-radius:4px 4px 3px 3px; background:#dbeafe; transition:height .4s ease; }
+        .wh-7d-bar.wh-7d-bar-today { background:linear-gradient(180deg,#3b82f6,#1e40af); }
+        .wh-7d-bar.wh-7d-bar-high { background:linear-gradient(180deg,#22c55e,#15803d); }
+        .wh-7d-bar.wh-7d-bar-low { background:linear-gradient(180deg,#f59e0b,#d97706); }
+        .wh-7d-bar.wh-7d-bar-zero { background:#e2e8f0; min-height:3px; }
+        .wh-7d-day { font-size:.6rem; font-weight:600; color:var(--muted); text-transform:uppercase; }
+        .wh-7d-day.wh-7d-day-today { color:#1e40af; font-weight:800; }
+
         @media (max-width:900px) { .wh-kpi-row { grid-template-columns:repeat(2,1fr)!important; } }
         @media (max-width:640px) { .wh-kpi-row { grid-template-columns:repeat(2,1fr)!important; } }
 
@@ -417,6 +433,14 @@
                     </div>
                     <div class="wh-stats-line" id="whStatsLine">
                         <span class="ws-v" style="opacity:.5">loading 7d stats...</span>
+                    </div>
+                    <!-- 7-Day Daily Breakdown Chart -->
+                    <div class="wh-7d-chart" id="wh7dChart" style="display:none">
+                        <div class="wh-7d-header">
+                            <span class="wh-7d-title">Last 7 Days</span>
+                            <span class="wh-7d-avg" id="wh7dAvg"></span>
+                        </div>
+                        <div class="wh-7d-bars" id="wh7dBars"></div>
                     </div>
                 </div>
 
@@ -1196,12 +1220,55 @@
                         setKpi('whToPack', toPack, 'awaiting pack');
                         setKpi('whCompleted', completedToday, 'today');
 
-                        // 7-day stats line (just total completed)
+                        // 7-day stats line + daily breakdown chart
                         const sevenDaysAgo = new Date(todayStart.getTime() - 6 * 86400000);
                         const completed7d = completed.filter(r => r.completed_at && new Date(r.completed_at) >= sevenDaysAgo).length;
                         const statsEl = document.getElementById('whStatsLine');
                         if (statsEl) {
                             statsEl.innerHTML = `<span class="ws-k">7d:</span> <span class="ws-hi">${completed7d}</span> <span class="ws-v">completed</span>`;
+                        }
+
+                        // ── Build 7-day daily breakdown ──
+                        {
+                            const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                            const dailyCounts = [];
+                            for (let i = 6; i >= 0; i--) {
+                                const dayStart = new Date(todayStart.getTime() - i * 86400000);
+                                const dayEnd = new Date(dayStart.getTime() + 86400000 - 1);
+                                const dayLabel = dayNames[dayStart.getUTCDay()];
+                                const count = completed.filter(r => {
+                                    if (!r.completed_at) return false;
+                                    const t = new Date(r.completed_at);
+                                    return t >= dayStart && t <= dayEnd;
+                                }).length;
+                                dailyCounts.push({ day: dayLabel, count, isToday: i === 0 });
+                            }
+                            const maxCount = Math.max(...dailyCounts.map(d => d.count), 1);
+                            const avg = dailyCounts.length > 0 ? Math.round(dailyCounts.reduce((s,d) => s + d.count, 0) / dailyCounts.length) : 0;
+
+                            const avgEl = document.getElementById('wh7dAvg');
+                            if (avgEl) avgEl.textContent = `avg ${avg}/day`;
+
+                            const barsEl = document.getElementById('wh7dBars');
+                            if (barsEl) {
+                                barsEl.innerHTML = dailyCounts.map(d => {
+                                    const pct = maxCount > 0 ? Math.round((d.count / maxCount) * 100) : 0;
+                                    const h = Math.max(4, Math.round(pct * 0.52)); // max ~52px
+                                    let barClass = 'wh-7d-bar';
+                                    if (d.count === 0) barClass += ' wh-7d-bar-zero';
+                                    else if (d.isToday) barClass += ' wh-7d-bar-today';
+                                    else if (d.count >= avg * 1.15) barClass += ' wh-7d-bar-high';
+                                    else if (d.count > 0 && d.count < avg * 0.7) barClass += ' wh-7d-bar-low';
+                                    const dayClass = d.isToday ? 'wh-7d-day wh-7d-day-today' : 'wh-7d-day';
+                                    return `<div class="wh-7d-col">
+                                        <div class="wh-7d-val">${d.count || '—'}</div>
+                                        <div class="${barClass}" style="height:${h}px" title="${d.day}: ${d.count} completed"></div>
+                                        <div class="${dayClass}">${d.day}</div>
+                                    </div>`;
+                                }).join('');
+                            }
+                            const chartEl = document.getElementById('wh7dChart');
+                            if (chartEl) chartEl.style.display = '';
                         }
 
                         // Last sync info

@@ -96,14 +96,19 @@
     const s = state.stats;
     if (!s) return; // Stats not loaded yet
 
-    const reviewedPct = s.orders > 0 ? Math.round((s.reviewed / s.orders) * 100) : 0;
+    // Reviewed KPI: only count orders WITH anomalies
+    const anomalyOrders = s.anomalyOrders || 0;
+    const anomalyReviewed = s.anomalyOrdersReviewed || 0;
+    const reviewedPct = anomalyOrders > 0 ? Math.round((anomalyReviewed / anomalyOrders) * 100) : 100;
 
     document.getElementById('kpiOrders').textContent = s.orders;
     document.getElementById('kpiPicks').textContent = s.picks;
     document.getElementById('kpiCorrect').textContent = s.correct;
     document.getElementById('kpiAnomalies').textContent = s.anomalies;
     document.getElementById('kpiFg').textContent = s.fg;
-    document.getElementById('kpiReviewed').textContent = `${reviewedPct}%`;
+    document.getElementById('kpiReviewed').textContent = anomalyOrders > 0
+      ? `${anomalyReviewed}/${anomalyOrders}`
+      : '✅';
 
     // Update review progress bar
     const bar = document.getElementById('kpiReviewedBar');
@@ -406,13 +411,18 @@
       if (anom === 0) {
         statusHtml = '<span class="pa-badge pa-badge-correct">✅ OK</span>';
       } else if (corrections.length >= anom) {
-        const lastRef = corrections[corrections.length - 1]?.transfer_ref;
-        statusHtml = `<span class="pa-badge pa-badge-correct" title="${esc(lastRef || '')}">✅ Fixed</span>`;
-        if (lastRef) statusHtml += `<div class="pa-tr-ref">${esc(lastRef)}</div>`;
+        statusHtml = `<span class="pa-badge pa-badge-correct">✅ Fixed</span>`;
+        // Show ALL TR refs
+        const trRefs = corrections.map(c => c.transfer_ref).filter(Boolean);
+        if (trRefs.length) {
+          statusHtml += `<div class="pa-tr-ref" title="${trRefs.join(', ')}">${trRefs.join(', ')}</div>`;
+        }
       } else if (corrections.length > 0) {
-        const lastRef = corrections[corrections.length - 1]?.transfer_ref;
         statusHtml = `<span class="pa-badge pa-badge-anomaly">⚠️ ${corrections.length}/${anom} fixed</span>`;
-        if (lastRef) statusHtml += `<div class="pa-tr-ref">${esc(lastRef)}</div>`;
+        const trRefs = corrections.map(c => c.transfer_ref).filter(Boolean);
+        if (trRefs.length) {
+          statusHtml += `<div class="pa-tr-ref" title="${trRefs.join(', ')}">${trRefs.join(', ')}</div>`;
+        }
       } else {
         statusHtml = `<span class="pa-badge pa-badge-anomaly">⚠️ ${anom} anomal${anom > 1 ? 'ies' : 'y'}</span>`;
       }
@@ -1155,17 +1165,24 @@
       state.selectedFixes.clear();
       updateBatchSummary();
       renderOrdersTable();
+      // Reload stats to refresh KPIs after corrections
+      loadStats();
 
     } catch (err) {
       console.error('Batch fix error:', err);
       alert('Batch fix error: ' + err.message);
-    } finally {
+      // Reset confirm button only on error
       if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm'; }
-      const cfBtn = document.querySelector('#paConfirmModal .pa-confirm-btn');
-      if (cfBtn) cfBtn.style.display = '';
-      const secBtn = document.querySelector('#paConfirmModal .secondary');
-      if (secBtn) secBtn.textContent = 'Cancel';
     }
+  }
+
+  /** Reset the confirm modal back to its default state (called when closing) */
+  function _resetConfirmModal() {
+    document.getElementById('paConfirmModal').classList.remove('open');
+    const cfBtn = document.querySelector('#paConfirmModal .pa-confirm-btn');
+    if (cfBtn) { cfBtn.style.display = ''; cfBtn.disabled = false; cfBtn.textContent = 'Confirm'; }
+    const secBtn = document.querySelector('#paConfirmModal .secondary');
+    if (secBtn) secBtn.textContent = 'Cancel';
   }
 
   /* ═══════════════════════════════════════════════
@@ -1174,6 +1191,13 @@
   async function reviewOrder() {
     const order = state.selectedOrder;
     if (!order) return;
+
+    // Optimistic update — update UI immediately
+    const reviewBtn = document.getElementById('paReviewBtn');
+    if (reviewBtn) {
+      reviewBtn.disabled = true;
+      reviewBtn.innerHTML = '⏳ Saving...';
+    }
 
     try {
       const res = await fetch('/api/pick-anomalies/review', {
@@ -1188,18 +1212,23 @@
       order.reviewed = true;
       order.reviewed_at = new Date().toISOString();
 
-      // Update modal button
-      const reviewBtn = document.getElementById('paReviewBtn');
+      // Update modal button — confirmed
       if (reviewBtn) {
-        reviewBtn.disabled = true;
         reviewBtn.innerHTML = '✅ Reviewed';
         reviewBtn.classList.add('pa-btn-reviewed');
       }
 
-      // Refresh table
+      // Refresh table + KPIs
       renderOrdersTable();
+      loadStats();
     } catch (err) {
       console.error('Review error:', err);
+      // Revert button on error
+      if (reviewBtn) {
+        reviewBtn.disabled = false;
+        reviewBtn.innerHTML = '☑️ Mark Reviewed';
+        reviewBtn.classList.remove('pa-btn-reviewed');
+      }
       alert('Error marking as reviewed: ' + err.message);
     }
   }
@@ -1224,6 +1253,7 @@
     reviewOrder,
     nextPage,
     prevPage,
+    _resetConfirmModal,
   };
 
   /* ─── Init ─── */

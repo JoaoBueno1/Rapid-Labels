@@ -1027,7 +1027,8 @@
         let normStatus = '';
         let setupInfo = null;
 
-        if (!setup || !Number.isFinite(setup.min) || !Number.isFinite(setup.med) || !Number.isFinite(setup.max)) {
+        if (!setup || !Number.isFinite(setup.min) || !Number.isFinite(setup.med) || !Number.isFinite(setup.max)
+            || (setup.max === 0 && setup.med === 0 && setup.min === 0)) {
           normStatus = 'NOT_CONFIGURED';
           setupInfo = { sku: stockSku, hasSetup: !!setup, min: setup ? setup.min : undefined, med: setup ? setup.med : undefined, max: setup ? setup.max : undefined };
         } else {
@@ -1342,6 +1343,15 @@
     el('editInfoQtyCtn', row.__qty_per_ctn != null ? String(row.__qty_per_ctn) : '—');
     el('editInfoQtyPallet', row.__qty_per_pallet != null ? String(row.__qty_per_pallet) : '—');
 
+    // Stock Locator from Cin7
+    const cin7Loc = row.__cin7_stock_locator || '';
+    el('editInfoStockLocator', cin7Loc || 'Not set in Cin7');
+    const slEl = document.getElementById('editInfoStockLocator');
+    if (slEl) {
+      slEl.style.color = cin7Loc ? '#1e293b' : '#94a3b8';
+      slEl.style.fontStyle = cin7Loc ? 'normal' : 'italic';
+    }
+
     // Coverage info (dynamic, updated on capacity input)
     window.__editRowRef = row;
     updateEditCoverageInfo();
@@ -1351,11 +1361,13 @@
     loadProductSetupData(productCode);
 
     clearFormErrors();
+    _hideDeconfigureNotice();
     document.getElementById('addEditProductModal').classList.remove('hidden');
   };
 
   window.closeAddEditProductModal = function () {
     document.getElementById('addEditProductModal').classList.add('hidden');
+    _hideDeconfigureNotice();
     currentEditingSku = null;
   };
 
@@ -1479,7 +1491,8 @@
           }
           if (error) { showToast('Error creating: ' + error.message, 'error'); return; }
         }
-        showToast('Capacity configured successfully', 'success');
+        const isDeconfigure = fd.pickface_qty === 0 && fd.cap_min === 0 && fd.cap_med === 0 && fd.cap_max === 0;
+        showToast(isDeconfigure ? 'Product moved to Not Configured' : 'Capacity configured successfully', 'success');
       }
       window.closeAddEditProductModal();
       fetchData();
@@ -1490,7 +1503,17 @@
     clearFormErrors();
     let ok = true;
     if (!d.pickface_location) { showFieldError('productPickfaceError', 'Pickface location is required'); ok = false; }
-    if (d.pickface_qty < 0) { showFieldError('productPickfaceQtyError', 'Must be ≥ 0'); ok = false; }
+    // Allow zero/empty capacity — product will be moved to "Not Configured"
+    // Only pickface_qty matters: if it's 0, the product is deconfigured regardless of min/med
+    if (d.pickface_qty === 0) {
+      // Force min/med/max to 0 as well (user may have left them with old values)
+      d.cap_min = 0;
+      d.cap_med = 0;
+      d.cap_max = 0;
+      _showDeconfigureNotice();
+      return true; // allow save
+    }
+    // If capacity > 0, enforce proper values
     if (d.cap_min < 0) { showFieldError('productCapMinError', 'Must be ≥ 0'); ok = false; }
     if (d.cap_med < 0) { showFieldError('productCapMedError', 'Must be ≥ 0'); ok = false; }
     if (d.cap_max < 0) { showFieldError('productCapMaxError', 'Must be ≥ 0'); ok = false; }
@@ -1498,7 +1521,28 @@
     if (d.cap_med > d.cap_max) { showFieldError('productCapMedError', 'Med > Max'); ok = false; }
     if (d.cap_min > d.cap_max) { showFieldError('productCapMinError', 'Min > Max'); ok = false; }
     if (d.cap_max !== d.pickface_qty) { showFieldError('productCapMaxError', 'Must match Pickface Qty'); ok = false; }
+    _hideDeconfigureNotice();
     return ok;
+  }
+
+  /** Show a friendly notice that saving with 0 capacity sends product to Not Configured */
+  function _showDeconfigureNotice() {
+    let el = document.getElementById('deconfigureNotice');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'deconfigureNotice';
+      el.style.cssText = 'background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#92400e;line-height:1.5';
+      const form = document.getElementById('addEditProductForm');
+      form.parentNode.insertBefore(el, form);
+    }
+    el.innerHTML = '⚠️ <strong>Capacity is empty.</strong> Saving will move this product to <strong>Not Configured</strong>.<br>'
+      + '<span style="font-size:12px;color:#78350f">To re-enable, simply edit again and set a Capacity value.</span>';
+    el.style.display = '';
+  }
+
+  function _hideDeconfigureNotice() {
+    const el = document.getElementById('deconfigureNotice');
+    if (el) el.style.display = 'none';
   }
 
   function clearFormErrors() {
@@ -1524,8 +1568,20 @@
     const pq = document.getElementById('productPickfaceQty').value;
     const mc = document.getElementById('productCapMax');
     mc.value = pq && !isNaN(pq) ? pq : '';
+    // If capacity cleared, also clear min/med so user doesn't have to
+    const capVal = parseInt(pq) || 0;
+    if (capVal === 0) {
+      document.getElementById('productCapMin').value = '';
+      document.getElementById('productCapMed').value = '';
+    }
     window.validateCapacities();
     updateEditCoverageInfo();
+    // Show/hide deconfigure notice in real-time
+    if (capVal === 0) {
+      _showDeconfigureNotice();
+    } else {
+      _hideDeconfigureNotice();
+    }
   };
 
   function updateEditCoverageInfo() {

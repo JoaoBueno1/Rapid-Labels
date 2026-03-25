@@ -319,6 +319,9 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
     query += '&anomaly_picks=eq.0&total_picks=gt.0';
   } else if (filter === 'fg') {
     query += '&fg_count=gt.0';
+  } else if (filter === 'pending') {
+    // Anomaly orders NOT yet reviewed
+    query += '&anomaly_picks=gt.0&reviewed=is.false';
   } else if (filter === 'corrected') {
     // We'll join corrections on the frontend side
     query += '&anomaly_picks=gt.0';
@@ -355,6 +358,7 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   if (filter === 'anomaly') totalQuery += '&anomaly_picks=gt.0';
   else if (filter === 'correct') totalQuery += '&anomaly_picks=eq.0&total_picks=gt.0';
   else if (filter === 'fg') totalQuery += '&fg_count=gt.0';
+  else if (filter === 'pending') totalQuery += '&anomaly_picks=gt.0&reviewed=is.false';
   if (search) totalQuery += `&or=(order_number.ilike.*${search}*,customer.ilike.*${search}*)`;
 
   let totalCount = orders.length;
@@ -1031,6 +1035,8 @@ function registerPickAnomalyRoutes(app) {
       );
 
       let totalOrders = 0, totalPicks = 0, totalCorrect = 0, totalAnomalies = 0, totalFg = 0, totalReviewed = 0;
+      let anomalyOrders = 0; // Orders that have anomalies (for reviewed KPI)
+      let anomalyOrdersReviewed = 0; // Anomaly orders that have been reviewed
       for (const o of allOrders) {
         totalOrders++;
         totalPicks    += o.total_picks    || 0;
@@ -1038,6 +1044,11 @@ function registerPickAnomalyRoutes(app) {
         totalAnomalies += o.anomaly_picks || 0;
         totalFg       += o.fg_count       || 0;
         if (o.reviewed) totalReviewed++;
+        // Reviewed KPI: only count orders WITH anomalies
+        if ((o.anomaly_picks || 0) > 0) {
+          anomalyOrders++;
+          if (o.reviewed) anomalyOrdersReviewed++;
+        }
       }
 
       res.json({
@@ -1049,6 +1060,8 @@ function registerPickAnomalyRoutes(app) {
           anomalies: totalAnomalies,
           fg: totalFg,
           reviewed: totalReviewed,
+          anomalyOrders,
+          anomalyOrdersReviewed,
         },
       });
     } catch (err) {

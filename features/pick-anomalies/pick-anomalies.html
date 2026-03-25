@@ -47,6 +47,7 @@
           <div class="pa-status-chips">
             <button class="chip active" data-filter="all" onclick="PA.setFilter('all', this)">All</button>
             <button class="chip" data-filter="anomaly" onclick="PA.setFilter('anomaly', this)">⚠️ Anomalies</button>
+            <button class="chip" data-filter="pending" onclick="PA.setFilter('pending', this)">⏳ Pending Review</button>
             <button class="chip" data-filter="fg" onclick="PA.setFilter('fg', this)">🔧 FG</button>
             <button class="chip" data-filter="correct" onclick="PA.setFilter('correct', this)">✅ Correct</button>
           </div>
@@ -76,8 +77,8 @@
           <div class="value" id="kpiFg">0</div>
         </div>
         <div class="kpi" id="kpi-reviewed">
-          <div class="label">Reviewed</div>
-          <div class="value" id="kpiReviewed">0%</div>
+          <div class="label">Anomalies Reviewed</div>
+          <div class="value" id="kpiReviewed">0</div>
           <div class="pa-review-bar-wrap">
             <div class="pa-review-bar-fill" id="kpiReviewedBar" style="width:0%"></div>
           </div>
@@ -134,7 +135,7 @@
        ═══════════════════════════════════════════════ -->
   <div class="modal" id="paDetailModal">
     <div class="pa-modal-overlay" onclick="PA.closeDetail()"></div>
-    <div class="pa-modal-dialog" style="max-width:1050px">
+    <div class="pa-modal-dialog" style="max-width:1200px">
       <div class="pa-modal-head">
         <h2 id="paModalTitle">Order Detail</h2>
         <button class="pa-modal-x" onclick="PA.closeDetail()">×</button>
@@ -161,15 +162,15 @@
        CONFIRMATION MODAL
        ═══════════════════════════════════════════════ -->
   <div class="modal" id="paConfirmModal">
-    <div class="pa-modal-overlay" onclick="document.getElementById('paConfirmModal').classList.remove('open')"></div>
-    <div class="pa-modal-dialog" style="max-width:450px">
+    <div class="pa-modal-overlay" onclick="PA._resetConfirmModal()"></div>
+    <div class="pa-modal-dialog" style="max-width:550px">
       <div class="pa-modal-head">
         <h2>Confirm Stock Transfer</h2>
-        <button class="pa-modal-x" onclick="document.getElementById('paConfirmModal').classList.remove('open')">×</button>
+        <button class="pa-modal-x" onclick="PA._resetConfirmModal()">×</button>
       </div>
       <div class="pa-modal-body" id="paConfirmBody"></div>
       <div class="pa-modal-foot">
-        <button type="button" class="search-btn-small secondary" onclick="document.getElementById('paConfirmModal').classList.remove('open')">Cancel</button>
+        <button type="button" class="search-btn-small secondary" onclick="PA._resetConfirmModal()">Cancel</button>
         <button type="button" class="search-btn-small pa-confirm-btn" onclick="PA.confirmFix()">Confirm</button>
       </div>
     </div>
