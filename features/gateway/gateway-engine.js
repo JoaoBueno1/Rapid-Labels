@@ -983,20 +983,7 @@ function registerGatewayRoutes(app) {
     }
   });
 
-  /**
-   * GET /api/gateway/audit — Automatic audit: map vs Cin7 MA-GA stock
-   */
-  app.get('/api/gateway/audit', async (req, res) => {
-    try {
-      const audit = await getAuditData();
-      res.json({ success: true, ...audit });
-    } catch (err) {
-      console.error('❌ [Gateway] audit:', err);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
   console.log('✅ Gateway transfer routes registered');
 }
 
-module.exports = { registerGatewayRoutes, seedFromMap, createTransfer, getAllShelves, getStats, getAuditData };
+module.exports = { registerGatewayRoutes, seedFromMap, createTransfer, getAllShelves, getStats };

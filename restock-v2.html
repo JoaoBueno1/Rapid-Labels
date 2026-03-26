@@ -28,6 +28,9 @@
         <button class="rv2-nav-tab active" data-view="restock" onclick="switchRestockView('restock')">
           Re-Stock <span style="font-size:11px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:1px 8px;border-radius:999px;vertical-align:middle;margin-left:4px">V2</span>
         </button>
+        <button class="rv2-nav-tab" data-view="priorities" onclick="switchRestockView('priorities')">
+          🧠 Priorities <span id="insightCountPriorities" class="rv2-nav-badge" style="background:#ef4444">0</span>
+        </button>
         <button class="rv2-nav-tab" data-view="redistribute" onclick="switchRestockView('redistribute')">
           📊 Redistribute <span id="insightCountRedistribute" class="rv2-nav-badge" style="background:#f59e0b">0</span>
         </button>
@@ -233,9 +236,18 @@
       <div id="mapBinDetail" style="display:none;margin-top:12px;padding:16px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)"></div>
     </div>
 
-    <!-- Insights View (replaces table when Redistribute or Consolidate active) -->
+    <!-- Insights View (replaces table when Redistribute, Consolidate or Priorities active) -->
     <div id="insightsView" style="display:none;margin-top:8px">
-      <div style="padding:16px 0">
+      <div id="insightsKpiBar" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px"></div>
+      <div id="insightsFilterBar" style="display:none;margin-bottom:10px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div id="insightsSubtitle" style="font-size:12px;color:#64748b"></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="insightsSelCount" style="display:none;font-size:12px;font-weight:600;color:#6366f1;padding:3px 10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px"></span>
+          <button id="insightsPrintBtn" onclick="printInsightTasks()" style="display:none;padding:6px 14px;font-size:12px;font-weight:600;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f8fafc'">🖨️ Print Tasks</button>
+        </div>
+      </div>
+      <div style="padding:0">
         <div id="insightsContent"></div>
       </div>
     </div>
@@ -457,6 +469,7 @@
   .rv2-nav-tab{ padding:10px 20px; font-size:14px; font-weight:600; color:#64748b; background:none; border:none; border-bottom:3px solid transparent; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; gap:6px }
   .rv2-nav-tab:hover{ color:#334155; background:#f8fafc }
   .rv2-nav-tab.active{ color:#6366f1; border-bottom-color:#6366f1 }
+  .rv2-nav-tab.active[data-view="priorities"]{ color:#b91c1c; border-bottom-color:#ef4444 }
   .rv2-nav-tab.active[data-view="redistribute"]{ color:#b45309; border-bottom-color:#f59e0b }
   .rv2-nav-tab.active[data-view="consolidate"]{ color:#0369a1; border-bottom-color:#0ea5e9 }
   .rv2-nav-tab.active[data-view="map"]{ color:#059669; border-bottom-color:#10b981 }

@@ -1,8 +1,106 @@
 # Rapid-Labels WMS — Plano de Melhorias
 
 > Gerado em: 26/02/2026  
-> Nota atual do sistema: **6.2/10**  
+> Última atualização: **26/03/2026**  
+> Nota atual do sistema: **7.5/10** (era 6.2)  
 > Meta: **8.5+/10**
+
+---
+
+## 📋 Sessão Atual — Onde Paramos (26/03/2026)
+
+### O que foi feito nessas sessões (Fev-Mar 2026):
+
+#### ✅ Cin7 Mirror Auto-Integration
+- Removido upload manual de stock CSV
+- `restock-v2.js` e `replenishment.js` agora lêem direto de `cin7_mirror.stock_snapshot`
+- Sync automático a cada 2h pelo `cin7-stock-sync/sync-service.js`
+- Mapeamento de locations: `CIN7_LOCATION_MAP` (main warehouse → MAIN, sydney → SYD, etc.)
+
+#### ✅ Smart Rules no Branch Replenishment
+- **Smart CTN Rounding**: arredonda qty para carton inteiro (up se Main aguenta, senão down)
+- **Min Send Threshold**: não envia se qty < metade de um carton (evita envios ineficientes)
+- **Proportional Allocation**: quando múltiplas branches precisam do mesmo produto e Main não tem suficiente, distribui proporcionalmente
+
+#### ✅ Restock V2 Melhorias
+- Integração auto cin7_mirror (sem upload manual)
+- Gateway Main improvements iniciados
+
+#### ✅ Branch Replenishment Page — Overhaul Completo (replenishment-branch.js/html)
+**REESCRITO ~80% do código** — mudanças principais:
+1. **Auto-generate on load** — não precisa mais clicar "Generate Plan"
+2. **Mostra TODOS os produtos** — não apenas os que precisam de stock (categories: critical/warning/ok/sufficient/no_avg)
+3. **Coluna 5DC** — extrai código 5DC de `restock_setup.product` (formato "30290  R2101-WH-WW")
+4. **Coluna CTN** — mostra qty_per_ctn para verificação visual
+5. **Conflict tooltips detalhados** — breakdown: Main can send, Total demand, Your need %, Other branches, Your proportional share
+6. **Row selection** — checkbox por linha + select all, export selecionados
+7. **Layout 1440px** — tabela mais larga (era ~1200px)
+8. **Filtro No AVG** — toggle "👻 No AVG" (oculto por default) para produtos sem avg_month
+9. **Filtro "Sufficient"** — chip para ver produtos com 5+ semanas de cobertura
+10. **8 summary cards** — Products w/ AVG, To Send, Total Units, Critical, Warning, OK, Sufficient, No AVG Data
+11. **Coverage Distribution chart** — histograma com buckets 0-7d, 7-14d, etc.
+12. **formatAvg()** — valores < 10 mostram 1 decimal (ex: 0.3), >= 10 arredondam
+
+#### ✅ Bug Fix — Cache Server (26/03/2026)
+- **Problema**: server.js servia `.js` com `Cache-Control: public, max-age=604800, immutable` (7 dias!)
+- Browser cacheava JS antigo, usuário via versão velha do replenishment-branch.js (37 produtos em vez de 797)
+- **Fix**: JS/CSS agora usam `no-cache` (sempre revalida), apenas imagens/fonts ficam 7 dias
+- Adicionado cache busting `?v=20260326` nos `<script>` tags
+
+#### ✅ Replenishment Overview Page (replenishment.js/html)
+- Integração cin7_mirror (sem upload manual)
+- Branch cards com KPIs
+- Smart rules panel
+- AVG management modal
+
+#### ✅ Gateway Stocktake
+- `stocktake-engine.js` + `stocktake-auditor.html` — novo módulo
+- Comparação MAP vs Cin7 system stock
+
+#### ✅ Pick Anomalies
+- UX improvements
+- Excel report generation (`scripts/_gen-report.js`)
+
+### 🔧 Estado técnico dos arquivos:
+| Arquivo | Linhas | Status |
+|---|---|---|
+| `replenishment-branch.js` | ~1255 | ✅ Reescrito (auto-load, all products, 5DC, CTN, selection, filters) |
+| `replenishment-branch.html` | ~365 | ✅ Reescrito (10 colunas, 8 cards, 1440px layout) |
+| `replenishment.js` | ~648 | ✅ Atualizado (cin7_mirror, KPIs, smart rules) |
+| `replenishment.html` | ~490 | ✅ Atualizado (branch grid, rules panel) |
+| `restock-v2.js` | ~1200+ | ✅ Atualizado (cin7_mirror integration) |
+| `server.js` | ~457 | ✅ Fix cache headers |
+| `gateway-engine.js` | ✅ | Stocktake routes added |
+
+### 📊 Dados no DB (para referência):
+- `branch_avg_monthly_sales`: **3.271 rows** total
+  - 797 com `avg_mth_sydney > 0`
+  - Populado via scripts manuais (`_update_avg_sales_xfr.js`, `_populate_avg_breakdown.js`) que parsam exports Cin7
+- `cin7_mirror.stock_snapshot`: **14.181 rows**, sync automático
+  - Main: 2.634 SKUs, Sydney: 1.366 SKUs, Melbourne: 607 SKUs, etc.
+- `restock_setup`: tem product (com 5DC code) + qty_per_ctn + qty_per_pallet
+
+### ⏳ Próximos passos sugeridos:
+1. **Testar visualmente** a branch page no browser (Ctrl+Shift+R para hard refresh)
+2. **Verificar se 797 produtos** aparecem para SYD (com AVG), ~1400+ no "No AVG Data"
+3. **Exportar CSV** e validar dados vs Cin7
+4. **Repetir para outras branches** (MEL, BNE, etc.)
+5. **Overview page** — verificar se KPIs batem com branch pages
+6. **Considerar**: popular `avg_mth_*` para branches via script automático (hoje é manual)
+
+### 🖥️ Como rodar:
+```bash
+cd Rapid-Labels
+fnm env --use-on-cd | Out-String | Invoke-Expression
+node server.js
+# Abrir http://localhost:8383/features/replenishment/replenishment.html
+# Ou direto: http://localhost:8383/features/replenishment/replenishment-branch.html?branch=SYD
+```
+
+### 📁 Git:
+- Branch: `dev`
+- Último commit antes deste: `0435acd` (docs: LLM/AI strategy analysis)
+- Arquivos novos não-tracked: `AI_FEATURES_ROADMAP.md`, `data/`, `stocktake-auditor.html`, `stocktake-engine.js`, scripts diversos
 
 ---
 

@@ -58,8 +58,8 @@
       <button class="gw-nav-tab" data-view="transfer" onclick="switchGwView('transfer')">
         🚚 Transfer
       </button>
-      <button class="gw-nav-tab" data-view="auditor" onclick="switchGwView('auditor')">
-        🔍 Auditor
+      <button class="gw-nav-tab" data-view="stocktake" onclick="switchGwView('stocktake')">
+        📋 Stock Audit
       </button>
     </div>
 
@@ -298,9 +298,9 @@
       var transferFrame = document.getElementById('gwTransferFrame');
       var filtersParent = document.getElementById('gwFilters')?.parentNode; // the margin-top div
 
-      var auditorFrame = document.getElementById('gwAuditorFrame');
+      var stocktakeFrame = document.getElementById('gwStocktakeFrame');
 
-      var isIframeMode = (mode === 'transfer' || mode === 'auditor');
+      var isIframeMode = (mode === 'transfer' || mode === 'stocktake');
 
       if(isIframeMode){
         // Hide table/filters content
@@ -321,25 +321,25 @@
             if(insertRef) insertRef.parentNode.insertBefore(transferFrame, insertRef);
           }
           transferFrame.style.display = 'block';
-          if(auditorFrame) auditorFrame.style.display = 'none';
+          if(stocktakeFrame) stocktakeFrame.style.display = 'none';
         }
 
-        // Auditor iframe
-        if(mode === 'auditor'){
-          if(!auditorFrame){
-            auditorFrame = document.createElement('iframe');
-            auditorFrame.id = 'gwAuditorFrame';
-            auditorFrame.src = 'features/gateway/gateway-auditor.html';
-            auditorFrame.style.cssText = 'width:100%;border:none;border-radius:12px;margin-top:8px;min-height:80vh;';
+        // Stocktake iframe
+        if(mode === 'stocktake'){
+          if(!stocktakeFrame){
+            stocktakeFrame = document.createElement('iframe');
+            stocktakeFrame.id = 'gwStocktakeFrame';
+            stocktakeFrame.src = 'features/gateway/stocktake-auditor.html';
+            stocktakeFrame.style.cssText = 'width:100%;border:none;border-radius:12px;margin-top:8px;min-height:80vh;';
             var insertRef = tableWrapper || filtersParent;
-            if(insertRef) insertRef.parentNode.insertBefore(auditorFrame, insertRef);
+            if(insertRef) insertRef.parentNode.insertBefore(stocktakeFrame, insertRef);
           }
-          auditorFrame.style.display = 'block';
+          stocktakeFrame.style.display = 'block';
           if(transferFrame) transferFrame.style.display = 'none';
         }
       } else {
         if(transferFrame) transferFrame.style.display = 'none';
-        if(auditorFrame) auditorFrame.style.display = 'none';
+        if(stocktakeFrame) stocktakeFrame.style.display = 'none';
         gwContentEls.forEach(el => { if(el) el.style.display = ''; });
         if(tableWrapper) tableWrapper.style.display = '';
         if(filtersParent) filtersParent.style.display = '';

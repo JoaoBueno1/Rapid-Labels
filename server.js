@@ -64,14 +64,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// JSON body parsing
-app.use(express.json({ limit: '200kb' }));
+// JSON body parsing (2MB for stocktake MAP uploads)
+app.use(express.json({ limit: '2mb' }));
 
-// Static caching headers (immutable-ish for versioned assets; index.html short cache)
+// Static caching headers — short cache for JS/CSS (feature files change frequently)
 app.use((req, res, next) => {
-  if (/\.(js|css|svg|png|jpg|jpeg|gif|webp|ico|woff2?)$/i.test(req.url)) {
-    res.setHeader('Cache-Control', 'public, max-age=604800, immutable'); // 7 days
-  } else if (req.url === '/' || /index\.html$/.test(req.url)) {
+  if (/\.(js|css)$/i.test(req.url)) {
+    res.setHeader('Cache-Control', 'no-cache'); // always revalidate JS/CSS
+  } else if (/\.(svg|png|jpg|jpeg|gif|webp|ico|woff2?)$/i.test(req.url)) {
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable'); // 7 days for images/fonts
+  } else if (req.url === '/' || /\.html$/i.test(req.url)) {
     res.setHeader('Cache-Control', 'no-cache');
   }
   next();
@@ -107,6 +109,14 @@ try {
   registerGatewayRoutes(app);
 } catch (e) {
   console.warn('⚠️  Could not register gateway routes:', e.message);
+}
+
+// ── MW Stocktake Audit routes ──
+try {
+  const { registerStocktakeRoutes } = require('./features/gateway/stocktake-engine');
+  registerStocktakeRoutes(app);
+} catch (e) {
+  console.warn('⚠️  Could not register stocktake routes:', e.message);
 }
 
 // Only listen on port when running locally (not on Vercel serverless)

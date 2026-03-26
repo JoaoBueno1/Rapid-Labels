@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gateway Stock Audit — Rapid Label</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/icon-192.svg">
+  <style>
+    /* ── Layout ── */
+    .main-container.wide-container { max-width:none!important; width:100%!important; padding:20px 24px!important; }
+    body.in-iframe { background:transparent!important; margin:0; padding:0; }
+    body.in-iframe .site-header, body.in-iframe .site-footer { display:none!important; }
+    body.in-iframe .main-container.wide-container { padding:0!important; margin:0; box-shadow:none; }
+
+    /* ── Summary stats ── */
+    .st-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+    .st-stat { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 16px; display:flex; flex-direction:column; align-items:center; min-width:90px; }
+    .st-stat-val { font-size:22px; font-weight:700; color:#0f172a; }
+    .st-stat-lbl { font-size:11px; color:#64748b; font-weight:500; text-align:center; }
+    .st-stat.ok { border-color:#86efac; background:#f0fdf4; }
+    .st-stat.ok .st-stat-val { color:#15803d; }
+    .st-stat.warn { border-color:#fde68a; background:#fffbeb; }
+    .st-stat.warn .st-stat-val { color:#b45309; }
+    .st-stat.danger { border-color:#fca5a5; background:#fef2f2; }
+    .st-stat.danger .st-stat-val { color:#dc2626; }
+    .st-stat.info { border-color:#93c5fd; background:#eff6ff; }
+    .st-stat.info .st-stat-val { color:#1d4ed8; }
+
+    /* ── Filter chips ── */
+    .st-chips { display:flex; gap:6px; flex-wrap:wrap; }
+    .st-chip { padding:5px 12px; border:1px solid #e2e8f0; border-radius:999px; background:#fff; font-size:12px; font-weight:600; cursor:pointer; color:#475569; transition:all .15s; display:inline-flex; align-items:center; gap:4px; }
+    .st-chip:hover { background:#f8fafc; border-color:#cbd5e1; }
+    .st-chip.active { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+    .st-chip .chip-count { font-size:10px; background:rgba(0,0,0,.12); padding:1px 6px; border-radius:99px; font-weight:700; }
+    .st-chip.active .chip-count { background:rgba(255,255,255,.25); }
+
+    /* ── Table ── */
+    .st-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .st-table th { background:#f1f5f9; color:#475569; font-weight:600; padding:8px 10px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.3px; position:sticky; top:0; z-index:1; }
+    .st-table td { padding:7px 10px; border-bottom:1px solid #f1f5f9; }
+    .st-table tr:hover td { background:#f8fafc; }
+    .st-table tr.row-match td { opacity:.45; }
+    .st-table tr.row-match:hover td { opacity:1; }
+    .st-table tr.expandable { cursor:pointer; }
+    .st-table tr.detail-row td { background:#fafbfd; padding:6px 10px 10px 40px; border-bottom:1px solid #e2e8f0; }
+    .st-table tr.detail-row .detail-grid { display:flex; gap:24px; flex-wrap:wrap; }
+    .st-table tr.detail-row .detail-section { min-width:180px; }
+    .st-table tr.detail-row .detail-title { font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px; text-transform:uppercase; }
+    .st-table tr.detail-row .detail-item { font-size:12px; color:#334155; padding:1px 0; }
+
+    /* ── Status badges ── */
+    .st-status { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; display:inline-block; }
+    .st-status.match { background:#dcfce7; color:#15803d; }
+    .st-status.mismatch { background:#fef3c7; color:#b45309; }
+    .st-status.map_only { background:#fee2e2; color:#b91c1c; }
+    .st-status.sys_only { background:#dbeafe; color:#1d4ed8; }
+
+    /* ── Diff colours ── */
+    .diff-pos { color:#dc2626; font-weight:700; }
+    .diff-neg { color:#2563eb; font-weight:700; }
+    .diff-zero { color:#94a3b8; }
+
+    /* ── Toolbar ── */
+    .st-toolbar { display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+    .st-search { flex:1; min-width:200px; max-width:360px; padding:8px 14px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; outline:none; }
+    .st-search:focus { border-color:#8b5cf6; box-shadow:0 0 0 2px rgba(139,92,246,.15); }
+    .st-timestamp { font-size:11px; color:#94a3b8; white-space:nowrap; }
+
+    /* ── Buttons ── */
+    .st-btn { border:none; border-radius:8px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; transition:all .15s; }
+    .st-btn-primary { background:#8b5cf6; color:#fff; }
+    .st-btn-primary:hover { background:#7c3aed; }
+    .st-btn-secondary { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+    .st-btn-secondary:hover { background:#e2e8f0; }
+
+    /* ── Info banner ── */
+    .info-banner { font-size:11px; color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 12px; display:inline-flex; align-items:center; gap:6px; margin-bottom:12px; }
+    .info-banner strong { color:#0f172a; }
+
+    /* ── Sync status banner ── */
+    .sync-banner { font-size:11px; color:#64748b; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:6px 12px; display:inline-flex; align-items:center; gap:8px; margin-bottom:12px; margin-left:8px; }
+    .sync-banner.stale { background:#fffbeb; border-color:#fde68a; }
+    .sync-banner.error { background:#fef2f2; border-color:#fca5a5; }
+    .sync-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .sync-dot.ok { background:#22c55e; }
+    .sync-dot.stale { background:#f59e0b; }
+    .sync-dot.error { background:#ef4444; }
+
+    /* ── Match rate progress bar ── */
+    .st-progress-section { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 16px; margin-bottom:16px; }
+    .st-progress-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .st-progress-bar { height:10px; background:#e2e8f0; border-radius:5px; overflow:hidden; }
+    .st-progress-fill { height:100%; border-radius:5px; transition:width .5s ease; }
+
+    /* ── Qty breakdown panel ── */
+    .qty-breakdown { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; margin-bottom:16px; }
+    .qty-breakdown h4 { margin:0 0 10px; font-size:13px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.3px; }
+    .qty-breakdown-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; }
+    .qb-item { display:flex; justify-content:space-between; padding:6px 10px; border-radius:6px; font-size:12px; }
+    .qb-item.excess-map { background:#fef2f2; }
+    .qb-item.excess-sys { background:#eff6ff; }
+    .qb-item .qb-label { color:#64748b; }
+    .qb-item .qb-val { font-weight:700; }
+    .qb-item.excess-map .qb-val { color:#dc2626; }
+    .qb-item.excess-sys .qb-val { color:#2563eb; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">&larr; Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav"><a href="/index.html" class="nav-link">Home</a></nav>
+    </div>
+  </header>
+
+  <div class="main-container wide-container">
+    <div id="stRoot">
+      <div style="text-align:center;padding:60px;color:#94a3b8">
+        <div style="font-size:40px;margin-bottom:12px">📋</div>
+        <div style="font-size:16px;font-weight:600">Loading audit data&hellip;</div>
+        <div style="font-size:13px;margin-top:4px">Comparing Shelf Map vs Cin7 Gateway Stock</div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-inner">&copy; 2025 JSlab.dev &mdash; All rights reserved.</div>
+  </footer>
+
+  <script>
+  (function() {
+    'use strict';
+
+    if (window !== window.top) document.body.classList.add('in-iframe');
+
+    const API = '';
+    let auditData = null;
+    let currentFilter = 'all';
+    let searchQuery = '';
+    let expandedRows = new Set();
+    let lastRefreshTime = null;
+
+    // ── Helpers ──
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function api(path, opts) {
+      const res = await fetch(API + path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {}));
+      return res.json();
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '\u2014';
+      var d = new Date(iso);
+      return d.toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
+             d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+    }
+
+    function fmtNum(n) {
+      return (n || 0).toLocaleString();
+    }
+
+    function timeAgo(iso) {
+      if (!iso) return '';
+      var ms = Date.now() - new Date(iso).getTime();
+      var min = Math.floor(ms / 60000);
+      if (min < 1) return 'just now';
+      if (min < 60) return min + 'm ago';
+      var h = Math.floor(min / 60);
+      var rem = min % 60;
+      return rem > 0 ? h + 'h ' + rem + 'm ago' : h + 'h ago';
+    }
+
+    function fmtDateShort(iso) {
+      if (!iso) return '';
+      var d = new Date(iso);
+      var p = function(n) { return String(n).padStart(2, '0'); };
+      return p(d.getDate()) + '/' + p(d.getMonth()+1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    // ── Load audit data ──
+    async function loadAudit() {
+      var root = document.getElementById('stRoot');
+      if (!auditData) {
+        root.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8">' +
+          '<div style="font-size:32px;margin-bottom:8px">🔄</div>' +
+          '<div>Comparing Shelf Map vs Cin7 Gateway Stock…</div></div>';
+      }
+      try {
+        var data = await api('/api/stocktake/audit');
+        if (!data.success) {
+          root.innerHTML = '<div style="text-align:center;padding:40px;color:#ef4444">❌ ' + esc(data.error || 'Failed') + '</div>';
+          return;
+        }
+        auditData = data;
+        lastRefreshTime = new Date();
+        renderAudit();
+      } catch (err) {
+        root.innerHTML = '<div style="text-align:center;padding:40px;color:#ef4444">❌ Network error: ' + esc(err.message) + '</div>';
+      }
+    }
+
+    // ── Render ──
+    function renderAudit() {
+      if (!auditData) return;
+      var results = auditData.results;
+      var summary = auditData.summary;
+      var root = document.getElementById('stRoot');
+      var now = lastRefreshTime ? lastRefreshTime.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '\u2014';
+
+      // Apply search
+      var filtered = results;
+      if (searchQuery) {
+        var q = searchQuery.toLowerCase();
+        filtered = results.filter(function(r) {
+          return (r.sku && r.sku.toLowerCase().indexOf(q) >= 0) ||
+                 (r.product_name && r.product_name.toLowerCase().indexOf(q) >= 0) ||
+                 (r.five_dc && r.five_dc.toLowerCase().indexOf(q) >= 0) ||
+                 (r.map_shelves && r.map_shelves.some(function(s) { return s.shelf && s.shelf.toLowerCase().indexOf(q) >= 0; }));
+        });
+      }
+
+      // Apply filter
+      if (currentFilter !== 'all') {
+        if (currentFilter === 'issues') {
+          filtered = filtered.filter(function(r) { return r.status !== 'match'; });
+        } else {
+          filtered = filtered.filter(function(r) { return r.status === currentFilter; });
+        }
+      }
+
+      var html = '';
+
+      // ── Header row ──
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">';
+      html += '<div style="font-size:18px;font-weight:700;color:#1e293b">📋 Gateway Stock Audit — Shelf Map vs Cin7</div>';
+      html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+      html += '<span class="st-timestamp">Loaded: ' + now + '</span>';
+      html += '<button class="st-btn st-btn-secondary" onclick="window.__exportReport()">⬇️ Export TSV</button>';
+      html += '<button class="st-btn st-btn-primary" onclick="window.__stRefresh()">🔄 Refresh</button>';
+      html += '</div></div>';
+
+      // ── Shelf Map info + Cin7 sync status banners ──
+      html += '<div style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:12px">';
+      html += '<div class="info-banner">🗺️ Shelf Map: <strong>' + fmtNum(summary.map_allocations || 0) + ' allocations</strong> &nbsp;|&nbsp; ' + fmtNum(summary.map_skus) + ' SKUs &nbsp;|&nbsp; ' + fmtNum(summary.map_total_qty) + ' units &nbsp;|&nbsp; <span style="color:#8b5cf6">Live from Transfer tab</span></div>';
+
+      // Cin7 sync status
+      var sync = summary.last_sync;
+      if (sync) {
+        var syncOk = sync.status === 'success';
+        var syncAge = sync.ended_at ? timeAgo(sync.ended_at) : '';
+        var syncAgeMs = sync.ended_at ? Date.now() - new Date(sync.ended_at).getTime() : 0;
+        var isStale = syncAgeMs > 3 * 3600000; // >3h = stale
+        var bannerCls = syncOk && !isStale ? '' : (syncOk && isStale ? ' stale' : ' error');
+        var dotCls = syncOk && !isStale ? 'ok' : (syncOk && isStale ? 'stale' : 'error');
+
+        html += '<div class="sync-banner' + bannerCls + '">';
+        html += '<span class="sync-dot ' + dotCls + '"></span>';
+        html += (syncOk ? 'Cin7 sync OK' : 'Cin7 sync ' + esc(sync.status));
+        if (sync.duration_ms) html += ' • ' + (sync.duration_ms / 1000).toFixed(1) + 's';
+        if (syncAge) html += ' • <strong>' + syncAge + '</strong>';
+        html += '<span style="color:#94a3b8;margin-left:4px">' + fmtDateShort(sync.ended_at) + '</span>';
+
+        // Next sync estimate (every 2h)
+        if (sync.ended_at) {
+          var nextSync = new Date(new Date(sync.ended_at).getTime() + 2 * 3600000);
+          var now2 = new Date();
+          if (nextSync > now2) {
+            var diffMin = Math.floor((nextSync - now2) / 60000);
+            var hh = Math.floor(diffMin / 60);
+            var mm = diffMin % 60;
+            var countdown = hh > 0 ? hh + 'h ' + mm + 'm' : mm + 'm';
+            html += '<span style="color:#94a3b8;margin-left:8px">🛡️ Next sync ~' + countdown + '</span>';
+          }
+        }
+
+        html += '</div>';
+      }
+      html += '</div>';
+
+      // ── Match rate progress bar ──
+      var matchPct = summary.match_rate || 0;
+      var pctColor = matchPct > 80 ? '#22c55e' : matchPct > 30 ? '#f59e0b' : '#ef4444';
+      var pctText = matchPct > 80 ? '#15803d' : matchPct > 30 ? '#b45309' : '#dc2626';
+      html += '<div class="st-progress-section">';
+      html += '<div class="st-progress-header">';
+      html += '<span style="font-weight:700;color:#1e293b">Match Rate (Shelf Map vs Cin7 Gateway)</span>';
+      html += '<span style="font-size:20px;font-weight:800;color:' + pctText + '">' + matchPct + '%</span>';
+      html += '</div>';
+      html += '<div class="st-progress-bar"><div class="st-progress-fill" style="width:' + Math.min(matchPct,100) + '%;background:' + pctColor + '"></div></div>';
+      html += '<div style="font-size:11px;color:#94a3b8;margin-top:4px">' + fmtNum(summary.total_match) + ' of ' + fmtNum(summary.overlap) + ' overlapping SKUs have exact qty match</div>';
+      html += '</div>';
+
+      // ── Summary stats ──
+      html += '<div class="st-summary">';
+      html += '<div class="st-stat"><span class="st-stat-val">' + summary.map_skus + '</span><span class="st-stat-lbl">�️ Shelf Map SKUs</span></div>';
+      html += '<div class="st-stat info"><span class="st-stat-val">' + summary.sys_skus + '</span><span class="st-stat-lbl">📦 Cin7 SKUs</span></div>';
+      html += '<div class="st-stat ok"><span class="st-stat-val">' + summary.total_match + '</span><span class="st-stat-lbl">✓ Exact Match</span></div>';
+      html += '<div class="st-stat ' + (summary.total_mismatch > 0 ? 'warn' : 'ok') + '"><span class="st-stat-val">' + summary.total_mismatch + '</span><span class="st-stat-lbl">⚠ Qty Mismatch</span></div>';
+      html += '<div class="st-stat ' + (summary.total_map_only > 0 ? 'danger' : 'ok') + '"><span class="st-stat-val">' + summary.total_map_only + '</span><span class="st-stat-lbl">❌ Map Only</span></div>';
+      html += '<div class="st-stat ' + (summary.total_sys_only > 0 ? 'warn' : 'ok') + '"><span class="st-stat-val">' + summary.total_sys_only + '</span><span class="st-stat-lbl">📦 Cin7 Only</span></div>';
+      html += '<div class="st-stat"><span class="st-stat-val">' + fmtNum(summary.map_total_qty) + '</span><span class="st-stat-lbl">Shelf Map Qty</span></div>';
+      html += '<div class="st-stat"><span class="st-stat-val">' + fmtNum(summary.sys_total_qty) + '</span><span class="st-stat-lbl">Cin7 Total Qty</span></div>';
+      html += '</div>';
+
+      // ── Qty breakdown (units analysis) ──
+      var mapOnlyUnits = 0, sysOnlyUnits = 0, mapExcess = 0, sysExcess = 0;
+      for (var qi = 0; qi < results.length; qi++) {
+        var qr = results[qi];
+        if (qr.status === 'map_only') mapOnlyUnits += qr.map_qty;
+        else if (qr.status === 'sys_only') sysOnlyUnits += qr.sys_qty;
+        else if (qr.status === 'mismatch') {
+          if (qr.difference > 0) sysExcess += qr.difference;
+          else mapExcess += Math.abs(qr.difference);
+        }
+      }
+      html += '<div class="qty-breakdown">';
+      html += '<h4>📊 Unit Discrepancy Analysis</h4>';
+      html += '<div class="qty-breakdown-grid">';
+      html += '<div class="qb-item excess-map"><span class="qb-label">Map Only (shelf map, no Cin7)</span><span class="qb-val">' + fmtNum(mapOnlyUnits) + ' units</span></div>';
+      html += '<div class="qb-item excess-sys"><span class="qb-label">Cin7 Only (system, no shelf map)</span><span class="qb-val">' + fmtNum(sysOnlyUnits) + ' units</span></div>';
+      html += '<div class="qb-item excess-map"><span class="qb-label">Shelf map excess (more on map)</span><span class="qb-val">+' + fmtNum(mapExcess) + ' units</span></div>';
+      html += '<div class="qb-item excess-sys"><span class="qb-label">Cin7 excess (more in system)</span><span class="qb-val">+' + fmtNum(sysExcess) + ' units</span></div>';
+      html += '</div></div>';
+
+      // ── Toolbar: search + chips ──
+      html += '<div class="st-toolbar">';
+      html += '<input type="text" class="st-search" id="stSearch" placeholder="Search SKU, product, shelf\u2026" value="' + esc(searchQuery) + '" oninput="window.__stSearch(this.value)" />';
+      html += '<div class="st-chips">';
+      var totalAll = results.length;
+      var totalIssues = summary.total_mismatch + summary.total_map_only + summary.total_sys_only;
+      var chips = [
+        { key:'all', label:'All', count:totalAll },
+        { key:'issues', label:'⚠ Issues', count:totalIssues },
+        { key:'match', label:'✓ Match', count:summary.total_match },
+        { key:'mismatch', label:'Qty Mismatch', count:summary.total_mismatch },
+        { key:'map_only', label:'Map Only', count:summary.total_map_only },
+        { key:'sys_only', label:'Cin7 Only', count:summary.total_sys_only },
+      ];
+      for (var ci = 0; ci < chips.length; ci++) {
+        var c = chips[ci];
+        html += '<button class="st-chip ' + (currentFilter === c.key ? 'active' : '') + '" onclick="window.__stFilter(\'' + c.key + '\')">' + c.label + ' <span class="chip-count">' + c.count + '</span></button>';
+      }
+      html += '</div></div>';
+
+      // ── Results table ──
+      if (filtered.length > 0) {
+        html += '<div style="font-size:13px;color:#64748b;margin-bottom:8px">' + filtered.length + ' SKU' + (filtered.length !== 1 ? 's' : '') + '</div>';
+        html += buildTable(filtered);
+      } else {
+        html += '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No results matching current filter / search</div>';
+      }
+
+      root.innerHTML = html;
+    }
+
+    function buildTable(rows) {
+      var html = '<div style="max-height:calc(100vh - 520px);overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:12px">';
+      html += '<table class="st-table"><thead><tr>';
+      html += '<th style="width:30px"></th><th>Status</th><th>SKU</th><th>Product</th>';
+      html += '<th style="text-align:right">Map Qty</th><th style="text-align:right">Cin7 Qty</th>';
+      html += '<th style="text-align:right">Diff</th>';
+      html += '<th>Shelves</th>';
+      html += '</tr></thead><tbody>';
+
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var isExpanded = expandedRows.has(r.sku);
+        var rowCls = r.status === 'match' ? 'row-match expandable' : 'expandable';
+        var hasDetail = (r.map_shelves && r.map_shelves.length > 0);
+        var arrow = isExpanded ? '▼' : '▶';
+
+        html += '<tr class="' + rowCls + '" onclick="window.__stToggle(\'' + esc(r.sku).replace(/'/g,"\\'") + '\')">';
+        html += '<td style="font-size:10px;color:#94a3b8;text-align:center">' + (hasDetail ? arrow : '') + '</td>';
+        html += '<td><span class="st-status ' + r.status + '">' + esc(r.status_label) + '</span></td>';
+        html += '<td style="font-weight:600;font-size:12px">' + esc(r.sku) + '</td>';
+        html += '<td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b" title="' + esc(r.product_name||'') + '">' + esc(r.product_name ? r.product_name.substring(0,40) : '\u2014') + '</td>';
+        html += '<td style="text-align:right;font-weight:600">' + r.map_qty + '</td>';
+        html += '<td style="text-align:right;font-weight:600">' + r.sys_qty + '</td>';
+
+        if (r.difference === 0) {
+          html += '<td style="text-align:right" class="diff-zero">0</td>';
+        } else if (r.difference > 0) {
+          html += '<td style="text-align:right" class="diff-pos">+' + r.difference + '</td>';
+        } else {
+          html += '<td style="text-align:right" class="diff-neg">' + r.difference + '</td>';
+        }
+
+        var shelfArr = [];
+        if (r.map_shelves) {
+          for (var si = 0; si < r.map_shelves.length; si++) {
+            shelfArr.push(r.map_shelves[si].shelf + '(' + r.map_shelves[si].qty + ')');
+          }
+        }
+        var shelfStr = shelfArr.join(', ');
+        html += '<td style="font-size:11px;color:#64748b" title="' + esc(shelfStr) + '">' + (shelfStr ? esc(shelfStr.substring(0,60)) + (shelfStr.length > 60 ? '…' : '') : '—') + '</td>';
+        html += '</tr>';
+
+        // Detail row
+        if (isExpanded && hasDetail) {
+          html += '<tr class="detail-row"><td colspan="8"><div class="detail-grid">';
+          html += '<div class="detail-section" style="min-width:340px">';
+          html += '<div class="detail-title">\ud83d\uddfa\ufe0f Shelf Breakdown</div>';
+          html += '<table style="width:100%;font-size:12px;border-collapse:collapse">';
+          html += '<tr style="color:#64748b;font-size:10px;text-transform:uppercase"><th style="text-align:left;padding:2px 6px">Shelf</th><th style="text-align:left;padding:2px 6px">Pallet</th><th style="text-align:right;padding:2px 6px">Qty</th><th style="text-align:left;padding:2px 6px">Date</th></tr>';
+          for (var di = 0; di < r.map_shelves.length; di++) {
+            var sd = r.map_shelves[di];
+            html += '<tr><td style="padding:2px 6px;font-weight:600">' + esc(sd.shelf) + '</td>';
+            html += '<td style="padding:2px 6px;color:#64748b">' + esc(sd.pallet || '—') + '</td>';
+            html += '<td style="text-align:right;padding:2px 6px">' + sd.qty + '</td>';
+            html += '<td style="padding:2px 6px;color:#94a3b8;font-size:11px">' + (sd.stock_date ? fmtDate(sd.stock_date).split(' ')[0] : '\u2014') + '</td></tr>';
+          }
+          html += '<tr style="border-top:1px solid #e2e8f0;font-weight:700">';
+          html += '<td colspan="2" style="padding:4px 6px">Map Total</td>';
+          html += '<td style="text-align:right;padding:4px 6px">' + r.map_qty + '</td><td></td></tr></table>';
+          html += '</div>';
+
+          html += '<div class="detail-section">';
+          html += '<div class="detail-title">💻 Cin7 Gateway Stock</div>';
+          html += '<div class="detail-item">Cin7 on_hand: <span>' + r.sys_qty + '</span></div>';
+          html += '<div class="detail-item">Shelf map: <span>' + r.map_qty + '</span></div>';
+          var diff2 = r.sys_qty - r.map_qty;
+          html += '<div class="detail-item">Diff: <span style="color:' + (diff2 === 0 ? '#15803d' : '#dc2626') + '">' + (diff2 >= 0 ? '+' : '') + diff2 + '</span></div>';
+          if (r.five_dc) html += '<div class="detail-item">5DC: <span>' + esc(r.five_dc) + '</span></div>';
+          html += '</div>';
+
+          html += '</div></td></tr>';
+        }
+      }
+
+      html += '</tbody></table></div>';
+      return html;
+    }
+
+    // ── Export ──
+    window.__exportReport = function() {
+      window.open(API + '/api/stocktake/export', '_blank');
+    };
+
+    // ── Global handlers ──
+    window.__stRefresh = function() { loadAudit(); };
+    window.__stFilter = function(f) { currentFilter = f; renderAudit(); };
+    window.__stSearch = function(q) { searchQuery = q.trim(); renderAudit(); };
+    window.__stToggle = function(sku) {
+      if (expandedRows.has(sku)) expandedRows.delete(sku);
+      else expandedRows.add(sku);
+      renderAudit();
+    };
+
+    // ── Init ──
+    loadAudit();
+  })();
+  </script>
+</body>
+</html>

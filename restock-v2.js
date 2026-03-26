@@ -1721,12 +1721,16 @@
      Uses the same data V2 already loads (cin7_mirror).
      ═══════════════════════════════════════════════ */
   const insightState = {
+    priorities: [],
     redistribute: [],
     consolidate: [],
-    activeTab: 'redistribute',
+    activeTab: 'priorities',
     page: 1,
-    perPage: 5,
+    perPage: 8,
     collapsed: false,
+    priorityFilter: 'actionable', // 'all' | 'actionable' | 'no_reserve'
+    consolidateFilter: 'all',      // 'all' | 'clear' | 'merge'
+    selected: new Set(),           // set of SKU keys for print selection
   };
 
   function generateInsights() {
@@ -1734,20 +1738,87 @@
     const palletCap = state.palletCapacity || {};
     const setupMap = state.setupByProduct || {};
 
+    const priorityInsights = [];
     const redistributeInsights = [];
     const consolidateInsights = [];
 
     for (const row of rows) {
       const stockSku = row.__stock_sku || row.product;
       const setup = setupMap[stockSku];
-      if (!setup || !Number.isFinite(setup.max)) continue;
+      if (!setup || !Number.isFinite(setup.max) || setup.max === 0) continue;
 
       const palletQty = palletCap[stockSku] || palletCap[row.__5dc] || 0;
       const reserveLocs = row.__reserve_locations || [];
       const pickfaceOnHand = row.on_hand || 0;
       const capMax = setup.max;
+      const capMin = setup.min || 0;
+      const capMed = setup.med || 0;
+      const avgMth = row.__avg_month_sales || 0;
+      const avgWeekly = avgMth > 0 ? avgMth / 4.33 : 0;
+      const runwayWeeks = row.__runway_weeks || 0;
+      const reserveTotal = row.__reserve_total || 0;
+      const ctnQty = row.__qty_per_ctn || 0;
 
-      // ── REDISTRIBUTE: Pickface OVER capacity + reserve bins that are under ──
+      // ── PRIORITIES: Urgency-based ranking ──
+      const normStatus = (row.__norm_status || '').toUpperCase();
+      if ((normStatus === 'LOW' || normStatus === 'MEDIUM') && avgWeekly > 0) {
+        const runwayDays = runwayWeeks * 7;
+        // Priority score: lower = more urgent. Combines runway + demand velocity
+        const urgencyScore = runwayWeeks > 0 ? runwayWeeks : 0;
+
+        // How much to restock to reach max
+        const deficit = Math.max(0, capMax - pickfaceOnHand);
+        // Smart qty: round up to carton multiples if known
+        let suggestedQty = deficit;
+        let suggestedCtns = null;
+        if (ctnQty > 0) {
+          suggestedCtns = Math.ceil(deficit / ctnQty);
+          suggestedQty = suggestedCtns * ctnQty;
+        }
+
+        // Find best reserve source
+        const reserveSources = reserveLocs
+          .filter(l => l.qty > 0)
+          .sort((a, b) => b.qty - a.qty);
+        const bestSource = reserveSources.length > 0 ? reserveSources[0] : null;
+
+        // Severity label
+        let severity = 'medium';
+        let severityLabel = 'Medium';
+        if (runwayDays <= 3) { severity = 'critical'; severityLabel = 'Critical'; }
+        else if (runwayDays <= 7) { severity = 'urgent'; severityLabel = 'Urgent'; }
+        else if (runwayDays <= 14) { severity = 'warning'; severityLabel = 'Low Stock'; }
+
+        priorityInsights.push({
+          sku: stockSku,
+          display5dc: row.__5dc || '',
+          product: row.__full_description || row.product,
+          pickfaceOnHand, capMax, capMin, capMed,
+          deficit, suggestedQty, suggestedCtns, ctnQty,
+          avgMth, avgWeekly,
+          runwayWeeks, runwayDays,
+          reserveTotal, reserveSources, bestSource,
+          severity, severityLabel, urgencyScore,
+          normStatus,
+          pickface: row.stock_locator || '',
+        });
+      }
+
+      // ── Capacity Misconfiguration: capacity too small for demand ──
+      if (avgWeekly > 0 && capMax > 0) {
+        const capWeeks = capMax / avgWeekly;
+        if (capWeeks < 2.5 && normStatus !== 'NOT_CONFIGURED') {
+          // Flag this in priorities too
+          const existing = priorityInsights.find(p => p.sku === stockSku);
+          if (existing) {
+            existing.capacityWarning = true;
+            existing.capacityWeeks = Math.round(capWeeks * 10) / 10;
+            existing.suggestedCapacity = Math.ceil(avgWeekly * 4); // 4 weeks target
+          }
+        }
+      }
+
+      // ── REDISTRIBUTE: Pickface OVER → fill incomplete reserve pallets ──
       if (pickfaceOnHand > capMax && palletQty > 0 && reserveLocs.length > 0) {
         const excess = pickfaceOnHand - capMax;
         // Find bins that are under pallet capacity
@@ -1771,6 +1842,7 @@
               sku: stockSku,
               display5dc: row.__5dc || '',
               product: row.__full_description || row.product,
+              pickface: row.stock_locator || '',
               pickfaceExcess: excess,
               palletQty,
               completableBins: completable,
@@ -1782,68 +1854,153 @@
         }
       }
 
-      // ── CONSOLIDATE: 2+ partial reserve bins → can merge into ~1 pallet ──
-      if (palletQty > 0 && reserveLocs.length >= 2) {
+      // ── REDISTRIBUTE (new): Pickface LOW/MEDIUM + reserve has stock → suggest restock from reserve ──
+      if (pickfaceOnHand < capMed && reserveTotal > 0 && pickfaceOnHand <= capMax) {
+        const deficit = capMax - pickfaceOnHand;
+        const availableReserve = reserveLocs.filter(l => l.qty > 0).sort((a, b) => b.qty - a.qty);
+        if (availableReserve.length > 0) {
+          let toMove = deficit;
+          const sources = [];
+          for (const loc of availableReserve) {
+            if (toMove <= 0) break;
+            const take = Math.min(toMove, loc.qty);
+            sources.push({ location: loc.location, qty: loc.qty, take });
+            toMove -= take;
+          }
+          if (sources.length > 0) {
+            redistributeInsights.push({
+              sku: stockSku,
+              display5dc: row.__5dc || '',
+              product: row.__full_description || row.product,
+              pickface: row.stock_locator || '',
+              pickfaceExcess: 0,
+              pickfaceDeficit: deficit,
+              pickfaceOnHand,
+              capMax,
+              palletQty,
+              completableBins: [],
+              remainingExcess: 0,
+              incompleteBins: 0,
+              totalToMove: sources.reduce((s, src) => s + src.take, 0),
+              isRestockFromReserve: true,
+              reserveSources: sources,
+              normStatus,
+            });
+          }
+        }
+      }
+
+      // ── CONSOLIDATE: partial reserve bins → clear to pickface OR merge in reserve ──
+      if (reserveLocs.length > 0) {
         const partials = reserveLocs
-          .filter(l => l.qty > 0 && l.qty < palletQty)
-          .map(l => ({ location: l.location, qty: l.qty }))
-          .sort((a, b) => b.qty - a.qty);
+          .filter(l => l.qty > 0 && (palletQty <= 0 || l.qty < palletQty))
+          .map(l => ({ location: l.location, qty: l.qty }));
 
-        if (partials.length >= 2) {
-          const consolidations = [];
-          const used = new Set();
+        if (partials.length > 0) {
+          // Step 1: Clear to Pickface — smallest bins first that fit in pickface free space
+          const clearToPickface = [];
+          const pickfaceFree = capMax - pickfaceOnHand;
+          let remainingFree = pickfaceFree;
+          const hasPickface = capMax > 0 && (row.stock_locator || '').trim();
 
-          for (let i = 0; i < partials.length && consolidations.length < 3; i++) {
-            if (used.has(i)) continue;
-            const group = [partials[i]];
-            let total = partials[i].qty;
-            used.add(i);
-
-            for (let j = i + 1; j < partials.length; j++) {
-              if (used.has(j)) continue;
-              if (total + partials[j].qty <= palletQty * 1.1) {
-                group.push(partials[j]);
-                total += partials[j].qty;
-                used.add(j);
-                if (total >= palletQty * 0.95) break;
+          if (hasPickface && pickfaceFree > 0) {
+            const sorted = partials.slice().sort((a, b) => a.qty - b.qty); // smallest first
+            for (const bin of sorted) {
+              if (bin.qty <= remainingFree) {
+                clearToPickface.push(bin);
+                remainingFree -= bin.qty;
               }
-            }
-
-            if (group.length >= 2 && total >= palletQty * 0.85) {
-              consolidations.push({
-                bins: group,
-                totalQty: total,
-                palletsFormed: Math.floor(total / palletQty),
-                locationsFreed: group.length - Math.ceil(total / palletQty),
-              });
             }
           }
 
-          if (consolidations.length > 0) {
+          // Step 2: Remaining partials → reserve consolidation (merge bins)
+          const clearedLocs = new Set(clearToPickface.map(b => b.location));
+          const remaining = partials
+            .filter(b => !clearedLocs.has(b.location))
+            .sort((a, b) => b.qty - a.qty); // biggest first for consolidation
+
+          const consolidations = [];
+          if (remaining.length >= 2 && palletQty > 0) {
+            const used = new Set();
+            for (let i = 0; i < remaining.length && consolidations.length < 3; i++) {
+              if (used.has(i)) continue;
+              const group = [remaining[i]];
+              let total = remaining[i].qty;
+              used.add(i);
+              for (let j = i + 1; j < remaining.length; j++) {
+                if (used.has(j)) continue;
+                if (total + remaining[j].qty <= palletQty * 1.1) {
+                  group.push(remaining[j]);
+                  total += remaining[j].qty;
+                  used.add(j);
+                  if (total >= palletQty * 0.95) break;
+                }
+              }
+              if (group.length >= 2 && total >= palletQty * 0.85) {
+                consolidations.push({
+                  bins: group,
+                  targetBin: group[0].location,
+                  totalQty: total,
+                  palletsFormed: Math.floor(total / palletQty),
+                  locationsFreed: group.length - Math.ceil(total / palletQty),
+                });
+              }
+            }
+          }
+
+          if (clearToPickface.length > 0 || consolidations.length > 0) {
+            const clearTotal = clearToPickface.reduce((s, b) => s + b.qty, 0);
             consolidateInsights.push({
               sku: stockSku,
               display5dc: row.__5dc || '',
               product: row.__full_description || row.product,
+              pickface: row.stock_locator || '',
+              pickfaceOnHand,
+              capMax,
               palletQty,
+              clearToPickface,
+              clearTotal,
+              pickfaceAfter: pickfaceOnHand + clearTotal,
               consolidations,
-              totalLocationsCanFree: consolidations.reduce((s, c) => s + c.locationsFreed, 0),
+              totalLocationsCanFree: clearToPickface.length + consolidations.reduce((s, c) => s + c.locationsFreed, 0),
+              hasClear: clearToPickface.length > 0,
+              hasMerge: consolidations.length > 0,
             });
           }
         }
       }
     }
 
-    insightState.redistribute = redistributeInsights.sort((a, b) => b.completableBins.length - a.completableBins.length);
+    // Sort priorities: critical first, then urgent, then by urgencyScore ascending
+    const severityOrder = { critical: 0, urgent: 1, warning: 2, medium: 3 };
+    priorityInsights.sort((a, b) => {
+      const sa = severityOrder[a.severity] ?? 5;
+      const sb = severityOrder[b.severity] ?? 5;
+      if (sa !== sb) return sa - sb;
+      return a.urgencyScore - b.urgencyScore;
+    });
+
+    insightState.priorities = priorityInsights;
+    // Redistribute: overflow first, then restock-from-reserve
+    insightState.redistribute = redistributeInsights.sort((a, b) => {
+      // Overflow cards first
+      if (a.isRestockFromReserve && !b.isRestockFromReserve) return 1;
+      if (!a.isRestockFromReserve && b.isRestockFromReserve) return -1;
+      if (a.isRestockFromReserve && b.isRestockFromReserve) return (a.pickfaceOnHand / a.capMax) - (b.pickfaceOnHand / b.capMax);
+      return b.completableBins.length - a.completableBins.length;
+    });
     insightState.consolidate  = consolidateInsights.sort((a, b) => b.totalLocationsCanFree - a.totalLocationsCanFree);
     insightState.page = 1;
 
     // Update tab counts
+    const countP = document.getElementById('insightCountPriorities');
     const countR = document.getElementById('insightCountRedistribute');
     const countC = document.getElementById('insightCountConsolidate');
+    if (countP) countP.textContent = priorityInsights.length;
     if (countR) countR.textContent = redistributeInsights.length;
     if (countC) countC.textContent = consolidateInsights.length;
 
-    console.log(`💡 Insights: ${redistributeInsights.length} redistribute, ${consolidateInsights.length} consolidate`);
+    console.log(`💡 Insights: ${priorityInsights.length} priorities, ${redistributeInsights.length} redistribute, ${consolidateInsights.length} consolidate`);
   }
 
   /* ── View switching: Restock table ↔ Redistribute ↔ Consolidate ── */
@@ -1875,6 +2032,7 @@
       if (searchGroup) searchGroup.style.display = 'none';
       initWarehouseMap();
     } else {
+      // priorities, redistribute, consolidate
       if (insightsView) insightsView.style.display = 'block';
       if (searchGroup) searchGroup.style.display = 'none';
       insightState.activeTab = view;
@@ -1884,18 +2042,85 @@
   };
 
   window.changeInsightsPage = function (delta) {
-    const items = insightState[insightState.activeTab] || [];
+    const items = _getFilteredItems(insightState.activeTab);
     const totalPages = Math.max(1, Math.ceil(items.length / insightState.perPage));
     insightState.page = Math.max(1, Math.min(totalPages, insightState.page + delta));
+    insightState.selected.clear();
     renderInsightsPage();
   };
+
+  function _getFilteredItems(tab) {
+    const raw = insightState[tab] || [];
+    if (tab === 'priorities') {
+      const f = insightState.priorityFilter;
+      if (f === 'all') return raw;
+      if (f === 'actionable') return raw.filter(p => p.bestSource);
+      if (f === 'no_reserve') return raw.filter(p => !p.bestSource);
+      return raw;
+    }
+    if (tab === 'consolidate') {
+      const f = insightState.consolidateFilter;
+      if (f === 'all') return raw;
+      if (f === 'clear') return raw.filter(c => c.hasClear);
+      if (f === 'merge') return raw.filter(c => c.hasMerge);
+      return raw;
+    }
+    return raw;
+  }
+
+  window.setPriorityFilter = function (f) {
+    insightState.priorityFilter = f;
+    insightState.page = 1;
+    insightState.selected.clear();
+    renderInsightsPage();
+  };
+
+  window.setConsolidateFilter = function (f) {
+    insightState.consolidateFilter = f;
+    insightState.page = 1;
+    insightState.selected.clear();
+    renderInsightsPage();
+  };
+
+  window.toggleInsightSelect = function (sku) {
+    if (insightState.selected.has(sku)) insightState.selected.delete(sku);
+    else insightState.selected.add(sku);
+    const cb = document.querySelector(`[data-insight-cb="${sku}"]`);
+    if (cb) cb.checked = insightState.selected.has(sku);
+    const card = document.querySelector(`[data-insight-card="${sku}"]`);
+    if (card) card.style.boxShadow = insightState.selected.has(sku) ? '0 0 0 2px #6366f1' : '';
+    _updateSelCount();
+  };
+
+  window.toggleSelectAllInsights = function () {
+    const items = _getFilteredItems(insightState.activeTab);
+    const page = insightState.page;
+    const perPage = insightState.perPage;
+    const start = (page - 1) * perPage;
+    const end = Math.min(start + perPage, items.length);
+    const pageItems = items.slice(start, end);
+    const allSelected = pageItems.every(p => insightState.selected.has(p.sku));
+    pageItems.forEach(p => {
+      if (allSelected) insightState.selected.delete(p.sku);
+      else insightState.selected.add(p.sku);
+    });
+    renderInsightsPage();
+  };
+
+  function _updateSelCount() {
+    const el = document.getElementById('insightsSelCount');
+    if (!el) return;
+    const n = insightState.selected.size;
+    if (n > 0) { el.textContent = `${n} selected`; el.style.display = ''; }
+    else { el.style.display = 'none'; }
+  }
 
   function renderInsightsPage() {
     const container = document.getElementById('insightsContent');
     if (!container) return;
 
     const tab = insightState.activeTab;
-    const items = insightState[tab] || [];
+    const items = _getFilteredItems(tab);
     const page = insightState.page;
     const perPage = insightState.perPage;
     const totalPages = Math.max(1, Math.ceil(items.length / perPage));
@@ -1903,13 +2128,96 @@
     const end = Math.min(start + perPage, items.length);
     const pageItems = items.slice(start, end);
 
+    // ── Filter Bar (Priorities only) ──
+    const filterBar = document.getElementById('insightsFilterBar');
+    if (filterBar) {
+      if (tab === 'priorities') {
+        const raw = insightState.priorities;
+        const actionableN = raw.filter(p => p.bestSource).length;
+        const noReserveN = raw.filter(p => !p.bestSource).length;
+        const f = insightState.priorityFilter;
+        const chip = (key, label, count, active) =>
+          `<button onclick="setPriorityFilter('${key}')" style="padding:5px 12px;font-size:12px;font-weight:${active ? '700' : '500'};border-radius:999px;border:1px solid ${active ? '#6366f1' : '#e2e8f0'};background:${active ? '#eef2ff' : '#fff'};color:${active ? '#4338ca' : '#64748b'};cursor:pointer;transition:all .15s">${label} <span style="font-weight:700">${count}</span></button>`;
+        filterBar.innerHTML = chip('actionable', '✅ Has Reserve', actionableN, f === 'actionable')
+          + chip('no_reserve', '🛒 Needs Purchase', noReserveN, f === 'no_reserve')
+          + chip('all', 'All', raw.length, f === 'all');
+        filterBar.style.display = 'flex';
+        filterBar.style.gap = '6px';
+        filterBar.style.flexWrap = 'wrap';
+      } else if (tab === 'consolidate') {
+        const raw = insightState.consolidate;
+        const clearN = raw.filter(c => c.hasClear).length;
+        const mergeN = raw.filter(c => c.hasMerge).length;
+        const f = insightState.consolidateFilter;
+        const chip = (key, label, count, active) =>
+          `<button onclick="setConsolidateFilter('${key}')" style="padding:5px 12px;font-size:12px;font-weight:${active ? '700' : '500'};border-radius:999px;border:1px solid ${active ? '#6366f1' : '#e2e8f0'};background:${active ? '#eef2ff' : '#fff'};color:${active ? '#4338ca' : '#64748b'};cursor:pointer;transition:all .15s">${label} <span style="font-weight:700">${count}</span></button>`;
+        filterBar.innerHTML = chip('clear', '⭐ Clear to Pickface', clearN, f === 'clear')
+          + chip('merge', '🔀 Consolidate Bins', mergeN, f === 'merge')
+          + chip('all', 'All', raw.length, f === 'all');
+        filterBar.style.display = 'flex';
+        filterBar.style.gap = '6px';
+        filterBar.style.flexWrap = 'wrap';
+      } else {
+        filterBar.style.display = 'none';
+      }
+    }
+
+    // ── KPI Bar ──
+    const kpiBar = document.getElementById('insightsKpiBar');
+    const subtitle = document.getElementById('insightsSubtitle');
+    const printBtn = document.getElementById('insightsPrintBtn');
+
+    if (kpiBar) {
+      kpiBar.style.display = 'flex';
+      if (tab === 'priorities') {
+        const critical = items.filter(p => p.severity === 'critical').length;
+        const urgent = items.filter(p => p.severity === 'urgent').length;
+        const warning = items.filter(p => p.severity === 'warning' || p.severity === 'medium').length;
+        kpiBar.innerHTML = _kpiChip('🔴', 'Critical', critical, '#fef2f2', '#991b1b', '#fecaca')
+          + _kpiChip('🟠', 'Urgent', urgent, '#fff7ed', '#9a3412', '#fed7aa')
+          + _kpiChip('🟡', 'Low Stock', warning, '#fefce8', '#854d0e', '#fef08a');
+        if (subtitle) subtitle.textContent = `${items.length} SKUs shown — sorted by urgency`;
+      } else if (tab === 'redistribute') {
+        const overflow = items.filter(r => !r.isRestockFromReserve);
+        const restock = items.filter(r => r.isRestockFromReserve);
+        const totalUnits = items.reduce((s, r) => s + r.totalToMove, 0);
+        kpiBar.innerHTML = _kpiChip('⬆️', 'Overflow', overflow.length, '#fefce8', '#854d0e', '#fef08a')
+          + _kpiChip('⬇️', 'Restock from Reserve', restock.length, '#eff6ff', '#1e40af', '#bfdbfe')
+          + _kpiChip('📦', 'Units to Move', totalUnits, '#f0fdf4', '#166534', '#bbf7d0');
+        if (subtitle) subtitle.textContent = `${items.length} stock movements identified`;
+      } else if (tab === 'consolidate') {
+        const totalFree = items.reduce((s, c) => s + c.totalLocationsCanFree, 0);
+        const clearCount = items.filter(c => c.hasClear).length;
+        const mergeCount = items.filter(c => c.hasMerge).length;
+        const clearLocs = items.reduce((s, c) => s + c.clearToPickface.length, 0);
+        kpiBar.innerHTML = _kpiChip('🔧', 'SKUs', items.length, '#eff6ff', '#0369a1', '#bae6fd')
+          + _kpiChip('📍', 'Locations to Free', totalFree, '#f0fdf4', '#166534', '#bbf7d0')
+          + (clearCount > 0 ? _kpiChip('⭐', 'Clear to Pickface', clearLocs + ' locs', '#f0fdf4', '#166534', '#bbf7d0') : '')
+          + (mergeCount > 0 ? _kpiChip('🔀', 'Bin Merges', mergeCount, '#faf5ff', '#7e22ce', '#e9d5ff') : '');
+        if (subtitle) subtitle.textContent = `${totalFree} warehouse locations can be freed`;
+      }
+    }
+
+    if (printBtn) printBtn.style.display = items.length > 0 ? '' : 'none';
+    _updateSelCount();
+
     if (items.length === 0) {
       container.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b;font-size:13px">No issues found in this category</div>';
       return;
     }
 
-    let html = '';
-    if (tab === 'redistribute') {
+    // Select all toggle for current page
+    const allPageSelected = pageItems.every(p => insightState.selected.has(p.sku));
+    let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:4px 0">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:#64748b;user-select:none">
+        <input type="checkbox" ${allPageSelected ? 'checked' : ''} onchange="toggleSelectAllInsights()" style="accent-color:#6366f1;width:15px;height:15px;cursor:pointer">
+        Select all on page
+      </label>
+    </div>`;
+
+    if (tab === 'priorities') {
+      html = renderPriorityCards(pageItems);
+    } else if (tab === 'redistribute') {
       html = renderRedistributeCards(pageItems);
     } else {
       html = renderConsolidateCards(pageItems);
@@ -1930,56 +2238,328 @@
     container.innerHTML = html;
   }
 
+  function _kpiChip(icon, label, value, bg, color, border) {
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:${bg};border:1px solid ${border};border-radius:10px;font-size:12px">
+      <span>${icon}</span>
+      <span style="color:${color};font-weight:700;font-size:16px;font-variant-numeric:tabular-nums">${value}</span>
+      <span style="color:${color};font-weight:500">${label}</span>
+    </div>`;
+  }
+
+  function renderPriorityCards(items) {
+    return items.map((p, idx) => {
+      const sevColors = {
+        critical: { bg: '#fef2f2', border: '#ef4444', text: '#991b1b', badge: '#ef4444' },
+        urgent:   { bg: '#fff7ed', border: '#f97316', text: '#9a3412', badge: '#f97316' },
+        warning:  { bg: '#fefce8', border: '#eab308', text: '#854d0e', badge: '#eab308' },
+        medium:   { bg: '#f8fafc', border: '#94a3b8', text: '#475569', badge: '#94a3b8' },
+      };
+      const c = sevColors[p.severity] || sevColors.medium;
+      const isSel = insightState.selected.has(p.sku);
+      const selShadow = isSel ? 'box-shadow:0 0 0 2px #6366f1;' : '';
+      const cbHtml = `<input type="checkbox" data-insight-cb="${escapeHtml(p.sku)}" ${isSel ? 'checked' : ''} onchange="toggleInsightSelect('${escapeHtml(p.sku)}')" style="accent-color:#6366f1;width:16px;height:16px;cursor:pointer;flex-shrink:0;margin-top:2px">`;
+
+      // Progress bar: on_hand / capMax
+      const pct = p.capMax > 0 ? Math.min(100, Math.round((p.pickfaceOnHand / p.capMax) * 100)) : 0;
+      const barColor = pct <= 20 ? '#ef4444' : pct <= 50 ? '#f59e0b' : '#22c55e';
+
+      let reserveHtml = '';
+      if (p.bestSource) {
+        reserveHtml = `<div style="font-size:12px;color:#059669;margin-top:6px">
+          <strong>Reserve:</strong> ${p.reserveSources.slice(0, 3).map(s => `<span style="display:inline-block;padding:2px 7px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;font-size:11px;font-weight:600;margin:1px 2px">${escapeHtml(s.location)} (${s.qty})</span>`).join('')}
+          ${p.reserveSources.length > 3 ? `<span style="color:#64748b">+${p.reserveSources.length - 3} more</span>` : ''}
+        </div>`;
+      } else {
+        reserveHtml = `<div style="font-size:12px;color:#dc2626;margin-top:6px">⚠️ No reserve stock available — needs purchasing</div>`;
+      }
+
+      const capWarning = p.capacityWarning 
+        ? `<div style="font-size:11px;color:#b45309;margin-top:4px;padding:4px 8px;background:#fef3c7;border-radius:4px">⚠️ Capacity only covers ${p.capacityWeeks} weeks — consider increasing to ${p.suggestedCapacity}</div>` 
+        : '';
+
+      return `<div data-insight-card="${escapeHtml(p.sku)}" style="padding:14px;background:${c.bg};border:1px solid #e2e8f0;border-left:4px solid ${c.border};border-radius:8px;margin-bottom:8px;${selShadow}">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          ${cbHtml}
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:4px">
+                  ${p.display5dc ? '<span style="color:#64748b;font-size:12px">' + escapeHtml(p.display5dc) + '</span> · ' : ''}${escapeHtml(p.sku)}
+                  <span style="font-weight:400;color:#64748b;font-size:12px">— ${escapeHtml(p.product)}</span>
+                </div>
+                <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+                  <span style="font-size:13px;color:${c.text}"><strong>${Math.round(p.runwayDays)}</strong> days left</span>
+                  <span style="font-size:12px;color:#64748b">${Math.round(p.avgMth)}/mth demand</span>
+                  <span style="font-size:12px;color:#64748b">📍 ${escapeHtml(p.pickface)}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                  <div style="flex:1;max-width:180px;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden">
+                    <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px;transition:width .3s"></div>
+                  </div>
+                  <span style="font-size:11px;color:#64748b;font-weight:600;min-width:70px">${p.pickfaceOnHand} / ${p.capMax}</span>
+                </div>
+                <div style="font-size:13px;color:#0f172a;margin-top:6px">
+                  <strong>Restock:</strong> ${p.suggestedQty} units${p.suggestedCtns ? ` (${p.suggestedCtns} ctn${p.suggestedCtns > 1 ? 's' : ''} × ${p.ctnQty})` : ''} to reach full
+                </div>
+                ${reserveHtml}
+                ${capWarning}
+              </div>
+              <span style="padding:3px 10px;background:${c.badge};color:#fff;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;margin-left:8px">${p.severityLabel}</span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
   function renderRedistributeCards(items) {
     return items.map(ins => {
+      const isSel = insightState.selected.has(ins.sku);
+      const selShadow = isSel ? 'box-shadow:0 0 0 2px #6366f1;' : '';
+      const cbHtml = `<input type="checkbox" data-insight-cb="${escapeHtml(ins.sku)}" ${isSel ? 'checked' : ''} onchange="toggleInsightSelect('${escapeHtml(ins.sku)}')" style="accent-color:#6366f1;width:16px;height:16px;cursor:pointer;flex-shrink:0;margin-top:2px">`;
+
+      // ── NEW: Restock from Reserve card ──
+      if (ins.isRestockFromReserve) {
+        const pct = ins.capMax > 0 ? Math.round((ins.pickfaceOnHand / ins.capMax) * 100) : 0;
+        const statusColor = ins.normStatus === 'LOW' ? '#ef4444' : '#f59e0b';
+        return `<div data-insight-card="${escapeHtml(ins.sku)}" style="padding:14px;background:#eff6ff;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;border-radius:8px;margin-bottom:8px;${selShadow}">
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            ${cbHtml}
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:6px">
+                ${ins.display5dc ? '<span style="color:#64748b;font-size:12px">' + escapeHtml(ins.display5dc) + '</span> · ' : ''}${escapeHtml(ins.sku)}
+                <span style="font-weight:400;color:#64748b">— ${escapeHtml(ins.product)}</span>
+                <span style="margin-left:8px;padding:2px 8px;background:${statusColor};color:#fff;border-radius:999px;font-size:10px;font-weight:700">${ins.normStatus}</span>
+              </div>
+              <div style="font-size:13px;color:#475569;line-height:1.6">
+                📍 <strong>Pickface:</strong> <span style="color:#1e40af;font-weight:700">${escapeHtml(ins.pickface || '?')}</span>
+                — ${ins.pickfaceOnHand} / ${ins.capMax} (${pct}%) · Needs <strong style="color:#1e40af">${ins.pickfaceDeficit}</strong> units
+              </div>
+              <div style="font-size:13px;color:#1e40af;margin-top:6px;line-height:1.6">
+                <strong>⬆️ Move to pickface:</strong> ${ins.totalToMove} units from reserve
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+                ${ins.reserveSources.map(s => `<span style="display:inline-block;padding:3px 8px;background:#dbeafe;color:#1e3a5f;border:1px solid #93c5fd;border-radius:4px;font-size:12px;font-weight:600">${escapeHtml(s.location)} → take ${s.take} (has ${s.qty})</span>`).join('')}
+              </div>
+              <div style="font-size:11px;color:#64748b;margin-top:6px;padding:4px 8px;background:#f1f5f9;border-radius:4px">
+                📋 Take from reserve → bring to <strong>${escapeHtml(ins.pickface || '?')}</strong>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      }
+
+      // ── Original: Overflow card ──
       const totalToMove = ins.totalToMove;
-      return `<div style="padding:14px;background:#fff;border:1px solid #e2e8f0;border-left:4px solid #f59e0b;border-radius:8px;margin-bottom:8px">
-        <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:6px">
-          ${ins.display5dc ? '<span style="color:#64748b;font-size:12px">' + escapeHtml(ins.display5dc) + '</span> · ' : ''}${escapeHtml(ins.sku)} <span style="font-weight:400;color:#64748b">— ${escapeHtml(ins.product)}</span>
+      return `<div data-insight-card="${escapeHtml(ins.sku)}" style="padding:14px;background:#fff;border:1px solid #e2e8f0;border-left:4px solid #f59e0b;border-radius:8px;margin-bottom:8px;${selShadow}">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          ${cbHtml}
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:6px">
+              ${ins.display5dc ? '<span style="color:#64748b;font-size:12px">' + escapeHtml(ins.display5dc) + '</span> · ' : ''}${escapeHtml(ins.sku)} <span style="font-weight:400;color:#64748b">— ${escapeHtml(ins.product)}</span>
+            </div>
+            <div style="font-size:13px;color:#475569;line-height:1.6">
+              <strong>Issue:</strong> Pickface has <strong style="color:#dc2626">+${ins.pickfaceExcess}</strong> excess units.
+              ${ins.completableBins.length + ins.incompleteBins} bins with incomplete pallets (expected ${ins.palletQty}/pallet).
+            </div>
+            <div style="font-size:13px;color:#059669;margin-top:6px;line-height:1.6">
+              <strong>Suggestion:</strong> Move <strong>${totalToMove} units</strong> from pickface to complete <strong>${ins.completableBins.length} bin${ins.completableBins.length > 1 ? 's' : ''}</strong>:
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+              ${ins.completableBins.map(b => `<span style="display:inline-block;padding:3px 8px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:4px;font-size:12px;font-weight:600">${escapeHtml(b.location)} (+${b.missing})</span>`).join('')}
+            </div>
+            ${ins.remainingExcess > 0 ? `<div style="font-size:12px;color:#6b7280;margin-top:8px">After: <strong>${ins.remainingExcess}</strong> units still excess.${ins.incompleteBins > 0 ? ` ${ins.incompleteBins} bins still incomplete.` : ''}${ins.palletQty > 0 && ins.remainingExcess >= ins.palletQty ? ` <span style="color:#dc2626">≈ ${Math.round(ins.remainingExcess / ins.palletQty)} pallet(s) — verify physical stock.</span>` : ''}</div>` : `<div style="font-size:12px;color:#059669;margin-top:8px">✓ Fully resolves pickface overflow.</div>`}
+          </div>
         </div>
-        <div style="font-size:13px;color:#475569;line-height:1.6">
-          <strong>Issue:</strong> Pickface has <strong style="color:#dc2626">+${ins.pickfaceExcess}</strong> excess units.
-          ${ins.completableBins.length + ins.incompleteBins} bins with incomplete pallets (expected ${ins.palletQty}/pallet).
-        </div>
-        <div style="font-size:13px;color:#059669;margin-top:6px;line-height:1.6">
-          <strong>Suggestion:</strong> Move <strong>${totalToMove} units</strong> from pickface to complete <strong>${ins.completableBins.length} bin${ins.completableBins.length > 1 ? 's' : ''}</strong>:
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
-          ${ins.completableBins.map(b => `<span style="display:inline-block;padding:3px 8px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:4px;font-size:12px;font-weight:600">${escapeHtml(b.location)} (+${b.missing})</span>`).join('')}
-        </div>
-        ${ins.remainingExcess > 0 ? `<div style="font-size:12px;color:#6b7280;margin-top:8px">After: <strong>${ins.remainingExcess}</strong> units still excess.${ins.incompleteBins > 0 ? ` ${ins.incompleteBins} bins still incomplete.` : ''}${ins.palletQty > 0 && ins.remainingExcess >= ins.palletQty ? ` <span style="color:#dc2626">≈ ${Math.round(ins.remainingExcess / ins.palletQty)} pallet(s) — verify physical stock.</span>` : ''}</div>` : `<div style="font-size:12px;color:#059669;margin-top:8px">✓ Fully resolves pickface overflow.</div>`}
       </div>`;
     }).join('');
   }
 
   function renderConsolidateCards(items) {
-    return items.map(ins => {
-      return `<div style="padding:14px;background:#fff;border:1px solid #e2e8f0;border-left:4px solid #0ea5e9;border-radius:8px;margin-bottom:8px">
-        <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:6px">
-          ${ins.display5dc ? '<span style="color:#64748b;font-size:12px">' + escapeHtml(ins.display5dc) + '</span> · ' : ''}${escapeHtml(ins.sku)} <span style="font-weight:400;color:#64748b">— ${escapeHtml(ins.product)}</span>
-        </div>
-        <div style="font-size:13px;color:#475569;line-height:1.6">
-          <strong>Opportunity:</strong> Multiple partial bins can be consolidated.
-          Pallet capacity: <strong>${ins.palletQty}</strong> units.
-        </div>
-        ${ins.consolidations.map((c, idx) => `
-          <div style="margin-top:8px;padding:10px;background:#f0f9ff;border-radius:6px">
-            <div style="font-size:12px;color:#0369a1;font-weight:600;margin-bottom:4px">
-              Merge ${c.bins.length} bins → ${c.palletsFormed} full pallet${c.palletsFormed > 1 ? 's' : ''}
+    // Sort: green (clear to pickface) items first, then blue (merge only)
+    const sorted = items.slice().sort((a, b) => {
+      if (a.hasClear && !b.hasClear) return -1;
+      if (!a.hasClear && b.hasClear) return 1;
+      return b.totalLocationsCanFree - a.totalLocationsCanFree;
+    });
+
+    return sorted.map(ins => {
+      const isSel = insightState.selected.has(ins.sku);
+      const selShadow = isSel ? 'box-shadow:0 0 0 2px #6366f1;' : '';
+      const cbHtml = `<input type="checkbox" data-insight-cb="${escapeHtml(ins.sku)}" ${isSel ? 'checked' : ''} onchange="toggleInsightSelect('${escapeHtml(ins.sku)}')" style="accent-color:#6366f1;width:16px;height:16px;cursor:pointer;flex-shrink:0;margin-top:2px">`;
+
+      const borderColor = ins.hasClear ? '#22c55e' : '#0ea5e9';
+      const pctAfter = ins.capMax > 0 ? Math.round((ins.pickfaceAfter / ins.capMax) * 100) : 0;
+
+      let clearHtml = '';
+      if (ins.hasClear) {
+        clearHtml = `
+          <div style="padding:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;margin-bottom:6px">
+            <div style="font-size:12px;color:#166534;font-weight:700;margin-bottom:6px">
+              ⭐ Clear to Pickface → <span style="background:#166534;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">${escapeHtml(ins.pickface)}</span>
+              <span style="color:#059669;margin-left:6px">(frees ${ins.clearToPickface.length} location${ins.clearToPickface.length > 1 ? 's' : ''})</span>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
-              ${c.bins.map((b, i) => `<span style="display:inline-block;padding:3px 8px;background:#e0f2fe;color:#0c4a6e;border:1px solid #bae6fd;border-radius:4px;font-size:12px">${escapeHtml(b.location)}: ${b.qty}</span>${i < c.bins.length - 1 ? '<span style="color:#94a3b8">+</span>' : ''}`).join('')}
-              <span style="color:#0369a1;font-weight:600;font-size:12px;margin-left:4px">= ${c.totalQty}</span>
+              ${ins.clearToPickface.map(b => `<span style="display:inline-block;padding:3px 8px;background:#dcfce7;color:#14532d;border:1px solid #86efac;border-radius:4px;font-size:12px;font-weight:600">${escapeHtml(b.location)}: ${b.qty} → <strong>${escapeHtml(ins.pickface)}</strong></span>`).join('')}
             </div>
-            ${c.locationsFreed > 0 ? `<div style="font-size:11px;color:#059669;margin-top:4px">Frees ${c.locationsFreed} location${c.locationsFreed > 1 ? 's' : ''}</div>` : ''}
+            <div style="font-size:11px;color:#166534;margin-top:6px">
+              Pickface after: <strong>${ins.pickfaceAfter} / ${ins.capMax}</strong> (${pctAfter}%)
+              · Moves <strong>${ins.clearTotal}</strong> units total
+            </div>
+          </div>`;
+      }
+
+      let mergeHtml = '';
+      if (ins.hasMerge) {
+        mergeHtml = ins.consolidations.map(c => {
+          const target = c.targetBin || c.bins[0].location;
+          const sources = c.bins.filter(b => b.location !== target);
+          return `
+          <div style="padding:10px;background:#f0f9ff;border-radius:6px;margin-bottom:4px">
+            <div style="font-size:12px;color:#0369a1;font-weight:600;margin-bottom:6px">
+              🔀 Merge → <span style="background:#0369a1;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">${escapeHtml(target)}</span>
+              ${c.palletsFormed > 0 ? `<span style="color:#059669;margin-left:6px">(${c.palletsFormed} full pallet${c.palletsFormed > 1 ? 's' : ''})</span>` : ''}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+              ${sources.map(b => `<span style="display:inline-block;padding:3px 8px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;font-size:12px">${escapeHtml(b.location)}: ${b.qty} → <strong>${escapeHtml(target)}</strong></span>`).join('')}
+            </div>
+            <div style="font-size:11px;color:#475569;margin-top:4px">
+              Total: <strong>${c.totalQty}</strong> units in <strong>${escapeHtml(target)}</strong>
+              ${c.locationsFreed > 0 ? ` · <span style="color:#059669">Frees ${c.locationsFreed} location${c.locationsFreed > 1 ? 's' : ''}</span>` : ''}
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      return `<div data-insight-card="${escapeHtml(ins.sku)}" style="padding:14px;background:#fff;border:1px solid #e2e8f0;border-left:4px solid ${borderColor};border-radius:8px;margin-bottom:8px;${selShadow}">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          ${cbHtml}
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:8px">
+              ${ins.display5dc ? '<span style="color:#64748b;font-size:12px">' + escapeHtml(ins.display5dc) + '</span> · ' : ''}${escapeHtml(ins.sku)}
+              <span style="font-weight:400;color:#64748b;font-size:12px">— ${escapeHtml(ins.product)}</span>
+              <span style="margin-left:8px;padding:2px 8px;background:#e0f2fe;color:#0c4a6e;border-radius:999px;font-size:10px;font-weight:700">Free ${ins.totalLocationsCanFree} loc${ins.totalLocationsCanFree > 1 ? 's' : ''}</span>
+            </div>
+            ${clearHtml}
+            ${mergeHtml}
           </div>
-        `).join('')}
-        <div style="font-size:12px;color:#0369a1;font-weight:600;margin-top:10px">
-          Total: free ${ins.totalLocationsCanFree} location${ins.totalLocationsCanFree > 1 ? 's' : ''}
         </div>
       </div>`;
     }).join('');
   }
+
+  /* ── Print Tasks (selected items, or current page only) ── */
+  window.printInsightTasks = function () {
+    const tab = insightState.activeTab;
+    const allFiltered = _getFilteredItems(tab);
+    if (!allFiltered.length) return;
+
+    // Determine which items to print: selected first, else current page
+    let items;
+    let printScope;
+    if (insightState.selected.size > 0) {
+      items = allFiltered.filter(i => insightState.selected.has(i.sku));
+      printScope = `${items.length} selected`;
+    } else {
+      const start = (insightState.page - 1) * insightState.perPage;
+      items = allFiltered.slice(start, start + insightState.perPage);
+      printScope = `Page ${insightState.page} — ${items.length} items`;
+    }
+    if (!items.length) return;
+
+    const tabNames = { priorities: 'Priorities', redistribute: 'Redistribute', consolidate: 'Consolidate' };
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    let rows = '';
+    if (tab === 'priorities') {
+      rows = items.map((p, i) => {
+        const srcTxt = p.bestSource ? `from ${p.bestSource.location} (${p.bestSource.qty})` : 'NO RESERVE';
+        return `<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${i + 1}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;font-weight:600">${escapeHtml(p.sku)}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${escapeHtml(p.pickface)}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;text-align:center">${p.pickfaceOnHand} / ${p.capMax}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;text-align:center;font-weight:700">${p.suggestedQty}${p.suggestedCtns ? ' (' + p.suggestedCtns + ' ctn)' : ''}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${srcTxt}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;color:${p.severity === 'critical' ? '#dc2626' : p.severity === 'urgent' ? '#ea580c' : '#854d0e'};font-weight:600">${p.severityLabel}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;width:50px"></td>
+        </tr>`;
+      }).join('');
+    } else if (tab === 'redistribute') {
+      rows = items.map((r, i) => {
+        const pickfaceTxt = escapeHtml(r.pickface || '?');
+        const action = r.isRestockFromReserve
+          ? `Take from ${r.reserveSources.map(s => s.location + ' (' + s.take + ')').join(', ')} → bring to ${pickfaceTxt}`
+          : `Move ${r.totalToMove} from pickface (${pickfaceTxt}) to: ${r.completableBins.map(b => b.location + ' (+' + b.missing + ')').join(', ')}`;
+        return `<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${i + 1}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;font-weight:600">${escapeHtml(r.sku)}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${pickfaceTxt}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${r.isRestockFromReserve ? 'Reserve → Pickface' : 'Pickface → Reserve'}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${action}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #ddd;width:50px"></td>
+        </tr>`;
+      }).join('');
+    } else {
+      rows = items.map((c, i) => {
+        let rowsHtml = '';
+        const num = i + 1;
+        let firstRow = true;
+        // Clear to pickface rows (green)
+        if (c.hasClear) {
+          const pctAfter = c.capMax > 0 ? Math.round((c.pickfaceAfter / c.capMax) * 100) : 0;
+          const srcTxt = c.clearToPickface.map(b => b.location + ':' + b.qty).join(' + ');
+          rowsHtml += `<tr style="background:#f0fdf4">
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${num}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;font-weight:600">${escapeHtml(c.sku)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;color:#166534;font-weight:600">⭐ To Pickface</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${srcTxt} → <strong>${escapeHtml(c.pickface)}</strong> (${c.clearTotal} units, pickface ${pctAfter}% after)</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;text-align:center">${c.clearToPickface.length}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;width:50px"></td>
+          </tr>`;
+          firstRow = false;
+        }
+        // Reserve consolidation rows (blue)
+        if (c.hasMerge) {
+          const merges = c.consolidations.map(m => {
+            const target = m.targetBin || m.bins[0].location;
+            const sources = m.bins.filter(b => b.location !== target);
+            return sources.map(b => b.location + ':' + b.qty).join(' + ') + ' → ' + target + ' (' + m.totalQty + ')';
+          }).join(' | ');
+          const locsFreed = c.consolidations.reduce((s, m) => s + m.locationsFreed, 0);
+          rowsHtml += `<tr>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${firstRow ? num : ''}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;font-weight:600">${firstRow ? escapeHtml(c.sku) : ''}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;color:#0369a1;font-weight:600">🔀 Merge Bins</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${merges}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;text-align:center">${locsFreed}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;width:50px"></td>
+          </tr>`;
+        }
+        return rowsHtml;
+      }).join('');
+    }
+
+    const headers = tab === 'priorities'
+      ? '<th>SKU</th><th>Pickface</th><th>Stock</th><th>Restock Qty</th><th>Source</th><th>Priority</th><th>✓</th>'
+      : tab === 'redistribute'
+      ? '<th>SKU</th><th>Pickface</th><th>Direction</th><th>Action</th><th>✓</th>'
+      : '<th>SKU</th><th>Type</th><th>Action</th><th>Locs Freed</th><th>✓</th>';
+
+    const printHtml = `<!DOCTYPE html><html><head><title>${tabNames[tab]} Tasks — ${dateStr}</title>
+      <style>body{font-family:-apple-system,sans-serif;padding:20px;color:#1e293b}
+      h1{font-size:18px;margin-bottom:4px} .date{color:#64748b;font-size:13px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse} th{text-align:left;padding:8px 10px;background:#f1f5f9;font-size:11px;text-transform:uppercase;color:#475569;border-bottom:2px solid #cbd5e1}
+      @media print{body{padding:10px} .no-print{display:none}}</style></head>
+      <body><h1>🏭 ${tabNames[tab]} Tasks</h1><div class="date">${dateStr} · Main Warehouse · ${printScope}</div>
+      <table><thead><tr><th>#</th>${headers}</tr></thead><tbody>${rows}</tbody></table>
+      <script>window.print();</script></body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(printHtml);
+    w.document.close();
+  };
 
   /* ═══════════════════════════════════════════════════
      WAREHOUSE MAP — Visual grid of Main Warehouse bins
