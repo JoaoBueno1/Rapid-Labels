@@ -1023,6 +1023,114 @@ function registerPickAnomalyRoutes(app) {
   console.log('✅ Pick anomaly routes registered');
 
   /**
+   * GET /api/pick-anomalies/analytics
+   * Deep analytics across ALL orders — trends, error types, repeat offenders, problem bins.
+   * Zero Cin7 API calls — Supabase only.
+   */
+  app.get('/api/pick-anomalies/analytics', async (req, res) => {
+    try {
+      const allOrders = await sbGet('pick_anomaly_orders',
+        'select=order_number,order_date,total_picks,correct_picks,anomaly_picks,fg_count,reviewed,picks,fg_orders'
+      );
+
+      // ── Weekly trend ──
+      const weekMap = {};
+      // ── Error type breakdown ──
+      const errorTypes = {};
+      // ── Top anomaly SKUs ──
+      const skuCounts = {};
+      // ── Top problem bins (picked from wrong bin) ──
+      const binCounts = {};
+      // ── Repeat routes (FROM→TO) ──
+      const routeMap = {};
+      // ── Section heatmap ──
+      const sectionAnomalies = {};
+
+      let totalPicks = 0, totalAnomalies = 0, totalCorrect = 0;
+
+      for (const o of allOrders) {
+        totalPicks += o.total_picks || 0;
+        totalAnomalies += o.anomaly_picks || 0;
+        totalCorrect += o.correct_picks || 0;
+
+        // Week bucket (ISO week)
+        const d = new Date(o.order_date + 'T00:00:00');
+        const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000);
+        const weekNum = Math.ceil((dayOfYear + 1) / 7);
+        const weekKey = `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+        if (!weekMap[weekKey]) weekMap[weekKey] = { week: weekKey, orders: 0, picks: 0, anomalies: 0, correct: 0 };
+        weekMap[weekKey].orders++;
+        weekMap[weekKey].picks += o.total_picks || 0;
+        weekMap[weekKey].anomalies += o.anomaly_picks || 0;
+        weekMap[weekKey].correct += o.correct_picks || 0;
+
+        // Analyze individual picks
+        const picks = o.picks || [];
+        for (const p of picks) {
+          if (p.status !== 'anomaly') continue;
+          const et = p.errorType || 'unknown';
+          errorTypes[et] = (errorTypes[et] || 0) + 1;
+
+          if (p.sku) skuCounts[p.sku] = (skuCounts[p.sku] || 0) + 1;
+          if (p.bin) binCounts[p.bin] = (binCounts[p.bin] || 0) + 1;
+
+          if (p.expectedBin && p.bin) {
+            const routeKey = `${p.expectedBin}→${p.bin}`;
+            if (!routeMap[routeKey]) routeMap[routeKey] = { from: p.expectedBin, to: p.bin, count: 0, skus: [] };
+            routeMap[routeKey].count++;
+            if (!routeMap[routeKey].skus.includes(p.sku)) routeMap[routeKey].skus.push(p.sku);
+          }
+
+          // Section heatmap (extract area letter)
+          if (p.bin) {
+            const m = p.bin.match(/^MA-([A-Z])/i);
+            if (m) {
+              const area = m[1].toUpperCase();
+              sectionAnomalies[area] = (sectionAnomalies[area] || 0) + 1;
+            }
+          }
+        }
+
+        // FG components
+        for (const fg of (o.fg_orders || [])) {
+          for (const c of (fg.components || [])) {
+            if (c.status !== 'anomaly') continue;
+            const et = c.errorType || 'unknown';
+            errorTypes[et] = (errorTypes[et] || 0) + 1;
+            if (c.sku) skuCounts[c.sku] = (skuCounts[c.sku] || 0) + 1;
+            if (c.bin) binCounts[c.bin] = (binCounts[c.bin] || 0) + 1;
+          }
+        }
+      }
+
+      // Sort and limit
+      const topSkus = Object.entries(skuCounts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([sku, count]) => ({ sku, count }));
+      const topBins = Object.entries(binCounts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([bin, count]) => ({ bin, count }));
+      const repeatRoutes = Object.values(routeMap).filter(r => r.count >= 2).sort((a, b) => b.count - a.count).slice(0, 15);
+      const weeklyTrend = Object.values(weekMap).sort((a, b) => a.week.localeCompare(b.week));
+
+      // Anomaly rate
+      const anomalyRate = totalPicks > 0 ? ((totalAnomalies / totalPicks) * 100) : 0;
+
+      res.json({
+        success: true,
+        analytics: {
+          summary: { totalOrders: allOrders.length, totalPicks, totalAnomalies, totalCorrect, anomalyRate: Math.round(anomalyRate * 10) / 10 },
+          weeklyTrend,
+          errorTypes: Object.entries(errorTypes).sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
+          topSkus,
+          topBins,
+          repeatRoutes,
+          sectionHeatmap: Object.entries(sectionAnomalies).sort((a, b) => b[1] - a[1]).map(([section, count]) => ({ section, count })),
+        },
+      });
+    } catch (err) {
+      console.error('Analytics error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
    * GET /api/pick-anomalies/stats
    * Aggregated KPI stats across ALL orders (not paginated).
    * Zero Cin7 API calls — Supabase only.

@@ -7,7 +7,7 @@
   <link rel="icon" href="/logo/rapidled_icon_500_v2.png" type="image/png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
-  <link rel="stylesheet" href="pick-anomalies.css?v=20260302a" />
+  <link rel="stylesheet" href="pick-anomalies.css?v=20260330a" />
 </head>
 <body>
 
@@ -29,6 +29,7 @@
       <!-- ─── Title + Sync Status ─── -->
       <div class="pa-title-row">
         <h1 class="log-page-title">📦 Pick Anomalies Monitor</h1>
+        <button class="search-btn-small" onclick="PA.syncNewOrders()" title="Manually trigger sync from Cin7" style="font-size:11px;padding:5px 12px">🔄 Sync Now</button>
         <div class="pa-sync-status" id="paSyncStatus">
           <span class="pa-sync-dot" id="paSyncDot"></span>
           <span id="paSyncText">Loading...</span>
@@ -44,7 +45,13 @@
             <input type="text" id="paSearch" placeholder="Search order, customer or SKU..." class="pa-search-input" oninput="PA.debounceSearch()" />
           </div>
           <div class="pa-spacer"></div>
-          <div class="pa-status-chips">
+          <!-- View toggle: Orders vs Analytics -->
+          <div class="pa-view-toggle">
+            <button class="chip active" data-view="orders" onclick="PA.setView('orders', this)" title="Order list view">📋 Orders</button>
+            <button class="chip" data-view="analytics" onclick="PA.setView('analytics', this)" title="Analytics dashboard">📊 Analytics</button>
+          </div>
+          <div class="pa-spacer"></div>
+          <div class="pa-status-chips" id="paStatusChips">
             <button class="chip active" data-filter="all" onclick="PA.setFilter('all', this)">All</button>
             <button class="chip" data-filter="anomaly" onclick="PA.setFilter('anomaly', this)">⚠️ Anomalies</button>
             <button class="chip" data-filter="pending" onclick="PA.setFilter('pending', this)">⏳ Pending Review</button>
@@ -91,12 +98,60 @@
         <span class="pa-progress-text" id="paProgressText">Syncing...</span>
       </div>
 
+      <!-- ═══ Analytics Dashboard (hidden by default) ═══ -->
+      <div id="paAnalytics" style="display:none">
+        <div class="pa-analytics-loading" id="paAnalyticsLoading">⏳ Loading analytics...</div>
+
+        <!-- Summary Cards -->
+        <div class="pa-analytics-summary" id="paAnalyticsSummary"></div>
+
+        <!-- Charts Grid -->
+        <div class="pa-analytics-grid">
+          <!-- Weekly Trend -->
+          <div class="pa-chart-card pa-chart-wide">
+            <div class="pa-chart-title">📈 Weekly Anomaly Rate Trend</div>
+            <div class="pa-chart-body" id="paChartTrend"></div>
+          </div>
+
+          <!-- Error Types -->
+          <div class="pa-chart-card">
+            <div class="pa-chart-title">🎯 Error Type Distribution</div>
+            <div class="pa-chart-body" id="paChartErrorTypes"></div>
+          </div>
+
+          <!-- Section Heatmap -->
+          <div class="pa-chart-card">
+            <div class="pa-chart-title">🗺️ Warehouse Section Heatmap</div>
+            <div class="pa-chart-body" id="paChartSections"></div>
+          </div>
+
+          <!-- Top Problem SKUs -->
+          <div class="pa-chart-card">
+            <div class="pa-chart-title">🔄 Repeat Offender SKUs</div>
+            <div class="pa-chart-body pa-chart-scrollable" id="paChartSkus"></div>
+          </div>
+
+          <!-- Top Problem Bins -->
+          <div class="pa-chart-card">
+            <div class="pa-chart-title">📍 Problem Bins (Wrong Pick Source)</div>
+            <div class="pa-chart-body pa-chart-scrollable" id="paChartBins"></div>
+          </div>
+
+          <!-- Repeat Routes -->
+          <div class="pa-chart-card pa-chart-wide">
+            <div class="pa-chart-title">🔁 Repeat Routes (Same Mistake Pattern) <span class="pa-chart-subtitle">— Possible stock_locator errors</span></div>
+            <div class="pa-chart-body pa-chart-scrollable" id="paChartRoutes"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ─── Orders Table ─── -->
       <div class="log-card" id="paTableCard" style="display:none">
         <div class="table-wrapper">
           <table class="app-table" id="paTable">
             <thead>
               <tr>
+                <th style="width:30px"><input type="checkbox" title="Select All" onchange="PA.toggleBulkAll(this.checked)" /></th>
                 <th>#</th>
                 <th>Order</th>
                 <th>Date</th>
@@ -138,7 +193,10 @@
     <div class="pa-modal-dialog" style="max-width:1200px">
       <div class="pa-modal-head">
         <h2 id="paModalTitle">Order Detail</h2>
-        <button class="pa-modal-x" onclick="PA.closeDetail()">×</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="pa-print-btn" onclick="PA.printReport()" title="Print report for managers">🖨️ Print</button>
+          <button class="pa-modal-x" onclick="PA.closeDetail()">×</button>
+        </div>
       </div>
 
       <div class="pa-modal-tabs" id="paModalTabs">
@@ -176,6 +234,33 @@
     </div>
   </div>
 
-  <script src="pick-anomalies.js?v=20260302a"></script>
+  <!-- ═══════════════════════════════════════════════
+       BULK PRINT FLOATING BAR
+       ═══════════════════════════════════════════════ -->
+  <div class="pa-bulk-bar" id="paBulkBar" style="display:none">
+    <span id="paBulkCount">0 orders selected</span>
+    <button class="pa-bulk-bar-btn pa-bulk-bar-print" onclick="PA.openBulkPreview()">🖨️ Print Report</button>
+    <button class="pa-bulk-bar-btn pa-bulk-bar-clear" onclick="PA.clearBulkSelection()">✕ Clear</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       BULK PRINT PREVIEW MODAL
+       ═══════════════════════════════════════════════ -->
+  <div class="modal" id="paBulkPreviewModal">
+    <div class="pa-modal-overlay" onclick="PA.closeBulkPreview()"></div>
+    <div class="pa-modal-dialog" style="max-width:750px">
+      <div class="pa-modal-head">
+        <h2>🖨️ Print Bulk Report</h2>
+        <button class="pa-modal-x" onclick="PA.closeBulkPreview()">×</button>
+      </div>
+      <div class="pa-modal-body" id="paBulkPreviewBody" style="max-height:65vh"></div>
+      <div class="pa-modal-foot">
+        <button type="button" class="search-btn-small secondary" onclick="PA.closeBulkPreview()">Cancel</button>
+        <button type="button" class="search-btn-small" onclick="PA.printBulkReport()">🖨️ Print Report</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="pick-anomalies.js?v=20260330c"></script>
 </body>
 </html>

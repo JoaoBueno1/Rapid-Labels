@@ -30,6 +30,7 @@
     activeTab: 'anomalies',
     selectedOrder: null,
     selectedFixes: new Set(),
+    selectedBulk: new Set(),  // order indices selected for bulk print
     searchQuery: '',
     searchTimer: null,
     syncing: false,
@@ -432,19 +433,20 @@
         ? '<span class="pa-badge pa-badge-correct">✅ Reviewed</span>'
         : '<span class="pa-badge" style="opacity:0.5">—</span>';
 
-      return `<tr class="${rowClass}" style="cursor:pointer" onclick="PA.openDetail(${idx})">
-        <td>${offset + idx + 1}</td>
-        <td><strong>${esc(o.order_number)}</strong></td>
-        <td>${formatDate(o.order_date)}</td>
-        <td>${formatDate(o.fulfilled_date)}</td>
-        <td>${esc(o.customer)}</td>
-        <td><span class="pa-so-badge ${soClass}">${soStatus}</span></td>
-        <td>${o.total_picks || 0}</td>
-        <td>${correct}</td>
-        <td>${anom || ''}</td>
-        <td>${fg || ''}</td>
-        <td>${statusHtml}</td>
-        <td>${reviewedHtml}</td>
+      return `<tr class="${rowClass}" style="cursor:pointer">
+        <td><input type="checkbox" class="pa-bulk-check" data-idx="${idx}" onclick="event.stopPropagation(); PA.toggleBulk(${idx}, this.checked)" ${state.selectedBulk.has(idx) ? 'checked' : ''} /></td>
+        <td onclick="PA.openDetail(${idx})">${offset + idx + 1}</td>
+        <td onclick="PA.openDetail(${idx})"><strong>${esc(o.order_number)}</strong></td>
+        <td onclick="PA.openDetail(${idx})">${formatDate(o.order_date)}</td>
+        <td onclick="PA.openDetail(${idx})">${formatDate(o.fulfilled_date)}</td>
+        <td onclick="PA.openDetail(${idx})">${esc(o.customer)}</td>
+        <td onclick="PA.openDetail(${idx})"><span class="pa-so-badge ${soClass}">${soStatus}</span></td>
+        <td onclick="PA.openDetail(${idx})">${o.total_picks || 0}</td>
+        <td onclick="PA.openDetail(${idx})">${correct}</td>
+        <td onclick="PA.openDetail(${idx})">${anom || ''}</td>
+        <td onclick="PA.openDetail(${idx})">${fg || ''}</td>
+        <td onclick="PA.openDetail(${idx})">${statusHtml}</td>
+        <td onclick="PA.openDetail(${idx})">${reviewedHtml}</td>
       </tr>`;
     }).join('');
   }
@@ -537,13 +539,38 @@
       }
     }
 
+    // Calculate accuracy
+    const totalItems = picks.length + fgAnomalyCount + fgCorrectCount;
+    const totalAnom = anomalies + fgAnomalyCount;
+    const totalCorrect = correct + fgCorrectCount;
+    const accuracyPct = totalItems > 0 ? Math.round((totalCorrect / totalItems) * 100) : 100;
+    const correctedCount = (order.corrections || []).length;
+    const correctionPct = totalAnom > 0 ? Math.round((correctedCount / totalAnom) * 100) : 0;
+
     document.getElementById('paModalSummary').innerHTML =
-      `<div class="pa-summary-grid">
-        <div class="pa-summary-item"><span class="pa-summary-label">Picks</span><span class="pa-summary-val"><strong>${picks.length}</strong> total · <strong>${correct}</strong> ✅ · <strong>${anomalies}</strong> ⚠️ · <strong>${fgOrders.length}</strong> FG${fgAnomalyCount ? ` (<strong>${fgAnomalyCount}</strong> ⚠️)` : ''}</span></div>
-        <div class="pa-summary-item"><span class="pa-summary-label">📅 Order Date</span><span class="pa-summary-val">${formatDate(order.order_date)}</span></div>
-        <div class="pa-summary-item"><span class="pa-summary-label">🚚 Shipped</span><span class="pa-summary-val">${order.fulfilled_date ? formatDate(order.fulfilled_date) : '<span style="color:#94a3b8">—</span>'}</span></div>
-        <div class="pa-summary-item"><span class="pa-summary-label">📊 SO Status</span><span class="pa-summary-val"><span class="pa-so-badge ${order.order_status === 'FULFILLED' ? 'pa-so-fulfilled' : 'pa-so-other'}">${esc(order.order_status || '—')}</span></span></div>
-        <div class="pa-summary-item"><span class="pa-summary-label">🔍 Analyzed</span><span class="pa-summary-val">${formatDate(order.analyzed_at)}</span></div>
+      `<div class="pa-summary-v2">
+        <div class="pa-summary-accuracy">
+          <div class="pa-accuracy-header">
+            <span class="pa-accuracy-label">Pick Accuracy</span>
+            <span class="pa-accuracy-pct ${accuracyPct >= 95 ? 'pa-acc-good' : accuracyPct >= 80 ? 'pa-acc-warn' : 'pa-acc-bad'}">${accuracyPct}%</span>
+          </div>
+          <div class="pa-accuracy-bar">
+            <div class="pa-accuracy-fill pa-accuracy-correct" style="width:${accuracyPct}%"></div>
+            <div class="pa-accuracy-fill pa-accuracy-anomaly" style="width:${100 - accuracyPct}%"></div>
+          </div>
+          <div class="pa-accuracy-legend">
+            <span>✅ ${totalCorrect} correct</span>
+            <span>⚠️ ${totalAnom} anomal${totalAnom === 1 ? 'y' : 'ies'}</span>
+            ${fgOrders.length ? `<span>🔧 ${fgOrders.length} FG orders</span>` : ''}
+            ${correctedCount > 0 ? `<span>🔄 ${correctedCount}/${totalAnom} corrected (${correctionPct}%)</span>` : ''}
+          </div>
+        </div>
+        <div class="pa-summary-meta">
+          <div class="pa-meta-chip"><span class="pa-meta-icon">📅</span>${formatDate(order.order_date)}</div>
+          <div class="pa-meta-chip"><span class="pa-meta-icon">🚚</span>${order.fulfilled_date ? formatDate(order.fulfilled_date) : '—'}</div>
+          <div class="pa-meta-chip"><span class="pa-so-badge ${order.order_status === 'FULFILLED' ? 'pa-so-fulfilled' : 'pa-so-other'}">${esc(order.order_status || '—')}</span></div>
+          <div class="pa-meta-chip"><span class="pa-meta-icon">🔍</span>${formatDate(order.analyzed_at)}</div>
+        </div>
       </div>`;
 
     setTabVisibility();
@@ -725,59 +752,7 @@
       const pickId = pick.id || `${order.order_number}_pick_${idx}`;
       const correction = getCorrection(order, pickId);
 
-      return `
-        <div class="pa-anomaly-card ${correction ? 'pa-card-corrected' : ''}" id="card-${pickId}">
-          <div class="pa-anomaly-header">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-              ${!correction ? `<input type="checkbox" class="pa-fix-check" data-pick-id="${pickId}" onchange="PA.toggleFix('${pickId}', this.checked)" />` : ''}
-              <strong>${esc(pick.sku)}</strong>
-              <span class="small-note">× ${pick.qty}</span>
-              <span class="small-note" style="color:#64748b">${esc(pick.name || '')}</span>
-            </label>
-            ${severityBadge(err.severity)}
-          </div>
-          <div class="pa-anomaly-detail">
-            <div class="pa-bin-compare">
-              <div class="pa-bin-line pa-bin-wrong">
-                <span class="pa-bin-icon">❌</span>
-                <span class="pa-bin-label">Picked From:</span>
-                <span class="pa-bin-value">${esc(pick.bin)}</span>
-              </div>
-              <div class="pa-bin-line pa-bin-expected">
-                <span class="pa-bin-icon">✅</span>
-                <span class="pa-bin-label">Expected Bin:</span>
-                <span class="pa-bin-value">${esc(pick.expectedBin)}</span>
-              </div>
-              <div class="pa-bin-line">
-                <span class="pa-bin-icon">📏</span>
-                <span class="pa-bin-label">Error Type:</span>
-                <span class="pa-bin-value">${esc(err.label)}</span>
-              </div>
-            </div>
-            ${_stockInfoHtml(pick.sku, pick.expectedBin, pick.bin, pick.qty)}
-            ${correction ? `
-              <div class="pa-correction-status">
-                <div class="pa-correction-title">✅ Transfer ${correction.transfer_status === 'COMPLETED' ? 'Completed' : 'Created'}</div>
-                <div class="pa-correction-detail">
-                  <div>Transfer ID: <strong>${esc(correction.transfer_id || '—')}</strong></div>
-                  <div>Ref: <strong>${esc(correction.transfer_ref || '—')}</strong></div>
-                  <div>Status: <strong>${esc(correction.transfer_status || 'DRAFT')}</strong></div>
-                  <div>Corrected: <strong>${formatDate(correction.corrected_at)}</strong></div>
-                  <div>${esc(correction.from_bin)} → ${esc(correction.to_bin)} · ${correction.qty} units</div>
-                </div>
-              </div>
-            ` : `
-              <div class="pa-fix-preview">
-                <div class="pa-fix-title">Transfer will move stock:</div>
-                <div class="pa-fix-detail">
-                  FROM <strong>${esc(pick.expectedBin)}</strong> (expected)
-                  → TO <strong>${esc(pick.bin)}</strong> (picked)
-                </div>
-                <div class="pa-fix-qty">${pick.qty} units of ${esc(pick.sku)}</div>
-              </div>
-            `}
-          </div>
-        </div>`;
+      return _renderAnomalyCardV2(pick, err, pickId, correction, order);
     }).join('');
 
     // Render FG component anomalies
@@ -788,63 +763,276 @@
         const pickId = `fg_${comp._fgTaskId}_${comp._fgIdx}`;
         const correction = getCorrection(order, pickId);
 
-        return `
-          <div class="pa-anomaly-card ${correction ? 'pa-card-corrected' : ''}" id="card-${pickId}" style="border-left:3px solid #7c3aed">
-            <div class="pa-anomaly-header">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                ${!correction ? `<input type="checkbox" class="pa-fix-check" data-pick-id="${pickId}" onchange="PA.toggleFix('${pickId}', this.checked)" />` : ''}
-                <strong>${esc(comp.sku)}</strong>
-                <span class="small-note">× ${comp.qty}</span>
-                <span class="small-note" style="color:#7c3aed">FG: ${esc(comp._fgLabel)}</span>
-              </label>
-              ${severityBadge(err.severity)}
-            </div>
-            <div class="pa-anomaly-detail">
-              <div class="pa-bin-compare">
-                <div class="pa-bin-line pa-bin-wrong">
-                  <span class="pa-bin-icon">❌</span>
-                  <span class="pa-bin-label">Component Bin:</span>
-                  <span class="pa-bin-value">${esc(comp.bin)}</span>
-                </div>
-                <div class="pa-bin-line pa-bin-expected">
-                  <span class="pa-bin-icon">✅</span>
-                  <span class="pa-bin-label">Expected Bin:</span>
-                  <span class="pa-bin-value">${esc(comp.expectedBin)}</span>
-                </div>
-                <div class="pa-bin-line">
-                  <span class="pa-bin-icon">📏</span>
-                  <span class="pa-bin-label">Error Type:</span>
-                  <span class="pa-bin-value">${esc(err.label)}</span>
-                </div>
-              </div>
-              ${_stockInfoHtml(comp.sku, comp.expectedBin, comp.bin, comp.qty)}
-              ${correction ? `
-                <div class="pa-correction-status">
-                  <div class="pa-correction-title">✅ Transfer ${correction.transfer_status === 'COMPLETED' ? 'Completed' : 'Created'}</div>
-                  <div class="pa-correction-detail">
-                    <div>Transfer ID: <strong>${esc(correction.transfer_id || '—')}</strong></div>
-                    <div>Ref: <strong>${esc(correction.transfer_ref || '—')}</strong></div>
-                    <div>Status: <strong>${esc(correction.transfer_status || 'DRAFT')}</strong></div>
-                    <div>Corrected: <strong>${formatDate(correction.corrected_at)}</strong></div>
-                    <div>${esc(correction.from_bin)} → ${esc(correction.to_bin)} · ${correction.qty} units</div>
-                  </div>
-                </div>
-              ` : `
-                <div class="pa-fix-preview">
-                  <div class="pa-fix-title">Transfer will move stock:</div>
-                  <div class="pa-fix-detail">
-                    FROM <strong>${esc(comp.expectedBin)}</strong> (expected)
-                    → TO <strong>${esc(comp.bin)}</strong> (picked)
-                  </div>
-                  <div class="pa-fix-qty">${comp.qty} units of ${esc(comp.sku)}</div>
-                </div>
-              `}
-            </div>
-          </div>`;
+        return _renderAnomalyCardV2(comp, err, pickId, correction, order, true);
       }).join('');
     }
 
     return html;
+  }
+
+  /* ─── Redesigned Anomaly Card V2 ─── */
+  function _renderAnomalyCardV2(pick, err, pickId, correction, order, isFg) {
+    const sevColors = { low: '#f59e0b', medium: '#f97316', high: '#dc2626', info: '#6366f1' };
+    const sevLabels = { low: 'LOW', medium: 'MEDIUM', high: 'HIGH', info: 'INFO' };
+    const borderColor = correction ? '#86efac' : (sevColors[err.severity] || '#e2e8f0');
+
+    return `
+      <div class="pa-card-v2 ${correction ? 'pa-card-v2-corrected' : ''}" id="card-${pickId}" style="border-left:4px solid ${borderColor}">
+        <div class="pa-card-v2-top">
+          <div class="pa-card-v2-left">
+            ${!correction ? `<input type="checkbox" class="pa-fix-check" data-pick-id="${pickId}" onchange="PA.toggleFix('${pickId}', this.checked)" />` : ''}
+            <div class="pa-card-v2-sku">
+              <strong>${esc(pick.sku)}</strong>
+              ${_repeatSkus.has(pick.sku) ? '<span class="pa-repeat-badge" title="Repeat offender SKU (3+ anomalies)">🔁 Repeat</span>' : ''}
+              ${isFg ? `<span class="pa-fg-badge">FG: ${esc(pick._fgLabel)}</span>` : ''}
+            </div>
+            <span class="pa-card-v2-qty">× ${pick.qty}</span>
+            <span class="pa-card-v2-name">${esc(pick.name || '')}</span>
+          </div>
+          <div class="pa-card-v2-severity pa-sev-${err.severity}" title="${esc(err.label)}" style="background:${sevColors[err.severity] || '#94a3b8'}">
+            ${sevLabels[err.severity] || '?'}
+          </div>
+        </div>
+
+        <div class="pa-card-v2-body">
+          <div class="pa-card-v2-flow">
+            <div class="pa-flow-box pa-flow-wrong">
+              <div class="pa-flow-label">❌ PICKED FROM</div>
+              <div class="pa-flow-bin">${esc(pick.bin)}</div>
+            </div>
+            <div class="pa-flow-arrow">→</div>
+            <div class="pa-flow-box pa-flow-expected">
+              <div class="pa-flow-label">✅ SHOULD BE</div>
+              <div class="pa-flow-bin">${esc(pick.expectedBin)}</div>
+            </div>
+            <div class="pa-flow-type">
+              <div class="pa-flow-type-label">Error</div>
+              <div class="pa-flow-type-value">${esc(err.label)}</div>
+            </div>
+          </div>
+
+          ${state.stockData ? _stockInfoCompactHtml(pick.sku, pick.expectedBin, pick.bin, pick.qty) : '<div class="pa-stock-info pa-stock-loading">⏳ Loading stock…</div>'}
+
+          ${correction ? `
+            <div class="pa-correction-v2">
+              <div class="pa-correction-v2-badge">✅ ${correction.transfer_status === 'COMPLETED' ? 'Transfer Completed' : 'Transfer Created'}</div>
+              <div class="pa-correction-v2-detail">
+                ${esc(correction.from_bin)} → ${esc(correction.to_bin)} · <strong>${correction.qty} units</strong>
+                ${correction.transfer_ref ? ` · Ref: <code>${esc(correction.transfer_ref)}</code>` : ''}
+                ${correction.corrected_at ? ` · ${formatDate(correction.corrected_at)}` : ''}
+              </div>
+            </div>
+          ` : `
+            <div class="pa-fix-v2">
+              <span class="pa-fix-v2-label">🔧 Fix:</span>
+              <span class="pa-fix-v2-detail">Move ${pick.qty} × <strong>${esc(pick.sku)}</strong> from <code>${esc(pick.expectedBin)}</code> → <code>${esc(pick.bin)}</code></span>
+            </div>
+          `}
+        </div>
+      </div>`;
+  }
+
+  /* ─── Compact stock info for V2 cards ─── */
+  function _stockInfoCompactHtml(sku, expectedBin, pickedBin, qty) {
+    if (!state.stockData || !state.stockData.stock) return '';
+    const sd = state.stockData.stock;
+    const fromKey = `${sku}|${expectedBin}`;
+    const toKey   = `${sku}|${pickedBin}`;
+    const fromStock = sd[fromKey];
+    const toStock   = sd[toKey];
+    const fmtNum = n => (n != null ? n : '—');
+
+    let warnings = '';
+    if (fromStock && fromStock.available != null && fromStock.available < qty) {
+      warnings += `<span class="pa-stock-flag pa-stock-flag-red">⚠ FROM only ${fromStock.available} avail</span>`;
+    }
+    if (toStock && toStock.on_hand != null && toStock.on_hand === 0) {
+      warnings += `<span class="pa-stock-flag pa-stock-flag-amber">⚠ TO bin empty</span>`;
+    }
+
+    return `<div class="pa-stock-compact">
+      <span class="pa-stock-chip" title="FROM: ${esc(expectedBin)}">📦 FROM: OH ${fmtNum(fromStock?.on_hand)} · Avail ${fmtNum(fromStock?.available)}</span>
+      <span class="pa-stock-chip" title="TO: ${esc(pickedBin)}">📦 TO: OH ${fmtNum(toStock?.on_hand)} · Avail ${fmtNum(toStock?.available)}</span>
+      ${warnings}
+    </div>`;
+  }
+
+  /* ═══════════════════════════════════════════════
+     PRINT REPORT
+     ═══════════════════════════════════════════════ */
+  function printReport() {
+    const order = state.selectedOrder;
+    if (!order) return;
+
+    const picks = order.picks || [];
+    const anomalies = picks.filter(p => p.status === 'anomaly');
+    const correct = picks.filter(p => p.status === 'correct');
+    const fgOrders = order.fg_orders || [];
+    let fgAnomalyCount = 0, fgCorrectCount = 0;
+    for (const fg of fgOrders) {
+      for (const c of (fg.components || [])) {
+        if (c.status === 'anomaly') fgAnomalyCount++;
+        else if (c.status === 'correct') fgCorrectCount++;
+      }
+    }
+    const totalItems = picks.length + fgAnomalyCount + fgCorrectCount;
+    const totalAnom = anomalies.length + fgAnomalyCount;
+    const totalCorrect = correct.length + fgCorrectCount;
+    const accuracyPct = totalItems > 0 ? Math.round((totalCorrect / totalItems) * 100) : 100;
+    const correctedCount = (order.corrections || []).length;
+
+    // FG anomalies for report
+    const fgAnomalies = [];
+    for (const fg of fgOrders) {
+      for (let ci = 0; ci < (fg.components || []).length; ci++) {
+        const comp = fg.components[ci];
+        if (comp.status === 'anomaly') {
+          fgAnomalies.push({ ...comp, _fgLabel: fg.assemblyNumber || fg.taskId });
+        }
+      }
+    }
+    const allAnomalies = [...anomalies, ...fgAnomalies];
+
+    // Group by error type
+    const byType = {};
+    for (const a of allAnomalies) {
+      const err = classifyError(a.bin, a.expectedBin);
+      if (!byType[err.label]) byType[err.label] = [];
+      byType[err.label].push(a);
+    }
+
+    const now = new Date();
+    const printDate = now.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }) + ' ' +
+                      now.toLocaleTimeString('en-AU', { hour12:false, hour:'2-digit', minute:'2-digit' });
+
+    let reportHtml = `<!DOCTYPE html><html><head>
+      <meta charset="utf-8">
+      <title>Pick Anomaly Report — Order ${esc(order.order_number)}</title>
+      <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size:12px; color:#1e293b; padding:30px; }
+        .report-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1e293b; padding-bottom:16px; margin-bottom:20px; }
+        .report-title { font-size:22px; font-weight:800; }
+        .report-subtitle { font-size:13px; color:#64748b; margin-top:4px; }
+        .report-logo { text-align:right; font-size:11px; color:#94a3b8; }
+        .report-meta { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-bottom:20px; }
+        .meta-item label { font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; letter-spacing:.5px; }
+        .meta-item .val { font-size:14px; font-weight:600; }
+        .accuracy-section { display:flex; align-items:center; gap:24px; margin-bottom:20px; padding:14px 18px; border-radius:8px; border:1px solid #e2e8f0; }
+        .accuracy-bar-wrap { flex:1; height:14px; background:#e2e8f0; border-radius:7px; overflow:hidden; }
+        .accuracy-bar { height:100%; border-radius:7px; }
+        .accuracy-correct { background:#22c55e; }
+        .accuracy-stats { display:flex; gap:16px; font-size:12px; font-weight:600; }
+        .section-title { font-size:16px; font-weight:800; margin:24px 0 10px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }
+        table { width:100%; border-collapse:collapse; font-size:11px; margin-bottom:16px; }
+        th { background:#f1f5f9; text-align:left; padding:8px 10px; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid #cbd5e1; }
+        td { padding:7px 10px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+        tr:nth-child(even) { background:#fafbfc; }
+        .bin-code { font-family:'Courier New',monospace; font-weight:700; font-size:12px; padding:2px 6px; border-radius:4px; }
+        .bin-wrong { background:#fef2f2; color:#dc2626; }
+        .bin-ok { background:#f0fdf4; color:#16a34a; }
+        .sev-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:700; font-size:10px; text-transform:uppercase; color:#fff; }
+        .sev-low { background:#f59e0b; } .sev-medium { background:#f97316; } .sev-high { background:#dc2626; } .sev-info { background:#6366f1; }
+        .status-ok { color:#16a34a; font-weight:700; } .status-pending { color:#f59e0b; font-weight:700; }
+        .summary-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-top:16px; }
+        .summary-box h4 { font-size:13px; margin-bottom:8px; }
+        .error-summary-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f1f5f9; }
+        .footer { margin-top:30px; border-top:2px solid #e2e8f0; padding-top:10px; font-size:10px; color:#94a3b8; text-align:center; }
+        @media print { body { padding:15px; } .no-print { display:none; } }
+      </style>
+    </head><body>
+      <div class="report-header">
+        <div>
+          <div class="report-title">🔍 Pick Anomaly Report</div>
+          <div class="report-subtitle">Order ${esc(order.order_number)} — ${esc(order.customer || 'Unknown Customer')}</div>
+        </div>
+        <div class="report-logo">
+          Rapid Labels Warehouse<br>
+          Generated: ${printDate}
+        </div>
+      </div>
+
+      <div class="report-meta">
+        <div class="meta-item"><label>Order Date</label><div class="val">${formatDate(order.order_date)}</div></div>
+        <div class="meta-item"><label>Shipped</label><div class="val">${order.fulfilled_date ? formatDate(order.fulfilled_date) : '—'}</div></div>
+        <div class="meta-item"><label>SO Status</label><div class="val">${esc(order.order_status || '—')}</div></div>
+        <div class="meta-item"><label>Analyzed</label><div class="val">${formatDate(order.analyzed_at)}</div></div>
+      </div>
+
+      <div class="accuracy-section">
+        <div style="min-width:100px">
+          <div style="font-size:28px;font-weight:800">${accuracyPct}%</div>
+          <div style="font-size:11px;color:#64748b;font-weight:600">Accuracy</div>
+        </div>
+        <div class="accuracy-bar-wrap"><div class="accuracy-bar accuracy-correct" style="width:${accuracyPct}%"></div></div>
+        <div class="accuracy-stats">
+          <span>✅ ${totalCorrect}</span>
+          <span>⚠️ ${totalAnom}</span>
+          <span>🔄 ${correctedCount} fixed</span>
+        </div>
+      </div>
+
+      <div class="section-title">⚠️ Anomaly Details (${totalAnom})</div>
+      <table>
+        <thead><tr><th>#</th><th>SKU</th><th>Product</th><th>Qty</th><th>Picked From</th><th>Should Be</th><th>Error Type</th><th>Severity</th><th>Corrected?</th></tr></thead>
+        <tbody>
+          ${allAnomalies.map((a, i) => {
+            const err = classifyError(a.bin, a.expectedBin);
+            const pickId = a._fgTaskId ? `fg_${a._fgTaskId}_${a._fgIdx}` : (a.id || `${order.order_number}_pick_${i}`);
+            const correction = getCorrection(order, pickId);
+            return `<tr>
+              <td>${i + 1}</td>
+              <td><strong>${esc(a.sku)}</strong>${a._fgLabel ? ` <span style="color:#7c3aed;font-size:10px">(FG)</span>` : ''}</td>
+              <td>${esc(a.name || '')}</td>
+              <td>${a.qty}</td>
+              <td><span class="bin-code bin-wrong">${esc(a.bin)}</span></td>
+              <td><span class="bin-code bin-ok">${esc(a.expectedBin)}</span></td>
+              <td>${esc(err.label)}</td>
+              <td><span class="sev-badge sev-${err.severity}">${err.severity}</span></td>
+              <td>${correction ? '<span class="status-ok">✅ Yes</span>' : '<span class="status-pending">⏳ Pending</span>'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="summary-box">
+        <h4>📊 Error Type Breakdown</h4>
+        ${Object.entries(byType).map(([label, items]) => `
+          <div class="error-summary-row">
+            <span>${esc(label)}</span>
+            <span><strong>${items.length}</strong> (${Math.round(items.length / totalAnom * 100)}%)</span>
+          </div>
+        `).join('')}
+      </div>
+
+      ${correctedCount > 0 ? `
+        <div class="section-title">🔄 Corrections Applied (${correctedCount})</div>
+        <table>
+          <thead><tr><th>SKU</th><th>From Bin</th><th>To Bin</th><th>Qty</th><th>Transfer Ref</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody>
+            ${(order.corrections || []).map(c => `<tr>
+              <td><strong>${esc(c.sku || '—')}</strong></td>
+              <td><span class="bin-code">${esc(c.from_bin)}</span></td>
+              <td><span class="bin-code">${esc(c.to_bin)}</span></td>
+              <td>${c.qty}</td>
+              <td>${esc(c.transfer_ref || '—')}</td>
+              <td><span class="status-ok">${esc(c.transfer_status || 'DRAFT')}</span></td>
+              <td>${formatDate(c.corrected_at)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      ` : ''}
+
+      <div class="footer">
+        Rapid Labels Warehouse — Pick Anomaly Report · Generated by Pick Anomalies System · ${printDate}
+      </div>
+    </body></html>`;
+
+    // Open print window
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    printWindow.document.write(reportHtml);
+    printWindow.document.close();
+    printWindow.onload = () => { printWindow.print(); };
   }
 
   function renderCorrectTab(order) {
@@ -1234,15 +1422,555 @@
   }
 
   /* ═══════════════════════════════════════════════
+     VIEW TOGGLE — Orders vs Analytics
+     ═══════════════════════════════════════════════ */
+  function setView(view, btn) {
+    document.querySelectorAll('.pa-view-toggle .chip').forEach(c => c.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    const ordersEls = ['paTableCard', 'paPagination', 'paFooter'];
+    const analyticsEl = document.getElementById('paAnalytics');
+    const statusChips = document.getElementById('paStatusChips');
+    const searchGroup = document.querySelector('.pa-search-group');
+
+    if (view === 'analytics') {
+      ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+      analyticsEl.style.display = '';
+      if (statusChips) statusChips.style.display = 'none';
+      if (searchGroup) searchGroup.style.display = 'none';
+      loadAnalytics();
+    } else {
+      ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
+      analyticsEl.style.display = 'none';
+      if (statusChips) statusChips.style.display = '';
+      if (searchGroup) searchGroup.style.display = '';
+    }
+  }
+
+  /* ═══════════════════════════════════════════════
+     ANALYTICS DASHBOARD
+     ═══════════════════════════════════════════════ */
+  let _analyticsCache = null;
+  let _repeatSkus = new Set(); // SKUs with 3+ anomalies across all orders
+
+  async function loadAnalytics() {
+    if (_analyticsCache) {
+      renderAnalytics(_analyticsCache);
+      return;
+    }
+    document.getElementById('paAnalyticsLoading').style.display = '';
+    try {
+      const res = await fetch('/api/pick-anomalies/analytics');
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      _analyticsCache = data.analytics;
+      // Cache repeat offenders for badges in order detail
+      for (const s of (data.analytics.topSkus || [])) {
+        if (s.count >= 3) _repeatSkus.add(s.sku);
+      }
+      renderAnalytics(_analyticsCache);
+    } catch (err) {
+      console.error('Analytics load error:', err);
+      document.getElementById('paAnalyticsLoading').textContent = '❌ Failed to load analytics: ' + err.message;
+    }
+  }
+
+  function renderAnalytics(a) {
+    document.getElementById('paAnalyticsLoading').style.display = 'none';
+
+    // ── Summary cards ──
+    const s = a.summary;
+    document.getElementById('paAnalyticsSummary').innerHTML = `
+      <div class="pa-asummary-cards">
+        <div class="pa-acard pa-acard-blue">
+          <div class="pa-acard-val">${s.totalOrders}</div>
+          <div class="pa-acard-label">Orders Analyzed</div>
+        </div>
+        <div class="pa-acard pa-acard-purple">
+          <div class="pa-acard-val">${s.totalPicks}</div>
+          <div class="pa-acard-label">Total Picks</div>
+        </div>
+        <div class="pa-acard pa-acard-green">
+          <div class="pa-acard-val">${s.totalCorrect}</div>
+          <div class="pa-acard-label">Correct (${(100 - s.anomalyRate).toFixed(1)}%)</div>
+        </div>
+        <div class="pa-acard ${s.anomalyRate > 10 ? 'pa-acard-red' : s.anomalyRate > 5 ? 'pa-acard-amber' : 'pa-acard-green'}">
+          <div class="pa-acard-val">${s.totalAnomalies}</div>
+          <div class="pa-acard-label">Anomalies (${s.anomalyRate}%)</div>
+        </div>
+      </div>`;
+
+    // ── Weekly Trend (pure CSS bar chart) ──
+    renderWeeklyTrend(a.weeklyTrend);
+
+    // ── Error Types (horizontal bars) ──
+    renderErrorTypes(a.errorTypes);
+
+    // ── Section Heatmap ──
+    renderSectionHeatmap(a.sectionHeatmap);
+
+    // ── Top SKUs ──
+    renderTopItems('paChartSkus', a.topSkus, 'sku');
+
+    // ── Top Bins ──
+    renderTopItems('paChartBins', a.topBins, 'bin');
+
+    // ── Repeat Routes ──
+    renderRepeatRoutes(a.repeatRoutes);
+  }
+
+  function renderWeeklyTrend(weeks) {
+    const el = document.getElementById('paChartTrend');
+    if (!weeks.length) { el.innerHTML = '<div class="pa-empty">No data yet</div>'; return; }
+
+    const maxPicks = Math.max(...weeks.map(w => w.picks), 1);
+    const maxRate = Math.max(...weeks.map(w => w.picks > 0 ? (w.anomalies / w.picks * 100) : 0), 1);
+
+    el.innerHTML = `
+      <div class="pa-trend-chart">
+        ${weeks.map(w => {
+          const rate = w.picks > 0 ? (w.anomalies / w.picks * 100) : 0;
+          const barH = Math.max(4, (rate / maxRate) * 100);
+          const picksH = Math.max(2, (w.picks / maxPicks) * 60);
+          const rateColor = rate > 15 ? '#ef4444' : rate > 10 ? '#f59e0b' : rate > 5 ? '#eab308' : '#22c55e';
+          return `<div class="pa-trend-col" title="${w.week}\n${w.orders} orders · ${w.picks} picks\n${w.anomalies} anomalies (${rate.toFixed(1)}%)">
+            <div class="pa-trend-rate" style="height:${barH}%;background:${rateColor}">${rate.toFixed(1)}%</div>
+            <div class="pa-trend-picks" style="height:${picksH}px"></div>
+            <div class="pa-trend-label">${w.week.replace(/^\d{4}-/, '')}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="pa-trend-legend">
+        <span>🟩 &lt;5%</span> <span>🟨 5-10%</span> <span>🟧 10-15%</span> <span>🟥 &gt;15%</span>
+        <span style="margin-left:auto;color:#94a3b8">Gray bar = pick volume</span>
+      </div>`;
+  }
+
+  function renderErrorTypes(types) {
+    const el = document.getElementById('paChartErrorTypes');
+    if (!types.length) { el.innerHTML = '<div class="pa-empty">No anomalies</div>'; return; }
+    const total = types.reduce((s, t) => s + t.count, 0);
+    const maxCount = types[0].count;
+
+    const labels = {
+      different_area: { icon: '🔴', label: 'Different Area', desc: 'Picked from completely wrong warehouse section' },
+      same_section: { icon: '🟠', label: 'Wrong Column', desc: 'Same section but different column' },
+      same_column: { icon: '🟡', label: 'Wrong Level', desc: 'Same column but different shelf level' },
+      pallet_only: { icon: '🟢', label: 'Wrong Pallet', desc: 'Same level, just different pallet position' },
+      special_loc: { icon: '🔵', label: 'Special Location', desc: 'Dock, staging, or non-standard bin' },
+    };
+
+    el.innerHTML = types.map(t => {
+      const pct = ((t.count / total) * 100).toFixed(1);
+      const barW = (t.count / maxCount) * 100;
+      const info = labels[t.type] || { icon: '⚪', label: t.type, desc: '' };
+      return `<div class="pa-etype-row" title="${info.desc}">
+        <div class="pa-etype-label">${info.icon} ${info.label}</div>
+        <div class="pa-etype-bar-wrap">
+          <div class="pa-etype-bar" style="width:${barW}%;background:${t.type === 'different_area' ? '#ef4444' : t.type === 'same_section' ? '#f59e0b' : t.type === 'same_column' ? '#eab308' : '#22c55e'}"></div>
+        </div>
+        <div class="pa-etype-val">${t.count} <span class="pa-etype-pct">(${pct}%)</span></div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderSectionHeatmap(sections) {
+    const el = document.getElementById('paChartSections');
+    if (!sections.length) { el.innerHTML = '<div class="pa-empty">No data</div>'; return; }
+    const maxCount = sections[0].count;
+
+    // All warehouse sections
+    const allSections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    const sectionMap = {};
+    for (const s of sections) sectionMap[s.section] = s.count;
+
+    el.innerHTML = `<div class="pa-heatmap">
+      ${allSections.map(sec => {
+        const count = sectionMap[sec] || 0;
+        const intensity = maxCount > 0 ? (count / maxCount) : 0;
+        const bg = count === 0 ? '#f1f5f9'
+          : intensity > 0.7 ? '#ef4444'
+          : intensity > 0.4 ? '#f59e0b'
+          : intensity > 0.15 ? '#fbbf24'
+          : '#86efac';
+        const color = intensity > 0.4 ? '#fff' : '#1e293b';
+        return `<div class="pa-heatmap-cell" style="background:${bg};color:${color}" title="Section ${sec}: ${count} anomalies">
+          <div class="pa-heatmap-letter">${sec}</div>
+          <div class="pa-heatmap-count">${count}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="pa-heatmap-legend">
+      <span style="background:#86efac;color:#1e293b">Low</span>
+      <span style="background:#fbbf24;color:#1e293b">Med</span>
+      <span style="background:#f59e0b;color:#fff">High</span>
+      <span style="background:#ef4444;color:#fff">Critical</span>
+    </div>`;
+  }
+
+  function renderTopItems(containerId, items, key) {
+    const el = document.getElementById(containerId);
+    if (!items.length) { el.innerHTML = '<div class="pa-empty">No data</div>'; return; }
+    const maxCount = items[0].count;
+
+    el.innerHTML = items.map((item, idx) => {
+      const val = item[key];
+      const barW = (item.count / maxCount) * 100;
+      const isRepeat = item.count >= 3;
+      return `<div class="pa-top-row${isRepeat ? ' pa-top-repeat' : ''}">
+        <span class="pa-top-rank">${idx + 1}</span>
+        <span class="pa-top-name" title="${esc(val)}">${esc(val)}</span>
+        <div class="pa-top-bar-wrap">
+          <div class="pa-top-bar" style="width:${barW}%"></div>
+        </div>
+        <span class="pa-top-count">${item.count}×${isRepeat ? ' 🔁' : ''}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderRepeatRoutes(routes) {
+    const el = document.getElementById('paChartRoutes');
+    if (!routes.length) { el.innerHTML = '<div class="pa-empty">No repeat routes detected — great! 🎉</div>'; return; }
+
+    el.innerHTML = `<table class="app-table" style="font-size:12px">
+      <thead><tr><th>Count</th><th>Expected Bin (FROM)</th><th>→</th><th>Picked From (TO)</th><th>SKUs</th><th>Action</th></tr></thead>
+      <tbody>
+      ${routes.map(r => {
+        const isCritical = r.count >= 4;
+        return `<tr class="${isCritical ? 'pa-route-critical' : ''}">
+          <td><strong class="${isCritical ? 'pa-count-critical' : ''}">${r.count}×</strong></td>
+          <td><code>${esc(r.from)}</code></td>
+          <td>→</td>
+          <td><code>${esc(r.to)}</code></td>
+          <td>${r.skus.map(s => esc(s)).join(', ')}</td>
+          <td>${isCritical ? '<span class="pa-badge pa-badge-anomaly" title="This route has repeated 4+ times — the stock_locator may need updating in Cin7">⚠️ Check Locator</span>' : ''}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  /* ═══════════════════════════════════════════════
+     BULK PRINT SELECTION
+     ═══════════════════════════════════════════════ */
+  function toggleBulk(idx, checked) {
+    if (checked) state.selectedBulk.add(idx);
+    else state.selectedBulk.delete(idx);
+    _updateBulkBar();
+  }
+
+  function toggleBulkAll(checked) {
+    state.orders.forEach((_, idx) => {
+      if (checked) state.selectedBulk.add(idx);
+      else state.selectedBulk.delete(idx);
+    });
+    document.querySelectorAll('.pa-bulk-check').forEach(cb => cb.checked = checked);
+    _updateBulkBar();
+  }
+
+  function _updateBulkBar() {
+    const bar = document.getElementById('paBulkBar');
+    const count = state.selectedBulk.size;
+    if (count > 0) {
+      bar.style.display = '';
+      document.getElementById('paBulkCount').textContent = `${count} order${count > 1 ? 's' : ''} selected`;
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+
+  function openBulkPreview() {
+    if (state.selectedBulk.size === 0) return;
+    const container = document.getElementById('paBulkPreviewBody');
+    const selected = [...state.selectedBulk].map(idx => state.orders[idx]).filter(Boolean);
+
+    // Summary stats
+    let totalPicks = 0, totalAnom = 0, totalCorrect = 0, totalCorrected = 0;
+    for (const o of selected) {
+      totalPicks += o.total_picks || 0;
+      totalAnom += o.anomaly_picks || 0;
+      totalCorrect += o.correct_picks || 0;
+      totalCorrected += (o.corrections || []).length;
+    }
+
+    container.innerHTML = `
+      <div class="pa-bulk-summary">
+        <div class="pa-bulk-stat"><span class="pa-bulk-stat-val">${selected.length}</span><span class="pa-bulk-stat-label">Orders</span></div>
+        <div class="pa-bulk-stat"><span class="pa-bulk-stat-val">${totalPicks}</span><span class="pa-bulk-stat-label">Total Picks</span></div>
+        <div class="pa-bulk-stat"><span class="pa-bulk-stat-val">${totalAnom}</span><span class="pa-bulk-stat-label">Anomalies</span></div>
+        <div class="pa-bulk-stat"><span class="pa-bulk-stat-val">${totalCorrect}</span><span class="pa-bulk-stat-label">Correct</span></div>
+        <div class="pa-bulk-stat"><span class="pa-bulk-stat-val">${totalCorrected}</span><span class="pa-bulk-stat-label">Corrected</span></div>
+      </div>
+
+      <div class="pa-bulk-list-header">
+        <span>Select which orders to include:</span>
+      </div>
+      <div class="pa-bulk-list">
+        ${selected.map((o, i) => {
+          const anom = o.anomaly_picks || 0;
+          const corrections = (o.corrections || []).length;
+          const accuracy = o.total_picks > 0 ? Math.round(((o.correct_picks || 0) / o.total_picks) * 100) : 100;
+          return `
+            <div class="pa-bulk-item" data-order="${esc(o.order_number)}">
+              <input type="checkbox" checked class="pa-bulk-preview-check" data-order-num="${esc(o.order_number)}" onchange="PA._bulkPreviewToggle(this)" />
+              <div class="pa-bulk-item-info">
+                <strong>${esc(o.order_number)}</strong>
+                <span class="pa-bulk-item-customer">${esc(o.customer || '')}</span>
+              </div>
+              <div class="pa-bulk-item-stats">
+                <span class="pa-bulk-item-date">${formatDate(o.order_date)}</span>
+                <span class="pa-bulk-item-accuracy ${accuracy >= 95 ? 'pa-acc-good' : accuracy >= 80 ? 'pa-acc-warn' : 'pa-acc-bad'}">${accuracy}%</span>
+                ${anom > 0 ? `<span class="pa-bulk-item-anom">⚠️ ${anom}</span>` : '<span class="pa-bulk-item-ok">✅ OK</span>'}
+                ${corrections > 0 ? `<span class="pa-bulk-item-fixed">🔄 ${corrections}</span>` : ''}
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+    `;
+
+    document.getElementById('paBulkPreviewModal').classList.add('open');
+  }
+
+  function closeBulkPreview() {
+    document.getElementById('paBulkPreviewModal').classList.remove('open');
+  }
+
+  function _bulkPreviewToggle(checkbox) {
+    // Just toggle visibility — the checked state determines what gets printed
+  }
+
+  function printBulkReport() {
+    // Gather checked orders from preview modal
+    const checkedNums = new Set();
+    document.querySelectorAll('.pa-bulk-preview-check:checked').forEach(cb => {
+      checkedNums.add(cb.dataset.orderNum);
+    });
+    if (checkedNums.size === 0) return;
+
+    const selected = [...state.selectedBulk]
+      .map(idx => state.orders[idx])
+      .filter(o => o && checkedNums.has(o.order_number));
+
+    if (!selected.length) return;
+
+    // Build combined report
+    let totalPicks = 0, totalAnom = 0, totalCorrect = 0, totalCorrected = 0;
+    const allAnomalies = [];
+    const allCorrections = [];
+    const byType = {};
+
+    for (const order of selected) {
+      const picks = order.picks || [];
+      const anomalies = picks.filter(p => p.status === 'anomaly');
+      const correct = picks.filter(p => p.status === 'correct');
+      // FG
+      let fgAnom = 0, fgCorr = 0;
+      const fgAnomalies = [];
+      for (const fg of (order.fg_orders || [])) {
+        for (let ci = 0; ci < (fg.components || []).length; ci++) {
+          const comp = fg.components[ci];
+          if (comp.status === 'anomaly') {
+            fgAnom++;
+            fgAnomalies.push({ ...comp, _fgLabel: fg.assemblyNumber || fg.taskId, _fgTaskId: fg.taskId, _fgIdx: ci });
+          }
+        }
+      }
+
+      totalPicks += picks.length + fgAnom + (order.fg_orders || []).reduce((s, fg) => s + (fg.components || []).filter(c => c.status === 'correct').length, 0);
+      totalAnom += anomalies.length + fgAnom;
+      totalCorrect += correct.length;
+      totalCorrected += (order.corrections || []).length;
+
+      for (const a of [...anomalies, ...fgAnomalies]) {
+        const err = classifyError(a.bin, a.expectedBin);
+        const pickId = a._fgTaskId ? `fg_${a._fgTaskId}_${a._fgIdx}` : (a.id || 'unknown');
+        const correction = (order.corrections || []).find(c => c.pick_id === pickId);
+        allAnomalies.push({ ...a, _orderNum: order.order_number, _customer: order.customer, _err: err, _correction: correction });
+        if (!byType[err.label]) byType[err.label] = 0;
+        byType[err.label]++;
+      }
+      allCorrections.push(...(order.corrections || []));
+    }
+
+    const accuracyPct = totalPicks > 0 ? Math.round((totalCorrect / totalPicks) * 100) : 100;
+    const now = new Date();
+    const printDate = now.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }) + ' ' +
+                      now.toLocaleTimeString('en-AU', { hour12:false, hour:'2-digit', minute:'2-digit' });
+
+    // Date range
+    const dates = selected.map(o => o.order_date).filter(Boolean).sort();
+    const dateRange = dates.length > 1 ? `${formatDate(dates[0])} — ${formatDate(dates[dates.length - 1])}` : (dates[0] ? formatDate(dates[0]) : '—');
+
+    let reportHtml = `<!DOCTYPE html><html><head>
+      <meta charset="utf-8">
+      <title>Pick Anomaly Bulk Report — ${selected.length} Orders</title>
+      <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size:12px; color:#1e293b; padding:30px; }
+        .report-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1e293b; padding-bottom:16px; margin-bottom:20px; }
+        .report-title { font-size:22px; font-weight:800; }
+        .report-subtitle { font-size:13px; color:#64748b; margin-top:4px; }
+        .report-logo { text-align:right; font-size:11px; color:#94a3b8; }
+        .summary-cards { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
+        .s-card { padding:14px; border-radius:8px; border:1px solid #e2e8f0; text-align:center; }
+        .s-card-val { font-size:28px; font-weight:800; }
+        .s-card-label { font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; margin-top:2px; }
+        .s-card-blue { background:#eff6ff; color:#1d4ed8; }
+        .s-card-green { background:#f0fdf4; color:#166534; }
+        .s-card-red { background:#fef2f2; color:#dc2626; }
+        .s-card-amber { background:#fffbeb; color:#92400e; }
+        .s-card-purple { background:#faf5ff; color:#7c3aed; }
+        .accuracy-section { display:flex; align-items:center; gap:24px; margin-bottom:20px; padding:14px 18px; border-radius:8px; border:1px solid #e2e8f0; }
+        .accuracy-bar-wrap { flex:1; height:14px; background:#e2e8f0; border-radius:7px; overflow:hidden; }
+        .accuracy-bar { height:100%; border-radius:7px; background:#22c55e; }
+        .section-title { font-size:16px; font-weight:800; margin:24px 0 10px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }
+        .section-title-small { font-size:13px; font-weight:700; margin:16px 0 8px; color:#64748b; }
+        table { width:100%; border-collapse:collapse; font-size:11px; margin-bottom:16px; }
+        th { background:#f1f5f9; text-align:left; padding:8px 10px; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid #cbd5e1; }
+        td { padding:7px 10px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+        tr:nth-child(even) { background:#fafbfc; }
+        .bin-code { font-family:'Courier New',monospace; font-weight:700; font-size:12px; padding:2px 6px; border-radius:4px; }
+        .bin-wrong { background:#fef2f2; color:#dc2626; }
+        .bin-ok { background:#f0fdf4; color:#16a34a; }
+        .sev-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:700; font-size:10px; text-transform:uppercase; color:#fff; }
+        .sev-low { background:#f59e0b; } .sev-medium { background:#f97316; } .sev-high { background:#dc2626; } .sev-info { background:#6366f1; }
+        .status-ok { color:#16a34a; font-weight:700; } .status-pending { color:#f59e0b; font-weight:700; }
+        .summary-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-top:16px; }
+        .summary-box h4 { font-size:13px; margin-bottom:8px; }
+        .error-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f1f5f9; }
+        .order-section { margin:20px 0; padding:16px; border:1px solid #e2e8f0; border-radius:10px; page-break-inside:avoid; }
+        .order-section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+        .order-section-title { font-size:14px; font-weight:800; }
+        .order-section-meta { font-size:11px; color:#64748b; }
+        .page-break { page-break-before:always; }
+        .footer { margin-top:30px; border-top:2px solid #e2e8f0; padding-top:10px; font-size:10px; color:#94a3b8; text-align:center; }
+        @media print { body { padding:15px; } .no-print { display:none; } }
+      </style>
+    </head><body>
+      <div class="report-header">
+        <div>
+          <div class="report-title">🔍 Pick Anomaly Report — Bulk</div>
+          <div class="report-subtitle">${selected.length} Orders · ${dateRange}</div>
+        </div>
+        <div class="report-logo">
+          Rapid Labels Warehouse<br>
+          Generated: ${printDate}
+        </div>
+      </div>
+
+      <div class="summary-cards">
+        <div class="s-card s-card-blue"><div class="s-card-val">${selected.length}</div><div class="s-card-label">Orders</div></div>
+        <div class="s-card s-card-green"><div class="s-card-val">${totalPicks}</div><div class="s-card-label">Total Picks</div></div>
+        <div class="s-card s-card-red"><div class="s-card-val">${totalAnom}</div><div class="s-card-label">Anomalies</div></div>
+        <div class="s-card s-card-amber"><div class="s-card-val">${accuracyPct}%</div><div class="s-card-label">Accuracy</div></div>
+        <div class="s-card s-card-purple"><div class="s-card-val">${totalCorrected}</div><div class="s-card-label">Corrected</div></div>
+      </div>
+
+      <div class="accuracy-section">
+        <div style="min-width:80px"><div style="font-size:24px;font-weight:800">${accuracyPct}%</div><div style="font-size:10px;color:#64748b;font-weight:600">OVERALL</div></div>
+        <div class="accuracy-bar-wrap"><div class="accuracy-bar" style="width:${accuracyPct}%"></div></div>
+        <div style="font-size:12px;font-weight:600;white-space:nowrap">✅ ${totalCorrect} · ⚠️ ${totalAnom} · 🔄 ${totalCorrected}</div>
+      </div>
+
+      <div class="summary-box">
+        <h4>📊 Error Type Breakdown</h4>
+        ${Object.entries(byType).sort((a,b) => b[1] - a[1]).map(([label, count]) => `
+          <div class="error-row">
+            <span>${esc(label)}</span>
+            <span><strong>${count}</strong> (${Math.round(count / totalAnom * 100)}%)</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="section-title">📋 Orders Summary</div>
+      <table>
+        <thead><tr><th>#</th><th>Order</th><th>Customer</th><th>Date</th><th>Picks</th><th>✅</th><th>⚠️</th><th>Corrected</th><th>Accuracy</th></tr></thead>
+        <tbody>
+          ${selected.map((o, i) => {
+            const acc = o.total_picks > 0 ? Math.round(((o.correct_picks || 0) / o.total_picks) * 100) : 100;
+            return `<tr>
+              <td>${i + 1}</td>
+              <td><strong>${esc(o.order_number)}</strong></td>
+              <td>${esc(o.customer || '')}</td>
+              <td>${formatDate(o.order_date)}</td>
+              <td>${o.total_picks || 0}</td>
+              <td>${o.correct_picks || 0}</td>
+              <td>${o.anomaly_picks || 0}</td>
+              <td>${(o.corrections || []).length}</td>
+              <td style="font-weight:700;color:${acc >= 95 ? '#16a34a' : acc >= 80 ? '#f59e0b' : '#dc2626'}">${acc}%</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="section-title">⚠️ All Anomalies (${allAnomalies.length})</div>
+      <table>
+        <thead><tr><th>#</th><th>Order</th><th>SKU</th><th>Product</th><th>Qty</th><th>Picked From</th><th>Should Be</th><th>Error Type</th><th>Severity</th><th>Corrected?</th></tr></thead>
+        <tbody>
+          ${allAnomalies.map((a, i) => `<tr>
+            <td>${i + 1}</td>
+            <td>${esc(a._orderNum)}</td>
+            <td><strong>${esc(a.sku)}</strong>${a._fgLabel ? ' <span style="color:#7c3aed;font-size:10px">(FG)</span>' : ''}</td>
+            <td>${esc(a.name || '')}</td>
+            <td>${a.qty}</td>
+            <td><span class="bin-code bin-wrong">${esc(a.bin)}</span></td>
+            <td><span class="bin-code bin-ok">${esc(a.expectedBin)}</span></td>
+            <td>${esc(a._err.label)}</td>
+            <td><span class="sev-badge sev-${a._err.severity}">${a._err.severity}</span></td>
+            <td>${a._correction ? '<span class="status-ok">✅ Yes</span>' : '<span class="status-pending">⏳ Pending</span>'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+
+      ${allCorrections.length > 0 ? `
+        <div class="section-title">🔄 Corrections Applied (${allCorrections.length})</div>
+        <table>
+          <thead><tr><th>SKU</th><th>From</th><th>To</th><th>Qty</th><th>Transfer Ref</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody>
+            ${allCorrections.map(c => `<tr>
+              <td><strong>${esc(c.sku || '—')}</strong></td>
+              <td><span class="bin-code">${esc(c.from_bin)}</span></td>
+              <td><span class="bin-code">${esc(c.to_bin)}</span></td>
+              <td>${c.qty}</td>
+              <td>${esc(c.transfer_ref || '—')}</td>
+              <td><span class="status-ok">${esc(c.transfer_status || 'DRAFT')}</span></td>
+              <td>${formatDate(c.corrected_at)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      ` : ''}
+
+      <div class="footer">
+        Rapid Labels Warehouse — Pick Anomaly Bulk Report · ${selected.length} Orders · Generated: ${printDate}
+      </div>
+    </body></html>`;
+
+    const printWindow = window.open('', '_blank', 'width=1000,height=800');
+    printWindow.document.write(reportHtml);
+    printWindow.document.close();
+    printWindow.onload = () => { printWindow.print(); };
+
+    closeBulkPreview();
+  }
+
+  function clearBulkSelection() {
+    state.selectedBulk.clear();
+    document.querySelectorAll('.pa-bulk-check').forEach(cb => cb.checked = false);
+    _updateBulkBar();
+  }
+
+  /* ═══════════════════════════════════════════════
      PUBLIC API (window.PA)
      ═══════════════════════════════════════════════ */
   window.PA = {
     loadHistory,
     loadStats,
+    loadAnalytics,
     syncNewOrders,
     fetchSyncStatus,
     debounceSearch,
     setFilter,
+    setView,
     openDetail,
     closeDetail,
     setTab,
@@ -1251,6 +1979,14 @@
     fixSelected,
     confirmFix,
     reviewOrder,
+    printReport,
+    toggleBulk,
+    toggleBulkAll,
+    openBulkPreview,
+    closeBulkPreview,
+    printBulkReport,
+    clearBulkSelection,
+    _bulkPreviewToggle,
     nextPage,
     prevPage,
     _resetConfirmModal,
@@ -1266,6 +2002,9 @@
 
     // 2. Fetch sync status (shows "Xh Ym ago" + "+N orders" — no Cin7 API calls)
     await fetchSyncStatus();
+
+    // 3. Pre-load analytics in background (for repeat offender badges)
+    loadAnalytics().catch(() => {});
 
     // Note: No auto-sync on page open.
     // Backend scheduler syncs every 2h at :30. User can manually sync via button.

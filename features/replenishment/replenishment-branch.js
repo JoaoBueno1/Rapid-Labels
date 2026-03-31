@@ -60,6 +60,7 @@
     dcMap: {},             // product → 5DC code from restock_setup
     selectedRows: new Set(),
     showNoAvg: false,
+    showNoMainStock: false,
     filter: 'all',
     search: '',
     currentPage: 1,
@@ -418,7 +419,7 @@
       
       const mainStock = state.stockData[`${product}:MAIN`];
       const mainAvailable = mainStock?.qty_available || 0;
-      const avgMonthMain = avgRow?.avg_mth_main || 0;
+      const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);  // Round to whole units
       const avgWeekMain = avgMonthMain / WEEKS_IN_MONTH;
       const mainMinQty = Math.ceil(avgWeekMain * MAIN_MIN_WEEKS);
       const canSendTotal = Math.max(0, mainAvailable - mainMinQty);
@@ -428,7 +429,7 @@
       
       for (const [code, info] of Object.entries(BRANCHES)) {
         const branchAvgField = info.avgField;
-        const avgMonth = avgRow?.[branchAvgField] || 0;
+        const avgMonth = Math.round(avgRow?.[branchAvgField] || 0);  // Round to whole units
         if (avgMonth <= 0) continue;
         
         const branchStk = state.stockData[`${product}:${code}`];
@@ -456,12 +457,12 @@
       if (product.toLowerCase().includes('carton')) continue;
       
       const avgRow = state.avgData[product];
-      const avgMonthBranch = avgRow?.[avgField] || 0;
+      const avgMonthBranch = Math.round(avgRow?.[avgField] || 0);  // Round to whole units (0.2→0, 1.4→1, 1.5→2)
       const branchStock = state.stockData[`${product}:${branchCode}`];
       const mainStock = state.stockData[`${product}:MAIN`];
       const branchAvailable = branchStock?.qty_available || 0;
       const mainAvailable = mainStock?.qty_available || 0;
-      const avgMonthMain = avgRow?.avg_mth_main || 0;
+      const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);  // Round main avg too
       const ctnQty = state.ctnMap[product] || 0;
       const dcCode = state.dcMap[product] || '';
       
@@ -472,6 +473,7 @@
             product, dc_code: dcCode, category: 'no_avg',
             cover_days: 999, branch_stock: branchAvailable, avg_branch: 0,
             main_stock: mainAvailable, avg_main: avgMonthMain,
+            can_send: 0, main_safety: 0, need_qty: 0,
             send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
             has_conflict: false, conflict_branches: [], conflict_detail: null,
             send_note: 'no_avg'
@@ -506,6 +508,7 @@
           product, dc_code: dcCode, category,
           cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
           main_stock: mainAvailable, avg_main: avgMonthMain,
+          can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
           has_conflict: false, conflict_branches: [], conflict_detail: null,
           send_note: null
@@ -519,6 +522,7 @@
           product, dc_code: dcCode, category,
           cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
           main_stock: mainAvailable, avg_main: avgMonthMain,
+          can_send: 0, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
           has_conflict: conflict?.hasConflict || false, conflict_branches: conflictBranches,
           conflict_detail: null, send_note: 'no_main_stock'
@@ -551,6 +555,7 @@
       let sendNote = null;
       let sendQty = 0;
       let rounded = 'none';
+      let blockedQty = 0;  // Store the would-be send qty for display when blocked
       
       if (allocatedQty > 0) {
         // Rule: Smart Carton Rounding
@@ -558,13 +563,29 @@
         sendQty = ctnResult.qty;
         rounded = ctnResult.rounded;
         
-        // Rule: Min threshold check — but still show the product
-        const minThreshold = ctnQty > 0 ? Math.ceil(ctnQty / 2) : 3;
-        if (sendQty < minThreshold) {
-          sendNote = 'below_min';
-          sendQty = 0;
-          rounded = 'none';
+        // Rule: Min threshold check — prevent tiny top-ups that aren't worth shipping
+        // BUT: if branch has 0 stock (critical), ALWAYS send regardless of threshold
+        //
+        // Enterprise logic:
+        //   - The threshold should relate to the PRODUCT'S demand, not just CTN size
+        //   - If qty covers less than 1 week of sales → too small to bother
+        //   - But if product only sells 2/month, sending 2 IS meaningful
+        //   - Large CTN sizes (50, 1000) should NOT block small-demand products
+        //
+        // Rule: block if qty < max(1 week of avg sales, 2 units)
+        // This means: R2401 (avg 2/mth → 0.5/wk): threshold = 2, send 2 → OK ✓
+        //             R-CAT6 (avg 49/mth → 11.3/wk): threshold = 12, send 3 → blocked ✓
+        if (branchAvailable > 0) {
+          const weeklyDemand = avgMonthBranch / WEEKS_IN_MONTH;
+          const minThreshold = Math.max(Math.ceil(weeklyDemand), 2);
+          if (sendQty < minThreshold) {
+            sendNote = 'below_min';
+            blockedQty = sendQty;
+            sendQty = 0;
+            rounded = 'none';
+          }
         }
+        // branch == 0: skip threshold — always send, branch is empty
       } else {
         sendNote = 'allocation_zero';
       }
@@ -573,7 +594,8 @@
         product, dc_code: dcCode, category,
         cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
         main_stock: mainAvailable, avg_main: avgMonthMain,
-        send_qty: sendQty, raw_qty: allocatedQty, ctn_qty: ctnQty || null, rounded,
+        can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
+        send_qty: sendQty, raw_qty: allocatedQty, blocked_qty: blockedQty, ctn_qty: ctnQty || null, rounded,
         has_conflict: conflict?.hasConflict || false, conflict_branches: conflictBranches,
         conflict_detail: conflictDetail, send_note: sendNote
       });
@@ -692,9 +714,18 @@
         }
         sendDisplay = '<strong class="send-val">' + line.send_qty + '</strong>' + ctnBadge;
       } else if (line.send_note === 'below_min') {
-        sendDisplay = '<span class="send-hint" title="Below minimum send threshold">&lt; min</span>';
+        const bq = line.blocked_qty || line.raw_qty;
+        const weeklyDemand = line.avg_branch / WEEKS_IN_MONTH;
+        const minTh = Math.max(Math.ceil(weeklyDemand), 2);
+        const tip = `Need: ${line.need_qty} | Calculated: ${bq} | Min threshold: ${minTh} (1 week demand)\nQty covers less than 1 week of sales — not worth shipping as top-up`;
+        sendDisplay = '<span class="send-blocked" title="' + escapeHtml(tip) + '">' + bq + ' <small>‹ min</small></span>';
       } else if (line.send_note === 'no_main_stock') {
-        sendDisplay = '<span class="send-warn" title="Main has no surplus after 8-week safety">No main</span>';
+        const safetyTip = `Main has ${line.main_stock} units but needs ${line.main_safety} for safety (${MAIN_MIN_WEEKS}wk).\nSurplus: ${line.main_stock} − ${line.main_safety} = 0\nBranch needs: ${line.need_qty} units`;
+        if (line.main_stock <= 0) {
+          sendDisplay = '<span class="send-warn" title="' + escapeHtml(safetyTip) + '">No stock</span>';
+        } else {
+          sendDisplay = '<span class="send-warn" title="' + escapeHtml(safetyTip) + '">Main needs it</span>';
+        }
       } else if (line.send_note === 'allocation_zero') {
         sendDisplay = '<span class="send-hint" title="Proportional allocation resulted in 0">0 (alloc)</span>';
       } else if (line.category === 'sufficient') {
@@ -734,6 +765,18 @@
       lines = lines.filter(l => l.category !== 'no_avg');
     }
     
+    // Hide products where Main can't send anything (nothing actionable) unless toggled on
+    if (!state.showNoMainStock) {
+      lines = lines.filter(l => {
+        if (l.send_qty > 0) return true;                // Has action
+        if (l.category === 'no_avg') return true;       // Handled by showNoAvg toggle
+        if (l.category === 'sufficient') return true;   // Already good
+        if (l.send_note === 'no_main_stock') return false; // Main can't send (no surplus)
+        if (l.send_note === 'below_min') return true;   // There IS surplus, just below threshold — still relevant
+        return true;
+      });
+    }
+    
     // Filter by category
     if (state.filter === 'critical') {
       lines = lines.filter(l => l.cover_days < 7 && l.category !== 'no_avg');
@@ -747,6 +790,10 @@
       lines = lines.filter(l => l.has_conflict);
     } else if (state.filter === 'no_avg') {
       lines = lines.filter(l => l.category === 'no_avg');
+    } else if (state.filter === 'to_send') {
+      lines = lines.filter(l => l.send_qty > 0);
+    } else if (state.filter === 'blocked') {
+      lines = lines.filter(l => l.send_note === 'below_min' || l.send_note === 'allocation_zero');
     }
     
     // Search (also matches 5DC code)
@@ -807,7 +854,9 @@
       okCount: withAvg.filter(l => l.cover_days >= 21 && l.cover_days < 35).length,
       sufficientCount: withAvg.filter(l => l.category === 'sufficient').length,
       conflictCount: withAvg.filter(l => l.has_conflict).length,
-      noAvgCount: noAvg.length
+      blockedCount: withAvg.filter(l => l.send_note === 'below_min' || l.send_note === 'allocation_zero').length,
+      noAvgCount: noAvg.length,
+      noMainStockCount: withAvg.filter(l => l.send_note === 'no_main_stock').length
     };
     
     // Update UI elements
@@ -820,6 +869,7 @@
     setEl('okCount', stats.okCount);
     setEl('sufficientCount', stats.sufficientCount);
     setEl('noAvgCount', stats.noAvgCount);
+    setEl('noMainStockCount', stats.noMainStockCount);
     
     const summarySection = document.getElementById('summarySection');
     if (summarySection) summarySection.style.display = 'flex';
@@ -853,6 +903,8 @@
       else if (filter === 'ok') count = stats.okCount;
       else if (filter === 'sufficient') count = stats.sufficientCount;
       else if (filter === 'conflict') count = stats.conflictCount;
+      else if (filter === 'to_send') count = stats.toSendCount;
+      else if (filter === 'blocked') count = stats.blockedCount;
       
       // Add count badge
       let badge = chip.querySelector('.chip-count');
@@ -876,6 +928,19 @@
         noAvgEl.appendChild(badge);
       }
       badge.textContent = `(${stats.noAvgCount})`;
+    }
+
+    // Update No Main Stock toggle count
+    const noMainStockEl = document.getElementById('noMainStockToggle');
+    if (noMainStockEl) {
+      let badge = noMainStockEl.querySelector('.chip-count');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'chip-count';
+        badge.style.cssText = 'font-size:10px;opacity:0.7;margin-left:2px';
+        noMainStockEl.appendChild(badge);
+      }
+      badge.textContent = `(${stats.noMainStockCount})`;
     }
   }
 
@@ -1195,6 +1260,14 @@
     state.showNoAvg = !state.showNoAvg;
     const btn = document.getElementById('noAvgToggle');
     if (btn) btn.classList.toggle('active', state.showNoAvg);
+    state.currentPage = 1;
+    renderTable();
+  };
+
+  window.toggleNoMainStock = function() {
+    state.showNoMainStock = !state.showNoMainStock;
+    const btn = document.getElementById('noMainStockToggle');
+    if (btn) btn.classList.toggle('active', state.showNoMainStock);
     state.currentPage = 1;
     renderTable();
   };

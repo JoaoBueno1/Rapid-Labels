@@ -126,6 +126,8 @@
     .send-val { color: #059669; }
     .send-hint { color: #94a3b8; font-size: 10px; font-weight: 500; }
     .send-warn { color: #dc2626; font-size: 10px; font-weight: 500; }
+    .send-blocked { color: #dc2626; font-size: 12px; font-weight: 600; cursor: help; }
+    .send-blocked small { font-size: 9px; font-weight: 500; opacity: 0.7; }
     .send-ok { color: #10b981; font-size: 13px; }
     .send-na { color: #cbd5e1; }
     
@@ -275,6 +277,10 @@
         <div class="value" style="color:#94a3b8" id="noAvgCount">0</div>
         <div class="label">No AVG Data</div>
       </div>
+      <div class="summary-card">
+        <div class="value" style="color:#f97316" id="noMainStockCount">0</div>
+        <div class="label">No Main Stock</div>
+      </div>
     </div>
 
     <!-- Coverage Distribution Mini Chart -->
@@ -305,10 +311,19 @@
         <button class="filter-chip" data-filter="conflict" onclick="setFilter('conflict')">
           ⚠️ Conflicts
         </button>
+        <button class="filter-chip" data-filter="to_send" onclick="setFilter('to_send')" style="background:#ecfdf5;border-color:#6ee7b7">
+          📦 To Send
+        </button>
+        <button class="filter-chip" data-filter="blocked" onclick="setFilter('blocked')">
+          ⛔ Blocked
+        </button>
       </div>
       <div style="border-left:1px solid #e2e8f0;height:20px;margin:0 4px"></div>
       <button id="noAvgToggle" class="no-avg-toggle" onclick="toggleNoAvg()">
         👻 No AVG
+      </button>
+      <button id="noMainStockToggle" class="no-avg-toggle" onclick="toggleNoMainStock()" title="Show products where Main can't send (no surplus after safety stock)">
+        📦 No Surplus
       </button>
       <input type="text" id="searchInput" placeholder="Search product or 5DC..." 
              style="flex:1;min-width:160px;padding:7px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px"
