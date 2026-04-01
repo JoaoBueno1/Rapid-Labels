@@ -135,6 +135,40 @@ async function sbGet(table, query = '') {
   return res.json();
 }
 
+/**
+ * Paginated Supabase GET — fetches ALL rows even when > 1000.
+ * Supabase REST API defaults to max 1000 rows per request.
+ * This function paginates with Range headers to get everything.
+ */
+async function sbGetAll(table, query = '') {
+  const PAGE_SIZE = 1000;
+  let allRows = [];
+  let offset = 0;
+
+  while (true) {
+    const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`;
+    const res = await fetch(url, {
+      headers: {
+        ...SB_HEADERS,
+        'Prefer': 'count=exact',
+        'Range': `${offset}-${offset + PAGE_SIZE - 1}`,
+      },
+    });
+    if (res.status === 416) break; // Range Not Satisfiable = no more rows
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`Supabase GET ${table}: ${res.status} ${txt}`);
+    }
+    const rows = await res.json();
+    if (!rows.length) break;
+    allRows = allRows.concat(rows);
+    if (rows.length < PAGE_SIZE) break; // Last page
+    offset += PAGE_SIZE;
+  }
+
+  return allRows;
+}
+
 async function sbPost(table, body, conflictColumn) {
   let url = `${SUPABASE_URL}/rest/v1/${table}`;
   if (conflictColumn) url += `?on_conflict=${conflictColumn}`;
@@ -325,6 +359,9 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   } else if (filter === 'corrected') {
     // We'll join corrections on the frontend side
     query += '&anomaly_picks=gt.0';
+  } else if (filter === 'cancelled') {
+    // Orders that were cancelled after being processed
+    query += '&is_cancelled=eq.true';
   }
 
   if (search) {
@@ -423,6 +460,7 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   // ── Step 1: Fetch sale list ──
   console.log(`🔍 Analyzing picks ${dateFrom} → ${dateTo}...`);
   const orders = [];
+  const cancelledFromCin7 = [];
   let page = 1;
 
   // ── FLOOR_DATE: Rolling 45-day lookback ──
@@ -433,8 +471,20 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   const floorDate = new Date();
   floorDate.setDate(floorDate.getDate() - 45);
   const FLOOR_DATE = floorDate.toISOString().split('T')[0];
-  const VALID_FULFILMENT = ['PACKED', 'DISPATCHED', 'FULFILLED', 'SHIPPED'];
-  const VALID_ORDER_STATUS = ['INVOICED', 'COMPLETED'];
+  // ── STAGE GATE: Only process orders that have SHIPPED / FULFILLED ──
+  // Dear Systems saleList field mapping (verified via live data analysis):
+  //   FulFilmentStatus:       FULFILLED | PARTIALLY FULFILLED | NOT FULFILLED | NOT AVAILABLE
+  //   CombinedShippingStatus: SHIPPED   | PARTIALLY SHIPPED   | NOT SHIPPED   | NOT AVAILABLE
+  //   CombinedPackingStatus:  PACKED    | PARTIALLY PACKED    | NOT PACKED    | NOT AVAILABLE
+  //   OrderStatus:            FULFILLED | AUTHORISED | CLOSED | VOIDED | NOT AVAILABLE
+  //
+  // SHIPPED ≡ FULFILLED: These are always in sync (100% correlation across 300+ orders).
+  // No order ever skips SHIPPED — when CombinedShippingStatus=SHIPPED, FulFilmentStatus=FULFILLED.
+  // PARTIALLY FULFILLED orders are EXCLUDED: some lines still in warehouse = picks not final.
+  // This prevents "ghost" re-appearances of orders still being processed.
+  //
+  // Statuses that indicate an order was cancelled/voided AFTER processing
+  const CANCELLED_STATUSES = ['VOID', 'VOIDED', 'CANCELLED', 'CREDITED'];
 
   while (true) {
     await delay(RATE_DELAY);
@@ -444,20 +494,30 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     const sales = data.SaleList || [];
     if (page === 1) console.log(`📋 Page 1: ${sales.length} sales...`);
 
-    const filtered = sales.filter(s => {
+    // Separate: valid orders for analysis + cancelled orders for detection
+    for (const s of sales) {
       const ful = (s.FulFilmentStatus || '').toUpperCase();
+      const shipStatus = (s.CombinedShippingStatus || '').toUpperCase();
       const ost = (s.OrderStatus || s.Status || '').toUpperCase();
-      const isValidStatus = VALID_FULFILMENT.includes(ful) || VALID_ORDER_STATUS.includes(ost);
       const orderDate = (s.OrderDate || '').split('T')[0];
       const isRecent = orderDate >= FLOOR_DATE;
-      return isValidStatus && isRecent;
-    });
-    orders.push(...filtered);
+      if (!isRecent) continue;
+
+      // Gate: FulFilmentStatus=FULFILLED or CombinedShippingStatus=SHIPPED (equivalent, double-check)
+      const isValidStatus = ful === 'FULFILLED' || shipStatus === 'SHIPPED';
+      const isCancelled = CANCELLED_STATUSES.includes(ost) || ful === 'NOT AVAILABLE' && CANCELLED_STATUSES.includes(ost);
+
+      if (isValidStatus) {
+        orders.push(s);
+      } else if (isCancelled) {
+        cancelledFromCin7.push(s);
+      }
+    }
     if (sales.length < 100) break;
     page++;
   }
 
-  console.log(`📋 Found ${orders.length} valid (Invoiced/Packed/Shipped) MW orders`);
+  console.log(`📋 Found ${orders.length} valid (Shipped/Invoiced) MW orders, ${cancelledFromCin7.length} cancelled`);
 
   // Check which orders we already have in Supabase (skip duplicates)
   let existingNumbers = new Set();
@@ -708,6 +768,67 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     console.log(`  [${i + 1}/${newOrders.length}] ${order.OrderNumber}: ${correctCount}✅ ${anomalyCount}⚠️ ${fgOrders.length}🔧`);
   }
 
+  // ── CANCELLATION DETECTION ──
+  // Check if any orders from Cin7's cancelled list have corrections in our DB.
+  // If yes → the corrective stock transfer we made is now WRONG (Cin7 reversed the original pick).
+  // Flag them so the operator can reverse our correction.
+  let cancelledWithCorrections = 0;
+  if (cancelledFromCin7.length > 0) {
+    const cancelledNums = cancelledFromCin7.map(o => o.OrderNumber);
+    try {
+      // Check which cancelled orders exist in our DB AND have corrections
+      for (let b = 0; b < cancelledNums.length; b += 50) {
+        const batch = cancelledNums.slice(b, b + 50);
+        const nums = batch.map(n => `"${n}"`).join(',');
+
+        // Find orders in our DB that match these cancelled order numbers
+        const matchedOrders = await sbGet('pick_anomaly_orders',
+          `select=order_number,is_cancelled&order_number=in.(${encodeURIComponent(nums)})`
+        );
+
+        for (const mo of matchedOrders) {
+          if (mo.is_cancelled) continue; // Already flagged
+
+          // Check if this order has corrections
+          const corrections = await sbGet('pick_anomaly_corrections',
+            `select=id,transfer_status&order_number=eq.${mo.order_number}&limit=1`
+          );
+
+          const cin7Order = cancelledFromCin7.find(o => o.OrderNumber === mo.order_number);
+          const cancelStatus = cin7Order ? (cin7Order.FulFilmentStatus || cin7Order.OrderStatus || 'CANCELLED') : 'CANCELLED';
+
+          await sbPatch('pick_anomaly_orders', `order_number=eq.${mo.order_number}`, {
+            is_cancelled: true,
+            cancelled_at: new Date().toISOString(),
+            order_status: cancelStatus.toUpperCase(),
+            has_correction_conflict: corrections.length > 0,
+          });
+
+          if (corrections.length > 0) {
+            cancelledWithCorrections++;
+            console.log(`⚠️ CANCELLED ORDER WITH CORRECTIONS: ${mo.order_number} — correction may need reversal!`);
+            await logAction({
+              order_number: mo.order_number,
+              action: 'cancellation_detected',
+              details: `Order cancelled (${cancelStatus}) AFTER correction was applied. Stock transfer may need reversal.`,
+              user_email: 'system@auto-sync',
+            });
+          } else {
+            console.log(`ℹ️ Cancelled order ${mo.order_number} (no corrections — safe)`);
+            await logAction({
+              order_number: mo.order_number,
+              action: 'cancellation_detected',
+              details: `Order cancelled (${cancelStatus}). No corrections applied — no action needed.`,
+              user_email: 'system@auto-sync',
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Cancellation check failed:', err.message);
+    }
+  }
+
   // ── Always advance last_synced_date to today ──
   // Since we now sort newest-first, the most recent orders are always processed.
   // Keeping dateFrom stuck caused the old behavior where the sync window grew
@@ -720,15 +841,17 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   const lastSyncedAt = new Date().toISOString();
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1) + 's';
   if (wasCapped) {
-    console.log(`✅ Sync complete (CAPPED): ${results.length} new orders saved, ${newOrders.length - results.length} skipped (no picks). ${orders.length - newOrders.length - existingNumbers.size} remaining. Synced to ${syncDate}. ${apiCallCount} API calls, ${elapsed}`);
+    console.log(`✅ Sync complete (CAPPED): ${results.length} new orders saved. ${cancelledWithCorrections} cancelled w/corrections. ${apiCallCount} API calls, ${elapsed}`);
   } else {
-    console.log(`✅ Sync complete: ${results.length} new orders saved, synced to ${syncDate}. ${apiCallCount} API calls, ${elapsed}`);
+    console.log(`✅ Sync complete: ${results.length} new orders saved, ${cancelledWithCorrections} cancelled w/corrections. synced to ${syncDate}. ${apiCallCount} API calls, ${elapsed}`);
   }
 
   return {
     success: true,
     newOrders: results.length,
     skippedExisting: existingNumbers.size,
+    cancelledDetected: cancelledFromCin7.length,
+    cancelledWithCorrections,
     wasCapped,
     apiCalls: apiCallCount,
     elapsed,
@@ -868,6 +991,105 @@ async function markOrderReviewed(orderNumber, userEmail) {
     console.warn(`⚠️ Failed to mark ${orderNumber} as reviewed:`, err.message);
     throw err;
   }
+}
+
+/**
+ * Reverse a correction transfer for a cancelled order.
+ * Creates a NEW stock transfer in the OPPOSITE direction (pickedBin → expectedBin)
+ * to undo the correction that was applied before the cancellation.
+ */
+async function reverseCorrection({ correctionId, productId, sku, qty, fromBin, toBin, orderNumber }) {
+  // Reverse = swap from/to
+  // Original correction: expectedBin → pickedBin (moving stock to where it was actually picked from)
+  // Reversal: pickedBin → expectedBin (moving it back because the order was cancelled)
+  const bins = await getBinCache();
+  const fromBinId = bins.get(toBin);   // Original "to" becomes "from"
+  const toBinId = bins.get(fromBin);   // Original "from" becomes "to"
+
+  if (!fromBinId) throw new Error(`Bin "${toBin}" not found in location cache`);
+  if (!toBinId) throw new Error(`Bin "${fromBin}" not found in location cache`);
+
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const readableDate = now.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  const lineComment = [
+    `REVERSAL — Pick Anomaly Correction`,
+    `Order: ${orderNumber || 'N/A'} (CANCELLED)`,
+    `SKU: ${sku}  |  Qty: ${qty}`,
+    `Reversing: ${toBin} → ${fromBin}`,
+    `Date: ${readableDate}`,
+  ].join('\n');
+
+  const reference = `PA-REV | ${orderNumber || 'UNKNOWN'} | ${readableDate}`;
+
+  // Create + complete the reversal transfer
+  await delay(RATE_DELAY);
+  const result = await cin7Post('stockTransfer', {
+    Status: 'DRAFT',
+    From: fromBinId,
+    To: toBinId,
+    Reference: reference,
+    Lines: [{
+      ProductID: productId,
+      TransferQuantity: qty,
+      Comments: lineComment,
+    }],
+  });
+
+  const transferId = result?.TaskID || result?.ID || result?.StockTransferID || null;
+  let transferRef = result?.Number || result?.Reference || null;
+  let transferStatus = 'DRAFT';
+
+  if (transferId) {
+    try {
+      await delay(RATE_DELAY);
+      const completed = await cin7Put('stockTransfer', {
+        TaskID: transferId,
+        From: fromBinId,
+        To: toBinId,
+        Status: 'COMPLETED',
+        CompletionDate: todayStr,
+        Reference: reference,
+        CostDistributionType: 'Cost',
+        SkipOrder: true,
+        Lines: [{
+          ProductID: productId,
+          TransferQuantity: qty,
+          Comments: lineComment,
+        }],
+      });
+      transferStatus = 'COMPLETED';
+      transferRef = completed?.Number || completed?.Reference || transferRef;
+      console.log(`✅ Reversal transfer ${transferId} completed (${transferRef})`);
+    } catch (err) {
+      console.warn(`⚠️ Could not complete reversal transfer ${transferId}: ${err.message}. Keeping as DRAFT.`);
+    }
+  }
+
+  // Mark the original correction as reversed
+  if (correctionId) {
+    try {
+      await sbPatch('pick_anomaly_corrections', `id=eq.${correctionId}`, {
+        is_reversed: true,
+        reversed_at: now.toISOString(),
+        reversal_transfer_id: transferId ? String(transferId) : null,
+        reversal_transfer_ref: transferRef,
+      });
+    } catch (err) {
+      console.warn(`⚠️ Failed to mark correction as reversed:`, err.message);
+    }
+  }
+
+  await logAction({
+    order_number: orderNumber,
+    action: 'correction_reversed',
+    details: `REVERSAL Transfer ${transferRef || transferId || 'N/A'} (${transferStatus}): ${sku} ×${qty} FROM ${toBin} → TO ${fromBin}`,
+    user_email: 'operator',
+  });
+
+  console.log(`🔄 REVERSED correction: ${sku} ×${qty} FROM ${toBin} → TO ${fromBin} | Ref: ${reference}`);
+  return { transferId, transferRef, transferStatus, reference };
 }
 
 // ═══════════════════════════════════════════════════
@@ -1020,7 +1242,64 @@ function registerPickAnomalyRoutes(app) {
     }
   });
 
-  console.log('✅ Pick anomaly routes registered');
+  /**
+   * POST /api/pick-anomalies/reverse-correction
+   * Reverse a correction (create opposite stock transfer) for a cancelled order.
+   * Body: { correctionId, productId, sku, qty, fromBin, toBin, orderNumber }
+   */
+  app.post('/api/pick-anomalies/reverse-correction', async (req, res) => {
+    try {
+      const { correctionId, productId, sku, qty, fromBin, toBin, orderNumber } = req.body;
+      if (!sku || !qty || !fromBin || !toBin) {
+        return res.status(400).json({ success: false, error: 'Missing required fields (sku, qty, fromBin, toBin)' });
+      }
+      const result = await reverseCorrection({ correctionId, productId, sku, qty, fromBin, toBin, orderNumber });
+      res.json({ success: true, reversal: result });
+    } catch (err) {
+      console.error('❌ Reverse correction error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
+   * GET /api/pick-anomalies/cancelled
+   * Get orders that were cancelled after corrections were applied.
+   * These need operator attention to reverse the stock transfers.
+   */
+  app.get('/api/pick-anomalies/cancelled', async (req, res) => {
+    try {
+      const cancelled = await sbGet('pick_anomaly_orders',
+        'select=*&is_cancelled=eq.true&order=cancelled_at.desc'
+      );
+
+      // Fetch corrections for these orders
+      const withConflicts = cancelled.filter(o => o.has_correction_conflict);
+      let corrections = [];
+      if (withConflicts.length > 0) {
+        const nums = withConflicts.map(o => `"${o.order_number}"`).join(',');
+        corrections = await sbGet('pick_anomaly_corrections',
+          `select=*&order_number=in.(${encodeURIComponent(nums)})`
+        );
+      }
+
+      // Attach corrections to their orders
+      for (const o of cancelled) {
+        o._corrections = corrections.filter(c => c.order_number === o.order_number);
+      }
+
+      res.json({
+        success: true,
+        orders: cancelled,
+        total: cancelled.length,
+        needsReversal: withConflicts.length,
+      });
+    } catch (err) {
+      console.error('❌ Cancelled orders error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  console.log('✅ Pick anomaly routes registered (incl. cancellation detection)');
 
   /**
    * GET /api/pick-anomalies/analytics
@@ -1029,7 +1308,8 @@ function registerPickAnomalyRoutes(app) {
    */
   app.get('/api/pick-anomalies/analytics', async (req, res) => {
     try {
-      const allOrders = await sbGet('pick_anomaly_orders',
+      // sbGetAll paginates automatically (Supabase default limit = 1000 rows)
+      const allOrders = await sbGetAll('pick_anomaly_orders',
         'select=order_number,order_date,total_picks,correct_picks,anomaly_picks,fg_count,reviewed,picks,fg_orders'
       );
 
@@ -1138,7 +1418,8 @@ function registerPickAnomalyRoutes(app) {
   app.get('/api/pick-anomalies/stats', async (req, res) => {
     try {
       // Use Supabase REST API to aggregate across all orders
-      const allOrders = await sbGet('pick_anomaly_orders',
+      // sbGetAll paginates automatically (Supabase default limit = 1000 rows)
+      const allOrders = await sbGetAll('pick_anomaly_orders',
         'select=total_picks,correct_picks,anomaly_picks,fg_count,reviewed'
       );
 

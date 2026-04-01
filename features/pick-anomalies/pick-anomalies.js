@@ -393,7 +393,8 @@
 
       // Row background: reviewed/correct = green, anomaly pending = orange
       let rowClass = '';
-      if (isReviewed) rowClass = 'pa-row-reviewed';
+      if (o.is_cancelled) rowClass = 'pa-row-cancelled';
+      else if (isReviewed) rowClass = 'pa-row-reviewed';
       else if (anom > 0 && fg > 0) rowClass = 'pa-row-mixed';
       else if (anom > 0) rowClass = 'pa-row-anomaly';
       else if (fg > 0) rowClass = 'pa-row-fg';
@@ -401,7 +402,8 @@
 
       // SO Status column (Cin7 real status)
       const soStatus = esc(o.order_status || '—');
-      const soClass = soStatus.toUpperCase().includes('INVOICED') ? 'pa-so-invoiced'
+      const soClass = o.is_cancelled ? 'pa-so-cancelled'
+        : soStatus.toUpperCase().includes('INVOICED') ? 'pa-so-invoiced'
         : soStatus.toUpperCase().includes('FULFILLED') ? 'pa-so-fulfilled'
         : soStatus.toUpperCase().includes('PACKED') ? 'pa-so-packed'
         : soStatus.toUpperCase().includes('SHIPPED') ? 'pa-so-shipped'
@@ -409,7 +411,11 @@
 
       // Anomaly Status column
       let statusHtml = '';
-      if (anom === 0) {
+      if (o.is_cancelled && o.has_correction_conflict) {
+        statusHtml = '<span class="pa-badge pa-badge-cancelled-conflict">🔴 Cancelled — Reversal needed</span>';
+      } else if (o.is_cancelled) {
+        statusHtml = '<span class="pa-badge pa-badge-cancelled">❌ Cancelled</span>';
+      } else if (anom === 0) {
         statusHtml = '<span class="pa-badge pa-badge-correct">✅ OK</span>';
       } else if (corrections.length >= anom) {
         statusHtml = `<span class="pa-badge pa-badge-correct">✅ Fixed</span>`;
@@ -548,7 +554,16 @@
     const correctionPct = totalAnom > 0 ? Math.round((correctedCount / totalAnom) * 100) : 0;
 
     document.getElementById('paModalSummary').innerHTML =
-      `<div class="pa-summary-v2">
+      `${order.is_cancelled ? `<div class="pa-cancelled-banner">
+        <div class="pa-cancelled-icon">❌</div>
+        <div class="pa-cancelled-text">
+          <strong>Order Cancelled</strong> — ${order.has_correction_conflict
+            ? 'Corrections were applied before cancellation. Stock may be duplicated. <strong>Reversal recommended.</strong>'
+            : 'No corrections applied — no action needed.'}
+        </div>
+        ${order.has_correction_conflict ? `<button class="pa-btn pa-btn-reverse" onclick="PA.reverseAllCorrections('${esc(order.order_number)}')">🔄 Reverse Corrections</button>` : ''}
+      </div>` : ''}
+      <div class="pa-summary-v2">
         <div class="pa-summary-accuracy">
           <div class="pa-accuracy-header">
             <span class="pa-accuracy-label">Pick Accuracy</span>
@@ -568,7 +583,7 @@
         <div class="pa-summary-meta">
           <div class="pa-meta-chip"><span class="pa-meta-icon">📅</span>${formatDate(order.order_date)}</div>
           <div class="pa-meta-chip"><span class="pa-meta-icon">🚚</span>${order.fulfilled_date ? formatDate(order.fulfilled_date) : '—'}</div>
-          <div class="pa-meta-chip"><span class="pa-so-badge ${order.order_status === 'FULFILLED' ? 'pa-so-fulfilled' : 'pa-so-other'}">${esc(order.order_status || '—')}</span></div>
+          <div class="pa-meta-chip"><span class="pa-so-badge ${order.is_cancelled ? 'pa-so-cancelled' : order.order_status === 'FULFILLED' ? 'pa-so-fulfilled' : 'pa-so-other'}">${esc(order.order_status || '—')}</span></div>
           <div class="pa-meta-chip"><span class="pa-meta-icon">🔍</span>${formatDate(order.analyzed_at)}</div>
         </div>
       </div>`;
@@ -1960,6 +1975,57 @@
   }
 
   /* ═══════════════════════════════════════════════
+     REVERSE CORRECTIONS (for cancelled orders)
+     ═══════════════════════════════════════════════ */
+  async function reverseAllCorrections(orderNumber) {
+    const order = state.orders.find(o => o.order_number === orderNumber);
+    if (!order) return alert('Order not found');
+
+    const corrections = order.corrections || [];
+    if (!corrections.length) return alert('No corrections to reverse');
+
+    // Filter out already-reversed corrections
+    const toReverse = corrections.filter(c => !c.is_reversed);
+    if (!toReverse.length) return alert('All corrections already reversed');
+
+    if (!confirm(`Reverse ${toReverse.length} correction(s) for ${orderNumber}?\n\nThis will create INVERSE stock transfers (undo the corrections because the order was cancelled).`)) {
+      return;
+    }
+
+    let ok = 0, fail = 0;
+    for (const c of toReverse) {
+      try {
+        const resp = await fetch('/api/pick-anomalies/reverse-correction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            correctionId: c.id,
+            productId: c.product_id || null,
+            sku: c.sku,
+            qty: c.qty,
+            fromBin: c.from_bin,
+            toBin: c.to_bin,
+            orderNumber: c.order_number,
+          }),
+        });
+        const data = await resp.json();
+        if (data.success) ok++;
+        else { fail++; console.error('Reversal failed:', data.error); }
+      } catch (err) {
+        fail++;
+        console.error('Reversal error:', err);
+      }
+    }
+
+    if (ok > 0) {
+      alert(`✅ ${ok} correction(s) reversed successfully${fail > 0 ? ` (${fail} failed)` : ''}`);
+      await loadHistory(); // Refresh
+    } else {
+      alert(`❌ All reversals failed. Check console.`);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════
      PUBLIC API (window.PA)
      ═══════════════════════════════════════════════ */
   window.PA = {
@@ -1986,6 +2052,7 @@
     closeBulkPreview,
     printBulkReport,
     clearBulkSelection,
+    reverseAllCorrections,
     _bulkPreviewToggle,
     nextPage,
     prevPage,
