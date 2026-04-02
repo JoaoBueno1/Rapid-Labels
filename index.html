@@ -1235,7 +1235,9 @@
                             for (let i = 6; i >= 0; i--) {
                                 const dayStart = new Date(todayStart.getTime() - i * 86400000);
                                 const dayEnd = new Date(dayStart.getTime() + 86400000 - 1);
-                                const dayLabel = dayNames[dayStart.getUTCDay()];
+                                // Use AEST day (add offset before getting day-of-week,
+                                // because dayStart is AEST midnight expressed in UTC = previous UTC day)
+                                const dayLabel = dayNames[new Date(dayStart.getTime() + AEST_OFFSET * 3600000).getUTCDay()];
                                 const count = completed.filter(r => {
                                     if (!r.completed_at) return false;
                                     const t = new Date(r.completed_at);
