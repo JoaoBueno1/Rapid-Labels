@@ -1,0 +1,1648 @@
+======================================================================
+  DISCREPANCY REPORT — Carton & Pallet
+  Generated: 2026-03-06 00:20:45 UTC
+======================================================================
+
+Spreadsheet: 2986 SKUs loaded
+Supabase PCR: 1710 SKUs loaded
+Cin7 API: fetching all products...
+Cin7 API: 7943 products loaded
+
+══════════════════════════════════════════════════════════════════════
+  SECTION 1: CARTON QTY — Spreadsheet vs Cin7 API
+  Rule: Cin7 is MASTER. Differences listed for review.
+══════════════════════════════════════════════════════════════════════
+
+Carton values AGREE: 1675
+Carton values DIFFER: 164
+Carton only in spreadsheet (Cin7=0): 246
+Carton only in Cin7 (sheet=0): 21
+Cin7 carton SKUs NOT in spreadsheet: 835
+
+── 1A. ALL 164 CARTON DIFFERENCES (sheet vs cin7) ──
+SKU                                  SHEET   CIN7    DIFF  PRODUCT NAME
+----------------------------------------------------------------------------------------------------
+R2660                                 1000      1    -999  Mounting bracket to suit R2651 3 circuit
+R2340-WW-8-V2                           20    800    +780  5w 24V 8mm COB LED Strip Light, IP20, 30
+R2340-XW-8                              20    800    +780  5w 24V 8mm COB LED Strip Light, IP20, 27
+R2332-WW                               850    250    -600  9.6w 24V LED Strip Light, IP20, 3000K WW
+R2332-WW-15-V2                         450     20    -430  9.6w, 24v 8mm LED Strip Light 3000K - WW
+R2332-WW-5                             200    600    +400  9.6w, 24v LED Strip Light 3000K - WW 5M 
+R2332-CW-15                            450    150    -300  9.6W 24V 8mm LED Strip Light, IP20, 4000
+R440-SUS-2M-BK                         350     50    -300  2m Suspension kit to suit R4400 range
+R3144-1M                               300     10    -290  Suspension Kit to suit R3115& R3116 -1M
+R3144-2M                               300     10    -290  Suspension Kit to suit R3115& R3116 -2M
+R2341-WW-4                             400    160    -240  10w 24V COB LED Strip Light, IP20, 3000K
+R2341-CW-6                             240      6    -234  10w 24V COB LED Strip Light, IP20, 4000K
+R3241-070-LENS-R01602                  225      2    -223  Lens to suit R3241-70w-21w - R01602
+R2340-XW-10                            280    500    +220  5w 24V 8mm COB LED Strip Light, IP20, 27
+R2340-XW-6                              90    300    +210  5w 24V 8mm COB LED Strip Light, IP20, 27
+R2331-CW-10                            100    300    +200  4.8W 24V LED Strip Light, IP20 4000k, 10
+R3241-120-LENS-R01607                  400    200    -200  Lens to suit R3241-120w-36w - R01607
+R2361-CW-10                             20    200    +180  10w 24V COB LED Strip Light, IP65, 4000K
+R2332-CW-8                             320    150    -170  9.6W 24V 8mm LED Strip Light, IP20, 4000
+R2332-WW-2-V2                          200     30    -170  9.6w, 24v 8mm LED Strip Light 3000K - WW
+R2340-CW-8-V2                          160      8    -152  5w 24V 8mm COB LED Strip Light, IP20, 40
+R2331-WW                               400    550    +150  4.8W 24V LED Strip Light, IP20, 3000K WW
+R2332-CW-6                             300    150    -150  9.6W 24V 8mm LED Strip Light, IP20, 4000
+R2332-WW-6-V2                          300    150    -150  9.6w, 24v 8mm LED Strip Light 3000K - WW
+R2340-WW-4-V2                          400    256    -144  5w 24V 8mm COB LED Strip Light, IP20, 30
+R2353-CW-15                            150     10    -140  7W 24V LED Strip Light, IP65, 4000K CW, 
+R2353-WW-15                            150     10    -140  7w 24V LED Strip Light, IP65, 3000K WW, 
+R2362-RGBW-15                          150     10    -140  15W 24V LED Strip Light, IP65, RGBW, per
+R2361-WW-10                            150     16    -134  10w 24V COB LED Strip Light, IP65, 3000K
+R2332-WW-15                             20    150    +130  9.6w, 24v LED Strip Light 3000K - WW 15M
+R2333-CW-6                             180     60    -120  7W 24V LED Strip Light, IP20, 4000K CW, 
+R2340-XW-2                              80    200    +120  5w 24V 8mm COB LED Strip Light, IP20, 27
+R2332-WW-8-V2                           40    150    +110  9.6w, 24v 8mm LED Strip Light 3000K - WW
+R2353-CW-6                             120     10    -110  7W 24V LED Strip Light, IP65, 4000K CW, 
+R2352-CW-15                             45    150    +105  9.6W 24V LED Strip Light, IP65, 4000K, 1
+R2352-RGBW-10                          200    100    -100  9.6W 24V LED Strip Light, IP65, RGBW, 10
+R2641-WH                               100    200    +100  3m Suspension kit to suit 3 circuit trac
+R2652-WH                               100      1     -99  Centre power adapter to suit 3 circuit D
+R2654-WH                               100      1     -99  Dead End Cap to Suit 3 Circuit Dali Trac
+R2655-WH                               100      1     -99  Mini straight track joiner to suit 3 cir
+R2360-WW-10-V2                         100     10     -90  5w 24V 8mm COB LED Strip Light, IP65, 30
+R2362-RGBW-10                          100     10     -90  15W 24V LED Strip Light, IP65, RGBW, per
+R1147-WH-WH-60-SM                       12     96     +84  25W Dimmable, Medium White Surface Mount
+R2334-CW-8                             160     80     -80  14.4W 24V LED Strip Light, IP20, 4000K,1
+R2334-WW-15                             20    100     +80  14.4W 24V LED Strip Light, IP20, 3000K W
+R1140-WH-RM                             24     96     +72  White Adjustable Recess Mount Kit to sui
+R1140-WH-TP                             24     96     +72  White Track Track Pendant Kit to suit R1
+R2322-CW-15                              4     75     +71  10w 24v, Rapid Neoflex Dual powered, 400
+R2322-DL-15                              4     75     +71  10w 24v, Rapid Neoflex Dual powered, 500
+R2322-RGBW-15                            4     75     +71  10w 24v, Rapid Neoflex Dual powered, RGB
+R1094-REFLECTOR-MS                      30    100     +70  Matt Silver Reflector for R1094 downligh
+R2360-CW-8-V2                           10     80     +70  5w 24V 8mm COB LED Strip Light, IP65, 40
+R2362-RGBW-8                            80     10     -70  15W 24V LED Strip Light, IP65, RGBW, per
+R2322-RGBW-8                             5     70     +65  10w 24v, Rapid Neoflex Dual powered, RGB
+R2322-DL-10                              7     70     +63  10w 24v, Rapid Neoflex Dual powered, 500
+R2322-RGBW-2                            10     70     +60  10w 24v, Rapid Neoflex Dual powered, RGB
+R2322-RGBW-4                            10     70     +60  10w 24v, Rapid Neoflex Dual powered, RGB
+R2322-RGBW-6                            10     70     +60  10w 24v, Rapid Neoflex Dual powered, RGB
+R2353-WW-4                              80     20     -60  7w 24V LED Strip Light, IP65, 3000K WW, 
+R2354-WW-15                            150     90     -60  14.4W 24V LED Strip Light, IP65, 3000K W
+R6106-SS-WW                             20     80     +60  9W 12v DC 316 Stainless steel uplight, 3
+R2331-WW-5                             150    100     -50  4.8W 24V LED Strip Light, IP20, 3000K WW
+R2332-CW-5-V1                          250    200     -50  9.6W 24V LED Strip Light, IP20, 4000K CW
+R2334-DL                               100     50     -50  14.4W 24V LED Strip Light, IP20, 5000k D
+R2352-WW-10                            200    150     -50  9.6W 24V LED Strip Light, IP65, 3000K WW
+R2354-CW-10                            100    150     +50  14.4W 24V LED Strip Light, IP65, 4000K, 
+R2354-WW-10                            100     50     -50  14.4W 24V LED Strip Light, IP65, 3000K W
+R2655-BK                                50    100     +50  Mini straight track joiner to suit 3 cir
+R2960                                   50    100     +50  D4/800MA/35W Dimmable Driver with Flex a
+R6104-SS-WW                             50    100     +50  2W 12v DC 316 Stainless steel uplight, 3
+R2653-L-WH                              50      1     -49  Live end power adapter to suit Dali 3 ci
+R2653-R-BK                              50      1     -49  Live end power adapter to suit Dali 3 ci
+R2656-R-BK                              50      1     -49  L Shape 90o track joiner to suit 3 circu
+R2656-R-WH                              50      1     -49  L Shape 90o track joiner to suit 3 circu
+R2657-L-BK                              50      1     -49  T Shape track joiner to suit 3 circuit D
+R2657-L-WH                              50      1     -49  T Shape track joiner to suit 3 circuit D
+R2657-R-BK                              50      1     -49  T Shape track joiner to suit 3 circuit D
+R2657-R-WH                              50      1     -49  T Shape track joiner to suit 3 circuit D
+R134M-5W-CW-40                          48      2     -46  Module for R1341 head range - 5w CW 40 d
+R134M-10W-WW-40                         48      4     -44  Module for R1342 and R1343 head range - 
+LENS-R3070_1-60deg                      10     50     +40  60 degree lens to suit R3070 and R3071 F
+R2321-CW-5                              10     50     +40  10w 24v, Rapid Neoflex dual powered, 400
+R2322-DL-5                              10     50     +40  10w 24v, Rapid Neoflex Dual powered, 500
+R2322-WW-5                              10     50     +40  10w 24v, Rapid Neoflex dual powered, 300
+R2352-RGBW-2                            60    100     +40  9.6W 24V LED Strip Light, IP65, RGBW, 2m
+R2360-XW-8                              10     50     +40  5w 24V 8mm COB LED Strip Light, IP65, 27
+R6070-BK-WW                             50     12     -38  10w LED Adjustable Wall Light. Black, 30
+R1354-30-WH-CW                          12     48     +36  30w Dimmable COB Downlight, White, IP44,
+R1342-BK                                36      2     -34  Black fixed medium slotter head only to 
+R2322-CW-10                              7     40     +33  10w 24v, Rapid Neoflex Dual powered, 400
+R1342-WH                                36      4     -32  White fixed medium slotter head only to 
+R2321-DL-5                              80     50     -30  10w 24v, Rapid Neoflex Dual powered, 500
+R2352-RGBW-5                            20     50     +30  9.6W 24V LED Strip Light, IP65, RGBW, 5m
+R2360-XW-4                              24     50     +26  5w 24V 8mm COB LED Strip Light, IP65, 27
+R2352-CW-6-V2                          120     95     -25  9.6W 24V 8mm LED Strip Light, IP65, 4000
+R2340-XW-4                             280    256     -24  5w 24V 8mm COB LED Strip Light, IP20, 27
+R3240-LENS-R09605                       25      1     -24  Lens to suit R3240, 30w,50w,90w - R09605
+R3240-LENS-R09614                       25      1     -24  Lens to suit R3240, 30w,50w,90w - R09614
+R1094-REFLECTOR-SIL                     30     53     +23  Silver Reflector for R1094 downlight ran
+R1094-REFLECTOR-WH                      30     53     +23  White Reflector for R1094 downlight rang
+R1341-BK                                48     25     -23  Black fixed small slotter head only to s
+R1343-A-BK                              24      1     -23  Black adjustable large slotter head only
+R1343-A-WH                              24      1     -23  White adjustable large slotter head only
+R1343-WH                                24      2     -22  White fixed large slotter head only to s
+R2322-RGBW-10                           50     70     +20  10w 24v, Rapid Neoflex Dual powered, RGB
+R2333-WW-2                              80    100     +20  7w 24V LED Strip Light, IP20, 3000K WW, 
+R2352-CW-5                              75     95     +20  9.6W 24V LED Strip Light, IP65, 4000K, 5
+R2352-RGBW-6                           120    100     -20  9.6W 24V LED Strip Light, IP65, RGBW, 6m
+R2352-RGBW-8                            80    100     +20  9.6W 24V LED Strip Light, IP65, RGBW, 8m
+R3250-180-BK-CW_R10503                   1     20     +19  180w 4000K BLK LED Area Light with R1050
+R3250-180-BK-DL_R10503                   1     20     +19  180w 5000K BLK LED Area Light with R1050
+R1069-WH-12W-WW-60                      18     36     +18  12w Architectural Dimmable Deep Set COB 
+R1165-BK-CW                             36     18     -18  9w LED Surface Mount Polycarb Downlight 
+R1165-WH-CW                             36     18     -18  9w LED Surface Mount Polycarb Downlight 
+R3250-BRACKET-ULRG                       2     20     +18  U-Brack for Hi Powered LED Streetlight -
+R2352-CW-2-V2                           80     95     +15  9.6W 24V 8mm LED Strip Light, IP65, 4000
+R3590                                   20      6     -14  20W/40W Dual Wattage, 1200mm Slim LED Ba
+R1066-WH                                36     48     +12  R1066 White Single Square Slotter Head O
+R1073-WH-12W-CW-60                      24     36     +12  12w COB Dimmable Adjustable Downlight, R
+R1073-WH-12W-WW-60                      24     36     +12  12w COB Dimmable Adjustable Downlight, R
+R1073-WH-9W-WW-60                       36     48     +12  12W - 6W COB Dimmable Adjustable Downlig
+R1078-WH-12W-WW-60                      48     36     -12  12w COB Pin Spot Dimmable Downlight, Rem
+R107M-12W-WW-60-S                       48     36     -12  Module for R107 head range - WW 60 degre
+R107M-12W-XW-60-S                       48     36     -12  Module for R107 head range - 2700K 60 de
+R1140-WH-PND                            36     24     -12  White Pendant Kit to suit R1140
+R1141-WH-PND                            36     24     -12  White Pendant Kit to suit R1141
+R2322-CW-5                              10     20     +10  10w 24v, Rapid Neoflex Dual powered, 400
+R2340-WW-6-V2                           50     40     -10  5w 24V 8mm COB LED Strip Light, IP20, 30
+R2354-WW-2                              60     50     -10  14.4W 24V LED Strip Light, IP65, 3000K W
+R2362-RGBW-2                            10     20     +10  15W 24V LED Strip Light, IP65, RGBW, per
+R2382_4-DIFF-5                          20     30     +10  Diffuser to suit R2382 and R2384 extrusi
+R6232-WH-TRI                            10     20     +10  20W-12W Quad Watt 300mm Polycarbonate Bu
+R7001                                  330    320     -10  2 core 600mm Flex and Plug - BK
+RCLIPS-R2301-1M                         25     35     +10  1m Bendable mounting bracket to suit R23
+JB30W                                   14     20      +6  40W Blue COB LED pool light
+R2202-TK-BK-CW                          10      4      -6  45w 2330mm Rapidline Linear Extrusion wi
+R2202-TK-BK-WW                          10      4      -6  45w 2330mm Rapidline Linear Extrusion wi
+R2202-TK-WH-CW                          10      4      -6  45w 2330mm Rapidline Linear Extrusion wi
+R2202-TK-WH-WW                          10      4      -6  45w 2330mm Rapidline Linear Extrusion wi
+R2206-WH-WW                              4     10      +6  29w 1167mm Rapidline Linear Extrusion - 
+R2207-BK-WW                              4     10      +6  45w 2330mm Rapidline Linear Extrusion - 
+R2207-WH-WW                              4     10      +6  45w 2330mm Rapidline Linear Extrusion - 
+R2360-WW-8-V2                           10     16      +6  5w 24V 8mm COB LED Strip Light, IP65, 30
+R2651-BK-1M-RM                           9      3      -6  1m Three circuit 6 wire track to suit Da
+R2651-WH-1M-RM                           9      3      -6  1m Three circuit 6 wire track to suit Da
+R2651-WH-3M-RM                           6     12      +6  3m Three circuit 6 wire track to suit Da
+24v-IP67-150w-DIM                       15     10      -5  150w, 24VDC Weatherproof LED Driver with
+R2651-BK-2M-RM                           9      4      -5  2m Three circuit 6 wire track to suit Da
+R2651-WH-2M-RM                           9      4      -5  2m Three circuit 6 wire track to suit Da
+R3240-LENS-R09602                       20     25      +5  Lens to suit R3240, 30w,50w,90w - R09602
+R3262-SL-60                              6     10      +4  Twin Post Top Bracket to suit 60mm pole,
+R6150                                    6      2      -4  50w Slimline Floodlight, IP65, Black
+R6150-S                                  6      2      -4  50w Slimline Floodlight with Microwave S
+R2651-BK-3M-RM                           6      9      +3  3m Three circuit 6 wire track to suit Da
+R2370-BK-3M                              6      8      +2  3m Aluminium Extrusion, Black, Opal Diff
+R2370-WH-2M                             10      8      -2  2m Aluminium Extrusion, White, Opal Diff
+R3058                                    8      6      -2  Pole Mount Adaptor 76mm To Suit Commerci
+R3262-BK-60                              6      8      +2  Twin Post Top Bracket to suit 60mm pole,
+R3302-020                                4      6      +2  20w LED Wall Pack IP66, Black, 5000k *
+R1341-A-BK                              24     25      +1  Black adjustable small slotter head only
+R1341-A-WH                              24     25      +1  White adjustable small slotter head only
+R2306-WW-2.5                            37     38      +1  9w 24v CRI90 3000K Mini LED Neon with Tr
+R2651-WH-3M-SM                           8      9      +1  3m Three circuit 6 wire track to suit Da
+R3206-DL-V2                              6      5      -1  36w Backlit LED Panel 1200mm x 300mm X 2
+
+── 1B. CARTON ONLY IN SPREADSHEET (Cin7 = 0) — 246 items ──
+These exist in Cin7 but CartonQuantity=0. Sheet has a value.
+SKU                                  SHEET  PRODUCT NAME
+--------------------------------------------------------------------------------
+R-CAT6-V1                             1000  CAT6E RJ45 Jack *
+R-CAT6                                1000  CAT6E RJ45 Jack
+R-TVF-F-V1                            1000  F-F Type TV Mechanism *
+R-TVF-F                               1000  F-F Type TV Mechanism
+R-TVPAL-F-V1                          1000  PAL-F Type TV Mechanism
+R-TVPAL-F                             1000  PAL-F Type TV Mechanism
+R2340-WW-5                             800  5w 24V COB LED Strip Light, IP20, 3000K 
+R2372-IC                               500  Inner clips to suit R2372 gear tray- wit
+R2374-MC                               500  Mounting clips to suit R2374
+R2373-IC                               480  Internal gear tray clips to suit R2373 -
+R2374-SUS                              300  2m Suspension Kit - Suit R2374
+R2331-DL-10                            300  4.8W 24V LED Strip Light, IP20 5000k DL,
+R2333-WW-6                             300  7w 24V LED Strip Light, IP20, 3000K WW, 
+RCLIPS-R2321-1M                        300  Rapid Neoflex Mounting Clips, 1 metre
+R-SM35                                 300  35A Single Pole mechanism *
+R2374-BK-EC                            250  End cap for R2374-WH
+R8002-G45-B                            250  12v 0.5w globes for R8001 Festoon, G45, 
+R8002-G45-G                            250  12v 0.5w globes for R8001 Festoon, G45, 
+R8002-G45-P                            250  12v 0.5w globes for R8001 Festoon, G45, 
+R8002-G45-R                            250  12v 0.5w globes for R8001 Festoon, G45, 
+R8002-G45-Y                            250  12v 0.5w globes for R8001 Festoon, G45, 
+R8002-S14-CW                           250  12v 0.5w globes for R8001 Festoon, S14, 
+R-SMI10                                250  10A Intermediate mechanism *
+R2332-DL                               200  9.6W 24V LED Strip Light, IP20, 5000K DL
+R2334-CW-4                             200  14.4W 24V LED Strip Light, IP20, 4000K,1
+R2377-AL-1M                            200  Extrusion to suit COB LED Strip 10mm x 7
+R2610-WH                               200  3m Wire suspension kit to suit single ci
+R-BP-WH                                200  Blank Plate
+R-GP1-WH-V1                            200  1 Gang Rigid Plate *
+R-GP2-WH-V1                            200  2 Gang Rigid Plate *
+R-GP3-WH-V1                            200  3 Gang Rigid Plate *
+R-GP4-WH-V1                            200  4 Gang Rigid Plate *
+R-GP5-WH-V1                            200  5 Gang Rigid Plate *
+R-GP6-WH-V1                            200  6 Gang Rigid Plate *
+R-MB34                                 200  34mm Mounting Block
+R-RJ11                                 200  4 Core Telephone Mechanism *
+R-SLBP-WH-V1                           200  Slimline Blank Plate White *
+R-SLGP1-WH-V1                          200  1 Gang Slimline Rigid Plate *
+R-SLGP2-WH-V1                          200  2 Gang Slimline Rigid Plate *
+R-SLGP3-WH-V1                          200  3 Gang Slimline Rigid Plate *
+R-SLGP4-WH-V1                          200  4 Gang Slimline Rigid Plate *
+R-SLGP5-WH-V1                          200  5 Gang Slimline Rigid Plate *
+R-SLGP6-WH-V1                          200  6 Gang Slimline Rigid Plate *
+R-SM16                                 200  10/16A Switch Mechanism
+R-GP1-WH                               200  1 Gang Rigid Plate
+R-GP2-WH                               200  2 Gang Rigid Plate
+R-GP5-WH                               200  5 Gang Rigid Plate
+R-GP6-WH                               200  6 Gang Rigid Plate
+R-SLBP-WH                              200  Slimline Blank Plate White
+R2323-CW-15                            150  6w 24V Neo Slim LED Strip Light, IP65, 4
+R2323-WW-15                            150  6w 24V Neo Slim LED Strip Light, IP65, 3
+R2333-CW                               150  7W 24V LED Strip Light, IP20, 4000K CW, 
+R2351-DL-10                            150  4.8W 24V LED Strip Light, IP65, 5000K DL
+R2352-DL-10                            150  9.6W 24V LED Strip Light, IP65, 5000K DL
+R2352-DL-15                            150  9.6W 24V LED Strip Light, IP65, 5000K DL
+R-PMBS                                 150  Plaster Bracket suitable for slimline Se
+R2361-CW                               130  10w 24V COB LED Strip Light, IP65, 4000K
+R2352-CW                               128  9.6W 24V LED Strip Light, IP65, 4000K, p
+R2373-SUS                              120  Suspension Kit - Suit R2373
+R2351-CW-15                            120  4.8W 24V LED Strip Light, IP65, 4000k, 1
+R2353-WW-6                             120  7w 24V LED Strip Light, IP65, 3000K WW, 
+R2354-WW-4                             120  14.4W 24V LED Strip Light, IP65, 3000K W
+R2354-WW-6                             120  14.4W 24V LED Strip Light, IP65, 3000K W
+R2361-WW-6                             120  10w 24V COB LED Strip Light, IP65, 3000K
+R2361-WW-8                             120  10w 24V COB LED Strip Light, IP65, 3000K
+R2162-BK-CW                            100  1w 12v DC Step Light, Round, Black, 4000
+R2162-BK-WW                            100  1w 12v DC Step Light Round Black Warm Wh
+R2162-WH-CW                            100  1w 12v DC Step Light, Round, White, 4000
+R2162-WH-WW                            100  1w 12v DC Step Light, Round, White, 3000
+R2372-180                              100  180o Connector to suit R2372
+R2373-MC                               100  Mounting clips to suit R2373
+R2374-180                              100  180o Connector to suit R2374
+R2334-CW                               100  14.4W 24V LED Strip Light, IP20, 4000K, 
+R2340-CW-2-V2                          100  5w 24V 8mm COB LED Strip Light, IP20, 40
+R2352-BL-10                            100  9.6W 24V LED Strip Light, IP65, Blue, 10
+R2361-CW-4                             100  10w 24V COB LED Strip Light, IP65, 4000K
+R2365-1                                100  170o Single Module for Sign Lighting, 12
+R2381-AL-1M                            100  Deep Surface Mount Aluminium Extrusion, 
+R2653-R-WH                             100  Live end power adapter to suit Dali 3 ci
+R-GPO1-15-WH-V1                        100  15A Single Powerpoint *
+R-GPO1-WH-V1                           100  10A Single Powerpoint *
+R-GPO1X-WH-V1                          100  10A Single Powerpoint with Extra Switch 
+R-GPO2-15-WH-V1                        100  15A Double Powerpoint *
+R-HDMI                                 100  HMDI Socket
+R-PMB                                  100  Plaster Bracket
+R-SLGPO1-15-WH-V1                      100  15A Slimline Single Powerpoint *
+R-SLGPO1-WH-V1                         100  10A Slimline Single PowerPoint *
+R-SLGPO2-15-WH-V1                      100  15A Slimline Double powerpoint *
+R-SLSW1-WH-V1                          100  1 Gang Slimline Wall Switch, White *
+R-SLSW2-WH-V1                          100  2 Gang Slimline Wall Switch, White *
+R-SLSW3-WH-V1                          100  3 Gang Slimline Wall Switch, White *
+R-SLSW4-WH-V1                          100  4 Gang Slimline Wall Switch, White *
+R-SLSW5-WH-V1                          100  5 Gang Slimline Wall Switch, White *
+R-SLSW6-WH-V1                          100  6 Gang Slimline Wall Switch, White *
+R-SW1-WH-V1                            100  1 Gang Wall Switch, White *
+R-SW2-WH-V1                            100  2 Gang Wall Switch, White *
+R-SW3-WH-V1                            100  3 Gang Wall Switch, White *
+R-SW4-WH-V1                            100  4 Gang Wall Switch, White *
+R-SW5-WH-V1                            100  5 Gang Wall Switch, White *
+R-SW6-WH-V1                            100  6 Gang Wall Switch, White *
+R9990-KIT                              100  IP65 Spitfire emergency light - Recess k
+R0007                                  100  Wireless remote controller for smoke ala
+R-GPO1-WH                              100  10A Single Powerpoint
+R-GPO1X-WH                             100  10A Single Powerpoint with Extra Switch
+R-GPO2-15-WH                           100  15A Double Powerpoint
+R-GPO2-WH                              100  10A Double Powerpoint
+R-SW1-WH                               100  1 Gang Wall Switch, White
+R-SW3-WH                               100  3 Gang Wall Switch, White
+R2340-WW                                80  5w 24V COB LED Strip Light, IP20, 3000K 
+R2353-CW-4                              80  7W 24V LED Strip Light, IP65, 4000K CW, 
+R2354-CW-4                              80  14.4W 24V LED Strip Light, IP65, 4000K, 
+R2354-WW-8                              80  14.4W 24V LED Strip Light, IP65, 3000K W
+R2387-2M                                80  2m Aluminium Extrusion deep channel - 14
+R2322-CW                                70  10w 24v, Rapid Neoflex Dual powered, 400
+R1208-BK-CW                             64  6w LED High Output Mini Downlight Black 
+R1208-WH-CW                             64  6w LED High Output Mini Downlight White 
+R2373-BK-EC                             60  End cap for R2373 Black with screws
+R2373-WH-EC                             60  End cap for R2373 White with screws
+R2321-RGBW                              60  10w 24v, Rapid Neoflex, RGBW, IP67 - Sid
+R2322-RGBW                              60  10w 24v, Rapid Neoflex Dual power, RGBW,
+R2353-CW-2                              60  7W 24V LED Strip Light, IP65, 4000K CW, 
+R2354-CW-6                              60  14.4W 24V LED Strip Light, IP65, 4000K, 
+R1095-40                                50  40w Driver to suit R135 downlight
+R2160-BK-CW                             50  3w 12v DC Step Light Round Black Cool Wh
+R2160-BK-WW                             50  3w 12v DC Step Light Round Black Warm Wh
+R2161-BK-CW                             50  3w 12v DC Step Light, Square, Black, 400
+R2161-BK-WW                             50  3w 12v DC Step Light Square Black Warm W
+R2161-WH-CW                             50  3w 12v DC Step Light, Square, White, 400
+R2372-90V                               50  90o Vertical Connector to suit R2372
+R2374-90H                               50  90o Horizontal Connector to suit R2374
+R2374-90V                               50  90o Vertical Connector to suit R2374
+R2200-DALI-DRIVER                       50  Dali Driver to suit R2200 Rapidline, 24w
+R2201-WW-IND-KIT_30%                    50  30% 3000K Indirect Kit suit R2201
+R2341-DL-10                             50  10w 24V COB LED Strip Light, IP20, 5000K
+R2401-Controller                        50  Controller for RGBW Strip and Neoflex
+R2402                                   50  Remote control and Controller for RGBW S
+R2598-BK                                50  Surface mounted base to suit 3 circuit t
+R2656-L-BK                              50  L Shape 90o track joiner to suit 3 circu
+R3915-LENS-15                           50  15Deg lens to suit R3915 and R3916 Wall 
+R3915-LENS-30                           50  30Deg lens to suit R3915 and R3916 Wall 
+R6103-BK-CW                             50  0.5W 12v DC Black uplight, 60deg beam, I
+R6103-BK-WW                             50  0.5W 12v DC Black uplight, 60deg beam, I
+R6103-SS-CW                             50  0.5W 12v DC 316 Stainless steel uplight,
+R6104-BK-CW                             50  2W 12v DC Black uplight, 36deg beam, IP6
+R6104-SS-CW                             50  2W 12v DC 316 Stainless steel uplight, 3
+R-WPI120                                50  20A 1 Pole Mini Weatherproof Isolator Sw
+R-WPI132                                50  32A 1 Pole Mini Weatherproof Isolator Sw
+R-WPI232                                50  32A 2 Pole Mini Weatherproof Isolator Sw
+R2353-WW-2                              40  7w 24V LED Strip Light, IP65, 3000K WW, 
+R2380-1M                                40  Corner Mount Aluminium Extrusion, 16mm x
+R2381-1M                                40  Deep Surface Mount Aluminium Extrusion, 
+R2383-1M                                40  Wide Surface Mount Aluminium Extrusion, 
+R2401-Remote                            40  Remote Control for RGBW Strip and Neofle
+R6105-BK-CW                             40  5W 12v DC Black uplight, 40deg beam, IP6
+R-WPGPO2-15                             40  15A Weatherproof Double Outlet
+R1071-WH-15W-CW-24                      36  15w Architectural Dimmable Deep Set COB 
+R1071-WH-6W-WW-24                       36  6w Architectural Dimmable Deep Set COB D
+R1072-WH-15W-WW-60                      36  15w COB Dimmable Downlight, Remote Drive
+R1074-WH-15W-WW-60                      36  15w COB Dimmable Downlight, Remote Drive
+R1076-BK-12W-WW-60                      36  12w COB Dimmable Downlight, Remote Drive
+R1077-WH-9W-WW-60                       36  12W - 6W COB Pin Spot Dimmable Downlight
+R1078-WH-9W-WW-60                       36  12W - 6W COB Pin Spot Dimmable Downlight
+R1084-WH-WW-60                          36  9w Dimmable COB Downlight with Remote Dr
+R1084-WH-CW-60                          36  9w Dimmable COB Downlight with Remote Dr
+R1085-WH-CW-60                          36  9w Dimmable COB Downlight with Remote Dr
+R2386-WH-1M                             36  Recessed Extrusion, 35x 35mm, 1m Length
+R1021-BK-TRI                            30  8w Dimmable Downlight with Integral Driv
+R1021-SC-TRI                            30  8w Dimmable Downlight with Integral Driv
+R2361-DL-10                             20  10w 24V COB LED Strip Light, IP65, 5000K
+R2381-2M                                20  Deep Surface Mount Aluminium Extrusion, 
+R2385-AL-2M                             20  Aluminium Extrusion With Opal Diffuser, 
+R6017-CW                                20  5W 12v DC Black garden spot light, 40deg
+R6106-BK-CW                             20  9W 12v DC Black uplight, 38deg beam, IP6
+R6106-BK-WW                             20  9W 12v DC Black uplight, 38deg beam, IP6
+R6106-SS-CW                             20  9W 12v DC 316 Stainless steel uplight, 3
+R6241-EYELID-WH                         20  Eyelid to suit R6240 - White
+R-WPI235-L                              20  35A 2 Pole Standard Weatherproof Isolato
+R-WPI320-L                              20  20A 3 Pole Standard Weatherproof Isolato
+R9990-S-WH                              20  1.8w LED Surface mount spitfire emergenc
+R9990-S-BK                              20  1.8w LED Surface Mount Spitfire Emergenc
+R2386-2M                                18  Recess Aluminium Extrusion With Opal Dif
+R1094-25-WH-WH-TRI                      12  25W Dimmable White COB Downlight with Wh
+R1354-30-WH-WW                          12  30w Dimmable COB Downlight, White, IP44,
+R2374-BK-BK-PR-2M                       12  2.0m Aluminum extrusion, Black 30mm x 35
+R2374-WH-WH-PR-2M                       12  2.0m Aluminum extrusion, White 30mm x 35
+R2386-WH-3M                             12  Recess Aluminium Extrusion With Opal Dif
+R2586-BK-PRO                            12  15W Bluetooth small track light, dual se
+R2586-WH-PRO                            12  15W Bluetooth small track light, dual se
+R2587-BK-PRO                            12  30W Bluetooth Small Track Light, Dual Se
+R2587-WH-PRO                            12  30W Bluetooth Small Track Light, Dual Se
+R6056-BK-CW                             12  2x 13.5w LED Up Down Light Black CW IP65
+R6099-BK-CW                             12  10w LED Recessed rectangular wall light 
+R2323-CW-4                              10  6w 24V Neo Slim LED Strip Light, IP65, 4
+R2323-CW-6                              10  6w 24V Neo Slim LED Strip Light, IP65, 4
+R2360-CW-10                             10  5w 24V COB LED Strip Light, IP65, 4000K 
+R2383-DIFF-10                           10  Diffuser to suit R2383 extrusion - 10 me
+R3265-BK-76                             10  76mm Spigot to suit R3240 Street Light, 
+R3265-SL-60                             10  60mm Spigot to suit R3240 Street Light
+R3268-BK-60                             10  60mm Spigot, Anti-corrosive to suit R324
+R6232-EM-BK-TRI                         10  20W-12W Quad Watt 300mm Polycarbonate Bu
+R6232-EM-S-BK-TRI                       10  20W-12W Quad Watt 300mm Polycarbonate Bu
+R6232-EM-WH-TRI                         10  20W-12W Quad Watt 300mm Polycarbonate Bu
+R6241-EM-BK-TRI                         10  22w Polycarbonate Eyelid Bunker IP65 Eme
+R6241-EM-S-BK-TRI                       10  22w Polycarbonate Eyelid Bunker IP65 Eme
+R6241-EM-S-WH-TRI                       10  22w Polycarbonate Eyelid Bunker IP65 Eme
+R6241-EM-WH-TRI                         10  22w Polycarbonate Eyelid Bunker IP65 Eme
+R6241-S-BK-TRI                          10  19w Polycarbonate Eyelid Bunker IP65 wit
+R6241-S-WH-TRI                          10  19w Polycarbonate Eyelid Bunker IP65 wit
+R1097-3-13-WH-60-CW                      9  13w 4000K 60deg COB , IP65 , IK06 , 110m
+R3541-TRI                                9  20W - 11W 600mm Wide Body WP Opal Batten
+R3541-EM-TRI                             9  20W - 11W 600mm Wide Body WP Opal Batten
+R3542-TRI                                9  40W - 21W 1200mm Wide Body WP Opal Batte
+R3542-EM-TRI                             9  40W - 21W 1200mm Wide Body WP Opal Batte
+R2370-AL                                 8  2m Aluminium Extrusion, Opal Diffuser, 5
+R1355-40-WH-WW                           6  40w Dimmable COB Downlight, White, IP44,
+R3250-BRACKET-USM                        6  U-Brack for Hi Powered LED Streetlight -
+R3579                                    6  10W/20W Dual wattage, 600mm Narrow body 
+R3579-V2                                 6  10W/20W Dual wattage, 600mm Narrow body 
+R6391-TT                                 6  380mm Extension Pole for R6390 - Titaniu
+R1157-WH-25W-CW-60                       6  25W White Surface Mount Downlight, 4K IP
+R1158-BK-35W-CW-60                       6  35W Black Surface Mount Downlight, 4K IP
+R2498-400-40W-BK-TRI                     6  40w  400mm Round Surface Mount Oyster, B
+R2170-WH-WW-2M                           5  26W LED Linear Extrusion Batton - 70x50m
+R2371-BK-2M                              5  2m Aluminium Extrusion, Black, Opal Diff
+R2371-BK-3M                              5  3m Aluminium Extrusion, Black, Opal Diff
+R2371-WH-2M                              5  2m Aluminium Extrusion, White, Opal Diff
+R6006-60                                 5  60W LED Ceiling mount canopy light, Blac
+R2373-BK-PR-2.5                          4  2.5m Aluminum extrusion, 55mm x 80mm pro
+R2373-WH-PR-2.5                          4  2.5m Aluminum extrusion, 55mm x 80mm pro
+R2371-AL                                 4  2m Aluminium Extrusion, Opal Diffuser, 1
+R2371-BK                                 4  2m Aluminium Extrusion, Black, Opal Diff
+R999-BOX-WH                              4  Weatherproof Box and Wall Mount Bracket 
+R1095-30                                 2  30w Driver to suit R1094 downlight
+R2498-PND-600-60W-BK-TRI                 2  60w 600mm Round pendant oyster light, Bl
+R3072-800-DL-F19804                      1  800w Hi Performance Floodlight
+R3072-800-DL-F19805                      1  800w Hi Performance Floodlight
+R3111-S-REMOTE                           1  Remote for 120w LED Hi Bay with Sensor *
+R3126-150-DALI                           1  150w 5000K CRI80 IP66 Linear Highbay , C
+R3250-180-BRACKET-SA                     1  180w 5000K BLK LED Area Light with R1050
+R3250-450-BRACKET-ADJ                    1  450W High Performance LED Floodlight IP6
+R3301                                    1  40w LED Low Glare Wall Pack, IP65 *
+R3303-040                                1  40w IP66 Wall Pack , Asym. Distribution,
+R3303-070                                1  70w IP66 Wall Pack Asym. Distribution, 5
+R3900-BK-20W-CW-60                       1  2 x 10W 4K IP65 Black Up-Down Wall Light
+R6340                                    1  25w, 800mm Bollard with Black Extruded P
+R2499-PND-1000-100W-BK-CW-DALI           1  100w 1000mm Round curved pendant oyster 
+
+── 1C. CARTON ONLY IN CIN7 (sheet = 0) — 21 items ──
+SKU exists in spreadsheet but carton=0. Cin7 has a value.
+SKU                                   CIN7  PRODUCT NAME
+--------------------------------------------------------------------------------
+R2384-BK-DIFFUSER                      200  Black diffuser for R2384 and R2382 extru
+R2353-CW-10                            140  7W 24V LED Strip Light, IP65, 4000K CW, 
+R2638-WH                               130  3 Circuit track adaptor, White
+R2331-CW-4                             100  4.8W 24V LED Strip Light, IP20 4000k, 4m
+R2331-CW-6                             100  4.8W 24V LED Strip Light, IP20 4000k, 6m
+R2352-CW-4-V2                           95  9.6W 24V 8mm LED Strip Light, IP65, 4000
+R2352-CW-8-V2                           95  9.6W 24V 8mm LED Strip Light, IP65, 4000
+R2321-CW-15-RE                          75  10w 24v, Rapid Neoflex Dual power, 4000k
+R2321-RGBW-15-RE                        60  10w 24v, Rapid Neoflex dual power, RGBW,
+R2322-WW-15-RE                          60  10w 24v, Rapid Neoflex dual power, 3000k
+R1073-BK-15W-CW-24                      36  15w COB Dimmable Adjustable Downlight, R
+R2331-CW-15                             25  4.8W 24V LED Strip Light, IP20 4000k, 15
+R5011-BL                                20  15W COB LED pool light - Blue
+R5011-RGB                               20  15W COB LED pool light - RGB
+R3240-BK-MED-42                          1  70W - 20W Quad Watt Black LED Street Lig
+R3240-BK-MED-42-R09602                   1  70W - 20W Quad Watt Black LED Street Lig
+R3240-BK-MED-42-R09604                   1  70W - 20W Quad Watt Black LED Street Lig
+R3240-BK-MED-42-R09605                   1  70W - 20W Quad Watt Black LED Street Lig
+R3240-BK-MED-60-R09605                   1  70W - 20W Quad Watt Black LED Street Lig
+R3250-240-BRACKET-SA                     1  240w LED Area Light , BLK , 5000K, Strai
+R2498-400-40W-WH-TRI                     1  40w 400mm Round Surface Mount Oyster, TR
+
+── 1D. CIN7 CARTON SKUs NOT IN SPREADSHEET — 835 items ──
+Products with CartonQuantity>0 in Cin7 that are completely missing from spreadsheet.
+SKU                                   CIN7  PRODUCT NAME
+--------------------------------------------------------------------------------
+R2340-WW-5-V2                          500  5w 24V 8mm COB LED Strip Light, IP20, 30
+R-SMI10-V2                             250  10A Intermediate mechanism
+TRIM-R1021-BC                          240  Brushed Chrome Trim - for R1021
+R2332-CW-15-V1                         225  9.6W 24V LED Strip Light, IP20, 4000K CW
+R2332-CW-10-V1                         200  9.6W 24V LED Strip Light, IP20, 4000K CW
+R2334-XW                               200  14.4W 24V LED Strip Light, IP20, 2700K W
+R2352-WW-10-V2                         200  9.6W 24V 8mm LED Strip Light, IP65, 3000
+R2352-WW-15-V2                         200  9.6W 24V 8mm LED Strip Light, IP65, 3000
+R2369-CW-CRI90                         200  R2395 16w 600mm Length Ridged LED Strip 
+R2382_4-OP-DIFFUSER-2M                 200  Opal diffuser for R2382 and R2384 extrus
+R2610-BK-1.5                           200  1.5m Wire suspension kit to suit single 
+R-BP-WH-V1                             200  Blank Plate *
+R2217-DALI                             100  Rapidline Power Feed, DALI
+R2331-RGBW-5                           100  4.8W 24V LED Strip Light, IP20, RGBW, 5m
+R2580-Lens-24deg                       100  24deg lens to suit R2580 track light
+R2581-Lens-36deg                       100  36deg lens to suit R2581 track light
+R8101                                  100  1.5w 12v DC LED Fairy Lights, IP66 2400K
+R2352-CW-10-V2                          95  9.6W 24V 8mm LED Strip Light, IP65, 4000
+R2352-CW-15-V2                          95  9.6W 24V 8mm LED Strip Light, IP65, 4000
+R2925                                   90  30w, 24VDC LED Driver, IP20
+R2321-CW-15-V1                          75  10w 24v, Rapid Neoflex, 4000k, IP67 - Si
+R2322-CW-15-RE                          75  10w 24v, Rapid Neoflex Dual power, 4000k
+R2322-DL-15-RE                          75  10w 24v, Rapid Neoflex Dual power, 5000k
+R2322-RGBW-15-RE                        75  10w 24v, Rapid Neoflex Dual power, RGBW,
+R2322-RGBW-15-V1                        75  10w 24v, Rapid Neoflex, RGBW, IP67 - Top
+R2218-WH-SM                             70  Rapidline Canopy Surface Mounted Kit, Wh
+R2322-DL-10-V1                          70  10w 24v, Rapid Neoflex, 5000k, IP67 - To
+R2321-DL-10-V1                          60  10w 24v, Rapid Neoflex, 5000k, IP67 - Si
+R2321-RGBW-2                            60  10w 24v, Rapid Neoflex, RGBW, IP67 - Sid
+R2321-RGBW-4                            60  10w 24v, Rapid Neoflex, RGBW, IP67 - Sid
+R2321-RGBW-6                            60  10w 24v, Rapid Neoflex, RGBW, IP67 - Sid
+R2321-RGBW-8                            60  10w 24v, Rapid Neoflex, RGBW, IP67 - Sid
+R2321-WW-15-V1                          60  10w 24v, Rapid Neoflex, 3000k, IP67 - Si
+R2321-WW-15-V2                          60  10w 24v, Rapid Neoflex, 3000k, IP67 - Si
+R2322-XW-15                             60  10w 24v, Rapid Neoflex dual powered, 270
+R2384-AL-2M-V1                          60  Shallow Surface Mount Aluminium Extrusio
+R2384-BK-BK-3M                          60  Shallow Surface Mount Aluminium Extrusio
+Battery to suit R9991/R9993/R6260/R9995/R9998     50  Battery to suit R9991/R9993/R6260/R9995/
+C1020-52550DB-F                         50  20w 120-550mA 6-52v Dali LED Driver with
+R2321-CW-5-V1                           50  10w 24v, Rapid Neoflex, 4000k, IP67 - Si
+R2321-CW-5-V2                           50  10w 24v, Rapid Neoflex, 4000k, IP67 - Si
+R2321-DL-5-V1                           50  10w 24v, Rapid Neoflex, 5000k, IP67 - Si
+R2321-WW-5-V1                           50  10w 24v, Rapid Neoflex, 3000k, IP67 - Si
+R2322-WW-10-V1                          50  10w 24v, Rapid Neoflex, 3000k, IP67 - To
+R2322-WW-10-V2                          50  10w 24v, Rapid Neoflex, 3000k, IP67 - To
+R2322-WW-5-V1                           50  10w 24v, Rapid Neoflex, 3000k, IP67 - To
+R2340-WW-10-V2                          50  5w 24V 8mm COB LED Strip Light, IP20, 30
+R2582-Lens-36deg                        50  36deg lens to suit R2582 track light
+R3243-Remote                            50  Remote for 20W LED Solar Street Light
+R4401-1200-BK                           50  1205mm Decorative Circular Profile, 60mm
+R4401-1200-WH                           50  1205mm Decorative Circular Profile, 60mm
+R4401-1800-BK                           50  1805mm Decorative Circular Profile, 60mm
+R4401-1800-WH                           50  1805mm Decorative Circular Profile, 60mm
+R4401-600-BK                            50  605mm Decorative Circular Profile, 60mm 
+R4401-600-WH                            50  605mm Decorative Circular Profile, 60mm 
+R4402-1200-BK                           50  1205mm Decorative Circular Profile, 60mm
+R4402-1200-WH                           50  1205mm Decorative Circular Profile, 60mm
+R4402-1800-BK                           50  1805mm Decorative Circular Profile, 60mm
+R4402-1800-WH                           50  1805mm Decorative Circular Profile, 60mm
+R4402-600-BK                            50  605mm Decorative Circular Profile, 60mm 
+R4402-600-WH                            50  605mm Decorative Circular Profile, 60mm 
+R4403-1200-BK                           50  1205mm Decorative Circular Profile, 60mm
+R4403-1200-WH                           50  1205mm Decorative Circular Profile, 60mm
+R4403-1800-BK                           50  1805mm Decorative Circular Profile, 60mm
+R4403-1800-WH                           50  1805mm Decorative Circular Profile, 60mm
+R4403-600-BK                            50  605mm Decorative Circular Profile, 60mm 
+R4403-600-WH                            50  605mm Decorative Circular Profile, 60mm 
+R6010-BK-WW-V1                          50  10W 12v AC/DC Black LED garden spot, IP6
+R-GPO4-WH-V1                            50  Quad Powerpoint Dual Pole 10A 250V *
+R1066-WH-12W-CW-60-V1                   48  1 x 12w COB Dimmable Single Slotter Down
+R1066-WH-12W-CW-60-V2                   48  1 x 12w COB Dimmable Single Slotter Down
+R1066-WH-12W-WW-24-V2                   48  1 x 12w COB Dimmable Single Slotter Down
+R1066-WH-12W-WW-60-V1                   48  1 x 12w COB Dimmable Single Slotter Down
+R1066-WH-12W-XW-24                      48  1 x 12w COB Dimmable Single Slotter Down
+R1066-WH-12W-XW-60                      48  1 x 12w COB Dimmable Single Slotter Down
+R1066-WH-15W-WW-24-V2                   48  1 x 15w COB Dimmable Single Slotter Down
+R1066-WH-15W-XW-60                      48  1 x 15w COB Dimmable Single Slotter Down
+R1066-WH-6W-CW-24-V3                    48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-6W-CW-60-V1                    48  1 x 6w COB Dimmable Single Slotter Downl
+R1066-WH-6W-CW-60-V3                    48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-6W-WW-24-V3                    48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-6W-WW-60-V2                    48  1 x 6w COB Dimmable Single Slotter Downl
+R1066-WH-6W-WW-60-V3                    48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-6W-XW-24                       48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-6W-XW-60                       48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-9W-CW-24-V3                    48  1 x 12W - 6W COB Dimmable Single Slotter
+R1066-WH-9W-CW-60-V3                    48  1 x 12W - 6W COB Dimmable Single Slotter
+R1066-WH-9W-WW-24-V2                    48  1 x 9w COB Dimmable Single Slotter Downl
+R1066-WH-9W-WW-60-V2                    48  1 x 9w COB Dimmable Single Slotter Downl
+R1066-WH-9W-XW-24                       48  1 x 12W - 6W COB Dimmable Single Slotter
+R1066-WH-9W-XW-60                       48  1 x 12W - 6W COB Dimmable Single Slotter
+R1066-WH-CW-24                          48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-CW-60                          48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-WW-24                          48  1 x 12w - 6w COB Dimmable Single Slotter
+R1066-WH-WW-60                          48  1 x 12w - 6w COB Dimmable Single Slotter
+R1067-WH-12W-CW-24-V2                   48  2 x 12w COB Dimmable Double Slotter Down
+R1067-WH-12W-CW-60-V1                   48  2 x 12w COB Dimmable Double Slotter Down
+R1067-WH-12W-CW-60-V2                   48  2 x 12w COB Dimmable Double Slotter Down
+R1067-WH-12W-WW-24-V2                   48  2 x 12w COB Dimmable Double Slotter Down
+R1067-WH-12W-WW-60-V1                   48  2 x 12w COB Dimmable Double Slotter Down
+R1067-WH-12W-XW-24                      48  2 x 12w COB Dimmable Double Slotter Down
+R1067-WH-12W-XW-60                      48  2 x 12w COB Dimmable Double Slotter Down
+R1067-WH-15W-XW-60                      48  2 x 15w COB Dimmable Double Slotter Down
+R1067-WH-6W-CW-24-V3                    48  2 x 12w - 6w COB Dimmable Double Slotter
+R1067-WH-6W-CW-60-V1                    48  2 x 6w COB Dimmable Double Slotter Downl
+R1067-WH-6W-CW-60-V3                    48  2 x 12w - 6w COB Dimmable Double Slotter
+R1067-WH-6W-WW-24-V3                    48  2 x 12w - 6w COB Dimmable Double Slotter
+R1067-WH-6W-WW-60-V2                    48  2 x 6w COB Dimmable Double Slotter Downl
+R1067-WH-6W-WW-60-V3                    48  2 x 12w - 6w COB Dimmable Double Slotter
+R1067-WH-6W-XW-24                       48  2 x 12w - 6w COB Dimmable Double Slotter
+R1067-WH-6W-XW-60                       48  2 x 12w - 6w COB Dimmable Double Slotter
+R1067-WH-9W-CW-24-V3                    48  2 x 12W - 6W COB Dimmable Double Slotter
+R1067-WH-9W-CW-60-V3                    48  2 x 12W - 6W COB Dimmable Double Slotter
+R1067-WH-9W-WW-24-V2                    48  2 x 9w COB Dimmable Double Slotter Downl
+R1067-WH-9W-WW-60-V2                    48  2 x 9w COB Dimmable Double Slotter Downl
+R1067-WH-9W-XW-24                       48  2 x 12W - 6W COB Dimmable Double Slotter
+R1067-WH-9W-XW-60                       48  2 x 12W - 6W COB Dimmable Double Slotter
+R1067-WH-CW-60                          48  2 x 12w - 6w COB Dimmable Double Slotter
+R1068-WH-12W-CW-24-V2                   48  3 x 12w COB Dimmable Triple Slotter Down
+R1068-WH-12W-CW-60-V1                   48  3 x 12w COB Dimmable Triple Slotter Down
+R1068-WH-12W-CW-60-V2                   48  3 x 12w COB Dimmable Triple Slotter Down
+R1068-WH-12W-WW-24-V2                   48  3 x 12w COB Dimmable Triple Slotter Down
+R1068-WH-12W-WW-60-V1                   48  3 x 12w COB Dimmable Triple Slotter Down
+R1068-WH-12W-XW-24                      48  3 x 12w COB Dimmable Triple Slotter Down
+R1068-WH-12W-XW-60                      48  3 x 12w COB Dimmable Triple Slotter Down
+R1068-WH-15W-XW-60                      48  3 x 15w COB Dimmable Triple Slotter Down
+R1068-WH-6W-CW-24-V3                    48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1068-WH-6W-CW-60-V1                    48  3 x 6w COB Dimmable Triple Slotter Downl
+R1068-WH-6W-CW-60-V3                    48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1068-WH-6W-WW-24-V3                    48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1068-WH-6W-WW-60-V2                    48  3 x 6w COB Dimmable Triple Slotter Downl
+R1068-WH-6W-WW-60-V3                    48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1068-WH-6W-XW-24                       48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1068-WH-6W-XW-60                       48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1068-WH-9W-CW-24-V3                    48  3 x 12W - 6W COB Dimmable Triple Slotter
+R1068-WH-9W-CW-60-V3                    48  3 x 12W - 6W COB Dimmable Triple Slotter
+R1068-WH-9W-WW-24-V2                    48  3 x 9w COB Dimmable Triple Slotter Downl
+R1068-WH-9W-WW-60-V2                    48  3 x 9w COB Dimmable Triple Slotter Downl
+R1068-WH-9W-XW-24                       48  3 x 12W - 6W COB Dimmable Triple Slotter
+R1068-WH-9W-XW-60                       48  3 x 12W - 6W COB Dimmable Triple Slotter
+R1068-WH-CW-60                          48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1068-WH-WW-24                          48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1068-WH-WW-60                          48  3 x 12w - 6w COB Dimmable Triple Slotter
+R1073-WH-6W-WW-60-V3                    48  12w - 6w COB Dimmable Adjustable Downlig
+R1073-WH-6W-XW-60                       48  12w - 6w COB Dimmable Adjustable Downlig
+R1073-WH-9W-WW-60-V2                    48  9w COB Dimmable Adjustable Downlight, Re
+R1073-WH-9W-XW-60                       48  12W - 6W COB Dimmable Adjustable Downlig
+R107M-12W-CW-24-V2                      48  Module for R107 head range - CW 24 degre
+R107M-12W-CW-60-S-V1                    48  Module for R107 head range - CW 60 degre
+R107M-12W-CW-60-V1                      48  Module for R107 head range - CW 60 degre
+R107M-12W-WW-24-V1                      48  Module for R107 head range - WW 24 degre
+R107M-12W-WW-60-V1                      48  Module for R107 head range - WW 60 degre
+R107M-15W-CW-24                         48  Module for R107 head range - 15w CW 24 d
+R107M-15W-CW-60-V1                      48  Module for R107 head range - 15w CW 60 d
+R107M-15W-WW-24                         48  Module for R107 head range - 15w WW 24 d
+R107M-6W-CW-24                          48  Module for R107 head range - 6w CW 24 de
+R107M-6W-CW-60-V1                       48  Module for R107 head range - 6w CW 60 de
+R107M-6W-WW-24                          48  Module for R107 head range - 6w WW 24 de
+R107M-6W-WW-60-V2                       48  Module for R107 head range - 6w WW 60 de
+R107M-9W-CW-24                          48  Module for R107 head range - 9w CW 24 de
+R107M-9W-WW-24                          48  Module for R107 head range - 9w WW 24 de
+R107M-9W-WW-60-V1                       48  Module for R107 head range - 9w WW 60 de
+R107M-CW-24                             48  12W - 6W Module for R107 head range - CW
+R1063                                   45  25w Dimmable Downlight Cob Style With Re
+R2321-XW-15                             45  10w 24v, Rapid Neoflex dual powered, 270
+R0001-RF-V2                             40  Wireless Interconnect DC Smoke Alarm, 10
+R0002-RF-V2                             40  240v Wireless Interconnect Smoke Alarm, 
+R0003-RF-V2                             40  240v Wireless Interconnect Smoke Alarm, 
+R2321-WW-10-V1                          40  10w 24v, Rapid Neoflex, 3000k, IP67 - Si
+R2322-CW-10-V1                          40  10w 24v, Rapid Neoflex, 4000k, IP67 - To
+R2380-BK-2M                             40  Corner Mount Aluminium Extrusion, Opal D
+R2382-AL-1M-V1                          40  Recessed Aluminium Extrusion, Opal Diffu
+R2382-AL-2M-V1                          40  Recessed Aluminium Extrusion, Opal Diffu
+R2306-WW                                38  9w 24v CRI90 3000K Mini LED Neon with Tr
+R1056                                   36  10w Slim Dimmable Downlight With Flex & 
+R1069-BK-12W-CW-60-V1                   36  12w Architectural Dimmable Deep Set COB 
+R1069-BK-12W-WW-24-V2                   36  12w Architectural Dimmable Deep Set COB 
+R1069-BK-12W-WW-60-V1                   36  12w Architectural Dimmable Deep Set COB 
+R1069-BK-CW-60                          36  12w - 6w Architectural Dimmable Deep Set
+R1069-BK-WW-60                          36  12w - 6w Architectural Dimmable Deep Set
+R1069-WH-CW-60                          36  12w - 6w Architectural Dimmable Deep Set
+R1070-WH-15W-CW-24                      36  15w Dimmable Deep Set COB Adjustable Wal
+R1070-WH-15W-CW-60                      36  15w Dimmable Deep Set COB Adjustable Wal
+R1070-WH-15W-WW-24                      36  15w Dimmable Deep Set COB Adjustable Wal
+R1070-WH-15W-WW-60                      36  15w Dimmable Deep Set COB Adjustable Wal
+R1070-WH-15W-XW-24                      36  15w Dimmable Deep Set COB Adjustable Wal
+R1070-WH-15W-XW-60                      36  15w Dimmable Deep Set COB Adjustable Wal
+R1070-WH-CW-24                          36  12w - 6w Dimmable Deep Set COB Adjustabl
+R1070-WH-CW-60                          36  12w - 6w COB Dimmable Deep Set COB Adjus
+R1070-WH-WW-24                          36  12w - 6w Dimmable Deep Set COB Adjustabl
+R1070-WH-WW-60                          36  12w - 6w COB Dimmable Deep Set COB Adjus
+R1070-WH-XW-60                          36  12w - 6w Dimmable Deep Set COB Adjustabl
+R1071-A-BK-12W-WW-60-V2                 36  12w Architectural Dimmable Deep Set COB 
+R1071-A-WH-12W-CW-60-V1                 36  12w Architectural Dimmable Deep Set COB 
+R1071-A-WH-12W-WW-24-V2                 36  12w Architectural Dimmable Deep Set COB 
+R1071-A-WH-12W-XW-60                    36  12w Architectural Dimmable Deep Set COB 
+R1071-A-WH-CW-24                        36  12w - 6w Architectural Dimmable Deep Set
+R1071-A-WH-WW-24                        36  12w - 6w Architectural Dimmable Deep Set
+R1071-A-WH-XW-60                        36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-12W-CW-24-V2                   36  12w Architectural Dimmable Deep Set COB 
+R1071-BK-12W-CW-60-V1                   36  12w Architectural Dimmable Deep Set COB 
+R1071-BK-12W-CW-60-V2                   36  12w Architectural Dimmable Deep Set COB 
+R1071-BK-12W-WW-24-V1                   36  12w Architectural Dimmable Deep Set COB 
+R1071-BK-12W-WW-60-V1                   36  12w Architectural Dimmable Deep Set COB 
+R1071-BK-12W-XW-24                      36  12w Architectural Dimmable Deep Set COB 
+R1071-BK-12W-XW-60                      36  12w Architectural Dimmable Deep Set COB 
+R1071-BK-15W-CW-60-V1                   36  15w Architectural Dimmable Deep Set COB 
+R1071-BK-6W-CW-24-V3                    36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-6W-CW-60-V1                    36  6w Architectural Dimmable Deep Set COB D
+R1071-BK-6W-CW-60-V3                    36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-6W-WW-24-V3                    36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-6W-WW-60-V3                    36  6w Architectural Dimmable Deep Set COB D
+R1071-BK-6W-XW-24                       36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-6W-XW-60                       36  6w Architectural Dimmable Deep Set COB D
+R1071-BK-9W-CW-24-V3                    36  12W - 6W Architectural Dimmable Deep Set
+R1071-BK-9W-CW-60-V3                    36  12W - 6W Architectural Dimmable Deep Set
+R1071-BK-9W-WW-24-V2                    36  9w Architectural Dimmable Deep Set COB D
+R1071-BK-9W-WW-60-V1                    36  9w Architectural Dimmable Deep Set COB D
+R1071-BK-9W-WW-60-V2                    36  9w Architectural Dimmable Deep Set COB D
+R1071-BK-9W-XW-24                       36  12W - 6W Architectural Dimmable Deep Set
+R1071-BK-9W-XW-60                       36  12W - 6W Architectural Dimmable Deep Set
+R1071-BK-CW-60                          36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-CW-60-DALI                     36  12w Architectural Dimmable Deep Set COB 
+R1071-BK-WW-24                          36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-WW-60                          36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-XW-24                          36  12w - 6w Architectural Dimmable Deep Set
+R1071-BK-XW-60                          36  12w - 6w Architectural Dimmable Deep Set
+R1071-WH-12W-CW-24-V2                   36  12w Architectural Dimmable Deep Set COB 
+R1071-WH-12W-CW-60-V1                   36  12w Architectural Dimmable Deep Set COB 
+R1071-WH-12W-WW-24-V1                   36  12w Architectural Dimmable Deep Set COB 
+R1071-WH-12W-WW-60-V1                   36  12w Architectural Dimmable Deep Set COB 
+R1071-WH-12W-XW-24                      36  12w Architectural Dimmable Deep Set COB 
+R1071-WH-12W-XW-60                      36  12w Architectural Dimmable Deep Set COB 
+R1071-WH-15W-CW-60-V1                   36  15w Architectural Dimmable Deep Set COB 
+R1071-WH-15W-XW-60                      36  15w Architectural Dimmable Deep Set COB 
+R1071-WH-6W-CW-60-V1                    36  6w Architectural Dimmable Deep Set COB D
+R1071-WH-6W-CW-60-V3                    36  12w - 6w Architectural Dimmable Deep Set
+R1071-WH-6W-WW-60-V3                    36  12w - 6w Architectural Dimmable Deep Set
+R1071-WH-6W-XW-60                       36  12w - 6w Architectural Dimmable Deep Set
+R1071-WH-9W-CW-60-V3                    36  12W - 6W Architectural Dimmable Deep Set
+R1071-WH-9W-WW-60-V1                    36  9w Architectural Dimmable Deep Set COB D
+R1071-WH-9W-WW-60-V2                    36  9w Architectural Dimmable Deep Set COB D
+R1071-WH-9W-XW-60                       36  12W - 6W Architectural Dimmable Deep Set
+R1071-WH-CW-60                          36  12w - 6w Architectural Dimmable Deep Set
+R1071-WH-WW-24                          36  12w - 6w Architectural Dimmable Deep Set
+R1071-WH-WW-60-DALI                     36  12w Architectural Dimmable Deep Set COB 
+R1071-WH-XW-24                          36  12w - 6w Architectural Dimmable Deep Set
+R1071-WH-XW-60                          36  12w - 6w Architectural Dimmable Deep Set
+R1072-BK-12W-CW-24-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-BK-12W-CW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-BK-12W-CW-60-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-BK-12W-WW-24-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-BK-12W-WW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-BK-12W-XW-24                      36  12w COB Dimmable Downlight, Remote Drive
+R1072-BK-12W-XW-60                      36  12w COB Dimmable Downlight, Remote Drive
+R1072-BK-CW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1072-BK-WW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1072-BK-WW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1072-BK-XW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1072-BK-XW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1072-WH-12W-CW-24-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-WH-12W-CW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-WH-12W-CW-60-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-WH-12W-WW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1072-WH-CW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1072-WH-WW-24                          36   12w - 6w COB Dimmable Downlight, Remote
+R1073-BK-12W-CW-24-V2                   36  12w COB Dimmable Adjustable Downlight, R
+R1073-BK-12W-CW-60-V1                   36  12w COB Dimmable Adjustable Downlight, R
+R1073-BK-12W-CW-60-V2                   36  12w COB Dimmable Adjustable Downlight, R
+R1073-BK-12W-WW-24-V1                   36  12w COB Dimmable Adjustable Downlight, R
+R1073-BK-12W-XW-24                      36  12w COB Dimmable Adjustable Downlight, R
+R1073-BK-12W-XW-60                      36  12w COB Dimmable Adjustable Downlight, R
+R1073-BK-15W-CW-60-V1                   36  15w COB Dimmable Adjustable Downlight, R
+R1073-BK-15W-XW-60                      36  15w COB Dimmable Adjustable Downlight, R
+R1073-BK-6W-CW-24-V3                    36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-6W-CW-60-V1                    36  6w COB Dimmable Adjustable Downlight, Re
+R1073-BK-6W-CW-60-V3                    36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-6W-WW-24-V3                    36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-6W-WW-60-V3                    36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-6W-XW-24                       36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-6W-XW-60                       36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-9W-CW-24-V3                    36  12W - 6W COB Dimmable Adjustable Downlig
+R1073-BK-9W-CW-60-V3                    36  12W - 6W COB Dimmable Adjustable Downlig
+R1073-BK-9W-WW-24-V2                    36  9w COB Dimmable Adjustable Downlight, Re
+R1073-BK-9W-WW-60-V1                    36  9w COB Dimmable Adjustable Downlight, Re
+R1073-BK-9W-WW-60-V2                    36  9w COB Dimmable Adjustable Downlight, Re
+R1073-BK-9W-XW-24                       36  12W - 6W COB Dimmable Adjustable Downlig
+R1073-BK-9W-XW-60                       36  12W - 6W COB Dimmable Adjustable Downlig
+R1073-BK-CW-60                          36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-WW-24                          36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-WW-60                          36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-XW-24                          36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-BK-XW-60                          36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-WH-12W-CW-24-V2                   36  12w COB Dimmable Adjustable Downlight, R
+R1073-WH-12W-CW-60-V1                   36  12w COB Dimmable Adjustable Downlight, R
+R1073-WH-12W-WW-24-V1                   36  12w COB Dimmable Adjustable Downlight, R
+R1073-WH-12W-WW-60-V1                   36  12w COB Dimmable Adjustable Downlight, R
+R1073-WH-12W-XW-24                      36  12w COB Dimmable Adjustable Downlight, R
+R1073-WH-12W-XW-60                      36  12w COB Dimmable Adjustable Downlight, R
+R1073-WH-15W-XW-60                      36  15w COB Dimmable Adjustable Downlight, R
+R1073-WH-6W-CW-60-V1                    36  6w COB Dimmable Adjustable Downlight, Re
+R1073-WH-6W-CW-60-V3                    36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-WH-9W-CW-60-V3                    36  12W - 6W COB Dimmable Adjustable Downlig
+R1073-WH-WW-24                          36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-WH-XW-24                          36  12w - 6w COB Dimmable Adjustable Downlig
+R1073-WH-XW-60                          36  12w - 6w COB Dimmable Adjustable Downlig
+R1074-BK-12W-CW-24-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-BK-12W-CW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-BK-12W-CW-60-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-BK-12W-WW-24-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-BK-12W-WW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-BK-12W-XW-24                      36  12w COB Dimmable Downlight, Remote Drive
+R1074-BK-12W-XW-60                      36  12w COB Dimmable Downlight, Remote Drive
+R1074-BK-CW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-BK-WW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-BK-WW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-BK-XW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-BK-XW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-WH-12W-CW-24-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-WH-12W-CW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-WH-12W-CW-60-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-WH-12W-WW-24-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-WH-12W-WW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1074-WH-12W-XW-24                      36  12w COB Dimmable Downlight, Remote Drive
+R1074-WH-12W-XW-60                      36  12w COB Dimmable Downlight, Remote Drive
+R1074-WH-CW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-WH-WW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-WH-WW-60-V3                       36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-WH-XW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1074-WH-XW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-12W-CW-24-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-BK-12W-CW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-BK-12W-CW-60-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-BK-12W-WW-24-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-BK-12W-WW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-BK-12W-XW-24                      36  12w COB Dimmable Downlight, Remote Drive
+R1075-BK-12W-XW-60                      36  12w COB Dimmable Downlight, Remote Drive
+R1075-BK-15W-CW-60-V1                   36  15w COB Dimmable Downlight, Remote Drive
+R1075-BK-6W-CW-24-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-6W-CW-60-V1                    36  6w COB Dimmable Downlight, Remote Driver
+R1075-BK-6W-CW-60-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-6W-WW-24-V2                    36  6w COB Dimmable Downlight, Remote Driver
+R1075-BK-6W-WW-24-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-6W-WW-60-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-6W-XW-24                       36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-6W-XW-60                       36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-9W-CW-24-V3                    36  12W - 6W COB Dimmable Downlight, Remote 
+R1075-BK-9W-CW-60-V3                    36  12W - 6W COB Dimmable Downlight, Remote 
+R1075-BK-9W-WW-24-V2                    36  9w COB Dimmable Downlight, Remote Driver
+R1075-BK-9W-WW-60-V1                    36  9w COB Dimmable Downlight, Remote Driver
+R1075-BK-9W-WW-60-V2                    36  9w COB Dimmable Downlight, Remote Driver
+R1075-BK-9W-XW-24                       36  12W - 6W COB Dimmable Downlight, Remote 
+R1075-BK-9W-XW-60                       36  12W - 6W COB Dimmable Downlight, Remote 
+R1075-BK-CW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-WW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-WW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-XW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-BK-XW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-12W-CW-24-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-WH-12W-CW-60-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-WH-12W-CW-60-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-WH-12W-WW-24-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1075-WH-12W-XW-24                      36  12w COB Dimmable Downlight, Remote Drive
+R1075-WH-12W-XW-60                      36  12w COB Dimmable Downlight, Remote Drive
+R1075-WH-15W-CW-60-V1                   36  15w COB Dimmable Downlight, Remote Drive
+R1075-WH-6W-CW-24-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-6W-CW-60-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-6W-WW-24-V2                    36  6w COB Dimmable Downlight, Remote Driver
+R1075-WH-6W-WW-24-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-6W-WW-60-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-6W-XW-24                       36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-6W-XW-60                       36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-9W-CW-24-V3                    36  12W - 6W COB Dimmable Downlight, Remote 
+R1075-WH-9W-CW-60-V3                    36  12W - 6W COB Dimmable Downlight, Remote 
+R1075-WH-9W-WW-24-V2                    36  9w COB Dimmable Downlight, Remote Driver
+R1075-WH-9W-WW-60-V1                    36  9w COB Dimmable Downlight, Remote Driver
+R1075-WH-9W-WW-60-V2                    36  9w COB Dimmable Downlight, Remote Driver
+R1075-WH-9W-XW-24                       36  12W - 6W COB Dimmable Downlight, Remote 
+R1075-WH-9W-XW-60                       36  12W - 6W COB Dimmable Downlight, Remote 
+R1075-WH-CW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-WW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-XW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1075-WH-XW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-BK-12W-CW-24-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1076-BK-12W-WW-24-V1                   36  12w COB Dimmable Downlight, Remote Drive
+R1076-BK-12W-XW-24                      36  12w COB Dimmable Downlight, Remote Drive
+R1076-BK-CW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-BK-XW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-12W-CW-24-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1076-WH-12W-CW-60-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1076-WH-12W-WW-60-V2                   36  12w COB Dimmable Downlight, Remote Drive
+R1076-WH-12W-XW-24                      36  12w COB Dimmable Downlight, Remote Drive
+R1076-WH-12W-XW-60                      36  12w COB Dimmable Downlight, Remote Drive
+R1076-WH-6W-CW-24-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-6W-CW-60-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-6W-WW-24-V2                    36  6w COB Dimmable Downlight, Remote Driver
+R1076-WH-6W-WW-24-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-6W-WW-60-V3                    36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-6W-XW-24                       36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-6W-XW-60                       36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-9W-CW-24-V3                    36  12W - 6W COB Dimmable Downlight, Remote 
+R1076-WH-9W-CW-60-V3                    36  12W - 6W COB Dimmable Downlight, Remote 
+R1076-WH-9W-WW-24-V2                    36  9w COB Dimmable Downlight, Remote Driver
+R1076-WH-9W-WW-60-V1                    36  9w COB Dimmable Downlight, Remote Driver
+R1076-WH-9W-WW-60-V3                    36  12W - 6W COB Dimmable Downlight, Remote 
+R1076-WH-9W-XW-24                       36  12W - 6W COB Dimmable Downlight, Remote 
+R1076-WH-9W-XW-60                       36  12W - 6W COB Dimmable Downlight, Remote 
+R1076-WH-CW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-WW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-XW-24                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1076-WH-XW-60                          36  12w - 6w COB Dimmable Downlight, Remote 
+R1077-ADJ-9W                            36  9w LED Adjustable Wall Washer Downlight,
+R1077-BK-12W-CW-24                      36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-BK-12W-CW-60-V2                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-BK-12W-WW-60                      36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-BK-12W-XW-24                      36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-BK-12W-XW-60                      36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-BK-6W-CW-24                       36  6w COB Pin Spot Dimmable Downlight, Remo
+R1077-BK-6W-CW-24-V3                    36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-BK-CW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-BK-WW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-BK-XW-24                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-BK-XW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-WH-12W-CW-24-V2                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-WH-12W-CW-60-V1                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-WH-12W-CW-60-V2                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-WH-12W-WW-24-V1                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-WH-12W-XW-24                      36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-WH-12W-XW-60                      36  12w COB Pin Spot Dimmable Downlight, Rem
+R1077-WH-6W-CW-24-V3                    36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-WH-CW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-WH-WW-24                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-WH-WW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-WH-XW-24                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1077-WH-XW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1078-WH-12W-CW-24-V2                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1078-WH-12W-CW-60-V1                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1078-WH-12W-CW-60-V2                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1078-WH-12W-WW-60-V1                   36  12w COB Pin Spot Dimmable Downlight, Rem
+R1078-WH-12W-XW-24                      36  12w COB Pin Spot Dimmable Downlight, Rem
+R1078-WH-12W-XW-60                      36  12w COB Pin Spot Dimmable Downlight, Rem
+R1078-WH-CW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1078-WH-WW-24                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1078-WH-WW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1078-WH-XW-24                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1078-WH-XW-60                          36  12w - 6w COB Pin Spot Dimmable Downlight
+R1079-BK-12W-CW-60-V1                   36  12w LED Architectural Dimmable Downlight
+R1079-BK-12W-WW-24-V1                   36  12w LED Architectural Dimmable Downlight
+R1079-BK-12W-WW-60-V1                   36  12w LED Architectural Dimmable Downlight
+R1079-BK-CW-60                          36  12w - 6w LED Architectural Dimmable Down
+R1079-BK-WW-60                          36  12w - 6w LED Architectural Dimmable Down
+R1079-WH-12W-CW-60-V1                   36  12w COB Adjustable Dimmable Downlight, R
+R1079-WH-12W-WW-24-V1                   36  12w COB Adjustable Dimmable Downlight, R
+R1079-WH-12W-WW-60-V1                   36  12w COB Adjustable Dimmable Downlight, R
+R1079-WH-WW-24                          36  12w -6w COB Adjustable Dimmable Downligh
+R107M-12W-WW-60-S-V1                    36  Module for R107 head range - WW 60 degre
+R1081-WH-CW-V2                          36  13w Dimmable COB Downlight with Remote D
+R1081-WH-WW-V1                          36  13w Dimmable COB Downlight with Remote D
+R1091-10-BK-SIL-TRI-Carton 36           36  10W Dimmable Black COB Downlight with Si
+R1091-10-WH-SIL-TRI-Carton 36           36  10W Dimmable White COB Downlight with Si
+R1091-8-BK-BK-TRI                       36  8W Dimmable Black COB Downlight with Bla
+R1091-8-BK-MS-TRI                       36  8W Dimmable Black COB Downlight with Mat
+R1091-8-BK-SIL-TRI                      36  8W Dimmable Black COB Downlight with Sil
+R1091-8-BK-WH-TRI                       36  8W Dimmable Black COB Downlight with Whi
+R1091-8-WH-BK-TRI                       36  8W Dimmable White COB Downlight with Bla
+R1091-8-WH-MS-TRI                       36  8W Dimmable White COB Downlight with Mat
+R1091-8-WH-WH-TRI                       36  8W Dimmable White COB Downlight with Whi
+R1165-WH-XW                             36  9w LED Surface Mount Polycarb Downlight 
+R6090-BK-CW-V2                          36  5w LED Small Round Wall Light IP65, Blac
+R6090-BK-WW-V1                          36  5w LED Small Round Wall Light IP65, Blac
+R6092-BK-CW-V2                          36  5w LED Small Square Wall Light IP65, Bla
+R6092-BK-WW-V1                          36  5w LED Small Square Wall Light IP65, Bla
+12v-IP20-020w                           33  20w, 12VDC LED Driver, with Flex & Plug,
+R1051-WH-TRI-DALI                       30  13w Dimmable Downlight With Flex & Plug 
+SOLO II                                 30  8w Dimmable Downlight Integral Driver IP
+SOLO III                                30  8w Dimmable Downlight Integral Driver IP
+R1097-3-13-WH-60-DL                     27  13w 5000K 60deg COB , IP65 , IK06 , 110m
+R2301-WW                                25  9.6w 24v CRI90 3000K High/Low temp IP67 
+R2310-BK-CW                             25  12w 24v CRI90 4000K IP54 Top bend Angled
+R2310-BK-WW                             25  12w 24v CRI90 3000K IP54 Top bend Angled
+R2310-WH-CW                             25  12w 24v CRI90 4000K IP54 Top bend Angled
+R2310-WH-WW                             25  12w 24v CRI90 3000K IP54 Top bend Angled
+R2315-BK-BK-CW                          25  14w 24v CRI90 4000K IP65 Dual bend Anti-
+R2315-BK-BK-WW                          25  14w 24v CRI90 3000K IP65 Dual bend Anti-
+R3240-LENS-R09601                       25  Lens to suit R3240, 30w,50w,90w - R09601
+R3240-LENS-R17601                       25  Lens to suit R3240-LRG -  R17601
+R3601-FRAME-SM-BK                       25  Surface mount frame, suit R3601 modular 
+R3601-FRAME-SM-WH                       25  Surface mount frame, suit R3601 modular 
+R3602-FRAME-SM-BK                       25  Surface mount frame, suit R3602 modular 
+R3602-FRAME-SM-WH                       25  Surface mount frame, suit R3602 modular 
+R3603-FRAME-SM-BK                       25  Surface mount frame, suit R3603 modular 
+R3603-FRAME-SM-WH                       25  Surface mount frame, suit R3603 modular 
+R1097-4-13-BK-36-WW                     24  13w 3000K 36deg COB, IP65 IK06Recessed D
+R6091-BK-CW-V1                          24  8w LED Large Round Wall Light IP65, Blac
+R6091-BK-WW-V1                          24  8w LED Large Round Wall Light IP65, Blac
+R6093-BK-CW-V1                          24  8w LED Large Square Wall Light IP65, Bla
+R6093-BK-WW-V1                          24  8w LED Large Square Wall Light IP65, Bla
+24v-IP67-060w                           20  R2932 60w, 24VDC Weatherproof LED Driver
+R1067-WH-WW-24                          20  2 x 12w - 6w COB Dimmable Double Slotter
+R1067-WH-WW-60                          20  2 x 12w - 6w COB Dimmable Double Slotter
+R2120 Trim Black                        20  Trim to suit R2120
+R2218-BK-DALI                           20  Rapidline Canopy Surface Mounted Kit, Bl
+R2218-WH-DALI                           20  Rapidline Canopy Surface Mounted Kit, Wh
+R3245-Remote                            20  Remote for LED Solar Street Light
+R6201-BK-TRI                            20  12w Polycarbonate Bulkhead IP65. Black T
+R6202-BK-TRI                            20  12w Polycarbonate Bulkhead, Tri Colour w
+R6202-WH-TRI                            20  12w Polycarbonate Bulkhead, Tri Colour w
+LD644                                   18  24w LED downlight, white trim, 3000k, 60
+R1150-SIL-CW                            18  10w LED COB 4000K Surface Mount Downligh
+R1155-WH-15W-CW-60                      18  15W White Surface Mount Downlight, 4K IP
+R2779-WH-WW-36                          18  10w LED Surface Mount Downlight - IP54 -
+R6075-BK-TRI-V1                         18  6w LED Up/Down Wall Light IP65, Black, T
+R6076-BK-TRI-V1                         18  10w LED Up/Down Wall Light IP65, Black, 
+RLP1002R-01-C-WH/SIL-WW                 18  9w LED Non-Dim Surface Mount Downlight ,
+R2592-D-BK-WW-V1                        16  20w Cylinder spotlight to suit three cir
+R2592-D-WH-CW-V2                        16  20w Cylinder spotlight to suit three cir
+12v-IP67-200W                           15  200w, 12VDC IP67 Weatherproof LED Driver
+SS-50VP-56DH                            15  40W Dali driver to suit R3301
+R1093-25-WH-SIL-CW-DALI                 12  25w Dimmable COB Downlight, 60o Beam UGR
+R1093-25-WH-SIL-WW-DALI                 12  25w Dimmable COB Downlight, 60o Beam UGR
+R1096C-6-18w-WH-WH-DL-60                12  18w 5000K 60deg, IP65, IK10, 172mm Reces
+R1097-4-18-BK-60-WW                     12  18w 3000K 60deg COB , IP65 , IK06 , Rece
+R1097-4-25-WH-38-CW                     12  25w 4000K 38deg COB, IP65, IK06, 150mm R
+R1097-4-25-WH-60-CW                     12  25w 4000K 60deg COB, IP65, IK06, 150mm R
+R1097-6-25w-WH-60-CW                    12  25w 4000K 60deg, IP65, IK10, 150mm Reces
+R1097-6-30w-WH-60-CW                    12  30w 4000K 60deg, IP65, IK10, 150mm Reces
+R1160-WH-V2                             12  13w Dimmable Surface Mount Downlight COB
+R1161-BK-V2                             12  18w Dimmable Surface Mount Downlight, CO
+R1161-WH-V1                             12  18w Dimmable Surface Mount Downlight Cob
+R1306-BK-CW-V1                          12  24w LED Dimmable Round Scoop Downlight, 
+R1306-WH-CW-V1                          12  24w LED Dimmable Round Scoop Downlight R
+R1306-WH-WW-V1                          12  24w LED Dimmable Round Scoop Downlight R
+R2498-UD-400-40W-BK-CW                  12  40w 400mm Round Surface Mount Oyster, 10
+R2581-BK-TRI-60                         12  15W, 20W & 25W Selectable, small spotlig
+R2582-BK-CW-12-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-BK-CW-24-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-BK-CW-36-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-BK-WW-12-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-BK-WW-24-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-BK-WW-36-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-BK-XW-24-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-WH-CW-12-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-WH-CW-24-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-WH-CW-36-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-WH-TRI-60-V2                      12  25W, 30W & 35W Selectable, small spotlig
+R2582-WH-WW-12-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-WH-WW-24-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R2582-WH-WW-36-DALI                     12  25W, 30W & 35W Selectable, small spotlig
+R6070-BK-CW-V1                          12  10w LED Adjustable Wall Light IP54, Blac
+R6070-WH-CW-V2                          12  10w LED Adjustable Wall Light IP54, Whit
+R6070-WH-WW-V2                          12  10w LED Adjustable Wall Light. White, 30
+R6071-BK-WW-V2                          12  18w LED Adjustable Wall Light IP54, Blac
+R6071-WH-CW-V1                          12  18w LED Adjustable Wall Light IP54, Whit
+R6071-WH-WW-V2                          12  18w LED Adjustable Wall Light IP54, Whit
+R6085-WH-TRI-V1                         12  18w LED Square Wall Light IP54, White, T
+R6094-BK-CW-V1                          12  10w LED Rectangular Wall Light IP65, Bla
+R6094-BK-WW-V1                          12  10w LED Rectangular Wall Light IP65, Bla
+R1156-WH-18W-WW-60                      11  18W White Surface Mount Downlight,3K IP6
+12v-IP67-300W                           10  300w, 12VDC IP67 Weatherproof LED Driver
+R1155-WH-10W-WW-60                      10  10W White Surface Mount Downlight, 3K IP
+R2125-DIFFUSER-Deep                     10  330mm Deep Acrylic Diffuser to suit R212
+R2126-DIFFUSER-DEEP                     10  380mm Deep Acrylic Diffuser to suit R212
+R2200-BK-CW-V1                          10  17w 498mm Rapidline Linear Extrusion, Bl
+R2200-BK-WW-V1                          10  17w 498mm Rapidline Linear Extrusion, Bl
+R2200-WH-WW-V1                          10  17w 498mm Rapidline Linear Extrusion, Wh
+R2201-WH-CW-DALI                        10  29w 1167mm Rapidline Linear extrusion, W
+R2201-WH-WW-V1                          10  29w 1167mm Rapidline Linear extrusion, W
+R2205-BK-CW-DALI                        10  17w 498mm Rapidline Linear Extrusion - L
+R2205-BK-WW-DALI                        10  17w 498mm Rapidline Linear Extrusion - L
+R2205-BK-WW-V1                          10  17w 498mm Rapidline Linear Extrusion - L
+R2205-WH-CW-30-DALI                     10  17w 498mm Rapidline Linear Extrusion - L
+R2205-WH-CW-V1                          10  17w 498mm Rapidline Linear Extrusion - L
+R2205-WH-WW-V1                          10  17w 498mm Rapidline Linear Extrusion - L
+R2206-BK-CW-30-DALI                     10  29w 1167mm Rapidline Linear Extrusion - 
+R2206-BK-WW-DALI                        10  29w 1167mm Rapidline Linear Extrusion - 
+R2206-BK-WW-V1                          10  29w 1167mm Rapidline Linear Extrusion - 
+R2206-WH-CW-30-DALI                     10  29w 1167mm Rapidline Linear Extrusion - 
+R2206-WH-WW-V1                          10  29w 1167mm Rapidline Linear Extrusion - 
+R2207-BK-WW-DALI                        10  45w 2330mm Rapidline Linear Extrusion - 
+R2207-BK-WW-V1                          10  45w 2330mm Rapidline Linear Extrusion - 
+R2207-WH-WW-V1                          10  45w 2330mm Rapidline Linear Extrusion - 
+R2383-DIFF-10-V2                        10  Diffuser to suit R2383 extrusion - 10 me
+R3265-BK-60                             10  60mm Spigot to suit R3240 Street Light *
+R3510                                   10  10w 600mm WP Opal Batten IP65 *
+R6015-TT-TRI                            10  5W 12v Titanium anodised aluminium garde
+R6051-TT-TRI                            10  5W Titanium anodised extruded aluminium 
+R6052-TT-TRI                            10  5W Titanium anodised extruded aluminium 
+R6053-TT-TRI                            10  2x5W Titanium anodised extruded aluminiu
+R3120-BRACKET                            9  Mounting bracket for R3120 Linear high b
+R3120-SUSPENSION                         9  Suspension Kit for R3120 Linear high bay
+R3269-SL-76                              9  76mm Spigot to suit R3222 and R3245 Stre
+R1083-45w-4k                             8  45w Dimmable COB Downlight with Remote D
+R3075-800w-5070-F05605X_415vRDH          8  Hero II Sports & Area Light , 800w , 500
+R-INGL-20W                               8  20W Ingroung Uplighter, 12v, 316ss, TRI
+EVO 9992                                 6  Exit Light LED 4W Quick Connect 11258
+R1099-8-35W-WH-60-CW                     6  35W Low glare deep set LED Downlight, 20
+R1146-WH-WH-60-SM_RAL9003                6  15W Dimmable, Small White Surface Mount 
+R1146-WH-WH-60-SM-DALI                   6  15W Dimmable, Small White Surface Mount 
+R1158-WH-25W-CW-36                       6  25W White Surface Mount Downlight, 4K IP
+R2180-WH-TRI                             6  40w 1200mm Architectural Batten, Surface
+R2498-400-40W-WH-CW-DALI                 6  40w 4000K , 400mm Round Surface Mount Oy
+R3073-1K2-5070-F19808                    6  1200w, Floodlight - F19808
+R3205-DL-V1                              6  36w Backlit LED Panel 600mm x 600mm Whit
+R3205-TRI-V2                             6  36w Backlit LED Panel 600mm x 600mm Whit
+R3206-CW-V1                              6  36w Backlit LED Panel 1200mm x 300mm X 2
+R3206-TRI-V2                             6  36w Backlit LED Panel 1200mm x 300mm X 2
+R3206-UGR19-30-3500k                     6  30w Backlit LED Panel 1200mm x 300mm Whi
+R3520                                    6  20w 600mm Wide Body WP Opal Batten IP65 
+R3520-EM                                 6  20w, 600mm Wide Body Weatherproof Batten
+R3530                                    6  20w 1200mm WP Opal Batten IP65 *
+R3540-CW                                 6  40w 1200mm Wide Body WP Opal Batten IP65
+R3540-DL                                 6  40w 1200mm Wide Body WP Opal Batten IP65
+R3540-EM-CW                              6  40w 1200mm Wide Body WP Opal Batten Emer
+R3540-EM-DL                              6  40w 1200mm Wide Body WP Opal Batten Emer
+R3540-EM-S-CW                            6  40w 1200mm Wide Body WP Opal Batten Emer
+R3540-EM-S-DL                            6  40w 1200mm Wide Body WP Opal Batten Emer
+R3540-S-CW                               6  40w 1200mm Wide Body WP Opal Batten, Ste
+R3540-S-DL                               6  40w 1200mm Wide Body WP Opal Batten, Ste
+R3560                                    6  20w 1200mm Narrow Body Batten Opal Diffu
+R3560-DIFFUSER                           6  Diffuser for 1200mm Narrow Body Batten O
+R3560-END                                6  End caps for 1200mm Narrow Body Batten O
+R3580-V1                                 6  20W/40W Dual wattage, 1200mm Narrow body
+R9992-DECAL                              6  Decal running man for R9992
+R9992-DECAL-L                            6  Decal Left running man for R9992
+R9992-DECAL-R                            6  Decal Right Running Man for R9992
+R9996-DECAL                              6  Decal running man for R9996
+R9996-DECAL-BLACK                        6  Decal Blockout Black for R9996
+R9996-DECAL-L                            6  Decal Left running man for R9996
+R9996-DECAL-R                            6  Decal Right running man for R9996
+R9996-DECAL-WHITE                        6  Decal Blockout white for R9996
+R9998-V1                                 6  2W LED Exit Fitting Box Type, Ceiling Su
+R3141-REFLECTOR                          5  Reflector for LED Hi Bays - R3110-R3111-
+R3201-TRI                                5  36w LED Panel 600mm x 600mm White Tri (3
+R3202-WW                                 5  36w LED Panel 1200mm x 300mm White 3000K
+R3203-CW                                 5  36w LED Panel 600mm x 600mm White 4000K 
+R3205-CW-FF                              5  36w 4000K , 600x600 LED Backlit Panel , 
+R3205-CW-V1                              5  36w Backlit LED Panel 600mm x 600mm Whit
+R3205-TRI-RM-V1                          5  36w Tri Colour Recess Mount Backlit LED 
+R3205-TRI-SM-V2                          5  36w Tri Colour Surface Mount Backlit LED
+R3207-UGR19-16-3500k                     5  16w LED Backlit Panel 600mm x 300mm Whit
+R3207-UGR19-16-CW-COI                    5  16w LED CRI>90, R9>60, COI<3.3, Backlit 
+FL56-036-3000K-F00111                    4  240v version Non-Dimming c/w 180mm wall 
+R1099-6-25w-WH-60-CW                     4  25w 4000K 60deg, IP65, IK10, 150mm Reces
+R1159-WH-40W-DL-60                       4  40W White Surface Mount Downlight, 5K IP
+R2201-BK-CW-LPSQ                         4  45w Black 1167mm 4k Rapidline Linear Ext
+R2201-BK-CW-LPXS                         4  29w Black 1167mm 4k Rapidline Linear Ext
+R2202-BK-CW-LPRA                         4  45w Black 2330mm 4k Rapidline Linear Ext
+R2202-BK-CW-LPSQ                         4  45w Black 2330mm 4k Rapidline Linear Ext
+R2202-BK-CW-LPSTRAIGHT                   4  45w Black 2330mm 4k Rapidline Linear Ext
+R2202-BK-CW-LPXL                         4  45w Black 2330mm 4k Rapidline Linear Ext
+R2202-BK-CW-V1                           4  45w 2330mm Rapidline Linear Extrusion, B
+R2202-WH-CW-DALI                         4  45w 2330mm Rapidline Linear Extrusion, W
+R2207-BK-CW-30-DALI                      4  45w 2330mm Rapidline Linear Extrusion - 
+R2207-BK-CW-DALI                         4  45w 2330mm Rapidline Linear Extrusion - 
+R2207-WH-CW-30-DALI                      4  45w 2330mm Rapidline Linear Extrusion - 
+R2499-400-40W-BK-CW                      4  40w 400mm Round Curved Surface Mount Oys
+R2499-400-40W-BK-WW                      4  40w 400mm Round Curved Surface Mount Oys
+R3264-SL-V1                              4  Wall Bracket, Silver, Suit Street Lights
+R3550-DIFFUSER                           4  Diffuser for 600mm Wide Body Batten Opal
+R3550-EM                                 4  20w 600mm Wide Body Batten Opal Diffuser
+R3550-END                                4  End caps for 600mm Wide Body Batten Opal
+R3570                                    4  40w 1200mm Wide Body Batten Opal Diffuse
+R3570-DIFFUSER                           4  Diffuser for 1200mm Wide Body Batten Opa
+R3570-EM                                 4  40w 1200mm Wide Body Batten Opal Diffuse
+R3570-EM-S                               4  40w LED 1200mm Opal Diffused Emergency B
+R3570-S                                  4  40w, 1200mm Wide Body Batten Opal Diffus
+RAPLC1512R-01C-33w-BK/BK-CW              4  33w IP20 S/M D/Light , Black Body & Refl
+LC3535-1.2M-WH-CW-SUSP                   3  35W 4000k 1200mm Diam. 35x35 Alum Profil
+LC6080-1.0M-BK-CW                        3  50W 1080mm diameter, 60x80mm extrusion, 
+LF8080-2600/1200-BK-CW                   3  25W Oval LED light 2.6m x 1.2m Black 400
+R1155-WH-15W-WW-60                       3  15W White Surface Mount Downlight, 3K IP
+R1158-WH-25W-CW-60                       3  25W White Surface Mount Downlight, 4K IP
+R3205-TRI-RM-V2                          3  36w Tri Colour Recess Mount Backlit LED 
+R3205-TRI-SM-V1                          3  36w Tri Colour Surface Mount Backlit LED
+R3206-TRI-RM-V1                          3  36w Tri Colour Recess Mount Backlit LED 
+R3206-TRI-RM-V2                          3  36w Tri Colour Recess Mount Backlit LED 
+R3206-TRI-SM-V2                          3  36w Tri Colour Surface Mount Backlit LED
+LC6080-1200-WH-WW                        2  60W 1200mm diameter, 60x80mm extrusion, 
+LD58074B                                 2  Alum Bollard 185mm diameter x 1100mm
+R1159-BK-40W-WW-60                       2  40W Black Surface Mount Downlight, 3K IP
+R2498_9-ROD-WH-500                       2  Rod suspension 500mm White to suit R2498
+R2498-400-40W-WH-WW                      2  40w 400mm Round Surface Mount Oyster, Wh
+R2498-600-60W-BK-CW                      2  60w 4000K , 600mm Round Surface Mount Oy
+R2498-600-60W-WH-CW                      2  60w 4000K , 600mm Round Surface Mount Oy
+R2498-600-60W-WH-CW-DALI                 2  60w 4000K , 600mm Round Surface Mount Oy
+R2498-600-60W-WH-WW                      2  60w 3000K , 600mm Round Surface Mount Oy
+R2498-PND-1000-100W-BK-CW                2  100w 1000mm Round pendant oyster light, 
+R2498-PND-1000-100W-BK-WW                2  100w 1000mm Round pendant oyster light, 
+R2498-PND-1000-100W-WH-WW                2  100w 1000mm Round pendant oyster light, 
+R2498-PND-1000-60W-WH-CW                 2  60w 1000mm Round pendant oyster light, W
+R2498-PND-400-40W-BK-CW                  2  40w 400mm Round pendant oyster light, Bl
+R2498-PND-400-40W-WH-WW                  2  40w 400mm Round pendant oyster light, Wh
+R2498-PND-600-40W-WH-CW                  2  40w 600mm Round pendant oyster light, Wh
+R2498-PND-600-60W-BK-CW                  2  60w 600mm Round pendant oyster light, Bl
+R2498-PND-600-60W-WH-CW                  2  60w 600mm Round pendant oyster light, Wh
+R2498-PND-600-60W-WH-WW                  2  60w 600mm Round pendant oyster light, Wh
+R2498-PND-800-75W-BK-CW                  2  75w 800mm Round pendant oyster light, Bl
+R2498-UD-600-60W-BK-CW                   2  60w 600mm Round Surface Mount Oyster Lig
+R3039-EHOOP-SML                          2  Embrace Hoop to suit R3039-035 fitting
+R3039-VISOR-LRG                          2  Visor to suit 150w R3039 fitting
+R3039-VISOR-SML                          2  Visor to suit R3039-035 fitting
+R3210                                    2  Surface Mount Frame Suit 600mm x 600mm P
+R3241-070-SHIELD-BK                      2  Backlight shield to suit R3241-070 Stree
+R3241-070-SHIELD-SIL                     2  Backlight shield to suit R3241-070 Stree
+R3241-120-SHIELD-BK                      2  Backlight shield to suit R3241-120 Stree
+R3241-120-SHIELD-SIL                     2  Backlight shield to suit R3241-120 Stree
+RLA06                                    2  LED Red light therapy panel light with s
+SS-680MS-200                             2  Sosen LED Driver
+L100100-C-D1400                          1  Circular LED Light: AC220-240V, D1400mm,
+L100100-C-D950                           1  Circular LED Light: AC220-240V, D950mm, 
+L4060-C-C5660-WW                         1  10W/M Curved profile LED Light, 40mm x 6
+L5060-C-C11210                           1  Curved LED Light :AC220-240V, C11210mm, 
+L6080-R-4200/2400-BK-RGBW-SUSP           1  60x80mm Profile, Rectangular Design, Bla
+LC3535-1.2M-GO-WW-SUSP                   1  40W 3000k 1200mm Diam. 35x35 Alum Profil
+LC3535-1.5M-GO-WW-SUSP                   1  40W 3000k 1500mm Diam. 35x35 Alum Profil
+LC6080-3.0M-BK-CW-SUSP                   1  180w, 4000k, 3060 diameter, 60x80mm extr
+LC8060-0.8M-BK-DL                        1  800mm Ring Pendant , Suspended , Remote 
+R2321-RGBW-CUSTOM                        1  10w 24v, Rapid Neoflex, RGBW, IP67 - Sid
+R2498-600-60W-BK-TRI                     1  60w 600mm Round Surface mount Oyster Lig
+R2499-800-75W-BK-CW                      1  75w 800mm Round Curved Surface Mount Oys
+R2499-UD-800-75W-BK-CW                   1  75w 800mm Round Curved Surface Mount Oys
+R3039-035-RGBW-75o-CAS                   1  35w 240v 75deg IP66 IK08 RGBW Spot , Sil
+R3039-150W-WW                            1  150W LED Landscape Light, Silver, IP66 -
+R3039-35W-CW                             1  35W LED Landscape Light, Silver, IP66 - 
+R3039-35W-CW_F00118                      1  35W LED Landscape Light, Silver, IP66 - 
+R3039-35W-WW                             1  35W LED Landscape Light, Silver, IP66 - 
+R3040-050                                1  50w Anti-corrosion Commercial Floodlight
+R3040-100                                1  100w Anti-corrosion Commercial Floodligh
+R3040-150                                1  150w Anti-corrosion Commercial Floodligh
+R3040-200                                1  200w Anti-corrosion Commercial Floodligh
+R3050                                    1  50w Commercial Floodlight IP66 *
+R3060                                    1  600w Commercial Floodlight IP66
+R3072-1200-5070-F19814_L80B              1  Hero LED Sports & Area Light, 1200w, 500
+R3072-1200w                              1  1200w IP66 5000k LED Sports Field Flood
+R3072-1200w_F19801                       1  1200w IP66 5000K LED Sports Field Flood
+R3072-1200w_F19805                       1  1200w IP66 5000K LED Sports Field Flood
+R3072-1200w_F19814                       1  1200w IP66 5000K LED Sports Field Flood
+R3072-1200w-4070_F19806                  1  1200w IP66 4000K LED Sports Field Flood
+R3072-1200w-4070_F19814                  1  1200w IP66 4000K LED Sports Field Flood
+R3072-1200w-5070_F19802                  1  1200w IP66 5000K LED Sports Field Flood,
+R3072-1200w-5070_F19806                  1  1200w IP66 5000K LED Sports Field Flood,
+R3072-1200w-5070_F19808                  1  1200w IP66 5000K LED Sports Field Flood 
+R3072-1200w-5070_F19813                  1  1200w IP66 5000K LED Sports Field Flood
+R3072-1200w-5070-F19802_BC65             1  1200w IP66 5000K LED Sports Field Flood,
+R3072-1200w-5070-F19802_VS90             1  1200w IP66 5000K LED Sports Field Flood,
+R3072-800-F19806                         1  800w Hi Performance Floodlight
+R3073-2K0-DLF05603+VS-5000K              1  Hero 2000w, 5000K- F05603 distribution
+R3075-1200w_F05602                       1  1200w IP66 5000K LED Sports Field Flood 
+R3075-1200w_F05603                       1  1200w IP66 5000K LED Sports Field Flood 
+R3077-400-60deg                          1  400w Commercial Floodlight IP66 with 60o
+R3077-600-60deg                          1  600w Commercial Floodlight IP66 with 60o
+R3080                                    1  1200W LED Commercial Floodlight
+R3111                                    1  120w LED Hi Bay IP65 *
+R3112                                    1  150w LED Hi Bay IP65 *
+R3114                                    1  200W LED High bay *
+R3115-S                                  1  120, 96 & 72W Selectable Hi Bay IP65 Tri
+R3116-S                                  1  200, 160 & 120W Selectable Hi Bay IP65 T
+R3120-100-CW_F01606_DALI                 1  100w Premium LED Linear High Bay - 4000K
+R3120-90-CW_120                          1  90w Premium LED Linear High Bay - 120deg
+R3120-90-CW_3070                         1  90w Premium LED Linear High Bay - 30x70d
+R3126-150w-5080-L03902                   1  150w LED Linear Hibay, 4000K, CRI80 L039
+R3126-200                                1  200w Linear Hibay, 155LPW, 680x325x60mm,
+R3221-WH-7m cable                        1  Royal Pines Special 50w Steet Light Whit
+R3230                                    1  75W - 22W Quad watt LED Post top light I
+R3230-040_R01203                         1  40w LED Post top light IP66, 5000k, R012
+R3230-040_R01208                         1  40w LED Post top light IP66, 5000k, R012
+R3230-040-WW                             1  40w LED Post top light IP66, 3000k, R012
+R3230-075_R01203                         1  75w LED Post top light IP66, 5000k, R012
+R3230-075_R01208                         1  75w LED Post top light IP66, 5000k, R012
+R3230-075-GRY-WW-76mm_R01201             1  75w LED IP66 Post Top with 76mm Attachme
+R3231                                    1  40W - 12W Quad watt LED Low glare post t
+R3231-BRACKET                            1  Wall bracket to suit R3231 Post top
+R3236-1-040w-SIL-CW_R01604               1  40w 4000K CRI80 IP66 IK09 LED Area Light
+R3236-1-040w-SIL-XW_R01604               1  40w 2700K CRI80 IP66 IK09 LED Area Light
+R3236-1-040w-SIL-XW_R01613               1  40w 2700K CRI80 IP66 IK09 LED Area Light
+R3236-2-075W-SIL-CW_R01604               1  75w 4000K CRI80 IP66 IK09 LED Area Light
+R3236-2-100w-M-SIL-DL_R01604             1  100w 5000K CRI80 IP66 LED Area Light wit
+R3236-3-120w-SIL-DL-42                   1  120w 5000K CRI80 IP66 IK09 LED Area Ligh
+R3240-030-BK-60                          1  30W LED Street Light, 5000k, IP66, Black
+R3240-030-BK-76                          1  30W LED Street Light, 5000k, IP66, Black
+R3240-050-BK-60                          1  50W LED Street Light, 5000k, IP66, Black
+R3240-050-BK-PE                          1  50W LED Street Light, 5000k, IP66, Black
+R3240-050-BK-PE-42                       1  50W LED Street Light, 5000k, IP66, Black
+R3240-050-BK-PE-60                       1  50W LED Street Light, 5000k, IP66, Black
+R3240-050-BK-WW-60                       1  50W LED Street Light, 3000k, IP66, Black
+R3240-050w-SIL-WW-R09603                 1  50w 3000K Silver LED Streetlight , R0960
+R3240-090-BK-60                          1  90W LED Street Light Black 5000k 60mm Sp
+R3240-BK-MED-60-R09614                   1  70W - 20W Quad Watt Black LED Street Lig
+R3241-BK-070-60                          1  70W - 21W Quad watt Black LED Street lig
+R3244-050-CW                             1  50W LED Solar Street Light IP66 4k Silve
+R3250-240-BK-CW_R10502                   1  240W High Performance LED Floodlight IP6
+R3250-240-BK-CW_R10504                   1  240W High Performance LED Floodlight IP6
+R3250-240-BK-CW_R10505                   1  240W High Performance LED Floodlight IP6
+R3250-240-BK-CW_R10506                   1  240W High Performance LED Floodlight IP6
+R3250-240-BK-DL_R10504                   1  240W High Performance LED Floodlight IP6
+R3250-240-BRACKET-ADJ_R10502             1  240w LED Area Light , BLK , 5000K, Adjus
+R3250-240-BRACKET-ADJ_R10504             1  240w LED Area Light , BLK , 5000K, Adjus
+R3250-240-BRACKET-ADJ_R10505             1  240w LED Area Light , BLK , 5000K, Adjus
+R3250-240-BRACKET-ADJ_R10506             1  240w LED Area Light , BLK , 5000K, Adjus
+R3250-240-BRACKET-SA_R10502              1  240w LED Area Light , BLK , 5000K, Strai
+R3250-240-BRACKET-SA_R10504              1  240w LED Area Light , BLK , 5000K, Strai
+R3250-240-BRACKET-SA_R10505              1  240w LED Area Light , BLK , 5000K, Strai
+R3250-240-BRACKET-SA_R10506              1  240w LED Area Light , BLK , 5000K, Strai
+R3250-240-CW-BKT-ADJ_R10502              1  240w LED Area Light , BLK , 4000K, Adjus
+R3250-240-CW-BKT-ADJ_R10503              1  240w LED Area Light , BLK , 4000K, Adjus
+R3250-240-CW-BKT-ADJ_R10504              1  240w LED Area Light , BLK , 4000K, Adjus
+R3250-240-CW-BKT-ADJ_R10505              1  240w LED Area Light , BLK , 4000K, Adjus
+R3250-240-CW-BKT-ADJ_R10506              1  240w LED Area Light , BLK , 4000K, Adjus
+R3250-240-CW-BKT-SA_R10502               1  240w LED Area Light , BLK , 4000K, Strai
+R3250-240-CW-BKT-SA_R10503               1  240w LED Area Light , BLK , 4000K, Strai
+R3250-240-CW-BKT-SA_R10504               1  240w LED Area Light , BLK , 4000K, Strai
+R3250-240-CW-BKT-SA_R10505               1  240w LED Area Light , BLK , 4000K, Strai
+R3250-240-CW-BKT-SA_R10506               1  240w LED Area Light , BLK , 4000K, Strai
+R3250-450-BK-CW_R10502                   1  450W High Performance LED Floodlight IP6
+R3250-450-BK-CW_R10504                   1  450W High Performance LED Floodlight IP6
+R3250-450-BK-CW_R10505                   1  450W High Performance LED Floodlight IP6
+R3250-450-BK-CW_R10506                   1  450W High Performance LED Floodlight IP6
+R3250-600-BK-CW_R10502                   1  600w LED High Performance Floodlight IP6
+R3250-600-BK-CW_R10504                   1  600w LED High Performance Floodlight IP6
+R3250-600-BK-CW_R10505                   1  600w LED High Performance Floodlight IP6
+R3250-600-BK-CW_R10506                   1  600w LED High Performance Floodlight IP6
+R3303-040-CW-PE                          1  40w IP66 Wall Pack, Asym. Distribution, 
+R6001-DL                                 1  130w LED Canopy Light - IP65 - 5000K *
+R6001-DL-1                               1  130w LED Canopy Light - IP65 - 5000K, 12
+R6001-DL-1-DALI                          1  130w LED Canopy Light - IP65 - 5000K, 12
+R6002-WH-CW                              1  120-30W Quad wattage surface mounted can
+R6002-WH-TRI-DALI                        1  120-30W Quad wattage surface mounted can
+R6006-60-S                               1  60W LED Ceiling mount canopy light, Blac
+R6333-Remote                             1  Remote to Suit R6333 Solar Bollard Head
+R6334-1000-15W-XW                        1  15W Bollard 1000mm, Black, 2700K, Anti-c
+R6334-15W-XW                             1  15W Black Bollard Head Only - 2700k, Ant
+R6336-180-1000-TRI                       1  25W Bollard 180DEG 1000mm, Black, Tri (3
+R6336-180-500-TRI                        1  25W Bollard 180DEG 500mm, Black, Tri (3k
+R6336-180-TRI                            1  25W  Black Bollard Head Only - 180deg, T
+RAPLC1358R-002                           1  75w Surface mount downlight, White, 4000
+
+══════════════════════════════════════════════════════════════════════
+  SECTION 2: PALLET QTY — Spreadsheet vs System (pallet_capacity_rules)
+  Rule: SYSTEM IS MASTER. Spreadsheet is considered wrong when different.
+══════════════════════════════════════════════════════════════════════
+
+Pallet values AGREE: 1633
+Pallet values DIFFER: 77 (system kept, spreadsheet considered wrong)
+Pallet only in spreadsheet (not in system): 224
+
+── 2A. ALL 77 PALLET DIFFERENCES ──
+⚠ SYSTEM VALUE IS KEPT. Spreadsheet value shown for your review.
+SKU                                   SHEET  SYSTEM    DIFF  ACTION
+------------------------------------------------------------------------------------------
+R2383-AL-2M                            6600    1650   -4950  KEEP SYSTEM
+R2332-RGBW-10                           240    4800   +4560  KEEP SYSTEM
+R2341-CW-2                              620    4800   +4180  KEEP SYSTEM
+R2334-WW-10                             960    4800   +3840  KEEP SYSTEM
+R2341-WW-10                            1200    4800   +3600  KEEP SYSTEM
+R2642-WH                               6400    2900   -3500  KEEP SYSTEM
+R2360-WW-6-V2                           300    3600   +3300  KEEP SYSTEM
+R2634-WH                               6400    3200   -3200  KEEP SYSTEM
+R2634-BK                               6400    3300   -3100  KEEP SYSTEM
+R2654-BK                               6400    3300   -3100  KEEP SYSTEM
+R2332-RGBW-2                            600    3600   +3000  KEEP SYSTEM
+R2360-WW-4-V2                           240    3120   +2880  KEEP SYSTEM
+R2334-WW-2                              900    3600   +2700  KEEP SYSTEM
+R2334-CW-10                             720    3410   +2690  KEEP SYSTEM
+R1140-BK-TP                             888    3552   +2664  KEEP SYSTEM
+R2340-CW-4-V2                          5100    2550   -2550  KEEP SYSTEM
+R2360-WW-10                             320    2400   +2080  KEEP SYSTEM
+R2323-CW-10                             310    2160   +1850  KEEP SYSTEM
+R2338-WW-10                             600    2400   +1800  KEEP SYSTEM
+R2581-LENS-36DEG                       2600     850   -1750  KEEP SYSTEM
+R2655-BK                               3200    1650   -1550  KEEP SYSTEM
+R1095-25                               2700    4200   +1500  KEEP SYSTEM
+R2362-RGBW-6                            450    1800   +1350  KEEP SYSTEM
+R2360-CW-4-V2                           720    1920   +1200  KEEP SYSTEM
+R2334-WW-4                             2800    1680   -1120  KEEP SYSTEM
+R2341-WW-6                             1440     600    -840  KEEP SYSTEM
+R1141-BK-PND                           1440     720    -720  KEEP SYSTEM
+R2362-RGBW-4                            240     960    +720  KEEP SYSTEM
+R2332-RGBW-8                            960     310    -650  KEEP SYSTEM
+R2360-WW-2-V2                          1750    2400    +650  KEEP SYSTEM
+R2332-RGBW-4                            600    1200    +600  KEEP SYSTEM
+R2378-AL-2M                            4600    4000    -600  KEEP SYSTEM
+R2332-RGBW-6                           1200     620    -580  KEEP SYSTEM
+R1141-WH-WH-60-SM                      1176     612    -564  KEEP SYSTEM
+R2384-BK-2M                             900     360    -540  KEEP SYSTEM
+R2205-WH-CW                             470      40    -430  KEEP SYSTEM
+R2362-RGBW-2                            240     620    +380  KEEP SYSTEM
+R2610-BK                               3200    2900    -300  KEEP SYSTEM
+R2633-R-BK                             3200    2900    -300  KEEP SYSTEM
+24v-IP67-040w-DIM                      1360    1080    -280  KEEP SYSTEM
+R2341-CW-10                             960    1200    +240  KEEP SYSTEM
+R2379-2M                               1840    1600    -240  KEEP SYSTEM
+R2384-BK-3M                             600     360    -240  KEEP SYSTEM
+12v-IP20-012w                          1638    1430    -208  KEEP SYSTEM
+R1093-REFLECTOR-BK                     1900    2100    +200  KEEP SYSTEM
+R2341-WW-8                              960     775    -185  KEEP SYSTEM
+R131M-24W-CW-60                         648     828    +180  KEEP SYSTEM
+24v-IP20-012w                          1638    1815    +177  KEEP SYSTEM
+R1151-WH-CW                             516     372    -144  KEEP SYSTEM
+R2605-WH                               3200    3100    -100  KEEP SYSTEM
+R2632-BK                               3200    3300    +100  KEEP SYSTEM
+R2633-L-BK                             3200    3300    +100  KEEP SYSTEM
+R2633-R-WH                             3200    3100    -100  KEEP SYSTEM
+R2637-L-BK                             3200    3300    +100  KEEP SYSTEM
+R2652-BK                               3200    3300    +100  KEEP SYSTEM
+R2653-L-BK                             3200    3300    +100  KEEP SYSTEM
+R6333-REMOTE                            150      63     -87  KEEP SYSTEM
+R131M-24W-WW-60                         648     567     -81  KEEP SYSTEM
+R2321-DL-15                             124      56     -68  KEEP SYSTEM
+R3205-UGR19-25-CW                        96      30     -66  KEEP SYSTEM
+24v-IP67-020w-DIM                      1360    1296     -64  KEEP SYSTEM
+R2333-DL-6                              240     300     +60  KEEP SYSTEM
+R2656-L-WH                             1600    1650     +50  KEEP SYSTEM
+R8003-EW                                850     900     +50  KEEP SYSTEM
+R107M-15W-WW-60                        1248    1296     +48  KEEP SYSTEM
+R1141-BK-SA                             912     960     +48  KEEP SYSTEM
+R2360-CW-2-V2                           960     930     -30  KEEP SYSTEM
+R3303-040-CW                            109      95     -14  KEEP SYSTEM
+R3303-040-WW                            109      95     -14  KEEP SYSTEM
+R3268-BK-76                             210     200     -10  KEEP SYSTEM
+R6333                                    61      68      +7  KEEP SYSTEM
+R2321-WW-10                             168     174      +6  KEEP SYSTEM
+R2321-WW-15                             112     116      +4  KEEP SYSTEM
+R2322-WW-15                             136     140      +4  KEEP SYSTEM
+R6334-25W-CW                            100     103      +3  KEEP SYSTEM
+R6335-1000                               34      36      +2  KEEP SYSTEM
+R6336-TRI                                70      68      -2  KEEP SYSTEM
+
+── 2B. PALLET ONLY IN SPREADSHEET (not in system) — 224 items ──
+These SKUs have pallet values in the spreadsheet but no row in pallet_capacity_rules.
+These could be ADDED to the system if you confirm they are correct.
+SKU                                  PALLET
+--------------------------------------------------
+R2499-PND-1000-100W-BK-CW-DALI        75704
+R-SMDP35                              54400
+R-CAT6-V1                             53000
+R-TVF-F-V1                            53000
+R-TVPAL-F-V1                          53000
+R-SM10-16                             49500
+R-SM35-V2                             37250
+R-SMI10                               37250
+R2660                                 33000
+R-CAT6                                33000
+R-TVF-F                               33000
+R-TVPAL-F                             33000
+R-UMB                                 32500
+R-VMB                                 29000
+R-SMDP35-V2                           27600
+R-HMB                                 27000
+R-PMBS                                21750
+R134M-5W-FRAME-BK                     18100
+HUB-CONNECTOR-3M                      18000
+R2332-WW                              17850
+R-RJ11                                17800
+R-SLGPO2-15-WH-V1                     16500
+R134M-10W-FRAME-BK                    16100
+RCLIPS-R2323                          14500
+R2340-WW-5                            14400
+R2323-CW-15                           14100
+R2332-CW-15                           13950
+R2332-WW-10                           13500
+R2217                                 13400
+R-PMB                                 13000
+TRIM-R1021-BK                         12480
+TRIM-R1021-SC                         12480
+R2333-WW-4                            12000
+R2340-WW-4-V2                         12000
+R2340-WW-10                           12000
+R2341-WW-4                            12000
+R7001                                 11550
+R2332-CW-8                            10560
+TRIM-R1031-BK                         10320
+TRIM-R1031-SC                         10320
+R2334-CW-4                            10200
+R2332-WW-8                             9920
+R2331-CW                               9900
+R-SM35                                 9900
+R-USB-C                                9900
+R2333-WW-8                             9600
+R2604-WH                               9500
+R2333-WW-6                             9300
+R2333-WW-15                            9000
+R2341-CW-5                             9000
+R8002-G45                              9000
+R2215-BK                               8500
+R2215-WH                               8500
+R2580-LENS-24DEG                       8500
+R2580-LENS-36DEG                       8500
+R2332-DL-5                             8250
+R-SM35-COOKER                          8250
+R-SMDP35-COOKER                        8250
+RCLIPS-R2321-1M                        8100
+R2369-CW                               8000
+R2331-DL-15                            7875
+R2332-DL-15                            7875
+R2397-90                               7800
+R107M-24                               7600
+R2341-CW-6                             7440
+R2332-RGBW-5                           7400
+R2361-WW-5                             7400
+HUB-CONNECTOR-1M                       7200
+HUB-CONNECTOR-5M                       7200
+R2331-WW                               7200
+R2332-CW-6                             7200
+R2333-CW-15                            7200
+R8002-S14-WW                           7200
+R1053-WH-EXT                           7150
+R2332-DL                               7000
+R2332-DL-10                            7000
+R2377-AL-1M                            6800
+R2610-WH                               6600
+R-BP-WH                                6600
+R-GP1-WH-V1                            6600
+R-GP2-WH-V1                            6600
+R-GP3-WH-V1                            6600
+R-GP4-WH-V1                            6600
+R-GP5-WH-V1                            6600
+R-GP6-WH-V1                            6600
+R-SLBP-WH-V1                           6600
+R-SLGP1-WH-V1                          6600
+R-SLGP2-WH-V1                          6600
+R-SLGP3-WH-V1                          6600
+R-SLGP4-WH-V1                          6600
+R-SLGP5-WH-V1                          6600
+R-SLGP6-WH-V1                          6600
+R-SM16                                 6600
+R-USB-C-V1                             6600
+R-GP1-WH                               6600
+R-GP2-WH                               6600
+R-GP3-WH                               6600
+R-GP4-WH                               6600
+R-GP5-WH                               6600
+R-GP6-WH                               6600
+R-SLBP-WH                              6600
+R-SLGP1-WH                             6600
+R-SLGP2-WH                             6600
+R-SLGP3-WH                             6600
+R-SLGP4-WH                             6600
+R-SLGP5-WH                             6600
+R-SLGP6-WH                             6600
+R2635-WH                               6400
+R2636-L-BK                             6400
+R2640-WH                               6400
+R2641-BK-6                             6400
+R2341-WW-5                             6300
+R2332-CW-5-V1                          6250
+R2353-WW-10                            6200
+R2333-WW                               6000
+R2641-WH-6                             6000
+RCLIPS-R2322-1M                        6000
+R2334-WW                               5800
+R2580-LENS-15DEG                       5800
+R2582-LENS-36DEG                       5800
+R2333-CW-6                             5580
+R2334-CW-6                             5580
+R2331-CW-2                             5500
+R2331-CW-8                             5500
+R2331-DL-5                             5500
+R3216                                  5500
+R2216                                  5440
+R2331-DL-10                            5400
+R2333-DL-10                            5400
+R2334-WW-5                             5250
+R2340-CW-2-V2                          5100
+R2334-CW-8                             4960
+R2340-CW-8-V2                          4960
+R1140-WH-TRIM-60                       4900
+R2639-BK                               4851
+R2639-WH                               4851
+R2352-RGBW-10                          4800
+R2352-WW-2-V2                          4600
+R2352-WW-4-V2                          4600
+R2352-WW-6-V2                          4600
+R2352-WW-8-V2                          4600
+R2352-WW-5                             4600
+R2352-DL-15                            4200
+R2352-WW-10                            4200
+R1206-SC-CW                            3700
+R1206-SC-WW                            3700
+R2352-RGBW-6                           3600
+R2352-RGBW-15                          3600
+R2353-CW-6                             3600
+R2353-CW-15                            3600
+R2353-WW-6                             3600
+R2353-WW-15                            3600
+R2332-WW-6                             3300
+R2602-WH                               3200
+R2635-BK                               3200
+R2640-BK                               3200
+R2641-BK                               3200
+R2642-BK                               3200
+R2332-WW-4                             3000
+R2340-WW-2-V2                          3000
+R2352-DL-10                            3000
+R1077-BK                               2496
+R2341-WW-2                             2400
+R2341-CW-4                             2040
+R2352-RGBW-8                           1920
+R2353-CW-4                             1920
+R2353-WW-4                             1920
+R2352-RGBW-2                           1860
+R2352-WW-15                            1620
+R2340-CW-6-V2                          1440
+R2353-CW-2                             1440
+R2352-CW-5                             1350
+R2353-WW-5                             1350
+R107M-12W-CW-24                        1248
+R107M-12W-CW-60                        1248
+R2353-WW-2                             1240
+R2333-CW-10                            1200
+R1091-8-WH-SIL-TRI                     1080
+ATYUIOP[]                              1050
+R2334-WW-6                              960
+R2332-WW-2                              900
+R3250-180                               900
+R3250-180-BK-DL_R10506                  900
+R2352-RGBW-5                            820
+R2352-CW-15                             810
+R1069-WH-12W-CW-24                      720
+R1079-BK-12W-WW-60                      684
+R2120 trim blk                          600
+R2332-WW-15                             600
+R2334-CW-15                             600
+R2352-RGBW-4                            600
+R2352-CW-10                             540
+R2580-BK-TRI                            540
+R2580-WH-TRI                            540
+R2334-WW-15                             480
+R2352-DL-4-V2                           480
+R2353-WW-8                              434
+R2581-BK-TRI                            372
+R2582-WH-TRI                            372
+R2331-WW-15                             336
+R2333-DL-8                              300
+R2582-BK-TRI                            288
+R2101-SL-WW                             240
+R2341-CW-8                              240
+R2353-CW-8                              240
+R2334-DL-10                             180
+R2593-WH-WW-Dali                        160
+R1311-BK-32W-WW-60                      147
+R3580-V2                                144
+R1312-WH-CW                             120
+R1312-WH-WW                             120
+R2334-DL-15                             120
+R3571-TRI                                96
+R3571-S-TRI                              96
+R3075-800W                               88
+R3070-200                                59
+R1313-WH-CW                              54
+R1313-WH-WW                              54
+R3205-TRI-RM-V3                          48
+R3250-240                                34
+R3225-40-BK-WW                           32
+RAL99-600-60W-BK-WW                      26
+RAL99-600-60W-WH-CW                      26
+RAL99-600-60W-WH-WW                      26
+
+══════════════════════════════════════════════════════════════════════
+  SECTION 3: ACTION SUMMARY
+══════════════════════════════════════════════════════════════════════
+
+CARTON:
+  ✅ 1675 SKUs agree between spreadsheet and Cin7
+  ⚠  164 SKUs differ — listed above for your review
+  📋 246 SKUs have carton in sheet but Cin7=0
+  📋 21 SKUs have carton in Cin7 but sheet=0
+  🆕 835 Cin7 SKUs missing from spreadsheet entirely
+
+PALLET:
+  ✅ 1633 SKUs agree between spreadsheet and system
+  ⚠  77 SKUs differ — SYSTEM KEPT, listed for review
+  🆕 224 SKUs in sheet but not in system (potential additions)
+
+NEXT STEPS:
+  1. Review carton differences (Section 1A) — decide if Cin7 or spreadsheet is correct
+  2. Review pallet differences (Section 2A) — system values are kept
+  3. Decide: add the 224 new pallet SKUs to pallet_capacity_rules?
+  4. Once confirmed, auto-sync Cin7 carton data → restock_setup.qty_per_ctn

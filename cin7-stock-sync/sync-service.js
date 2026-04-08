@@ -284,7 +284,11 @@ class SupabaseWriter {
   }
 
   /**
-   * Upsert rows in batches to a table
+   * Upsert rows in batches to a table.
+   *
+   * When a batch fails with PK conflict (23505), retries WITHOUT the `id`
+   * field so the upsert resolves on the UNIQUE constraint (e.g. `sku`)
+   * instead of clashing on the primary key. This handles Cin7 ID recycling.
    */
   async upsertBatch(table, rows, conflictColumns) {
     if (rows.length === 0) {
@@ -309,12 +313,49 @@ class SupabaseWriter {
           });
 
         if (error) {
-          log('error', `Upsert error on ${table} batch ${batchNum}/${totalBatches}`, {
-            error: error.message,
-            code: error.code,
-            details: error.details,
-          });
-          errors.push({ batch: batchNum, error: error.message });
+          // PK conflict (23505) — Cin7 recycled/reassigned UUIDs.
+          // Retry each row individually: UPDATE existing by SKU, INSERT only truly new.
+          if (error.code === '23505' && batch[0]?.id && batch[0]?.sku) {
+            log('warn', `PK conflict on ${table} batch ${batchNum}, falling back to row-by-row update...`);
+            let recovered = 0;
+            for (const row of batch) {
+              try {
+                // Try update by SKU first (most rows already exist)
+                const { id, ...updateFields } = row;
+                const { error: updErr, count } = await this.client
+                  .from(table)
+                  .update(updateFields)
+                  .eq('sku', row.sku);
+                if (updErr) {
+                  // If update fails, try full upsert for this single row
+                  const { error: singleErr } = await this.client
+                    .from(table)
+                    .upsert(row, { onConflict: conflictColumns, ignoreDuplicates: false });
+                  if (singleErr) {
+                    log('debug', `Row-level upsert failed for ${row.sku}: ${singleErr.message}`);
+                  } else {
+                    recovered++;
+                  }
+                } else {
+                  recovered++;
+                }
+              } catch (rowErr) {
+                log('debug', `Row-level error for ${row.sku}: ${rowErr.message}`);
+              }
+            }
+            totalInserted += recovered;
+            log('info', `PK conflict recovery: ${recovered}/${batch.length} rows saved for batch ${batchNum}`);
+            if (recovered < batch.length) {
+              errors.push({ batch: batchNum, error: `PK conflict: ${recovered}/${batch.length} recovered` });
+            }
+          } else {
+            log('error', `Upsert error on ${table} batch ${batchNum}/${totalBatches}`, {
+              error: error.message,
+              code: error.code,
+              details: error.details,
+            });
+            errors.push({ batch: batchNum, error: error.message });
+          }
         } else {
           totalInserted += batch.length;
           log('debug', `Upserted ${table} batch ${batchNum}/${totalBatches} (${batch.length} rows)`);

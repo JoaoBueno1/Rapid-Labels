@@ -1,0 +1,2006 @@
+Status	SKU	MAP_Qty	Cin7_Qty	Difference	Shelves
+map_only	60 X 200-POLE MOUNT BRACKET	1	0	-1	D74:1
+map_only	76 X 208 X 50 X 200-L-SHAPE-SPIGOT-WH	1	0	-1	D74:1
+map_only	76X90 GALVANISED SLEEVES	12	0	-12	D74:12
+map_only	80 X 190 X 50 X 320-T-SHAPE-GRN-180	1	0	-1	D74:1
+map_only	90 X 195 X 50 X 200-L-SHAPE SPIGOT-BK	2	0	-2	D74:2
+map_only	90 X 195 X 50 X 200-L-SHAPE SPIGOT-WH	2	0	-2	D74:2
+map_only	AL8OP4028-E	1	0	-1	Misc:1
+map_only	AT9044-BLK-60-WW	16	0	-16	D73:16
+map_only	BC-H17-01	2	0	-2	F10:2
+map_only	BRONCO-6-10W-DIM	1	0	-1	Misc:1
+map_only	DEK-EVOII50-WH	17	0	-17	A60:17
+map_only	DOM-20635	3	0	-3	D49:2, Misc:1
+map_only	GLOBE-150	7	0	-7	Misc:7
+map_only	HUB-24V-IP20-060W-MO	77	0	-77	G-Floor:77
+map_only	HUB-24V-IP20-100W-MO	78	0	-78	G-Floor:78
+map_only	HUB-CONNECTOR-1M	270	0	-270	G-Floor:270
+map_only	HUB-CONNECTOR-3M	270	0	-270	G-Floor:270
+map_only	HUB-CONNECTOR-5M	300	0	-300	G-Floor:300
+map_only	HUB-MASTER-TOUCH	50	0	-50	G-Floor:50
+map_only	HUB-MASTER-WAVE	50	0	-50	G-Floor:50
+map_only	HUB-SENSOR-DOOR	45	0	-45	G-Floor:45
+map_only	HUB-SENSOR-TOUCH	35	0	-35	G-Floor:35
+map_only	HUB-SENSOR-WAVE	33	0	-33	G-Floor:33
+map_only	HV3003T-BLK-240V	5	0	-5	D53:5
+map_only	LD644	27	0	-27	Misc:27
+map_only	LF24BK-LED	1	0	-1	D69:1
+map_only	LIN-WPO1-040-BK	2	0	-2	D49:2
+map_only	LR1004R-01	1	0	-1	D77:1
+map_only	LR1023R-03-C	1	0	-1	D69:1
+map_only	LR1024R-03	1	0	-1	D69:1
+map_only	R-GPO1-WH-V1	718	0	-718	A31:20, B26:100, C41:594, D50:4
+map_only	R-GPO1X-WH-V1	100	0	-100	C11:100
+map_only	R-GPO2-15-WH-V1	219	0	-219	C11:219
+map_only	R-GPO2-WH-V1	4355	0	-4355	A21:1921, A31:18, B11:2315, D50:101
+map_only	R-GPO2X-WH-V1	267	0	-267	C11:255, D50:12
+map_only	R-LD237-BLK-CW	30	0	-30	D69:10, D77:20
+map_only	R-LD628-WH-45-CW-15	4	0	-4	D77:4
+map_only	R-NMBL-BLK	1	0	-1	Misc:1
+map_only	R-RJ11	350	0	-350	A31:350
+map_only	R-ROCA-010181A05	7	0	-7	D69:7
+map_only	R-ROCASDF-80-WH-CW	8	0	-8	D69:2, Misc:6
+map_only	R-SW2-WH-V1	3386	0	-3386	D33:1699, D33:1684, D50:3
+map_only	R-SW6-WH-V1	530	0	-530	B26:300, C41:230
+map_only	R1021-WH-WW	45	0	-45	D77:3, Misc:42
+map_only	R1040-BK-TRI	14	0	-14	D73:14
+map_only	R1040-SC-TRI	32	0	-32	D73:32
+map_only	R1041-BK-TRI	8	0	-8	Misc:8
+map_only	R1041-SC-TRI	36	0	-36	Misc:36
+map_only	R1041-WH-CW	63	0	-63	Misc:63
+map_only	R1041-WH-TRI	55	0	-55	Misc:55
+map_only	R1041-WH-WW	8	0	-8	Misc:8
+map_only	R1044/18W	10	0	-10	D77:10
+map_only	R1056	37	0	-37	D77:18, Misc:19
+map_only	R1063	2	0	-2	Misc:2
+map_only	R1069-WH-CW-60	2	0	-2	D69:2
+map_only	R1075-WH-WW-60	179	0	-179	B36:179
+map_only	R1077-ADJ	10	0	-10	D69:10
+map_only	R107M-CW-60-S	95	0	-95	D34:95
+map_only	R1082-BK-WW	40	0	-40	D73:8, Misc:32
+map_only	R1083-45W-4K	8	0	-8	D73:8
+map_only	R1083-BK-CW	4	0	-4	Misc:4
+map_only	R1093-25-BK-SIL-WW	26	0	-26	Misc:26
+map_only	R1094-12-WH-SIL-CW	5	0	-5	D77:5
+map_only	R1109-2R-WH-WW	2	0	-2	D69:2
+map_only	R1109-WH-WW	1	0	-1	Misc:1
+map_only	R1146-WH-GLD-60-PND	1	0	-1	D65:1
+map_only	R1152-SIL-CW	208	0	-208	A15:81, B16:124, D50:1, Misc:2
+map_only	R1158-BK-35W-CW-60	1	0	-1	D53:1
+map_only	R1167	30	0	-30	D54:28, D65:2
+map_only	R1201-SC-CW	4	0	-4	D57:4
+map_only	R1201-SC-WW	7	0	-7	D57:7
+map_only	R1204-SC-CW	63	0	-63	D65:63
+map_only	R1204-SC-WW	72	0	-72	D57:10, D65:62
+map_only	R2101-WH-WW	29	0	-29	A16:29
+map_only	R2112-S	6	0	-6	D57:6
+map_only	R2115-EM	1	0	-1	Misc:1
+map_only	R2206-BK-CW	1	0	-1	D61:1
+map_only	R2207-BK-CW-30-DALI	40	0	-40	F12:40
+map_only	R2207-BK-WW-V1	7	0	-7	F1:7
+map_only	R2207-WH-CW-30-DALI	182	0	-182	F12:96, F18:86
+map_only	R2207-WH-WW-V1	21	0	-21	F1:21
+map_only	R2320-DL-10	30	0	-30	D57:15, Misc:15
+map_only	R2320-DL-15	1	0	-1	D57:1
+map_only	R2321-WW-15-V2	12	0	-12	D9:12
+map_only	R2321-WW-5-V2	25	0	-25	D9:25
+map_only	R2381-2M	8	0	-8	F1:8
+map_only	R2382-AL-2M-V1	18	0	-18	F1:18
+map_only	R2384-AL-2M-V1	4	0	-4	F1:4
+map_only	R2498_9-SUS	12	0	-12	E-FLOOR:12
+map_only	R2498-400-40W-BK-WW	1	0	-1	D57:1
+map_only	R2498-PND-1000-100W-BK-WW	3	0	-3	E-FLOOR:3
+map_only	R2499-400-40W-BK-WW	11	0	-11	E-FLOOR:11
+map_only	R2513-BK-WW	40	0	-40	D54:40
+map_only	R2515-BK-CW	13	0	-13	C99:1, C99:12
+map_only	R2515-BK-WW	4	0	-4	C99:4
+map_only	R2515-WH-WW	18	0	-18	C99:13, D54:5
+map_only	R2517-BK-CW	3	0	-3	C99:2, D65:1
+map_only	R2517-BK-WW	3	0	-3	C99:3
+map_only	R2517-WH-WW	1	0	-1	C99:1
+map_only	R2519-BK-CW	12	0	-12	C99:12
+map_only	R2519-BK-WW	13	0	-13	C99:13
+map_only	R2582-WH-TRI-60	204	0	-204	D20:204
+map_only	R2592-D-BK-WW	16	0	-16	A16:16
+map_only	R2598-BK	80	0	-80	A12:80
+map_only	R2598-WH	124	0	-124	A12:124
+map_only	R2599-WH-CW-24	3	0	-3	Misc:3
+map_only	R2779-WH-WW-36	12	0	-12	D61:12
+map_only	R3040-050	2	0	-2	D61:2
+map_only	R3040-100	1	0	-1	D50:1
+map_only	R3040-200	2	0	-2	D61:2
+map_only	R3041-050 BRACKETS	37	0	-37	D74:37
+map_only	R3060-BRACKETS	2	0	-2	D74:2
+map_only	R3110	1	0	-1	B7:1
+map_only	R3110-ADJ-BRACKET	20	0	-20	C36:20
+map_only	R3111_1-10V	2	0	-2	B7:2
+map_only	R3111-3K	7	0	-7	B7:7
+map_only	R3111-S	26	0	-26	C83:26
+map_only	R3114	2	0	-2	D50:1, D50:1
+map_only	R3115	5	0	-5	C56:5
+map_only	R3116-200-CW-DALI	13	0	-13	G-Floor:13
+map_only	R3126-240-DL	4	0	-4	D61:4
+map_only	R3141	69	0	-69	C84:69
+map_only	R3142	5	0	-5	C56:5
+map_only	R3201-CW	5	0	-5	C21:5
+map_only	R3202-WW	5	0	-5	G1:5
+map_only	R3205-CW	1	0	-1	D61:1
+map_only	R3205-CW-FF	42	0	-42	D76:42
+map_only	R3206-CW-V2	2	0	-2	D49:2
+map_only	R3206-TRI-V2	6	0	-6	D50:6
+map_only	R3206-TRI-V2 (NO DRIVERS)	60	0	-60	D12:60
+map_only	R3206-UGR19-30-3500K	2	0	-2	D50:2
+map_only	R3220-BLK-4M	1	0	-1	D53:1
+map_only	R3221	2	0	-2	D53:1, D61:1
+map_only	R3221-WH-7M CABLE	2	0	-2	Misc:2
+map_only	R3225-40-BK-CW	2	0	-2	C51:2
+map_only	R3240-050-BK-PE	3	0	-3	C56:3
+map_only	R3240-050W-SIL-WW-R09603	1	0	-1	D74:1
+map_only	R3240-070-BK	1	0	-1	D74:1
+map_only	R3240-090-BK	1	0	-1	D74:1
+map_only	R3240-120-SL	1	0	-1	D74:1
+map_only	R3240-BK-MED-PE	1	0	-1	D53:1
+map_only	R3243-020-CW	12	0	-12	C33:11, D50:1
+map_only	R3250-180-BK-DL_R10503	3	0	-3	C56:3
+map_only	R3250-300-BK-DL_R10503	2	0	-2	C56:2
+map_only	R3520	1	0	-1	G1:1
+map_only	R3520-DIFF	10	0	-10	G1:10
+map_only	R3520-EM	5	0	-5	G1:5
+map_only	R3540-DIFF	5	0	-5	G1:5
+map_only	R3540-EM-S-DL	4	0	-4	G1:4
+map_only	R3540-S-CW	5	0	-5	G1:5
+map_only	R3560-DIFF	84	0	-84	G1:84
+map_only	R3570	10	0	-10	G1:10
+map_only	R3570-EM	7	0	-7	G1:7
+map_only	R3900-BK-40W-WW-30	5	0	-5	D61:5
+map_only	R4103-WH-WW	8	0	-8	Misc:8
+map_only	R6001-CW	1	0	-1	D69:1
+map_only	R6001-EXT	5	0	-5	D53:5
+map_only	R6011-CW	40	0	-40	A12:4, D63:36
+map_only	R6012-BK-CW	3	0	-3	D69:3
+map_only	R6012-CW	8	0	-8	A12:8
+map_only	R6012-WW	1	0	-1	A12:1
+map_only	R6022-WH	2	0	-2	D49:2
+map_only	R6085-BK-TRI-V1	4	0	-4	D65:2, D69:2
+map_only	R6085-WH-WW	23	0	-23	C31:23
+map_only	R6101-CW	6	0	-6	A12:1, D69:5
+map_only	R6101-WW	17	0	-17	A12:14, D69:3
+map_only	R6102-WW	6	0	-6	A12:6
+map_only	R6230-S-BK-TRI	5	0	-5	D50:5
+map_only	R6236-BK	2	0	-2	D49:2
+map_only	R6236-EYELID-BK	2	0	-2	D61:2
+map_only	R6236-WH	7	0	-7	A31:6, D61:1
+map_only	R9995-V1	1	0	-1	D61:1
+map_only	RAPLC1512R-01C-33W-BK/BK-CW	2	0	-2	D65:2
+map_only	RLP1002R-01-C-WH/SIL-WW	18	0	-18	D61:18
+map_only	SIN-TELSOLITA-WB20-AB	5	0	-5	D77:5
+map_only	SMT-012-030VTHWH	4	0	-4	D53:4
+map_only	ST11-240	1	0	-1	D53:1
+map_only	ST40-060	2	0	-2	D49:2
+map_only	STARFR48	2	0	-2	D53:2
+map_only	TVF-F	220	0	-220	D57:220
+map_only	UP-DL22-4-25W-D	16	0	-16	D77:16
+map_only	UP-DL97-3-13W-D	1	0	-1	D69:1
+map_only	VEN-SKYWCM-2	2	0	-2	D53:2
+map_only	ZAC-8-BLK-WW	1	0	-1	D53:1
+sys_only	12V-IP20-012W	0	330	330	
+sys_only	12V-IP20-030W	0	258	258	
+sys_only	12V-IP67-020W	0	343	343	
+sys_only	12V-IP67-040W	0	258	258	
+sys_only	12V-IP67-060W	0	291	291	
+sys_only	12V-IP67-100W	0	514	514	
+sys_only	12V-IP67-200W	0	207	207	
+sys_only	12V-IP67-300W	0	171	171	
+sys_only	24V-IP20-012W	0	731	731	
+sys_only	24V-IP20-080W-DIM	0	393	393	
+sys_only	24V-IP20-100W-DIM	0	409	409	
+sys_only	24V-IP67-020W-DIM	0	95	95	
+sys_only	24V-IP67-040W-DIM	0	115	115	
+sys_only	24V-IP67-060W-DIM	0	279	279	
+sys_only	24V-IP67-100W-DIM	0	323	323	
+sys_only	24V-IP67-200W	0	116	116	
+sys_only	24V-IP67-200W-DIM	0	161	161	
+sys_only	24V-IP67-300W	0	191	191	
+sys_only	24V-IP67-300W-DIM	0	66	66	
+sys_only	360-DR136BL	0	5	5	
+sys_only	4062172166010	0	22	22	
+sys_only	9WBCTRI-LED LAMP	0	43	43	
+sys_only	9WBCWW-LED LAMP	0	75	75	
+sys_only	9WESTRI-LED LAMP	0	302	302	
+sys_only	BATTERY TO SUIT R3520, R3550 EMERGENCY	0	116	116	
+sys_only	BATTERY TO SUIT R3520, R3550 EMERGENCY TRI	0	13	13	
+sys_only	BATTERY TO SUIT R3540, R3570 EMERGENCY	0	62	62	
+sys_only	BATTERY TO SUIT R3540, R3570 EMERGENCY - TRI	0	8	8	
+sys_only	BATTERY TO SUIT R9991/R9993/R6260/R9995/R9998	0	14	14	
+sys_only	BATTERY-3V	0	99	99	
+sys_only	BATTERY-9V	0	1142	1142	
+sys_only	BS-ENG_CERT	0	1	1	
+sys_only	BS-FS-SHS100-60-BLK	0	4	4	
+sys_only	BS-SA-60-BLK	0	7	7	
+sys_only	BS-SF-SHS-100-60-OD-BLK	0	7	7	
+sys_only	C-WMV-50HRFN8	0	2	2	
+sys_only	C1020-52550DB-F	0	671	671	
+sys_only	C328-42600DB-F	0	145	145	
+sys_only	C350-421100DB-F	0	697	697	
+sys_only	CAL-CLA348-L-WH	0	15	15	
+sys_only	CAL-CLA348-WH	0	31	31	
+sys_only	CAL-CLA352-L-WH	0	14	14	
+sys_only	CAL-CLA352-WH	0	38	38	
+sys_only	CAL-RCK2126-W	0	5	5	
+sys_only	CAL-SOR-900EXT-WH	0	5	5	
+sys_only	D1-10	0	9	9	
+sys_only	DEK-ALBANY48-BK	0	6	6	
+sys_only	DEK-ALBANY48-L-BK	0	7	7	
+sys_only	DEK-ALBANY48-WH	0	62	62	
+sys_only	DEK-ALBANY52-L-BK	0	7	7	
+sys_only	DEK-ALBANY52-L-WH	0	11	11	
+sys_only	DEK-ALBANY52-WH	0	149	149	
+sys_only	DEK-EVOII50-BK	0	1	1	
+sys_only	DEK-EVOII50-BK-DC	0	8	8	
+sys_only	DEK-EVOII50-L-BK	0	5	5	
+sys_only	DEK-EVOII50-WH-DC	0	47	47	
+sys_only	DEK-EVOII58-BK-DC	0	4	4	
+sys_only	DEK-EVOII58-L-BK-DC	0	3	3	
+sys_only	DEK-EVOII58-L-WH	0	1	1	
+sys_only	DEK-EVOII58-L-WH-DC	0	2	2	
+sys_only	DEK-FANREMOTEDC	0	5	5	
+sys_only	DEK-GLASS-ALBANY48	0	2	2	
+sys_only	DEK-GLASS-ALBANY52	0	8	8	
+sys_only	DEK-HAWK48-WH-DC	0	31	31	
+sys_only	DEK-INGRAM-BK-DC	0	7	7	
+sys_only	DEK-INGRAM-L-BK-DC	0	3	3	
+sys_only	DEK-INGRAM-L-WH-DC	0	15	15	
+sys_only	DEK-INGRAM-WH-DC	0	15	15	
+sys_only	DEK-RCK	0	15	15	
+sys_only	DEK-RONDO58-WH	0	3	3	
+sys_only	DEK-RONDOII52-BK	0	3	3	
+sys_only	DEK-RONDOII52-L-BK	0	1	1	
+sys_only	DEK-RONDOII52-L-WH	0	2	2	
+sys_only	DEK-RONDOII52-WH	0	15	15	
+sys_only	DEK-RONDOII58-BK	0	3	3	
+sys_only	DEK-RONDOII58-L-WH	0	13	13	
+sys_only	DEK-RONDOII58-WH	0	8	8	
+sys_only	DEK-RUSSELL-L-BK-DC	0	7	7	
+sys_only	DEK-RUSSELL-L-WH	0	5	5	
+sys_only	DEK-RUSSELL-L-WH-DC	0	12	12	
+sys_only	DEK-RUSSELL-WH	0	5	5	
+sys_only	DEK-RUSSELL-WH-DC	0	24	24	
+sys_only	DEK-XR150-WH	0	3	3	
+sys_only	DEK-XR90-BK-L	0	4	4	
+sys_only	DEK-XR90-WH	0	6	6	
+sys_only	DEK-XR90-WH-L	0	4	4	
+sys_only	EP-HYB-RF-MOD	0	11	11	
+sys_only	EP-RANG-RF-10	0	221	221	
+sys_only	EP-SA-CONT-RF	0	48	48	
+sys_only	EP-VC-240-1	0	101	101	
+sys_only	EP-VC-240-10	0	144	144	
+sys_only	EP-VC-RF-MOD	0	20	20	
+sys_only	FREIGHT LIGHT POLES	0	3	3	
+sys_only	JB30W	0	14	14	
+sys_only	LD58210-AB	0	10	10	
+sys_only	LENS-R3070_1-60DEG	0	16	16	
+sys_only	LL-BK-HGV060-24V0	0	6	6	
+sys_only	LL-BK-HGV100-24V0	0	4	4	
+sys_only	LL-BLD-050-V024-ANS	0	1	1	
+sys_only	LL-PR-SM-2310	0	4	4	
+sys_only	MFAG26VA-N	0	1	1	
+sys_only	MFAG26VA-W	0	1	1	
+sys_only	MFAG51VA-N	0	2	2	
+sys_only	MFAG51VA-W	0	2	2	
+sys_only	MISC PRODUCT - GOLD COAST	0	54	54	
+sys_only	MISC PRODUCT - SUNSHINE COAST	0	6	6	
+sys_only	PAINT	0	157	157	
+sys_only	PSS-HLG-320H-24-AUP	0	6	6	
+sys_only	PVPX250	0	11	11	
+sys_only	R-CAT6-V1	0	958	958	
+sys_only	R-GP1-WH	0	899	899	
+sys_only	R-GP1-WH-V1	0	2579	2579	
+sys_only	R-GP2-WH	0	1323	1323	
+sys_only	R-GP3-WH	0	519	519	
+sys_only	R-GP3-WH-V1	0	1280	1280	
+sys_only	R-GP4-WH	0	565	565	
+sys_only	R-GP4-WH-V1	0	1380	1380	
+sys_only	R-GP5-WH	0	472	472	
+sys_only	R-GP5-WH-V1	0	511	511	
+sys_only	R-GP6-WH-V1	0	578	578	
+sys_only	R-GPO1-15-WH	0	1314	1314	
+sys_only	R-GPO1X-WH	0	296	296	
+sys_only	R-GPO2-15-WH	0	1118	1118	
+sys_only	R-GPO2-WH	0	7524	7524	
+sys_only	R-GPO2X-WH	0	999	999	
+sys_only	R-GPO4-WH	0	92	92	
+sys_only	R-HDMI	0	1093	1093	
+sys_only	R-MB18	0	756	756	
+sys_only	R-MB34	0	773	773	
+sys_only	R-MB36	0	571	571	
+sys_only	R-PMBS	0	2385	2385	
+sys_only	R-POWCT2002NT/1000	0	2	2	
+sys_only	R-SLBP-WH	0	517	517	
+sys_only	R-SLBP-WH-V1	0	378	378	
+sys_only	R-SLGP1-WH	0	4122	4122	
+sys_only	R-SLGP3-WH-V1	0	600	600	
+sys_only	R-SLGP4-WH-V1	0	697	697	
+sys_only	R-SLGP5-WH-V1	0	240	240	
+sys_only	R-SLGP6-WH-V1	0	239	239	
+sys_only	R-SLGPO1-15-WH	0	1083	1083	
+sys_only	R-SLGPO1-15-WH-V1	0	300	300	
+sys_only	R-SLGPO1-WH	0	3321	3321	
+sys_only	R-SLGPO2-15-WH	0	1404	1404	
+sys_only	R-SLGPO2-15-WH-V1	0	338	338	
+sys_only	R-SLGPO2X-WH	0	1043	1043	
+sys_only	R-SLSW2-WH	0	714	714	
+sys_only	R-SLSW3-WH-V1	0	834	834	
+sys_only	R-SLSW4-WH-V1	0	355	355	
+sys_only	R-SLSW5-WH	0	260	260	
+sys_only	R-SLSW5-WH-V1	0	275	275	
+sys_only	R-SLSW6-WH	0	277	277	
+sys_only	R-SLSW6-WH-V1	0	285	285	
+sys_only	R-SM16	0	530	530	
+sys_only	R-SM35-COOKER	0	382	382	
+sys_only	R-SM35-V2	0	489	489	
+sys_only	R-SMB25	0	119	119	
+sys_only	R-SMDP35	0	1100	1100	
+sys_only	R-SMDP35-COOKER	0	1	1	
+sys_only	R-SMI10-V2	0	862	862	
+sys_only	R-SW1-WH	0	2221	2221	
+sys_only	R-SW2-WH	0	1437	1437	
+sys_only	R-SW3-WH	0	614	614	
+sys_only	R-SW4-WH	0	615	615	
+sys_only	R-SW5-WH	0	507	507	
+sys_only	R-SW6-WH	0	761	761	
+sys_only	R-TVF-F	0	2175	2175	
+sys_only	R-TVF-F-V1	0	1000	1000	
+sys_only	R-TVPAL-F	0	675	675	
+sys_only	R-TVPAL-F-V1	0	1000	1000	
+sys_only	R-UMB	0	6752	6752	
+sys_only	R-USB-C	0	641	641	
+sys_only	R-VMB	0	923	923	
+sys_only	R-WPGPO1	0	432	432	
+sys_only	R-WPGPO1-15	0	54	54	
+sys_only	R-WPGPO2	0	535	535	
+sys_only	R-WPGPO2-15	0	61	61	
+sys_only	R-WPGPO2X	0	94	94	
+sys_only	R-WPI132	0	49	49	
+sys_only	R-WPI220-L	0	165	165	
+sys_only	R-WPI235-L	0	49	49	
+sys_only	R-WPI320-L	0	227	227	
+sys_only	R-WPI335-L	0	131	131	
+sys_only	R0003-RF	0	180	180	
+sys_only	R0007	0	285	285	
+sys_only	R0100-BK	0	1210	1210	
+sys_only	R0100-WH	0	151	151	
+sys_only	R0101-BK	0	302	302	
+sys_only	R0101-WH	0	57	57	
+sys_only	R1011	0	1400	1400	
+sys_only	R1020	0	1144	1144	
+sys_only	R1021-WH-TRI	0	28539	28539	
+sys_only	R1041-8	0	156	156	
+sys_only	R1042-12	0	158	158	
+sys_only	R1042-8	0	39	39	
+sys_only	R1043	0	41	41	
+sys_only	R1043-18	0	169	169	
+sys_only	R1044-25	0	337	337	
+sys_only	R1051-BK-TRI	0	481	481	
+sys_only	R1051-SC-TRI	0	469	469	
+sys_only	R1051-WH-TRI	0	2556	2556	
+sys_only	R1052	0	580	580	
+sys_only	R1053-WH-EXT	0	1427	1427	
+sys_only	R1061-A-BK-TRI	0	290	290	
+sys_only	R1061-BK-TRI	0	230	230	
+sys_only	R1061-WH-TRI	0	822	822	
+sys_only	R1066-WH	0	168	168	
+sys_only	R1067-WH	0	118	118	
+sys_only	R1068-WH	0	135	135	
+sys_only	R1068-WH-6W-CW-60-V3	0	1	1	
+sys_only	R1069-BK	0	150	150	
+sys_only	R1069-WH	0	120	120	
+sys_only	R1069-WH-12W-CW-60	0	57	57	
+sys_only	R1069-WH-WW-60	0	108	108	
+sys_only	R1070-WH	0	68	68	
+sys_only	R1071-A-BK-12W-CW-60	0	215	215	
+sys_only	R1071-A-BK-12W-WW-60-V1	0	6	6	
+sys_only	R1071-A-BK-CW-60	0	108	108	
+sys_only	R1071-A-BK-WW-60	0	98	98	
+sys_only	R1071-A-WH-12W-CW-60	0	56	56	
+sys_only	R1071-A-WH-12W-WW-60	0	11	11	
+sys_only	R1071-A-WH-12W-WW-60-V1	0	1	1	
+sys_only	R1071-A-WH-WW-60	0	2	2	
+sys_only	R1071-ADJ-BK	0	317	317	
+sys_only	R1071-ADJ-WH	0	55	55	
+sys_only	R1071-BK	0	91	91	
+sys_only	R1071-WH	0	271	271	
+sys_only	R1071-WH-12W-CW-60	0	54	54	
+sys_only	R1071-WH-12W-CW-60-V1	0	33	33	
+sys_only	R1071-WH-12W-WW-60	0	63	63	
+sys_only	R1071-WH-12W-WW-60-V1	0	4	4	
+sys_only	R1071-WH-15W-WW-60	0	2	2	
+sys_only	R1072-BK	0	101	101	
+sys_only	R1072-WH	0	742	742	
+sys_only	R1072-WH-15W-CW-60	0	19	19	
+sys_only	R1072-WH-WW-60	0	1331	1331	
+sys_only	R1073-WH-12W-CW-60	0	126	126	
+sys_only	R1073-WH-12W-CW-60-V1	0	5	5	
+sys_only	R1073-WH-12W-WW-60	0	36	36	
+sys_only	R1073-WH-12W-WW-60-V1	0	2	2	
+sys_only	R1073-WH-9W-WW-60-V2	0	229	229	
+sys_only	R1073-WH-CW-60	0	75	75	
+sys_only	R1073-WH-WW-60	0	961	961	
+sys_only	R1074-WH	0	226	226	
+sys_only	R1075-WH	0	347	347	
+sys_only	R1075-WH-12W-WW-60	0	267	267	
+sys_only	R1076-WH-12W-CW-60	0	23	23	
+sys_only	R1076-WH-12W-CW-60-V2	0	36	36	
+sys_only	R1076-WH-12W-WW-60	0	57	57	
+sys_only	R1076-WH-6W-WW-60	0	197	197	
+sys_only	R1076-WH-9W-WW-60	0	462	462	
+sys_only	R1076-WH-WW-60	0	1580	1580	
+sys_only	R1078-WH	0	319	319	
+sys_only	R1079-BK	0	69	69	
+sys_only	R1079-BK-12W-WW-60	0	6	6	
+sys_only	R1079-BK-12W-WW-60-V1	0	1	1	
+sys_only	R1079-WH	0	8	8	
+sys_only	R1079-WH-12W-CW-60	0	208	208	
+sys_only	R1079-WH-CW-60	0	108	108	
+sys_only	R1079-WH-WW-60	0	507	507	
+sys_only	R107M-12W-CW-24	0	3	3	
+sys_only	R107M-12W-CW-60	0	19	19	
+sys_only	R107M-12W-CW-60-S-V1	0	57	57	
+sys_only	R107M-12W-CW-60-V1	0	3	3	
+sys_only	R107M-12W-WW-24	0	7	7	
+sys_only	R107M-12W-WW-24-V1	0	1	1	
+sys_only	R107M-12W-WW-60	0	1170	1170	
+sys_only	R107M-12W-WW-60-S	0	3	3	
+sys_only	R107M-12W-XW-60	0	151	151	
+sys_only	R107M-12W-XW-60-S	0	63	63	
+sys_only	R107M-15W-WW-60	0	258	258	
+sys_only	R107M-15W-XW-60	0	201	201	
+sys_only	R107M-24	0	100	100	
+sys_only	R107M-6W-CW-60	0	86	86	
+sys_only	R107M-6W-WW-60	0	10	10	
+sys_only	R107M-6W-WW-60-V2	0	13	13	
+sys_only	R107M-9W-CW-60	0	66	66	
+sys_only	R107M-9W-WW-60	0	9	9	
+sys_only	R107M-CW-60	0	3	3	
+sys_only	R107M-XW-60-S	0	95	95	
+sys_only	R1081-BK-CW	0	140	140	
+sys_only	R1081-BK-WW	0	68	68	
+sys_only	R1081-WH-CW	0	76	76	
+sys_only	R1085-WH-WW-60	0	486	486	
+sys_only	R1091-10-BK-SIL-TRI	0	394	394	
+sys_only	R1091-10-WH-SIL-CW	0	450	450	
+sys_only	R1091-13-WH-SIL-CW	0	20	20	
+sys_only	R1091-13-WH-SIL-WW	0	295	295	
+sys_only	R1091-REFLECTOR-BK	0	323	323	
+sys_only	R1091-REFLECTOR-MS	0	217	217	
+sys_only	R1091-REFLECTOR-WH	0	458	458	
+sys_only	R1092-10-WH-SIL-TRI	0	1	1	
+sys_only	R1092-18-BK-SIL-CW	0	21	21	
+sys_only	R1092-18-BK-SIL-TRI	0	354	354	
+sys_only	R1092-18-BK-SIL-WW	0	25	25	
+sys_only	R1092-18-WH-SIL-CW	0	2	2	
+sys_only	R1092-REFLECTOR-BK	0	147	147	
+sys_only	R1092-REFLECTOR-MS	0	155	155	
+sys_only	R1092-REFLECTOR-WH	0	72	72	
+sys_only	R1093-13-WH-SIL-WW	0	1	1	
+sys_only	R1093-25-WH-SIL-TRI	0	269	269	
+sys_only	R1093-25-WH-SIL-WW	0	1	1	
+sys_only	R1093-25-WH-WH-TRI	0	208	208	
+sys_only	R1093-REFLECTOR-BK	0	100	100	
+sys_only	R1093-REFLECTOR-MS	0	28	28	
+sys_only	R1093-REFLECTOR-WH	0	202	202	
+sys_only	R1094-30-BK-SIL-TRI	0	162	162	
+sys_only	R1094-30-WH-SIL-TRI	0	310	310	
+sys_only	R1094-35-WH-SIL-CW	0	4	4	
+sys_only	R1094-REFLECTOR-BK	0	157	157	
+sys_only	R1094-REFLECTOR-MS	0	83	83	
+sys_only	R1094-REFLECTOR-WH	0	78	78	
+sys_only	R1095-10	0	86	86	
+sys_only	R1095-13	0	70	70	
+sys_only	R1095-18	0	388	388	
+sys_only	R1095-25	0	77	77	
+sys_only	R1095-30	0	26	26	
+sys_only	R1095-40	0	6	6	
+sys_only	R1095-8	0	196	196	
+sys_only	R10RF	0	1278	1278	
+sys_only	R10RFB	0	1	1	
+sys_only	R10RFP	0	172	172	
+sys_only	R1140-BK-RM	0	87	87	
+sys_only	R1140-BK-SA	0	43	43	
+sys_only	R1140-BK-TK	0	171	171	
+sys_only	R1140-BK-TP	0	89	89	
+sys_only	R1140-BK-TRIM-36	0	71	71	
+sys_only	R1140-BK-TRIM-60	0	137	137	
+sys_only	R1140-GLD-TRIM-36	0	89	89	
+sys_only	R1140-GLD-TRIM-60	0	119	119	
+sys_only	R1140-WH-RM	0	87	87	
+sys_only	R1140-WH-TK	0	83	83	
+sys_only	R1140-WH-TP	0	89	89	
+sys_only	R1140-WH-TRIM-36	0	323	323	
+sys_only	R1140-WH-TRIM-60	0	149	149	
+sys_only	R1140-WH-WH-60-PND	0	12	12	
+sys_only	R1141-BK-RM	0	107	107	
+sys_only	R1141-BK-SA	0	90	90	
+sys_only	R1141-BK-TP	0	90	90	
+sys_only	R1141-BK-TRIM-60	0	54	54	
+sys_only	R1141-GLD-TRIM-36	0	119	119	
+sys_only	R1141-GLD-TRIM-60	0	104	104	
+sys_only	R1141-WH-RM	0	92	92	
+sys_only	R1141-WH-SA	0	78	78	
+sys_only	R1141-WH-TP	0	54	54	
+sys_only	R1141-WH-TRIM-36	0	60	60	
+sys_only	R1141-WH-TRIM-60	0	119	119	
+sys_only	R1150-BK-WW	0	83	83	
+sys_only	R1150-WH-CW	0	48	48	
+sys_only	R1151-BK-CW	0	40	40	
+sys_only	R1152-BK-CW	0	46	46	
+sys_only	R1152-BK-WW	0	52	52	
+sys_only	R1152-WH-CW	0	54	54	
+sys_only	R1152-WH-WW	0	25	25	
+sys_only	R1157-WH-25W-WW-60	0	77	77	
+sys_only	R1160-WH	0	1	1	
+sys_only	R1161-BK	0	2	2	
+sys_only	R1161-BK-V2	0	56	56	
+sys_only	R1161-WH-V1	0	7	7	
+sys_only	R1165-BK-CW	0	421	421	
+sys_only	R1165-WH-CW	0	53	53	
+sys_only	R1166-WH-CW	0	98	98	
+sys_only	R1170-BK-CW	0	68	68	
+sys_only	R1201-BK-CW	0	85	85	
+sys_only	R1201-BK-WW	0	80	80	
+sys_only	R1201-WH-CW	0	42	42	
+sys_only	R1201-WH-WW	0	167	167	
+sys_only	R1204-BK-CW	0	53	53	
+sys_only	R1204-BK-WW	0	60	60	
+sys_only	R1204-WH-CW	0	96	96	
+sys_only	R1206-BK-CW	0	35	35	
+sys_only	R1206-BK-WW	0	46	46	
+sys_only	R1206-WH-CW	0	137	137	
+sys_only	R1206-WH-WW	0	85	85	
+sys_only	R1208-BK-CW	0	141	141	
+sys_only	R1208-WH-CW	0	219	219	
+sys_only	R1208-WH-WW	0	57	57	
+sys_only	R1301-CW	0	40	40	
+sys_only	R1301-WW	0	73	73	
+sys_only	R1306-BK-WW	0	5	5	
+sys_only	R1306-WH-CW	0	132	132	
+sys_only	R1306-WH-CW-V1	0	1	1	
+sys_only	R1306-WH-WW	0	49	49	
+sys_only	R1306-WH-WW-V1	0	1	1	
+sys_only	R1308-DL	0	61	61	
+sys_only	R1309-WH-CW	0	59	59	
+sys_only	R1313-WH	0	58	58	
+sys_only	R1314-WH	0	181	181	
+sys_only	R1315-WH	0	156	156	
+sys_only	R1316-WH	0	88	88	
+sys_only	R131M-32W-CW-60	0	211	211	
+sys_only	R131M-32W-WW-60	0	14	14	
+sys_only	R131M-REFLECTOR-24	0	239	239	
+sys_only	R1341-A-WH	0	49	49	
+sys_only	R1341-BK	0	73	73	
+sys_only	R1341-WH	0	77	77	
+sys_only	R1342-A-BK	0	52	52	
+sys_only	R1342-BK	0	85	85	
+sys_only	R1343-A-BK	0	37	37	
+sys_only	R1343-A-WH	0	32	32	
+sys_only	R1343-BK	0	51	51	
+sys_only	R134M-10W-WW-40	0	82	82	
+sys_only	R134M-5W-CW-40	0	77	77	
+sys_only	R134M-5W-FRAME-BK	0	75	75	
+sys_only	R134M-5W-WW-40	0	48	48	
+sys_only	R1351-10-WH-CW	0	447	447	
+sys_only	R1351-10-WH-WW	0	245	245	
+sys_only	R1353-25-WH-CW	0	28	28	
+sys_only	R1354-30-WH-CW	0	277	277	
+sys_only	R1901	0	102	102	
+sys_only	R2101-SL-TRI	0	14	14	
+sys_only	R2101-WH-TRI	0	281	281	
+sys_only	R2102-WH-TRI	0	140	140	
+sys_only	R2120-SLIM-WH	0	1140	1140	
+sys_only	R2121 TRIM BLK	0	56	56	
+sys_only	R2121-SLIM-WH	0	1509	1509	
+sys_only	R2126-DIFFUSER-SLIM	0	16	16	
+sys_only	R2130-WH-TRI	0	859	859	
+sys_only	R2151-WH-C-CW	0	53	53	
+sys_only	R2151-WH-C-WW	0	77	77	
+sys_only	R2151-WH-O-CW	0	95	95	
+sys_only	R2151-WH-O-WW	0	145	145	
+sys_only	R2152-SC-C-CW	0	65	65	
+sys_only	R2152-SC-C-WW	0	227	227	
+sys_only	R2152-SC-O-CW	0	58	58	
+sys_only	R2152-WH-C-CW	0	15	15	
+sys_only	R2152-WH-C-WW	0	14	14	
+sys_only	R2160-BK-CW	0	182	182	
+sys_only	R2160-BK-WW	0	49	49	
+sys_only	R2160-WH-CW	0	99	99	
+sys_only	R2161-BK-CW	0	161	161	
+sys_only	R2161-BK-WW	0	36	36	
+sys_only	R2161-WH-CW	0	175	175	
+sys_only	R2161-WH-WW	0	202	202	
+sys_only	R2162-BK-CW	0	175	175	
+sys_only	R2162-BK-WW	0	104	104	
+sys_only	R2162-WH-CW	0	302	302	
+sys_only	R2162-WH-WW	0	121	121	
+sys_only	R2200-BK-CW	0	1	1	
+sys_only	R2200-BK-WW	0	70	70	
+sys_only	R2200-BK-WW-V1	0	20	20	
+sys_only	R2200-DALI-DRIVER	0	49	49	
+sys_only	R2200-WH-WW	0	51	51	
+sys_only	R2200-WH-WW-V1	0	70	70	
+sys_only	R2200-WW-IND-KIT_30%	0	22	22	
+sys_only	R2201-CW-IND-KIT_30%	0	34	34	
+sys_only	R2201-DALI-DRIVER	0	291	291	
+sys_only	R2201-WH-CW	0	29	29	
+sys_only	R2201-WH-WW-V1	0	6	6	
+sys_only	R2201-WW-IND-KIT_30%	0	45	45	
+sys_only	R2202-DALI-DRIVER	0	100	100	
+sys_only	R2202-WH-CW	0	36	36	
+sys_only	R2202-WH-WW	0	60	60	
+sys_only	R2202-WW-IND-KIT_30%	0	84	84	
+sys_only	R2205-BK-CW	0	8	8	
+sys_only	R2205-BK-WW	0	41	41	
+sys_only	R2205-BK-WW-V1	0	10	10	
+sys_only	R2205-WH-CW	0	104	104	
+sys_only	R2205-WH-CW-V1	0	6	6	
+sys_only	R2205-WH-WW	0	13	13	
+sys_only	R2205-WH-WW-V1	0	54	54	
+sys_only	R2206-BK-WW	0	39	39	
+sys_only	R2206-WH-CW	0	44	44	
+sys_only	R2206-WH-WW	0	51	51	
+sys_only	R2206-WH-WW-V1	0	66	66	
+sys_only	R2207-BK-CW	0	1	1	
+sys_only	R2207-WH-WW	0	37	37	
+sys_only	R2214-5M	0	13	13	
+sys_only	R2215-BK	0	387	387	
+sys_only	R2217	0	543	543	
+sys_only	R2218-WH	0	145	145	
+sys_only	R2218-WH-SM	0	77	77	
+sys_only	R2301-AL-1M	0	111	111	
+sys_only	R2301-TAIL-BF	0	101	101	
+sys_only	R2301-TAIL-RF	0	192	192	
+sys_only	R2301-TAIL-SF	0	97	97	
+sys_only	R2301-WW-2.5	0	56	56	
+sys_only	R2301-WW-5	0	30	30	
+sys_only	R2306-TAIL-RF	0	201	201	
+sys_only	R2306-WW-2.5	0	10	10	
+sys_only	R2306-WW-5	0	21	21	
+sys_only	R2310-BK-CW-5	0	13	13	
+sys_only	R2310-BK-WW-5	0	45	45	
+sys_only	R2310-TAIL-BK	0	85	85	
+sys_only	R2310-TAIL-WH	0	100	100	
+sys_only	R2310-WH-CW-5	0	18	18	
+sys_only	R2310-WH-WW-5	0	53	53	
+sys_only	R2315-BK-1M	0	210	210	
+sys_only	R2315-BK-BK-CW-5	0	14	14	
+sys_only	R2315-BK-BK-WW-5	0	48	48	
+sys_only	R2315-TAIL-BK-RF	0	98	98	
+sys_only	R2315-TAIL-BK-SBF	0	100	100	
+sys_only	R2321-CW-15-RE	0	2	2	
+sys_only	R2321-CW-5	0	54	54	
+sys_only	R2321-DL-10	0	3	3	
+sys_only	R2321-DL-15	0	4	4	
+sys_only	R2321-DL-15-RE	0	4	4	
+sys_only	R2321-DL-5	0	10	10	
+sys_only	R2321-RGBW	0	51	51	
+sys_only	R2321-RGBW-10	0	3	3	
+sys_only	R2321-RGBW-15	0	4	4	
+sys_only	R2321-RGBW-15-RE	0	4	4	
+sys_only	R2321-RGBW-5	0	1	1	
+sys_only	R2321-WW	0	148	148	
+sys_only	R2321-WW-10	0	15	15	
+sys_only	R2321-WW-15	0	26	26	
+sys_only	R2321-WW-2	0	83	83	
+sys_only	R2321-WW-4	0	57	57	
+sys_only	R2321-WW-6	0	11	11	
+sys_only	R2321-WW-8	0	18	18	
+sys_only	R2322-CW-10	0	2	2	
+sys_only	R2322-CW-15	0	1	1	
+sys_only	R2322-CW-15-RE	0	2	2	
+sys_only	R2322-CW-5	0	12	12	
+sys_only	R2322-DL-10	0	3	3	
+sys_only	R2322-RGBW-10	0	17	17	
+sys_only	R2322-RGBW-2	0	10	10	
+sys_only	R2322-RGBW-4	0	4	4	
+sys_only	R2322-RGBW-6	0	5	5	
+sys_only	R2322-RGBW-8	0	4	4	
+sys_only	R2322-WW	0	100	100	
+sys_only	R2322-WW-10	0	8	8	
+sys_only	R2322-WW-15	0	1	1	
+sys_only	R2322-WW-2	0	29	29	
+sys_only	R2322-WW-4	0	11	11	
+sys_only	R2322-WW-8	0	22	22	
+sys_only	R2323-CW	0	5	5	
+sys_only	R2323-CW-10	0	8	8	
+sys_only	R2323-CW-15-V1	0	12	12	
+sys_only	R2323-CW-4	0	7	7	
+sys_only	R2323-CW-5	0	10	10	
+sys_only	R2323-CW-6	0	6	6	
+sys_only	R2323-CW-8	0	8	8	
+sys_only	R2323-WW	0	81	81	
+sys_only	R2323-WW-10	0	17	17	
+sys_only	R2323-WW-2	0	16	16	
+sys_only	R2323-WW-4	0	14	14	
+sys_only	R2323-WW-5	0	10	10	
+sys_only	R2323-WW-6	0	11	11	
+sys_only	R2323-WW-V2	0	27	27	
+sys_only	R2323-XW-5	0	12	12	
+sys_only	R2331-CW	0	8	8	
+sys_only	R2331-DL	0	66	66	
+sys_only	R2331-DL-10	0	18	18	
+sys_only	R2331-DL-15	0	7	7	
+sys_only	R2331-DL-5	0	85	85	
+sys_only	R2331-RGBW	0	131	131	
+sys_only	R2331-WW	0	126	126	
+sys_only	R2331-WW-2	0	165	165	
+sys_only	R2331-WW-6	0	61	61	
+sys_only	R2332-CW	0	43	43	
+sys_only	R2332-CW-10	0	18	18	
+sys_only	R2332-CW-15	0	41	41	
+sys_only	R2332-CW-4	0	1	1	
+sys_only	R2332-CW-6	0	13	13	
+sys_only	R2332-CW-8	0	24	24	
+sys_only	R2332-DL	0	36	36	
+sys_only	R2332-DL-15	0	2	2	
+sys_only	R2332-RGBW	0	7	7	
+sys_only	R2332-RGBW-10	0	56	56	
+sys_only	R2332-RGBW-15	0	23	23	
+sys_only	R2332-RGBW-2	0	69	69	
+sys_only	R2332-RGBW-4	0	137	137	
+sys_only	R2332-RGBW-6	0	82	82	
+sys_only	R2332-RGBW-8	0	69	69	
+sys_only	R2332-WW	0	57	57	
+sys_only	R2332-WW-10-V2	0	96	96	
+sys_only	R2332-WW-15-V2	0	129	129	
+sys_only	R2332-WW-2-V2	0	119	119	
+sys_only	R2332-WW-4-V2	0	233	233	
+sys_only	R2332-WW-6-V2	0	75	75	
+sys_only	R2332-WW-8-V2	0	117	117	
+sys_only	R2332-WW-V2	0	177	177	
+sys_only	R2333-CW	0	144	144	
+sys_only	R2333-CW-10	0	71	71	
+sys_only	R2333-CW-15	0	12	12	
+sys_only	R2333-CW-4	0	11	11	
+sys_only	R2333-CW-6	0	20	20	
+sys_only	R2333-CW-8	0	34	34	
+sys_only	R2333-DL	0	143	143	
+sys_only	R2333-DL-10	0	17	17	
+sys_only	R2333-DL-15	0	20	20	
+sys_only	R2333-DL-2	0	18	18	
+sys_only	R2333-DL-4	0	20	20	
+sys_only	R2333-DL-6	0	19	19	
+sys_only	R2333-DL-8	0	14	14	
+sys_only	R2333-WW	0	99	99	
+sys_only	R2333-WW-10	0	62	62	
+sys_only	R2333-WW-15	0	28	28	
+sys_only	R2333-WW-2	0	176	176	
+sys_only	R2333-WW-4	0	68	68	
+sys_only	R2333-WW-6	0	43	43	
+sys_only	R2333-WW-8	0	136	136	
+sys_only	R2334-CW	0	29	29	
+sys_only	R2334-CW-10	0	35	35	
+sys_only	R2334-CW-15	0	22	22	
+sys_only	R2334-CW-2	0	106	106	
+sys_only	R2334-CW-4	0	45	45	
+sys_only	R2334-CW-6	0	93	93	
+sys_only	R2334-CW-8	0	14	14	
+sys_only	R2334-DL	0	178	178	
+sys_only	R2334-DL-10	0	4	4	
+sys_only	R2334-DL-15	0	1	1	
+sys_only	R2334-WW	0	1675	1675	
+sys_only	R2334-WW-10	0	44	44	
+sys_only	R2334-WW-15	0	55	55	
+sys_only	R2334-WW-2	0	29	29	
+sys_only	R2334-WW-6	0	70	70	
+sys_only	R2334-WW-8	0	10	10	
+sys_only	R2334-XW-10	0	23	23	
+sys_only	R2338-CW	0	30	30	
+sys_only	R2338-CW-4	0	1	1	
+sys_only	R2338-DL	0	10	10	
+sys_only	R2338-DL-8	0	16	16	
+sys_only	R2338-WW	0	30	30	
+sys_only	R2338-WW-10	0	1	1	
+sys_only	R2338-WW-2	0	3	3	
+sys_only	R2340-CW	0	28	28	
+sys_only	R2340-CW-10-V2	0	81	81	
+sys_only	R2340-CW-4-V2	0	116	116	
+sys_only	R2340-CW-6-V2	0	36	36	
+sys_only	R2340-CW-8-V2	0	62	62	
+sys_only	R2340-CW-V2	0	3	3	
+sys_only	R2340-DL	0	14	14	
+sys_only	R2340-DL-10	0	154	154	
+sys_only	R2340-DL-15	0	28	28	
+sys_only	R2340-WW-10-V2	0	344	344	
+sys_only	R2340-WW-2-V2	0	112	112	
+sys_only	R2340-WW-4-V2	0	111	111	
+sys_only	R2340-WW-6-V2	0	64	64	
+sys_only	R2340-WW-8-V2	0	126	126	
+sys_only	R2340-WW-V2	0	3	3	
+sys_only	R2340-XW	0	29	29	
+sys_only	R2340-XW-2	0	16	16	
+sys_only	R2340-XW-4	0	5	5	
+sys_only	R2340-XW-6	0	21	21	
+sys_only	R2340-XW-8	0	81	81	
+sys_only	R2341-CW	0	37	37	
+sys_only	R2341-CW-10	0	40	40	
+sys_only	R2341-CW-2	0	123	123	
+sys_only	R2341-CW-4	0	11	11	
+sys_only	R2341-CW-6	0	35	35	
+sys_only	R2341-CW-8	0	44	44	
+sys_only	R2341-DL	0	31	31	
+sys_only	R2341-DL-10	0	2	2	
+sys_only	R2341-DL-2	0	2	2	
+sys_only	R2341-DL-4	0	1	1	
+sys_only	R2341-WW	0	235	235	
+sys_only	R2341-WW-10	0	38	38	
+sys_only	R2341-WW-15	0	4	4	
+sys_only	R2341-WW-2	0	282	282	
+sys_only	R2341-WW-4	0	171	171	
+sys_only	R2341-WW-6	0	244	244	
+sys_only	R2341-WW-8	0	109	109	
+sys_only	R2341-XW	0	3	3	
+sys_only	R2341-XW-10	0	28	28	
+sys_only	R2341-XW-4	0	35	35	
+sys_only	R2342-WW	0	340	340	
+sys_only	R2342-WW-5	0	58	58	
+sys_only	R2351-CW	0	29	29	
+sys_only	R2351-CW-15	0	1	1	
+sys_only	R2351-CW-2	0	1	1	
+sys_only	R2351-DL	0	68	68	
+sys_only	R2351-DL-10	0	10	10	
+sys_only	R2351-DL-15	0	4	4	
+sys_only	R2351-DL-2	0	22	22	
+sys_only	R2351-DL-4	0	3	3	
+sys_only	R2351-DL-6	0	4	4	
+sys_only	R2351-DL-8	0	2	2	
+sys_only	R2351-RGBW	0	63	63	
+sys_only	R2351-WW	0	19	19	
+sys_only	R2351-WW-10	0	24	24	
+sys_only	R2351-WW-15	0	33	33	
+sys_only	R2351-WW-4	0	3	3	
+sys_only	R2351-WW-5	0	73	73	
+sys_only	R2351-WW-6	0	12	12	
+sys_only	R2351-WW-8	0	25	25	
+sys_only	R2352-BL	0	23	23	
+sys_only	R2352-CW	0	20	20	
+sys_only	R2352-CW-10	0	18	18	
+sys_only	R2352-CW-10-V2	0	20	20	
+sys_only	R2352-CW-15	0	20	20	
+sys_only	R2352-CW-2-V2	0	92	92	
+sys_only	R2352-CW-4-V2	0	105	105	
+sys_only	R2352-CW-5	0	3	3	
+sys_only	R2352-CW-6-V2	0	86	86	
+sys_only	R2352-CW-8-V2	0	87	87	
+sys_only	R2352-DL	0	41	41	
+sys_only	R2352-DL-10	0	2	2	
+sys_only	R2352-DL-2-V2	0	5	5	
+sys_only	R2352-DL-6-V2	0	18	18	
+sys_only	R2352-RGBW	0	103	103	
+sys_only	R2352-RGBW-10	0	39	39	
+sys_only	R2352-RGBW-15	0	26	26	
+sys_only	R2352-RGBW-2	0	28	28	
+sys_only	R2352-RGBW-4	0	25	25	
+sys_only	R2352-RGBW-6	0	10	10	
+sys_only	R2352-RGBW-8	0	17	17	
+sys_only	R2352-WW	0	12	12	
+sys_only	R2352-WW-10	0	8	8	
+sys_only	R2352-WW-15-V2	0	45	45	
+sys_only	R2352-WW-2-V2	0	1	1	
+sys_only	R2352-WW-4-V2	0	20	20	
+sys_only	R2352-WW-5	0	26	26	
+sys_only	R2352-WW-6-V2	0	40	40	
+sys_only	R2352-WW-8-V2	0	12	12	
+sys_only	R2352-WW-V2	0	16	16	
+sys_only	R2353-CW	0	7	7	
+sys_only	R2353-CW-10	0	34	34	
+sys_only	R2353-CW-15	0	40	40	
+sys_only	R2353-CW-2	0	11	11	
+sys_only	R2353-CW-4	0	10	10	
+sys_only	R2353-CW-6	0	13	13	
+sys_only	R2353-CW-8	0	13	13	
+sys_only	R2353-DL-10	0	2	2	
+sys_only	R2353-DL-15	0	3	3	
+sys_only	R2353-WW	0	91	91	
+sys_only	R2353-WW-15	0	6	6	
+sys_only	R2353-WW-2	0	14	14	
+sys_only	R2353-WW-4	0	31	31	
+sys_only	R2353-WW-6	0	4	4	
+sys_only	R2353-WW-8	0	14	14	
+sys_only	R2354-CW	0	232	232	
+sys_only	R2354-CW-10	0	1	1	
+sys_only	R2354-CW-15	0	5	5	
+sys_only	R2354-CW-2	0	5	5	
+sys_only	R2354-CW-4	0	18	18	
+sys_only	R2354-CW-6	0	6	6	
+sys_only	R2354-CW-8	0	14	14	
+sys_only	R2354-DL	0	42	42	
+sys_only	R2354-WW	0	81	81	
+sys_only	R2354-WW-15	0	3	3	
+sys_only	R2354-WW-2	0	45	45	
+sys_only	R2354-WW-4	0	43	43	
+sys_only	R2354-WW-5	0	3	3	
+sys_only	R2354-WW-6	0	46	46	
+sys_only	R2354-WW-8	0	21	21	
+sys_only	R2360-CW	0	1	1	
+sys_only	R2360-CW-10	0	29	29	
+sys_only	R2360-CW-2-V2	0	110	110	
+sys_only	R2360-CW-4-V2	0	63	63	
+sys_only	R2360-CW-6-V2	0	33	33	
+sys_only	R2360-CW-8-V2	0	36	36	
+sys_only	R2360-CW-V2	0	1	1	
+sys_only	R2360-DL	0	4	4	
+sys_only	R2360-WW	0	10	10	
+sys_only	R2360-WW-10-V2	0	50	50	
+sys_only	R2360-WW-2-V2	0	54	54	
+sys_only	R2360-WW-4-V2	0	26	26	
+sys_only	R2360-WW-6-V2	0	6	6	
+sys_only	R2360-WW-8-V2	0	34	34	
+sys_only	R2360-WW-V2	0	6	6	
+sys_only	R2360-XW	0	3	3	
+sys_only	R2360-XW-10	0	29	29	
+sys_only	R2360-XW-2	0	49	49	
+sys_only	R2360-XW-4	0	39	39	
+sys_only	R2360-XW-6	0	40	40	
+sys_only	R2360-XW-8	0	12	12	
+sys_only	R2361-CW	0	9	9	
+sys_only	R2361-CW-10	0	36	36	
+sys_only	R2361-CW-2	0	58	58	
+sys_only	R2361-CW-4	0	55	55	
+sys_only	R2361-CW-6	0	32	32	
+sys_only	R2361-CW-8	0	11	11	
+sys_only	R2361-DL	0	6	6	
+sys_only	R2361-DL-2	0	14	14	
+sys_only	R2361-WW	0	4	4	
+sys_only	R2361-WW-10	0	31	31	
+sys_only	R2361-WW-2	0	36	36	
+sys_only	R2361-WW-4	0	183	183	
+sys_only	R2361-WW-6	0	34	34	
+sys_only	R2361-WW-8	0	48	48	
+sys_only	R2361-XW-10	0	15	15	
+sys_only	R2362-RGB	0	45	45	
+sys_only	R2362-RGBW	0	49	49	
+sys_only	R2362-RGBW-15	0	10	10	
+sys_only	R2362-RGBW-2	0	27	27	
+sys_only	R2362-RGBW-4	0	13	13	
+sys_only	R2362-RGBW-6	0	14	14	
+sys_only	R2362-RGBW-8	0	11	11	
+sys_only	R2365-1	0	144	144	
+sys_only	R2365-2	0	123	123	
+sys_only	R2365-3	0	342	342	
+sys_only	R2365-4	0	307	307	
+sys_only	R2369-CW	0	351	351	
+sys_only	R2369-WW	0	375	375	
+sys_only	R2370-AL	0	41	41	
+sys_only	R2370-BK	0	22	22	
+sys_only	R2370-BK-2M	0	15	15	
+sys_only	R2370-BK-3M	0	44	44	
+sys_only	R2370-DIFF-10	0	15	15	
+sys_only	R2370-DIFF-5	0	11	11	
+sys_only	R2370-SUS-5M	0	118	118	
+sys_only	R2370-SUS-V2	0	395	395	
+sys_only	R2370-WH_R2369-CW_DALI	0	43	43	
+sys_only	R2370-WH-2M	0	27	27	
+sys_only	R2370-WH-3M	0	12	12	
+sys_only	R2371-BK	0	41	41	
+sys_only	R2371-BK-2M	0	29	29	
+sys_only	R2371-BK-3M	0	41	41	
+sys_only	R2371-DIFF-10	0	9	9	
+sys_only	R2371-DIFF-5	0	20	20	
+sys_only	R2371-SUS	0	121	121	
+sys_only	R2371-WH-2M	0	10	10	
+sys_only	R2372-180	0	54	54	
+sys_only	R2372-90H	0	100	100	
+sys_only	R2372-90V	0	50	50	
+sys_only	R2372-MC	0	1200	1200	
+sys_only	R2372-WH-EC	0	145	145	
+sys_only	R2373-BK-EC	0	224	224	
+sys_only	R2373-IC	0	362	362	
+sys_only	R2373-SC	0	200	200	
+sys_only	R2373-SUS	0	197	197	
+sys_only	R2373-WH-EC	0	40	40	
+sys_only	R2374-180	0	48	48	
+sys_only	R2374-90H	0	45	45	
+sys_only	R2374-90V	0	50	50	
+sys_only	R2374-BK-BK-PR-2M	0	51	51	
+sys_only	R2374-BK-EC	0	64	64	
+sys_only	R2374-MC	0	272	272	
+sys_only	R2374-SUS	0	613	613	
+sys_only	R2374-WH-EC	0	65	65	
+sys_only	R2374-WH-WH-PR-2M	0	55	55	
+sys_only	R2377-AL-1M	0	58	58	
+sys_only	R2377-AL-2M	0	51	51	
+sys_only	R2378-AL-2M	0	303	303	
+sys_only	R2380-BK-2M	0	2	2	
+sys_only	R2381-1M	0	80	80	
+sys_only	R2381-AL-1M	0	53	53	
+sys_only	R2381-AL-3M	0	172	172	
+sys_only	R2382_4-BK-DIFFUSER-2M	0	724	724	
+sys_only	R2382_4-BK-DIFFUSER-3M	0	241	241	
+sys_only	R2382_4-DIFF-10	0	50	50	
+sys_only	R2382_4-DIFF-5	0	34	34	
+sys_only	R2382-AL-1M	0	129	129	
+sys_only	R2382-AL-3M	0	418	418	
+sys_only	R2382-BK-2M	0	218	218	
+sys_only	R2382-BK-3M	0	31	31	
+sys_only	R2383-AL-1M	0	159	159	
+sys_only	R2383-DIFF-10-V2	0	1	1	
+sys_only	R2383-DIFF-5	0	1	1	
+sys_only	R2384-AL-1M	0	732	732	
+sys_only	R2384-AL-3M	0	280	280	
+sys_only	R2384-BK-1M-V2	0	7	7	
+sys_only	R2384-BK-3M	0	32	32	
+sys_only	R2384-WH-2M	0	540	540	
+sys_only	R2385_6-DIFF-5	0	68	68	
+sys_only	R2385-AL-2M	0	145	145	
+sys_only	R2386-1M	0	37	37	
+sys_only	R2386-2M	0	1	1	
+sys_only	R2386-DIFF-10-V2	0	4	4	
+sys_only	R2386-WH-1M	0	70	70	
+sys_only	R2386-WH-2M	0	36	36	
+sys_only	R2387-2M	0	96	96	
+sys_only	R2388-1M	0	4	4	
+sys_only	R2388-4M	0	30	30	
+sys_only	R2389-1M	0	118	118	
+sys_only	R2396-AL-3M	0	72	72	
+sys_only	R2396-BK-DIFFUSER-2M	0	75	75	
+sys_only	R2396-BK-DIFFUSER-3M	0	50	50	
+sys_only	R2396-DIFF-10	0	29	29	
+sys_only	R2396-DIFF-5	0	10	10	
+sys_only	R2397-180	0	115	115	
+sys_only	R2397-90	0	78	78	
+sys_only	R240	0	861	861	
+sys_only	R2401	0	1	1	
+sys_only	R2401-CONTROLLER	0	79	79	
+sys_only	R2401-REMOTE	0	20	20	
+sys_only	R2402	0	135	135	
+sys_only	R2403	0	44	44	
+sys_only	R2404	0	4	4	
+sys_only	R240ACB	0	10	10	
+sys_only	R240P	0	267	267	
+sys_only	R240RC	0	731	731	
+sys_only	R2498-400-40W-BK-WW-DALI	0	36	36	
+sys_only	R2580-BK-TRI-60-P1	0	24	24	
+sys_only	R2580-BK-TRI-60-V2	0	300	300	
+sys_only	R2580-LENS-15DEG	0	60	60	
+sys_only	R2580-LENS-24DEG	0	149	149	
+sys_only	R2580-LENS-36DEG	0	14	14	
+sys_only	R2580-WH-TRI-60-P1	0	40	40	
+sys_only	R2580-WH-TRI-60-V2	0	117	117	
+sys_only	R2581-BK-TRI-60	0	30	30	
+sys_only	R2581-LENS-12DEG	0	48	48	
+sys_only	R2581-LENS-24DEG	0	55	55	
+sys_only	R2581-LENS-36DEG	0	51	51	
+sys_only	R2581-WH-TRI-36-P1	0	8	8	
+sys_only	R2581-WH-TRI-60-P1	0	4	4	
+sys_only	R2581-WH-TRI-60-V2	0	755	755	
+sys_only	R2582-BK-CW-60-DALI	0	57	57	
+sys_only	R2582-BK-WW-60-DALI	0	147	147	
+sys_only	R2582-LENS-12DEG	0	132	132	
+sys_only	R2582-LENS-24DEG	0	15	15	
+sys_only	R2582-LENS-36DEG	0	75	75	
+sys_only	R2582-WH-CW-60-DALI	0	49	49	
+sys_only	R2582-WH-TRI-60-P1	0	221	221	
+sys_only	R2586-BK-PRO	0	116	116	
+sys_only	R2586-WH-PRO	0	158	158	
+sys_only	R2595-BK-CW	0	1	1	
+sys_only	R2595-WH-CW	0	146	146	
+sys_only	R2595-WH-WW	0	924	924	
+sys_only	R2601-BK-1M	0	40	40	
+sys_only	R2601-WH-2M	0	114	114	
+sys_only	R2601-WH-3M	0	3	3	
+sys_only	R2602-BK	0	79	79	
+sys_only	R2602-WH	0	81	81	
+sys_only	R2603-BK	0	31	31	
+sys_only	R2603-WH	0	40	40	
+sys_only	R2604-BK	0	8	8	
+sys_only	R2604-WH	0	105	105	
+sys_only	R2605-BK	0	66	66	
+sys_only	R2605-WH	0	58	58	
+sys_only	R2606-BK	0	52	52	
+sys_only	R2606-WH	0	119	119	
+sys_only	R2607-BK	0	68	68	
+sys_only	R2607-WH	0	59	59	
+sys_only	R2609-BK	0	58	58	
+sys_only	R2609-WH	0	55	55	
+sys_only	R2610-BK	0	155	155	
+sys_only	R2610-BK-1.5	0	56	56	
+sys_only	R2611-BK	0	148	148	
+sys_only	R2631-BK-1M	0	60	60	
+sys_only	R2631-BK-2M	0	128	128	
+sys_only	R2631-WH-1M	0	55	55	
+sys_only	R2631-WH-2M	0	215	215	
+sys_only	R2632-BK	0	118	118	
+sys_only	R2632-WH	0	73	73	
+sys_only	R2633-L-BK	0	183	183	
+sys_only	R2633-L-WH	0	169	169	
+sys_only	R2633-R-BK	0	87	87	
+sys_only	R2633-R-WH	0	112	112	
+sys_only	R2634-BK	0	373	373	
+sys_only	R2634-WH	0	97	97	
+sys_only	R2635-BK	0	284	284	
+sys_only	R2635-WH	0	524	524	
+sys_only	R2636-L-BK	0	57	57	
+sys_only	R2636-L-WH	0	39	39	
+sys_only	R2636-R-BK	0	14	14	
+sys_only	R2636-R-WH	0	267	267	
+sys_only	R2637-L-BK	0	114	114	
+sys_only	R2637-L-WH	0	151	151	
+sys_only	R2637-R-BK	0	276	276	
+sys_only	R2637-R-WH	0	80	80	
+sys_only	R2639-BK	0	241	241	
+sys_only	R2639-WH	0	63	63	
+sys_only	R2640-BK	0	110	110	
+sys_only	R2640-WH	0	172	172	
+sys_only	R2641-BK	0	89	89	
+sys_only	R2641-BK-6	0	11	11	
+sys_only	R2641-WH	0	223	223	
+sys_only	R2641-WH-6	0	456	456	
+sys_only	R2642-BK	0	134	134	
+sys_only	R2642-WH	0	150	150	
+sys_only	R2651-BK-1M-RM	0	21	21	
+sys_only	R2651-BK-2M-RM	0	31	31	
+sys_only	R2651-WH-1M-RM	0	13	13	
+sys_only	R2651-WH-2M-RM	0	32	32	
+sys_only	R2652-BK	0	185	185	
+sys_only	R2652-WH	0	100	100	
+sys_only	R2653-L-BK	0	36	36	
+sys_only	R2653-L-WH	0	45	45	
+sys_only	R2653-R-BK	0	80	80	
+sys_only	R2653-R-WH	0	71	71	
+sys_only	R2654-BK	0	83	83	
+sys_only	R2654-WH	0	9	9	
+sys_only	R2655-BK	0	115	115	
+sys_only	R2655-WH	0	38	38	
+sys_only	R2656-L-BK	0	48	48	
+sys_only	R2656-L-WH	0	35	35	
+sys_only	R2656-R-BK	0	39	39	
+sys_only	R2656-R-WH	0	49	49	
+sys_only	R2657-L-BK	0	42	42	
+sys_only	R2657-L-WH	0	50	50	
+sys_only	R2657-R-BK	0	47	47	
+sys_only	R2657-R-WH	0	50	50	
+sys_only	R2660	0	783	783	
+sys_only	R2952	0	8	8	
+sys_only	R2955	0	1	1	
+sys_only	R2956	0	2	2	
+sys_only	R2957	0	5	5	
+sys_only	R2958-1	0	9	9	
+sys_only	R2958-2	0	6	6	
+sys_only	R2958-3	0	8	8	
+sys_only	R2958-4	0	5	5	
+sys_only	R2960	0	14	14	
+sys_only	R2961	0	350	350	
+sys_only	R3039-VISOR-LRG	0	1	1	
+sys_only	R3041-150	0	1	1	
+sys_only	R3041-300	0	11	11	
+sys_only	R3042	0	301	301	
+sys_only	R3044	0	362	362	
+sys_only	R3045	0	136	136	
+sys_only	R3058	0	36	36	
+sys_only	R3059	0	33	33	
+sys_only	R3072-1200W_F19805	0	1	1	
+sys_only	R3072-1200W-5070_F19813	0	1	1	
+sys_only	R3077-LENS-F14505	0	40	40	
+sys_only	R3117	0	495	495	
+sys_only	R3117-REFLECTOR-PC	0	259	259	
+sys_only	R3118	0	812	812	
+sys_only	R3143	0	74	74	
+sys_only	R3144-1M	0	44	44	
+sys_only	R3146-REMOTE	0	68	68	
+sys_only	R3146-S	0	97	97	
+sys_only	R3148-CAS	0	120	120	
+sys_only	R3148-MS	0	106	106	
+sys_only	R3148-REMOTE	0	21	21	
+sys_only	R3205-FRAME-SM	0	56	56	
+sys_only	R3205-TRI	0	604	604	
+sys_only	R3205-TRI-RM	0	73	73	
+sys_only	R3205-TRI-SM	0	50	50	
+sys_only	R3205-UGR19-25-CW	0	23	23	
+sys_only	R3205-UGR19-30-CW	0	158	158	
+sys_only	R3206-CW	0	1160	1160	
+sys_only	R3206-FRAME-SM	0	198	198	
+sys_only	R3206-TRI-RM	0	100	100	
+sys_only	R3206-UGR19-25-CW-COI	0	104	104	
+sys_only	R3207-FRAME-SM	0	100	100	
+sys_only	R3207-TRI	0	47	47	
+sys_only	R3216	0	309	309	
+sys_only	R3222-BK-60	0	174	174	
+sys_only	R3225-20-BK-DL	0	44	44	
+sys_only	R3225-40-BK-DL	0	2	2	
+sys_only	R3230-075	0	87	87	
+sys_only	R3240-BK-MED-PE-60	0	3	3	
+sys_only	R3240-CAPS	0	8	8	
+sys_only	R3240-LENS-R09601	0	101	101	
+sys_only	R3240-LENS-R09602	0	7	7	
+sys_only	R3240-LENS-R09604	0	3	3	
+sys_only	R3240-LENS-R09614	0	7	7	
+sys_only	R3240-LENS-R17601	0	45	45	
+sys_only	R3240-LENS-R17602	0	30	30	
+sys_only	R3240-LENS-R17603	0	30	30	
+sys_only	R3240-LENS-R17604	0	46	46	
+sys_only	R3240-LENS-R17605	0	25	25	
+sys_only	R3240-PE	0	11	11	
+sys_only	R3241-070-LENS-R01601	0	9	9	
+sys_only	R3241-070-LENS-R01602	0	25	25	
+sys_only	R3241-070-LENS-R01603	0	25	25	
+sys_only	R3241-070-LENS-R01604	0	25	25	
+sys_only	R3241-070-LENS-R01605	0	25	25	
+sys_only	R3241-070-LENS-R01606	0	25	25	
+sys_only	R3241-070-LENS-R01607	0	25	25	
+sys_only	R3241-070-SHIELD-BK	0	9	9	
+sys_only	R3241-070-SHIELD-SIL	0	21	21	
+sys_only	R3241-120-LENS-R01601	0	25	25	
+sys_only	R3241-120-LENS-R01603	0	25	25	
+sys_only	R3241-120-LENS-R01604	0	25	25	
+sys_only	R3241-120-LENS-R01605	0	25	25	
+sys_only	R3241-120-LENS-R01606	0	25	25	
+sys_only	R3241-120-LENS-R01607	0	25	25	
+sys_only	R3241-120-LENS-R01610	0	25	25	
+sys_only	R3241-120-SHIELD-BK	0	30	30	
+sys_only	R3241-120-SHIELD-SIL	0	30	30	
+sys_only	R3241-PE	0	43	43	
+sys_only	R3245-020-CW	0	96	96	
+sys_only	R3245-040-CW	0	54	54	
+sys_only	R3245-REMOTE	0	17	17	
+sys_only	R3250-180-CW-BKT-ADJ_R10504	0	2	2	
+sys_only	R3250-180-CW-BRACKET-ADJ	0	2	2	
+sys_only	R3250-300-BK-CW_R10503	0	19	19	
+sys_only	R3250-BRACKET-ADJ	0	44	44	
+sys_only	R3250-BRACKET-SA	0	61	61	
+sys_only	R3250-BRACKET-ULRG	0	22	22	
+sys_only	R3250-R10502	0	33	33	
+sys_only	R3250-R10503	0	42	42	
+sys_only	R3250-R10504	0	63	63	
+sys_only	R3250-R10505	0	50	50	
+sys_only	R3250-R10506	0	32	32	
+sys_only	R3250-SHIELD	0	157	157	
+sys_only	R3261	0	54	54	
+sys_only	R3262-BK-60	0	21	21	
+sys_only	R3262-BK-76	0	18	18	
+sys_only	R3262-SL-76	0	29	29	
+sys_only	R3263-BK-60	0	14	14	
+sys_only	R3263-BK-76	0	22	22	
+sys_only	R3263-SL-60	0	47	47	
+sys_only	R3263-SL-76	0	63	63	
+sys_only	R3264-BK	0	116	116	
+sys_only	R3264-SL	0	37	37	
+sys_only	R3265-BK-60	0	17	17	
+sys_only	R3265-SL-60	0	21	21	
+sys_only	R3265-SL-76	0	22	22	
+sys_only	R3266-SL	0	22	22	
+sys_only	R3268-BK-60	0	189	189	
+sys_only	R3268-BK-76	0	98	98	
+sys_only	R3269-BK-76	0	19	19	
+sys_only	R3269-SL-76	0	11	11	
+sys_only	R3270-BK-76	0	37	37	
+sys_only	R3302-020-WW	0	27	27	
+sys_only	R3303-040-CW	0	39	39	
+sys_only	R3303-040-WW	0	20	20	
+sys_only	R3303-070	0	53	53	
+sys_only	R3303-070-CW	0	16	16	
+sys_only	R3510-TRI	0	212	212	
+sys_only	R3520-EM-TRI	0	264	264	
+sys_only	R3520-S-TRI	0	332	332	
+sys_only	R3520-TRI	0	486	486	
+sys_only	R3530-TRI	0	49	49	
+sys_only	R3540-S-TRI	0	203	203	
+sys_only	R3541-EM-TRI	0	479	479	
+sys_only	R3542-EM-TRI	0	256	256	
+sys_only	R3550-EM-TRI	0	159	159	
+sys_only	R3550-TRI	0	128	128	
+sys_only	R3551-EM-TRI	0	73	73	
+sys_only	R3551-TRI	0	124	124	
+sys_only	R3570-S-TRI	0	162	162	
+sys_only	R3571-EM-S-TRI	0	87	87	
+sys_only	R3571-EM-TRI	0	146	146	
+sys_only	R3571-S-TRI	0	90	90	
+sys_only	R3571-TRI	0	277	277	
+sys_only	R3579	0	70	70	
+sys_only	R3579-V2	0	156	156	
+sys_only	R360-SIMPLICITY-L-BK	0	6	6	
+sys_only	R360-SPD18MW	0	6	6	
+sys_only	R360-SPD52-MW-WH	0	4	4	
+sys_only	R360-SPD60-BK-LO	0	1	1	
+sys_only	R3600	0	200	200	
+sys_only	R3601-BK	0	48	48	
+sys_only	R3601-FRAME-SM-BK	0	25	25	
+sys_only	R3601-FRAME-SM-WH	0	50	50	
+sys_only	R3601-WH	0	98	98	
+sys_only	R3602-BK	0	48	48	
+sys_only	R3602-FRAME-SM-BK	0	49	49	
+sys_only	R3602-FRAME-SM-WH	0	50	50	
+sys_only	R3602-WH	0	298	298	
+sys_only	R3603-BK	0	98	98	
+sys_only	R3603-FRAME-SM-BK	0	50	50	
+sys_only	R3603-FRAME-SM-WH	0	99	99	
+sys_only	R3603-WH	0	453	453	
+sys_only	R3915	0	10	10	
+sys_only	R3915-LENS-15	0	47	47	
+sys_only	R3915-LENS-30	0	1	1	
+sys_only	R3916	0	58	58	
+sys_only	R4000-BASE	0	369	369	
+sys_only	R4000-TRIM-BK	0	114	114	
+sys_only	R4000-TRIM-BR	0	54	54	
+sys_only	R4000-TRIM-GO	0	126	126	
+sys_only	R4000-TRIM-WH	0	177	177	
+sys_only	R4001-GLASS-AM	0	286	286	
+sys_only	R4001-GLASS-CL	0	151	151	
+sys_only	R4002-GLASS-AM	0	392	392	
+sys_only	R4002-GLASS-CL	0	336	336	
+sys_only	R4022	0	63	63	
+sys_only	R4101-BK-CW	0	17	17	
+sys_only	R440-JK	0	100	100	
+sys_only	R440-MC-BK	0	500	500	
+sys_only	R440-MC-WH	0	300	300	
+sys_only	R440-SUS-2M-BK	0	350	350	
+sys_only	R440-SUS-2M-WH	0	250	250	
+sys_only	R4400-1200-BK	0	60	60	
+sys_only	R4400-1200-WH	0	40	40	
+sys_only	R4400-1800-BK	0	60	60	
+sys_only	R4400-1800-WH	0	40	40	
+sys_only	R4400-600-BK	0	60	60	
+sys_only	R4400-600-WH	0	40	40	
+sys_only	R4401-1200	0	50	50	
+sys_only	R4401-1800	0	50	50	
+sys_only	R4401-600	0	50	50	
+sys_only	R4402-1200	0	50	50	
+sys_only	R4402-1800	0	50	50	
+sys_only	R4402-600	0	50	50	
+sys_only	R4403-1200	0	50	50	
+sys_only	R4403-1800	0	50	50	
+sys_only	R4403-600	0	50	50	
+sys_only	R5010-BL	0	36	36	
+sys_only	R5010-CW	0	26	26	
+sys_only	R5010-RGB	0	146	146	
+sys_only	R5011-BL	0	18	18	
+sys_only	R5011-RGB	0	20	20	
+sys_only	R5501	0	457	457	
+sys_only	R5502	0	319	319	
+sys_only	R5510	0	351	351	
+sys_only	R5511	0	555	555	
+sys_only	R6002-EXT	0	38	38	
+sys_only	R6007-BK-DL-V2	0	118	118	
+sys_only	R6010-BK-DL	0	99	99	
+sys_only	R6010-BK-DL-V2	0	99	99	
+sys_only	R6010-BK-WW	0	357	357	
+sys_only	R6015-BK-TRI	0	2171	2171	
+sys_only	R6015-SS-TRI	0	115	115	
+sys_only	R6016-CW	0	53	53	
+sys_only	R6017-CW	0	42	42	
+sys_only	R6030-BK	0	5	5	
+sys_only	R6031-BK	0	193	193	
+sys_only	R6031-WH	0	92	92	
+sys_only	R6032-BK	0	327	327	
+sys_only	R6032-WH	0	198	198	
+sys_only	R6039-BK	0	292	292	
+sys_only	R6039-WH	0	106	106	
+sys_only	R6051-SS-TRI	0	102	102	
+sys_only	R6051-WH-TRI	0	160	160	
+sys_only	R6052-SS-TRI	0	50	50	
+sys_only	R6052-TT-TRI	0	50	50	
+sys_only	R6053-BK-TRI	0	686	686	
+sys_only	R6053-SS-TRI	0	129	129	
+sys_only	R6054-BK-TRI	0	243	243	
+sys_only	R6054-WH-TRI	0	92	92	
+sys_only	R6056-BK-CW	0	45	45	
+sys_only	R6070-BK-CW	0	73	73	
+sys_only	R6070-BK-WW-V2	0	104	104	
+sys_only	R6070-WH-WW	0	43	43	
+sys_only	R6071-BK-CW	0	47	47	
+sys_only	R6071-BK-CW-V2	0	48	48	
+sys_only	R6071-BK-WW-V2	0	56	56	
+sys_only	R6071-WH-CW	0	25	25	
+sys_only	R6071-WH-WW	0	46	46	
+sys_only	R6073-WH-TRI	0	63	63	
+sys_only	R6074-WH-TRI	0	107	107	
+sys_only	R6075-BK-TRI	0	55	55	
+sys_only	R6075-WH-TRI	0	181	181	
+sys_only	R6076-BK-TRI	0	147	147	
+sys_only	R6078-BK-TRI	0	107	107	
+sys_only	R6079-BK-TRI	0	60	60	
+sys_only	R6079-WH-TRI	0	108	108	
+sys_only	R6084-BK-TRI	0	149	149	
+sys_only	R6084-BK-WW	0	1	1	
+sys_only	R6084-WH-TRI	0	92	92	
+sys_only	R6084-WH-WW	0	9	9	
+sys_only	R6085-BK-TRI	0	7	7	
+sys_only	R6090-12V-BK-WW	0	53	53	
+sys_only	R6090-12V-WH-WW	0	66	66	
+sys_only	R6090-BK-CW	0	5	5	
+sys_only	R6090-BK-WW	0	44	44	
+sys_only	R6090-BK-WW-V1	0	2	2	
+sys_only	R6090-WH-CW	0	77	77	
+sys_only	R6090-WH-WW	0	25	25	
+sys_only	R6091-BK-CW	0	67	67	
+sys_only	R6091-BK-WW	0	48	48	
+sys_only	R6091-BK-WW-V1	0	2	2	
+sys_only	R6091-WH-CW	0	29	29	
+sys_only	R6091-WH-WW	0	35	35	
+sys_only	R6092-12V-BK-CW	0	48	48	
+sys_only	R6092-BK-CW	0	3	3	
+sys_only	R6092-BK-CW-V2	0	39	39	
+sys_only	R6092-BK-WW	0	6	6	
+sys_only	R6092-BK-WW-V1	0	4	4	
+sys_only	R6092-WH-CW	0	24	24	
+sys_only	R6092-WH-WW	0	66	66	
+sys_only	R6093-BK-CW-V1	0	2	2	
+sys_only	R6093-WH-CW	0	30	30	
+sys_only	R6093-WH-WW	0	16	16	
+sys_only	R6094-BK-CW	0	47	47	
+sys_only	R6094-BK-WW	0	257	257	
+sys_only	R6094-WH-CW	0	54	54	
+sys_only	R6099-BK-CW	0	61	61	
+sys_only	R6099-BK-WW	0	39	39	
+sys_only	R6103-BK-CW	0	242	242	
+sys_only	R6103-BK-WW	0	81	81	
+sys_only	R6103-SS-CW	0	291	291	
+sys_only	R6103-SS-WW	0	92	92	
+sys_only	R6104-BK-BL	0	21	21	
+sys_only	R6104-BK-CW	0	167	167	
+sys_only	R6104-SS-BL	0	165	165	
+sys_only	R6104-SS-CW	0	175	175	
+sys_only	R6104-SS-WW	0	83	83	
+sys_only	R6105-BK-CW	0	59	59	
+sys_only	R6105-BK-WW	0	132	132	
+sys_only	R6105-SS-CW	0	38	38	
+sys_only	R6105-SS-WW	0	157	157	
+sys_only	R6106-BK-CW	0	64	64	
+sys_only	R6106-BK-WW	0	82	82	
+sys_only	R6106-SS-CW	0	49	49	
+sys_only	R6106-SS-WW	0	71	71	
+sys_only	R6110	0	32	32	
+sys_only	R6110-S	0	119	119	
+sys_only	R6121-BK-CW	0	112	112	
+sys_only	R6121-BK-WW	0	114	114	
+sys_only	R6121-SS-CW	0	164	164	
+sys_only	R6121-SS-WW	0	62	62	
+sys_only	R6122-BK-CW	0	170	170	
+sys_only	R6122-BK-WW	0	145	145	
+sys_only	R6122-SS-CW	0	152	152	
+sys_only	R6122-SS-WW	0	158	158	
+sys_only	R6123-BK-CW	0	119	119	
+sys_only	R6123-SS-CW	0	174	174	
+sys_only	R6201-COVER-BK	0	29	29	
+sys_only	R6201-TRI	0	4	4	
+sys_only	R6232-EM-BK-TRI	0	28	28	
+sys_only	R6232-EM-S-BK-TRI	0	42	42	
+sys_only	R6232-EM-S-WH-TRI	0	11	11	
+sys_only	R6232-EM-WH-TRI	0	80	80	
+sys_only	R6232-S-BK-TRI	0	38	38	
+sys_only	R6232-S-WH-TRI	0	330	330	
+sys_only	R6233-BK-TRIM	0	303	303	
+sys_only	R6235-WH-TRIM	0	87	87	
+sys_only	R6240-EM-BK-TRI	0	9	9	
+sys_only	R6240-EM-S-WH-TRI	0	116	116	
+sys_only	R6240-S-BK-TRI	0	63	63	
+sys_only	R6260	0	93	93	
+sys_only	R6331-CW	0	72	72	
+sys_only	R6332-VISOR	0	86	86	
+sys_only	R6333-REMOTE	0	13	13	
+sys_only	R6334-15W-CW	0	17	17	
+sys_only	R6334-15W-WW	0	11	11	
+sys_only	R6334-25W-WW	0	80	80	
+sys_only	R6370-BASE	0	157	157	
+sys_only	R6390-TT-TRI	0	7	7	
+sys_only	R6391-BK	0	54	54	
+sys_only	R6391-TT	0	2	2	
+sys_only	R7001	0	300	300	
+sys_only	R8001-1M	0	111	111	
+sys_only	R8002-G45-B	0	110	110	
+sys_only	R8002-G45-G	0	101	101	
+sys_only	R8002-G45-P	0	87	87	
+sys_only	R8002-G45-R	0	118	118	
+sys_only	R8002-G45-WW	0	550	550	
+sys_only	R8002-G45-Y	0	224	224	
+sys_only	R8002-S14-CW	0	312	312	
+sys_only	R8002-S14-WW	0	415	415	
+sys_only	R8101	0	1	1	
+sys_only	R8101-100	0	28	28	
+sys_only	R9	0	12	12	
+sys_only	R999-BK-WMB	0	52	52	
+sys_only	R999-SUS	0	107	107	
+sys_only	R999-WH-WMB	0	302	302	
+sys_only	R9990-KIT	0	216	216	
+sys_only	R9991-BK	0	92	92	
+sys_only	R9991-WH	0	1282	1282	
+sys_only	R9992-BK	0	56	56	
+sys_only	R9992-WH	0	1101	1101	
+sys_only	R9993-BK	0	17	17	
+sys_only	R9993-WH	0	150	150	
+sys_only	R9995	0	143	143	
+sys_only	R9996-DECAL	0	21	21	
+sys_only	R9996-DECAL-BLACK	0	89	89	
+sys_only	R9996-DECAL-WHITE	0	41	41	
+sys_only	R9996-KIT-BK	0	88	88	
+sys_only	R9996-S-BK	0	53	53	
+sys_only	R9998-DECAL-KIT	0	18	18	
+sys_only	R9998-DECAL-KIT-V1	0	40	40	
+sys_only	R9999-AL	0	13	13	
+sys_only	RAC	0	12	12	
+sys_only	RAC240	0	5	5	
+sys_only	RACP	0	39	39	
+sys_only	RCLIPS-BATTEN-SS	0	323	323	
+sys_only	RCLIPS-R2301	0	172	172	
+sys_only	RCLIPS-R2301-1M	0	153	153	
+sys_only	RCLIPS-R2315	0	191	191	
+sys_only	RCLIPS-R2315-1M	0	191	191	
+sys_only	RCLIPS-R2321	0	450	450	
+sys_only	RCLIPS-R2321-1M	0	537	537	
+sys_only	RCLIPS-R2322-1M	0	294	294	
+sys_only	RCLIPS-R2323	0	883	883	
+sys_only	RFMDUAL	0	114	114	
+sys_only	RFMOD	0	26	26	
+sys_only	RHA240SL	0	5	5	
+sys_only	RQC	0	10161	10161	
+sys_only	RRB	0	6	6	
+sys_only	RSDUALP	0	231	231	
+sys_only	RSDUALPB	0	25	25	
+sys_only	RSS	0	1922	1922	
+sys_only	RSS4	0	1321	1321	
+sys_only	RSSM	0	2382	2382	
+sys_only	RWB2	0	420	420	
+sys_only	RWBB	0	5	5	
+sys_only	SAMPLE CARDBOARD BOX	0	399	399	
+sys_only	SAMPLE-BOX	0	18	18	
+sys_only	SIN-FR-132113E	0	130	130	
+sys_only	SOLO II	0	810	810	
+sys_only	STRIPTAIL-A	0	334	334	
+sys_only	STRIPTAIL-B	0	348	348	
+sys_only	STRIPTAIL-C	0	215	215	
+sys_only	STRIPTAIL-D	0	295	295	
+sys_only	STRIPTAIL-E	0	206	206	
+sys_only	STRIPTAIL-F	0	369	369	
+sys_only	STRIPTAIL-G	0	399	399	
+sys_only	STRIPTAIL-H	0	252	252	
+sys_only	SYLMEDM	0	107	107	
+sys_only	TRI 22185100	0	2	2	
+sys_only	TRI 28000654	0	5	5	
+sys_only	TRI 28000655	0	2	2	
+sys_only	TRI 28000660	0	10	10	
+sys_only	TRI 28000669	0	2	2	
+sys_only	TRI 28000670	0	4	4	
+sys_only	TRI 28000671	0	6	6	
+sys_only	TRI 28000672	0	8	8	
+sys_only	TRI 28000673	0	158	158	
+sys_only	TRI 28000674	0	8	8	
+sys_only	TRI 28000675	0	9	9	
+sys_only	TRI 28000680	0	6	6	
+sys_only	TRI 28000681	0	6	6	
+sys_only	TRI 28000684	0	10	10	
+sys_only	TRI 28000690	0	1	1	
+sys_only	TRI 28000699	0	2	2	
+sys_only	TRI 28000700	0	4	4	
+sys_only	TRI 28000701	0	5	5	
+sys_only	TRI 28000702	0	9	9	
+sys_only	TRI 28001102	0	50	50	
+sys_only	TRI 28001103	0	1	1	
+sys_only	TRI 28001104	0	120	120	
+sys_only	TRI 28001105	0	43	43	
+sys_only	TRI 28001108	0	27	27	
+sys_only	TRI 28001110	0	36	36	
+sys_only	TRI 28001113	0	4	4	
+sys_only	TRI 28001116	0	24	24	
+sys_only	TRI 28001117	0	8	8	
+sys_only	TRI 28001119	0	6	6	
+sys_only	TRI 28001120	0	29	29	
+sys_only	TRI 28001121	0	105	105	
+sys_only	TRI 28001122	0	4	4	
+sys_only	TRI 28001124	0	4	4	
+sys_only	TRI 28001125	0	7	7	
+sys_only	TRI 28001128	0	7	7	
+sys_only	TRI 28001132	0	13	13	
+sys_only	TRI 28001133	0	1	1	
+sys_only	TRI 28001168	0	42	42	
+sys_only	TRI 28001436	0	28	28	
+sys_only	TRI 28001663	0	1	1	
+sys_only	TRI 28001771	0	4	4	
+sys_only	TRI 28002212	0	2	2	
+sys_only	TRI 28002412	0	16	16	
+sys_only	TRI 28002414	0	15	15	
+sys_only	TRI 28002415	0	2	2	
+sys_only	TRI 28002418	0	2	2	
+sys_only	TRI 28002468	0	3	3	
+sys_only	TRI 28002479	0	5	5	
+sys_only	TRI 28002802	0	4	4	
+sys_only	TRI 28003341	0	6	6	
+sys_only	TRI 28003343	0	8	8	
+sys_only	TRI 28003344	0	118	118	
+sys_only	TRI 28003348	0	1	1	
+sys_only	TRI 28003349	0	4	4	
+sys_only	TRI 28003350	0	2	2	
+sys_only	TRI 28004042	0	30	30	
+sys_only	TRI 28004429	0	18	18	
+sys_only	TRI 28004430	0	35	35	
+sys_only	TRI 28004431	0	36	36	
+sys_only	TRI 28004432	0	32	32	
+sys_only	TRI 28004433	0	18	18	
+sys_only	TRI 28005501	0	70	70	
+sys_only	TRI 87500274	0	12	12	
+sys_only	TRI 87500276	0	27	27	
+sys_only	TRI 87500387	0	9	9	
+sys_only	TRI 87500603	0	34	34	
+sys_only	TRI 87500605	0	6	6	
+sys_only	TRI 87500666	0	3	3	
+sys_only	TRI 87500670	0	1	1	
+sys_only	TRI 87500864	0	18	18	
+sys_only	TRI 87500931	0	21	21	
+sys_only	TRI 87501050	0	168	168	
+sys_only	TRI 87501051	0	64	64	
+sys_only	TRI 87501052	0	18	18	
+sys_only	TRI 87501053	0	21	21	
+sys_only	TRI 87501086	0	10	10	
+sys_only	TRI 87501087	0	199	199	
+sys_only	TRI 87501092	0	83	83	
+sys_only	TRI 87501093	0	21	21	
+sys_only	TRI 87501100	0	10	10	
+sys_only	TRI 87501146	0	29	29	
+sys_only	TRI 87501147	0	26	26	
+sys_only	TRIM-R1031-SC	0	376	376	
+sys_only	UMBRELLA	0	150	150	
+sys_only	V125GL	0	13	13	
+sys_only	VEN-ABG250WHRD	0	3	3	
+sys_only	VEN-ABGHFLED200WH-RDR	0	6	6	
+sys_only	VEN-ABGHFLED250WH-RDR	0	9	9	
+sys_only	VEN-ABGLED200WH-RD	0	1	1	
+sys_only	VEN-ABGLED250WH-RD	0	3	3	
+sys_only	VEN-DC31203-L-WH-WC	0	5	5	
+sys_only	VEN-DC3WCM	0	6	6	
+sys_only	VEN-GLA1203-WH	0	13	13	
+sys_only	VEN-H2W	0	6	6	
+sys_only	VEN-M4HDLXWH	0	1	1	
+sys_only	VEN-OLS250RD	0	5	5	
+sys_only	VEN-OLSWURD	0	15	15	
+sys_only	VEN-OVA250SQ	0	6	6	
+sys_only	VEN-OVAWUSQ	0	7	7	
+sys_only	VEN-PTBX200	0	5	5	
+sys_only	VEN-PTBX250	0	8	8	
+sys_only	VEN-PVPX150WHGP	0	1	1	
+sys_only	VEN-PVPX200R	0	5	5	
+sys_only	VEN-PVPX200WHSQ	0	14	14	
+sys_only	VEN-PVPX250R	0	6	6	
+sys_only	VEN-PVPXHF200RDR	0	9	9	
+sys_only	VEN-PVPXHF250RDR	0	12	12	
+sys_only	VEN-PVPXHF250SQR	0	3	3	
+sys_only	VEN-SKY1503-WH	0	3	3	
+sys_only	VEN-SKY1503-WH-L	0	4	4	
+sys_only	VEN-SKY903WH	0	1	1	
+sys_only	VEN-SPY1423-WH	0	2	2	
+sys_only	VEN-SPY903NWH	0	1	1	
+sys_only	VEN-UCFR	0	9	9	
+sys_only	VEN-VAD100	0	4	4	
+sys_only	VEN-VAD100-6	0	2	2	
+sys_only	VEN-VAD125	0	10	10	
+sys_only	VEN-VAD125-6	0	3	3	
+sys_only	VEN-VAD150-3	0	2	2	
+sys_only	VS-I-SMW	0	38	38	
+sys_only	VS-IC1-W	0	7	7	
+sys_only	VS-ID1-W	0	4	4	
+sys_only	VS-IP1-W	0	12	12	
+sys_only	VS-IR1-W	0	9	9	
+sys_only	VS-IT1-W	0	8	8	
+sys_only	VS-S1-LBW	0	5	5	
+sys_only	WMV-50HRFN8	0	2	2	
+mismatch	24V-IP20-020W-DIM	910	626	-284	G-Floor:910
+mismatch	24V-IP20-030W-DIM	1716	1464	-252	G-Floor:1508, G-Floor:208
+mismatch	24V-IP20-060W-DIM	1278	416	-862	F17:1044, G-Floor:234
+mismatch	R-GP2-WH-V1	1	2880	2879	D50:1
+mismatch	R-GP6-WH	199	121	-78	B97:199
+mismatch	R-GPO1-15-WH-V1	262	100	-162	C11:262
+mismatch	R-GPO1-WH	499	1245	746	B97:499
+mismatch	R-PMB	2999	2134	-865	B98:2999
+mismatch	R-SLGP1-WH-V1	47	1402	1355	A31:47
+mismatch	R-SLGP2-WH	1599	3087	1488	D5:1599
+mismatch	R-SLGP2-WH-V1	60	1420	1360	A31:60
+mismatch	R-SLGP3-WH	1599	1381	-218	C72:800, D5:799
+mismatch	R-SLGP4-WH	2199	1374	-825	C72:1600, D5:599
+mismatch	R-SLGP5-WH	399	1021	622	D1:399
+mismatch	R-SLGP6-WH	399	981	582	C37:399
+mismatch	R-SLGPO1-WH-V1	708	1123	415	A31:700, D50:8
+mismatch	R-SLGPO2-WH	6498	2456	-4042	B8:2799, B71:2499, C72:1200
+mismatch	R-SLGPO2-WH-V1	10	7483	7473	D50:10
+mismatch	R-SLGPO2X-WH-V1	4	203	199	D50:4
+mismatch	R-SLSW1-WH	500	2235	1735	B97:500
+mismatch	R-SLSW1-WH-V1	32	2544	2512	A31:25, D50:7
+mismatch	R-SLSW2-WH-V1	11	2150	2139	D50:11
+mismatch	R-SLSW3-WH	999	407	-592	C37:999
+mismatch	R-SLSW4-WH	599	572	-27	D1:599
+mismatch	R-SM16-V1	679	239	-440	A31:679
+mismatch	R-SW1-WH-V1	3785	3	-3782	C11:1040, C16:2739, D50:6
+mismatch	R-SW3-WH-V1	1802	5	-1797	D13:1800, D50:2
+mismatch	R-SW4-WH-V1	1000	64	-936	B26:1000
+mismatch	R-SW5-WH-V1	637	1	-636	B26:327, C41:310
+mismatch	R0001-RF	3458	430	-3028	A82:1280, B3:1178, B70:1000
+mismatch	R0001-RF-V2	32	69	37	C43:32
+mismatch	R0002	732	761	29	B9:732
+mismatch	R0002-RF	430	533	103	B14:430
+mismatch	R0002-RF-V2	375	95	-280	B14:37, C43:338
+mismatch	R0003	3695	799	-2896	A25:720, A27:720, A28:720, A45:815, B24:720
+mismatch	R0003-RF-V2	452	351	-101	C43:452
+mismatch	R1022	300	1074	774	G-Floor:300
+mismatch	R1023	209	536	327	G-Floor:209
+mismatch	R1024	220	148	-72	C-Floor:220
+mismatch	R1030-WH-TRI	249	420	171	A54:199, Misc:50
+mismatch	R1031-WH-TRI	40	12262	12222	Misc:40
+mismatch	R1044	1	10	9	D65:1
+mismatch	R1053-WH-TRI	1920	1564	-356	C64:960, C69:960
+mismatch	R1055-WH-TRI	1920	2090	170	C17:960, C65:960
+mismatch	R1060-WH-TRI	1728	2230	502	C90:864, D45:864
+mismatch	R1061-A-WH-TRI	270	191	-79	A51:270
+mismatch	R1069-WH-12W-WW-60	17	103	86	D77:17
+mismatch	R1071-A-WH-CW-60	107	123	16	D58:107
+mismatch	R1071-WH-WW-60	1152	1297	145	C7:576, C9:576
+mismatch	R1073-BK	96	94	-2	C66:96
+mismatch	R1073-WH	192	229	37	C80:192
+mismatch	R1074-BK	95	101	6	D26:95
+mismatch	R1075-BK	144	107	-37	D26:144
+mismatch	R1076-BK	396	107	-289	B36:216, C80:180
+mismatch	R1076-WH	108	342	234	C22:108
+mismatch	R1076-WH-CW-60	503	224	-279	B65:503
+mismatch	R1077-ADJ-9W	9	494	485	D69:9
+mismatch	R1077-BK	192	86	-106	C80:192
+mismatch	R1077-WH	192	240	48	C80:192
+mismatch	R107M-12W-CW-60-S	95	120	25	C26:95
+mismatch	R107M-15W-CW-60	191	433	242	C66:191
+mismatch	R107M-WW-60	1918	764	-1154	A41:384, B38:1007, B47:527
+mismatch	R107M-XW-60	527	635	108	C53:527
+mismatch	R1081-WH-CW-V2	288	379	91	C21:288
+mismatch	R1081-WH-WW	324	1557	1233	C53:324
+mismatch	R1083-BK-WW	24	9	-15	D50:24
+mismatch	R1084-WH-CW-60	1296	406	-890	B37:324, B43:972
+mismatch	R1084-WH-WW-60	936	126	-810	B37:72, B48:864
+mismatch	R1085-WH-CW-60	792	80	-712	B49:792
+mismatch	R1091-10-WH-SIL-TRI	107	84	-23	C34:107
+mismatch	R1091-10-WH-WH-TRI	108	124	16	C51:108
+mismatch	R1092-18-WH-SIL-TRI	611	157	-454	A6:108, A58:360, B56:143
+mismatch	R1093-25-BK-SIL-TRI	84	75	-9	B72:84
+mismatch	R1094-35-BK-SIL-WW	120	10	-110	D23:120
+mismatch	R1094-35-WH-SIL-WW	5	28	23	Misc:5
+mismatch	R1140-BK-BK-60-SM	477	82	-395	A51:143, B86:143, B91:191
+mismatch	R1140-BK-PND	467	348	-119	B56:180, B62:287
+mismatch	R1140-WH-PND	108	121	13	B21:108
+mismatch	R1140-WH-SA	287	462	175	C51:287
+mismatch	R1140-WH-WH-60-SM	167	269	102	B41:167
+mismatch	R1141-BK-BK-60-SM	274	52	-222	A36:155, A61:119
+mismatch	R1141-BK-PND	95	187	92	B62:95
+mismatch	R1141-BK-TK	95	436	341	A16:95
+mismatch	R1141-WH-PND	215	602	387	C34:215
+mismatch	R1141-WH-TK	864	169	-695	B28:864
+mismatch	R1141-WH-WH-60-SM	934	142	-792	A36:215, A79:480, B66:239
+mismatch	R1146-BK-BK-60-SM	71	76	5	A17:71
+mismatch	R1146-WH-WH-60-SM	861	153	-708	B96:479, C26:191, C36:191
+mismatch	R1147-BK-BK-60-SM	120	52	-68	A91:120
+mismatch	R1147-WH-WH-60-SM	419	57	-362	B17:240, C48:179
+mismatch	R1150-BK-CW	71	182	111	D58:71
+mismatch	R1150-WH-WW	700	391	-309	B36:215, D64:485
+mismatch	R1151-BK-WW	98	35	-63	A43:95, F10:3
+mismatch	R1151-WH-CW	100	48	-52	C22:95, F10:5
+mismatch	R1151-WH-WW	48	20	-28	B51:48
+mismatch	R1160-BK	264	66	-198	A101:264
+mismatch	R1160-WH-V2	574	174	-400	A11:167, C4:216, C8:191
+mismatch	R1161-WH	192	67	-125	C49:96, C52:96
+mismatch	R1165-BK-WW	107	135	28	C2:107
+mismatch	R1165-WH-WW	431	466	35	A26:215, C2:216
+mismatch	R1166-BK-CW	53	39	-14	A26:53
+mismatch	R1166-BK-WW	90	91	1	D58:90
+mismatch	R1170-BK-WW	29	48	19	C6:29
+mismatch	R1170-WH-CW	89	81	-8	B21:89
+mismatch	R1170-WH-WW	239	76	-163	A11:179, C26:60
+mismatch	R1171-WH-CW	1	153	152	Misc:1
+mismatch	R1171-WH-WW	10	256	246	Misc:10
+mismatch	R1204-WH-WW	1	59	58	D57:1
+mismatch	R1208-BK-WW	64	61	-3	B46:64
+mismatch	R1301-DL	63	96	33	D64:63
+mismatch	R1306-BK-CW	167	26	-141	A19:167
+mismatch	R1306-BK-WW-V2	59	83	24	C29:59
+mismatch	R1308-CW	47	39	-8	A43:47
+mismatch	R1308-WW	59	63	4	D26:59
+mismatch	R1309-WH-WW	239	250	11	B91:239
+mismatch	R1311-WH	71	77	6	C29:71
+mismatch	R1312-WH	252	20	-232	B6:252
+mismatch	R131M-24W-CW-60	35	159	124	B46:35
+mismatch	R131M-24W-WW-60	72	86	14	B38:72
+mismatch	R1341-A-BK	47	22	-25	C46:47
+mismatch	R1342-A-WH	107	86	-21	C46:107
+mismatch	R1342-WH	108	78	-30	C46:108
+mismatch	R1343-WH	47	36	-11	C46:47
+mismatch	R134M-10W-CW-40	95	56	-39	C46:95
+mismatch	R134M-10W-FRAME-BK	100	184	84	C80:100
+mismatch	R1352-18-WH-CW	191	41	-150	B39:191
+mismatch	R1352-18-WH-WW	95	101	6	C2:95
+mismatch	R1353-25-WH-WW	95	27	-68	B72:95
+mismatch	R1354-30-WH-WW	95	105	10	C81:95
+mismatch	R1355-40-WH-CW	60	201	141	A54:60
+mismatch	R1355-40-WH-WW	120	31	-89	C1:24, D18:96
+mismatch	R2101-BK-WW	70	32	-38	A13:70
+mismatch	R2120 TRIM BLACK	60	50	-10	B61:60
+mismatch	R2125-DIFFUSER-DEEP	130	80	-50	C77:130
+mismatch	R2125-DIFFUSER-SLIM	150	38	-112	A57:150
+mismatch	R2126-DIFFUSER-DEEP	360	140	-220	C35:80, C40:80, D35:100, D60:100
+mismatch	R2132-WH-TRI	512	425	-87	C12:128, C19:128, C57:128, C63:128
+mismatch	R2160-WH-WW	200	296	96	B51:200
+mismatch	R2201-BK-CW	339	113	-226	A86:10, A99:200, B42:129
+mismatch	R2201-BK-WW	69	31	-38	A86:69
+mismatch	R2202-BK-CW	240	569	329	F9:120, F14:120
+mismatch	R2207-WH-CW	79	10	-69	F13:79
+mismatch	R2210	500	445	-55	A35:500
+mismatch	R2211-BK	40	19	-21	C79:40
+mismatch	R2211-WH	40	21	-19	C79:40
+mismatch	R2212-BK	200	40	-160	C79:200
+mismatch	R2212-WH	77	14	-63	C79:77
+mismatch	R2213-BK	20	136	116	C79:20
+mismatch	R2213-WH	20	49	29	C79:20
+mismatch	R2214	320	1249	929	B46:320
+mismatch	R2215-WH	300	207	-93	A35:200, C66:100
+mismatch	R2216	640	806	166	A35:640
+mismatch	R2218-BK	100	219	119	A35:100
+mismatch	R2322-DL-15	2	6	4	D9:2
+mismatch	R2322-RGBW-5	27	10	-17	D9:27
+mismatch	R2352-BL-10	4	3	-1	D57:4
+mismatch	R2371-AL	9	19	10	F1:9
+mismatch	R2372-WH-PR-2.5	320	24	-296	F1:48, F6:144, F16:128
+mismatch	R2373-BK-PR-2.5	59	24	-35	F5:59
+mismatch	R2373-WH-PR-2.5	45	5	-40	F20:45
+mismatch	R2379-2M	800	1139	339	F7:800
+mismatch	R2380-AL-2M	300	639	339	F4:300
+mismatch	R2381-AL-2M	400	269	-131	F8:400
+mismatch	R2382-AL-2M	700	837	137	F4:700
+mismatch	R2382-WH-2M	100	137	37	F4:100
+mismatch	R2383-AL-2M	205	510	305	F1:5, F7:200
+mismatch	R2384-AL-2M	2599	2080	-519	F2:1200, F3:999, F8:400
+mismatch	R2385-AL-3M	60	61	1	FLOOR:60
+mismatch	R2385-BK-3M	45	142	97	FLOOR:45
+mismatch	R2385-WH-3M	25	16	-9	E-Floor:25
+mismatch	R2386-WH-3M	12	55	43	E-Floor:12
+mismatch	R2396-AL-2M	165	271	106	F7:165
+mismatch	R2397	400	97	-303	F1:400
+mismatch	R2582-BK-TRI-60	274	193	-81	D19:171, D22:103
+mismatch	R2582-WH-WW-60-DALI	59	92	33	C1:59
+mismatch	R2587-BK-PRO	102	26	-76	C3:102
+mismatch	R2587-WH-PRO	102	46	-56	A6:102
+mismatch	R2595-BK-WW	108	106	-2	C22:108
+mismatch	R2601-BK-2M	80	152	72	F7:80
+mismatch	R2601-BK-3M	60	43	-17	F15:40, E-Floor:20
+mismatch	R2601-WH-1M	109	104	-5	C10:49, F7:60
+mismatch	R2631-BK-3M	152	280	128	F15:152
+mismatch	R2631-WH-3M	792	55	-737	E-FLOOR:288, E-FLOOR:504
+mismatch	R2651-BK-3M-RM	36	13	-23	F15:36
+mismatch	R2651-WH-3M-RM	8	25	17	F15:8
+mismatch	R2651-WH-3M-SM	24	15	-9	F15:24
+mismatch	R3043	139	317	178	A4:100, B76:39
+mismatch	R3077-400	58	49	-9	A40:29, B45:29
+mismatch	R3077-600	29	68	39	A87:13, B57:16
+mismatch	R3116	4	1	-3	C56:4
+mismatch	R3117-REFLECTOR-AL	49	243	194	D37:49
+mismatch	R3118-REFLECTOR-AL	49	105	56	D37:49
+mismatch	R3118-REFLECTOR-PC	200	115	-85	A83:40, A85:40, A100:40, A105:40, A110:40
+mismatch	R3140	168	34	-134	C36:168
+mismatch	R3145	143	66	-77	D37:143
+mismatch	R3205-UGR19-25-CW-COI	95	90	-5	C30:95
+mismatch	R3206-DL	179	351	172	B18:90, B55:89
+mismatch	R3206-TRI	810	2656	1846	G-Floor:90, G-Floor:90, G-Floor:90, G-Floor:90, C-Floor:90, C-Floor:90, C-Floor:90, C-Floor:90, C-Floor:90
+mismatch	R3206-UGR19-25-CW	1223	510	-713	A2:72, A5:72, A9:72, A72:72, B25:72, C15:72, C27:72, C28:72, G-Floor:72, G-Floor:72, G-Floor:72, G-Floor:72, G-Floor:72, G-Floor:72, G-Floor:72, G-Floor:72, G-Floor:71
+mismatch	R3206-UGR19-25-DL	912	53	-859	A3:72, A8:72, A14:72, A18:72, A24:72, B2:72, B12:72, B52:72, C14:72, C18:72, D28:96, G-Floor:96
+mismatch	R3206-UGR19-30-CW	720	711	-9	A7:72, A68:72, A69:72, B74:72, B99:72, C5:72, D4:72, G-Floor:72, G-Floor:72, G-Floor:72
+mismatch	R3207-TRI-RM	72	32	-40	A78:72
+mismatch	R3207-TRI-SM	36	24	-12	C54:36
+mismatch	R3207-UGR19-16-CW	74	28	-46	C75:74
+mismatch	R3208-TRI	259	90	-169	A53:36, A67:27, B5:40, B10:40, B15:40, B20:36, B40:40
+mismatch	R3212	90	102	12	D2:30, C-Floor:30, C-Floor:30
+mismatch	R3213	60	142	82	G-Floor:60
+mismatch	R3226-20-BK-DL	40	45	5	C20:40
+mismatch	R3226-40-BK-DL	40	20	-20	D17:40
+mismatch	R3230-040	32	33	1	C59:16, D40:16
+mismatch	R3240-BK-LRG-60	69	46	-23	C25:24, D10:20, D44:25
+mismatch	R3240-BK-MED-60	30	69	39	B64:30
+mismatch	R3241-BK-070-60	172	37	-135	B22:48, B27:48, B33:48, D21:28
+mismatch	R3241-BK-120-60	49	7	-42	B93:49
+mismatch	R3250-180-BK-CW_R10503	59	18	-41	A29:14, A50:16, A98:16, B59:13
+mismatch	R3250-240-BK-CW_R10503	48	14	-34	A95:19, B83:13, B92:16
+mismatch	R3250-450-BK-CW_R10503	28	30	2	A22:4, A32:5, A33:5, A66:4, A71:5, C39:5
+mismatch	R3250-600-BK-CW_R10503	10	6	-4	A61:1, B30:9
+mismatch	R3250-BRACKET-USM	3	6	3	C36:3
+mismatch	R3262-SL-60	6	25	19	C36:6
+mismatch	R3302-020-CW	28	32	4	B76:28
+mismatch	R3520-EM-S-TRI	96	66	-30	A38:96
+mismatch	R3540-CW	19	49	30	D50:3, G1:16
+mismatch	R3540-EM-CW	2	8	6	G1:2
+mismatch	R3540-EM-S-CW	10	55	45	G1:10
+mismatch	R3540-EM-S-TRI	671	584	-87	A20:95, A44:96, B60:96, C13:96, C89:96, D59:96, D67:96
+mismatch	R3540-EM-TRI	672	760	88	B84:96, B88:96, D8:96, D16:96, F17:96, G-Floor:96, G-Floor:96
+mismatch	R3540-TRI	1152	2197	1045	A1:96, A47:96, A52:96, B44:96, C47:96, C61:96, C73:96, C76:96, D14:96, D25:96, D75:96, G-Floor:96
+mismatch	R3541-TRI	324	39	-285	A77:198, B89:126
+mismatch	R3542-TRI	1836	108	-1728	A46:108, A63:108, A64:108, A65:108, A70:108, A73:108, A74:108, A76:108, A84:108, A92:108, A93:108, A94:108, A97:108, A102:108, A103:108, B67:108, B79:108
+mismatch	R3560-TRI	269	1026	757	C44:89, C60:90, D46:90
+mismatch	R3570-EM-S-TRI	96	91	-5	C74:48, D79:48
+mismatch	R3570-EM-TRI	96	431	335	C95:48, D55:48
+mismatch	R3570-TRI	95	1799	1704	A104:47, A107:48
+mismatch	R3580	1079	1628	549	A23:144, A42:144, A59:144, A80:144, B82:144, B87:144, D41:144, D80:71
+mismatch	R3590	240	334	94	c24:240
+mismatch	R3900-BK-40W-WW-30-DALI	14	5	-9	C38:14
+mismatch	R4101-BK-WW	40	21	-19	F13:40
+mismatch	R4101-WH-CW	4	22	18	G-Floor:4
+mismatch	R4101-WH-WW	40	18	-22	G-Floor:40
+mismatch	R6001-DL	5	14	9	D53:5
+mismatch	R6002-SM-KIT	30	35	5	C10:30
+mismatch	R6002-WH-TRI	99	264	165	B63:99
+mismatch	R6007-BK-WW	499	531	32	G-Floor:499
+mismatch	R6015-BK-RGB	160	53	-107	C88:160
+mismatch	R6016-WW	300	138	-162	B23:100, D36:200
+mismatch	R6017-WW	299	374	75	B23:199, D36:100
+mismatch	R6018-CW	80	25	-55	A41:80
+mismatch	R6018-WW	299	152	-147	B23:99, D36:200
+mismatch	R6019-WW	450	323	-127	B34:450
+mismatch	R6051-BK-TRI	150	101	-49	B98:150
+mismatch	R6052-BK-TRI	130	310	180	D7:130
+mismatch	R6052-WH-TRI	230	72	-158	B97:230
+mismatch	R6053-WH-TRI	470	80	-390	D42:470
+mismatch	R6054-SS-TRI	79	13	-66	A37:79
+mismatch	R6054-TT-TRI	130	12	-118	C45:130
+mismatch	R6056-BK-WW	190	48	-142	B1:95, B41:95
+mismatch	R6070-WH-CW	48	37	-11	C6:48
+mismatch	R6073-BK-TRI	72	40	-32	A17:72
+mismatch	R6074-BK-TRI	90	106	16	A51:90
+mismatch	R6076-WH-TRI	162	88	-74	B61:18, B86:144
+mismatch	R6078-WH-TRI	214	91	-123	A11:107, A17:89, B81:18
+mismatch	R6085-WH-CW	72	24	-48	C31:72
+mismatch	R6085-WH-TRI	131	18	-113	A106:84, B81:47
+mismatch	R6090-12V-BK-CW	72	28	-44	D21:72
+mismatch	R6090-12V-WH-CW	107	7	-100	D21:107
+mismatch	R6090-BK-CW-V2	71	81	10	A17:71
+mismatch	R6092-12V-BK-WW	71	41	-30	B72:71
+mismatch	R6092-12V-WH-CW	71	23	-48	A106:71
+mismatch	R6092-12V-WH-WW	36	33	-3	A106:36
+mismatch	R6093-BK-WW	95	121	26	C48:95
+mismatch	R6094-WH-WW	35	33	-2	B72:35
+mismatch	R6104-BK-WW	250	159	-91	C71:250
+mismatch	R6123-BK-WW	250	168	-82	C71:250
+mismatch	R6123-SS-WW	200	172	-28	C71:200
+mismatch	R6130	190	92	-98	A109:190
+mismatch	R6130-S	40	76	36	B94:40
+mismatch	R6150	54	33	-21	B94:54
+mismatch	R6150-S	36	60	24	A109:36
+mismatch	R6201-COVER-WH	80	61	-19	A61:80
+mismatch	R6232-BK-TRI	618	337	-281	A108:99, B19:120, B31:39, C32:90, D3:90, D38:90, D39:90
+mismatch	R6232-WH-TRI	508	233	-275	A48:90, A49:90, B31:29, C42:90, C91:29, D30:90, D31:90
+mismatch	R6233-WH-TRIM	99	141	42	C91:99
+mismatch	R6234-BK-TRIM	99	42	-57	C70:99
+mismatch	R6234-WH-TRIM	99	51	-48	D1:99
+mismatch	R6235-BK-TRIM	99	49	-50	C70:99
+mismatch	R6240-BK-TRI	100	69	-31	A55:100
+mismatch	R6240-EM-S-BK-TRI	70	58	-12	D51:70
+mismatch	R6240-EM-WH-TRI	99	50	-49	D48:99
+mismatch	R6240-S-WH-TRI	60	67	7	D24:60
+mismatch	R6240-WH-TRI	100	138	38	D32:100
+mismatch	R6241-EYELID-BK	99	78	-21	D7:99
+mismatch	R6241-EYELID-WH	80	76	-4	B61:80
+mismatch	R6330-CW	40	16	-24	A81:40
+mismatch	R6330-WW	36	20	-16	A88:36
+mismatch	R6331-WW	49	39	-10	A89:49
+mismatch	R6332-500	1	95	94	D49:1
+mismatch	R6332-900	110	56	-54	A34:25, B13:25, B69:30, D62:30
+mismatch	R6333	114	62	-52	B7:48, B32:48, G-Floor:18
+mismatch	R6334-25W-CW	19	12	-7	G-FLOOR:19
+mismatch	R6335-1000	148	45	-103	A75:35, B54:29, B77:35, D43:36, G-FLOOR:13
+mismatch	R6335-500	470	91	-379	C67:60, C68:60, C85:60, C100:60, D71:60, E10:60, E14:50, E16:60
+mismatch	R6336-TRI	127	159	32	A62:60, B35:48, B50:19
+mismatch	R6370	288	203	-85	F11:96, F19:96, F19:96
+mismatch	R6370-1	299	246	-53	B50:299
+mismatch	R6370-2	60	112	52	B50:60
+mismatch	R6370-3	60	116	56	B50:60
+mismatch	R6390-BK-TRI	95	155	60	D52:95
+mismatch	R6392	60	121	61	D47:60
+mismatch	R6395-TRI	192	100	-92	B53:80, B78:80, D47:32
+mismatch	R6396-TRI	128	68	-60	B68:64, B73:64
+mismatch	R6397-TRI	112	28	-84	A39:48, B58:64
+mismatch	R8001-3M	80	20	-60	F11:80
+mismatch	R8001-5M	598	269	-329	A96:200, D27:200, D34:99, F11:99
+mismatch	R8001-KIT	100	74	-26	A56:100
+mismatch	R8003-EW	100	141	41	A56:100
+mismatch	R999-BOX-WH	92	98	6	D11:28, D15:64
+mismatch	R9990-S-BK	80	27	-53	C6:80
+mismatch	R9990-S-WH	100	39	-61	C6:100
+mismatch	R9996-KIT-WH	160	205	45	C23:160
+mismatch	R9998	212	142	-70	A10:67, A30:72, B29:72, D69:1
+mismatch	R9998-V1	1	6	5	D50:1
+mismatch	SOLO III	329	1530	1201	C56:329
+mismatch	TRIM-R1021-BK	719	183	-536	B62:240, B81:479
+mismatch	TRIM-R1021-SC	240	236	-4	B62:240
+mismatch	TRIM-R1031-BK	240	247	7	B62:240
