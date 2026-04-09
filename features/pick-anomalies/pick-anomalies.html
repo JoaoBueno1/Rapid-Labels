@@ -7,7 +7,7 @@
   <link rel="icon" href="/logo/rapidled_icon_500_v2.png" type="image/png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
-  <link rel="stylesheet" href="pick-anomalies.css?v=20260330a" />
+  <link rel="stylesheet" href="pick-anomalies.css?v=20260409b" />
 </head>
 <body>
 
@@ -80,9 +80,9 @@
           <div class="label">Anomalies</div>
           <div class="value" id="kpiAnomalies">0</div>
         </div>
-        <div class="kpi" id="kpi-fg">
-          <div class="label">FG/Assembly</div>
-          <div class="value" id="kpiFg">0</div>
+        <div class="kpi" id="kpi-accuracy">
+          <div class="label">Accuracy</div>
+          <div class="value" id="kpiAccuracy">—</div>
         </div>
         <div class="kpi" id="kpi-reviewed">
           <div class="label">Anomalies Reviewed</div>
@@ -156,12 +156,9 @@
                 <th>#</th>
                 <th>Order</th>
                 <th>Date</th>
-                <th title="Shipment date — when stock was physically shipped/fulfilled">Shipped</th>
+                <th title="Shipment date — when stock was physically shipped">Shipped</th>
                 <th>Customer</th>
-                <th>SO Status</th>
-                <th>Picks</th>
-                <th>✅</th>
-                <th>⚠️</th>
+                <th title="Correct ✅ and anomaly ⚠️ picks">Picks</th>
                 <th>FG</th>
                 <th>Status</th>
                 <th>Reviewed</th>
@@ -262,6 +259,6 @@
     </div>
   </div>
 
-  <script src="pick-anomalies.js?v=20260330c"></script>
+  <script src="pick-anomalies.js?v=20260409b"></script>
 </body>
 </html>

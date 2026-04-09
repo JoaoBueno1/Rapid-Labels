@@ -1020,3 +1020,284 @@
   .pa-bulk-bar{ padding:10px 16px; font-size:12px; gap:8px; }
   .pa-bulk-summary{ grid-template-columns:repeat(3,1fr); }
 }
+
+/* ═══════════════════════════════════════════════
+   V3 MODAL REDESIGN — Clearer anomaly cards
+   ═══════════════════════════════════════════════ */
+
+/* ─── Modal Summary V3 ─── */
+.pa-summary-v3{
+  display:flex; gap:20px; align-items:stretch;
+}
+.pa-summary-v3-accuracy{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  min-width:130px; padding:12px 18px;
+  background:linear-gradient(135deg,#f8fafc 0%,#f0f4f8 100%);
+  border:1px solid #e2e8f0; border-radius:14px;
+}
+.pa-v3-acc-pct{
+  font-size:36px; font-weight:900; line-height:1;
+}
+.pa-v3-acc-label{
+  font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+  color:#64748b; margin-top:4px;
+}
+.pa-v3-acc-good{ color:#16a34a; border-color:#86efac; }
+.pa-v3-acc-warn{ color:#f59e0b; border-color:#fde68a; }
+.pa-v3-acc-bad{ color:#dc2626; border-color:#fca5a5; }
+.pa-v3-acc-ring{
+  width:100px; height:100px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  flex-direction:column; position:relative;
+}
+.pa-v3-acc-ring svg{ position:absolute; inset:0; }
+
+.pa-summary-v3-details{
+  flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;
+}
+.pa-v3-stats-row{
+  display:flex; gap:10px; flex-wrap:wrap;
+}
+.pa-v3-stat{
+  display:flex; align-items:center; gap:6px;
+  padding:6px 14px; border-radius:10px;
+  font-size:13px; font-weight:700;
+  border:1px solid #e2e8f0; background:#fff;
+}
+.pa-v3-stat-correct{ color:#16a34a; background:#f0fdf4; border-color:#bbf7d0; }
+.pa-v3-stat-anomaly{ color:#dc2626; background:#fef2f2; border-color:#fecaca; }
+.pa-v3-stat-fg{ color:#7c3aed; background:#faf5ff; border-color:#ddd6fe; }
+.pa-v3-stat-fixed{ color:#2563eb; background:#eff6ff; border-color:#bfdbfe; }
+.pa-v3-stat .pa-v3-stat-num{
+  font-size:18px; font-weight:900;
+}
+.pa-v3-meta-row{
+  display:flex; gap:6px; flex-wrap:wrap; margin-top:auto;
+}
+.pa-v3-meta{
+  display:flex; align-items:center; gap:5px;
+  padding:5px 12px; background:#f8fafc; border:1px solid #e2e8f0;
+  border-radius:8px; font-size:12px; font-weight:600; color:#475569;
+}
+.pa-v3-meta-icon{ font-size:14px; flex-shrink:0; }
+.pa-v3-meta-label{
+  font-size:9px; font-weight:700; color:#94a3b8; text-transform:uppercase;
+  letter-spacing:.5px;
+}
+
+/* ─── Select All Bar V3 ─── */
+.pa-select-all-v3{
+  display:flex; align-items:center; gap:12px;
+  padding:10px 16px; margin-bottom:12px;
+  background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);
+  border:1px solid #fde68a; border-radius:10px;
+  font-size:13px; font-weight:700; color:#92400e;
+}
+.pa-select-all-v3 input[type="checkbox"]{
+  width:17px; height:17px; accent-color:#f59e0b; cursor:pointer;
+}
+
+/* ─── Anomaly Card V3 ─── */
+.pa-card-v3{
+  border:1px solid #e2e8f0; border-radius:14px;
+  margin:12px 0; background:#fff;
+  box-shadow:0 1px 4px rgba(0,0,0,.03);
+  transition:box-shadow .2s, border-color .2s;
+  overflow:hidden;
+}
+.pa-card-v3:hover{
+  box-shadow:0 6px 20px rgba(0,0,0,.07);
+  border-color:#cbd5e1;
+}
+.pa-card-v3-corrected{
+  background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);
+  border-color:#86efac;
+  opacity:.85;
+}
+
+/* ── Card Header ── */
+.pa-v3-header{
+  display:flex; align-items:center; gap:10px;
+  padding:12px 16px;
+  background:linear-gradient(135deg,#fafbfc 0%,#f1f5f9 100%);
+  border-bottom:1px solid #e2e8f0;
+}
+.pa-v3-check{
+  width:18px; height:18px; accent-color:#f59e0b; cursor:pointer;
+  flex-shrink:0;
+}
+.pa-v3-sku{
+  font-family:'Courier New',monospace; font-size:14px; font-weight:800;
+  color:#1e293b;
+}
+.pa-v3-qty-badge{
+  font-size:13px; font-weight:800; color:#475569;
+  background:#e2e8f0; padding:3px 10px; border-radius:6px;
+}
+.pa-v3-badges{
+  display:flex; gap:6px; align-items:center; margin-left:auto; flex-shrink:0;
+}
+.pa-v3-sev-badge{
+  font-size:10px; font-weight:800; color:#fff;
+  padding:4px 12px; border-radius:6px; text-transform:uppercase; letter-spacing:.5px;
+  white-space:nowrap;
+}
+.pa-v3-repeat-badge{
+  display:inline-flex; align-items:center; gap:3px;
+  padding:3px 8px; border-radius:999px; font-size:10px; font-weight:800;
+  background:#fef3c7; color:#92400e; border:1px solid #fde68a;
+}
+.pa-v3-fg-badge{
+  font-size:10px; font-weight:700; color:#7c3aed; background:#ede9fe;
+  padding:3px 8px; border-radius:6px;
+}
+.pa-v3-product-name{
+  font-size:12px; color:#94a3b8; margin-top:-2px;
+  padding:0 16px 0 44px; /* align with content after checkbox */
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  background:linear-gradient(135deg,#fafbfc 0%,#f1f5f9 100%);
+  padding-bottom:8px;
+}
+
+/* ── Card Body ── */
+.pa-v3-body{
+  padding:14px 16px; display:flex; flex-direction:column; gap:12px;
+}
+
+/* ── Bin Comparison V3 ── */
+.pa-v3-bins{
+  display:grid; grid-template-columns:1fr auto 1fr; gap:0; align-items:stretch;
+}
+.pa-v3-bin-box{
+  padding:12px 16px; border-radius:10px;
+  display:flex; flex-direction:column; gap:4px;
+}
+.pa-v3-bin-wrong{
+  background:#fef2f2; border:1.5px solid #fecaca;
+}
+.pa-v3-bin-correct{
+  background:#f0fdf4; border:1.5px solid #bbf7d0;
+}
+.pa-v3-bin-label{
+  font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.8px;
+}
+.pa-v3-bin-wrong .pa-v3-bin-label{ color:#991b1b; }
+.pa-v3-bin-correct .pa-v3-bin-label{ color:#166534; }
+.pa-v3-bin-value{
+  font-family:'Courier New',monospace; font-weight:900; font-size:16px;
+}
+.pa-v3-bin-wrong .pa-v3-bin-value{ color:#dc2626; }
+.pa-v3-bin-correct .pa-v3-bin-value{ color:#16a34a; }
+.pa-v3-bin-stock{
+  font-size:11px; color:#64748b; margin-top:2px; font-weight:500;
+}
+.pa-v3-bin-stock strong{ color:#1e293b; }
+.pa-v3-arrow-col{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:0 12px; min-width:60px;
+}
+.pa-v3-arrow{
+  font-size:24px; color:#94a3b8; line-height:1;
+}
+.pa-v3-error-tag{
+  font-size:10px; font-weight:700; color:#64748b;
+  background:#f1f5f9; padding:3px 8px; border-radius:4px;
+  text-align:center; margin-top:4px; white-space:nowrap;
+}
+
+/* ── Stock Warnings V3 ── */
+.pa-v3-warnings{
+  display:flex; gap:6px; flex-wrap:wrap;
+}
+.pa-v3-warn{
+  display:flex; align-items:center; gap:4px;
+  padding:4px 10px; border-radius:6px;
+  font-size:11px; font-weight:700;
+}
+.pa-v3-warn-red{
+  background:#fef2f2; color:#dc2626; border:1px solid #fecaca;
+}
+.pa-v3-warn-amber{
+  background:#fffbeb; color:#d97706; border:1px solid #fde68a;
+}
+
+/* ── Fix Action V3 ── */
+.pa-v3-fix{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 14px;
+  background:linear-gradient(135deg,#f0fdf4 0%,#ecfdf5 100%);
+  border:1px solid #bbf7d0; border-radius:10px;
+}
+.pa-v3-fix-icon{
+  font-size:20px; flex-shrink:0;
+}
+.pa-v3-fix-text{
+  font-size:12px; color:#1e293b; line-height:1.5;
+}
+.pa-v3-fix-text strong{
+  color:#16a34a;
+}
+.pa-v3-fix-text code{
+  font-family:'Courier New',monospace; font-weight:800; font-size:12px;
+  background:#dcfce7; padding:1px 5px; border-radius:3px; color:#166534;
+}
+.pa-v3-fix-arrow{
+  font-weight:900; color:#16a34a; font-size:14px;
+}
+
+/* ── Correction (already fixed) V3 ── */
+.pa-v3-correction{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:10px 14px;
+  background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);
+  border:1px solid #86efac; border-radius:10px;
+}
+.pa-v3-correction-badge{
+  display:flex; align-items:center; gap:4px;
+  font-size:12px; font-weight:800; color:#16a34a; white-space:nowrap;
+}
+.pa-v3-correction-detail{
+  font-size:12px; color:#475569;
+}
+.pa-v3-correction-detail code{
+  font-family:'Courier New',monospace; font-weight:700; font-size:11px;
+  background:#f0fdf4; padding:1px 4px; border-radius:3px;
+}
+
+/* ── Responsive V3 ── */
+@media(max-width:640px){
+  .pa-summary-v3{ flex-direction:column; }
+  .pa-v3-bins{ grid-template-columns:1fr; gap:8px; }
+  .pa-v3-arrow-col{ flex-direction:row; padding:4px 0; }
+  .pa-v3-arrow{ transform:rotate(90deg); }
+  .pa-v3-product-name{ padding-left:16px; }
+  .pa-v3-header{ flex-wrap:wrap; }
+  .pa-v3-badges{ margin-left:0; }
+}
+
+/* ═══════════════════════════════════════════════
+   V4 UX IMPROVEMENTS — Lead Time, Accuracy KPI,
+   Merged Picks column
+   ═══════════════════════════════════════════════ */
+
+/* ─── Lead Time Badge ─── */
+.pa-lead-badge{ font-weight:700 !important; }
+.pa-lead-fast{ background:#f0fdf4 !important; border-color:#86efac !important; color:#166534 !important; }
+.pa-lead-ok{ background:#f0fdf4 !important; border-color:#86efac !important; color:#166534 !important; }
+.pa-lead-slow{ background:#fffbeb !important; border-color:#fde68a !important; color:#92400e !important; }
+.pa-lead-critical{ background:#fef2f2 !important; border-color:#fca5a5 !important; color:#991b1b !important; }
+
+/* ─── Accuracy KPI Card ─── */
+#kpi-accuracy{
+  background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+  border:1px solid #93c5fd;
+}
+#kpi-accuracy .label{ color:#1d4ed8; }
+#kpi-accuracy .value{ color:#2563eb; }
+.pa-kpi-green{ color:#16a34a !important; }
+.pa-kpi-yellow{ color:#f59e0b !important; }
+.pa-kpi-red{ color:#dc2626 !important; }
+
+/* ─── Merged Picks Column ─── */
+.pa-pick-ok{ color:#16a34a; font-weight:700; }
+.pa-pick-warn{ color:#dc2626; font-weight:700; margin-left:4px; }

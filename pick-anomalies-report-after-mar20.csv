@@ -1,0 +1,28 @@
+Order Number	Order Date	Fulfilled Date	Customer	SKU	Product Name	Qty	Picked Bin	Expected Bin	Error Type	Total Picks	Correct Picks	Anomaly Picks
+SO-251884	2026-03-20	2026-03-20	Ben Carton Electrical	R1060-WH-TRI	8w Dimmable White COB Downlight, IP44 90mm Cutout, Tri Colour, 50o UGR19 w/ F&P	30	MA-A-04-L7-P1	MA-B-13-L1-P1	different_area	4	2	2
+SO-251884	2026-03-20	2026-03-20	Ben Carton Electrical	CAL-CLA352-WH	Clayfield 52" White DC 3 Blade Fan With Remote	4	MA-G-10-L2-P1	MA-G-16-L2	same_section	4	2	2
+SO-251993	2026-03-20	2026-03-20	Fathom electrical	24v-IP20-100w-DIM	100w, 24VDC Dimmable LED Driver, IP20	1	MA-B-10-L3-P1	MA-A-09-L2	different_area	8	7	1
+SO-252301	2026-03-23	2026-03-23	Aussielec Pty Ltd	R2341-DL-2	10w 24V COB LED Strip Light, IP20, 5000K, 2m Roll	1	MA-A-12-L5	MA-A-12-L2	same_column	2	1	1
+SO-252332	2026-03-23	2026-03-23	Stowe Australia Pty Ltd	R2218-WH	Rapidline Canopy Surface Mounted Kit, White	4	MA-C-11-L3-P1	MA-B-11-L1	different_area	1	0	1
+SO-252425	2026-03-23	2026-03-23	Coastal Current Electrical	R1021-WH-TRI	8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri (3000K Warm White-4000K Cool White-5700K Daylight) White	90	MA-D-15-L7-P1	MA-G-01-L1	different_area	1	0	1
+SO-252248	2026-03-23	2026-03-23	DXN Electrical Services	R2322-WW-4	10w 24v, Rapid Neoflex dual powered, 3000k, IP67 - Top Bend, 4m roll	2	MA-A-03-L1	MA-A-05-L1	same_section	1	0	1
+SO-252295	2026-03-23	2026-03-23	Robina Electrical	R2218-WH	Rapidline Canopy Surface Mounted Kit, White	1	MA-B-11-L1-P1	MA-B-11-L1	pallet_only	5	4	1
+SO-252328	2026-03-23	2026-03-23	HHE Pty Ltd	R1091-10-WH-SIL-TRI	10W Dimmable White COB Downlight with Silver Reflector, IP54 90mm Cutout, Tri Colour 60o UGR19 with F&P	64	MA-B-12-L2	MA-B-12-L2-P1	pallet_only	1	0	1
+SO-252360	2026-03-23	2026-03-23	Mangleson Electrical (Gonewman Enterprises Pty Ltd)	R3118	200w, 160w & 120w Selectable Hi Bay IP65 Dual CCT 4K & 5K	10	MA-E-11-L6-P1	MA-F-07-L1	different_area	2	0	2
+SO-252360	2026-03-23	2026-03-23	Mangleson Electrical (Gonewman Enterprises Pty Ltd)	R3044	200W, 150W & 100W Selectable, Anti-corrosion commercial floodlight IP66 â€“ 3000k/4000k â€“ Black	2	MA-E-08-L4-P2	MA-F-09-L1-P2	different_area	2	0	2
+SO-252433	2026-03-23	2026-03-23	Green Switch Electrical	RQC	Rapid QC Surface Socket	10	MA-G-14-L6-P2	MA-G-02-L1-P2	same_section	3	1	2
+SO-252433	2026-03-23	2026-03-23	Green Switch Electrical	RSS	Rapid Standard Connect Surface Socket	10	MA-B-07-L6-P2	MA-G-02-L1-P1	different_area	3	1	2
+SO-251918	2026-03-20	2026-03-23	Cash Sale	RSS	Rapid Standard Connect Surface Socket	60	MA-B-07-L5-P2	MA-G-02-L1-P1	different_area	2	0	2
+SO-251918	2026-03-20	2026-03-23	Cash Sale	R1060-WH-TRI	8w Dimmable White COB Downlight, IP44 90mm Cutout, Tri Colour, 50o UGR19 w/ F&P	3	MA-A-04-L7-P1	MA-B-13-L1-P1	different_area	2	0	2
+SO-252432	2026-03-23	2026-03-23	Green Switch Electrical	R9992-WH	Exit Light LED 4W Quick Connect	6	MA-G-04-L4-P1	MA-G-05-L1-P1	same_section	4	0	4
+SO-252432	2026-03-23	2026-03-23	Green Switch Electrical	R5510	360o Surface mount sensor, IP20, White	6	MA-D-13-L6-P2	MA-D-11-L3	same_section	4	0	4
+SO-252432	2026-03-23	2026-03-23	Green Switch Electrical	R3540-EM-TRI	40W -24W 1200mm Wide Body WP Opal Batten IP65 Tri Colour - Emergency	12	MA-A-09-L6-P1	MA-E-02-L1	different_area	4	0	4
+SO-252432	2026-03-23	2026-03-23	Green Switch Electrical	R3540-TRI	40W - 24W 1200mm Wide Body WP Opal Batten IP65 Tri Colour	12	MA-C-08-L4-P2	MA-E-01-L1	different_area	4	0	4
+SO-252457	2026-03-23	2026-03-24	Track3 Electrical	12v-IP67-060w	R2918 60w, 12VDC Weatherproof LED Driver With Flex & Plug, IP67	1	MA-A-09-L3	MA-A-10-L2	same_section	6	5	1
+SO-252469	2026-03-23	2026-03-24	Jdk Electrical Solutions Pty Ltd	R2340-XW-2	5w 24V 8mm COB LED Strip Light, IP20, 2700K WW, 2m roll	1	MA-A-09-L1	MA-A-09-L1-P1	pallet_only	2	1	1
+SO-252374	2026-03-23	2026-03-24	flashlec	R3058	Pole Mount Adaptor 76mm To Suit Commercial Floodlight Range, Black	5	MA-F-16-L2	MA-F-16-L1	same_column	2	1	1
+SO-252583	2026-03-24	2026-03-24	AZZ Industries Electrical Contracting Pty Ltd	R9992-WH	Exit Light LED 4W Quick Connect	1	MA-G-04-L4-P1	MA-G-05-L1-P1	same_section	1	0	1
+SO-252601	2026-03-24	2026-03-24	Cash Sale	R9996-S-WH	3w LED Surface Mounted Blade Exit Light	1	MA-G-05-L1-P1	MA-G-04-L1-P1	same_section	1	0	1
+SO-252303	2026-03-23	2026-03-24	The Lighting Superstore	R2201-BK-CW	29w 1167mm Rapidline Linear extrusion, Black, 4000k V2	2	MA-D-08-L3	MA-D-07-L6-P2	same_section	5	4	1
+SO-252335	2026-03-23	2026-03-24	Solace Trust t/a Solace Electrical	R3206-TRI-SM	30w Tri Colour Surface Mount Backlit LED Panel kit 1200mm x 300mm x 25mm White	6	MA-C-04-L6-P1	MA-C-06-L1	same_section	3	2	1
+SO-252581	2026-03-24	2026-03-24	Electroseck Pty Ltd	R9996-S-WH	3w LED Surface Mounted Blade Exit Light	1	MA-G-05-L1-P1	MA-G-04-L1-P1	same_section	1	0	1

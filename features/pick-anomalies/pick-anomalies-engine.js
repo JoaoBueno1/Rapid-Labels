@@ -1,5 +1,5 @@
 /**
- * Pick Anomalies — Backend Engine (v2 — Persistent History)
+ * Pick Anomalies — Backend Engine (v3 — Ship-Only Capture)
  * 
  * Architecture:
  *   - All analysis results are saved to Supabase (pick_anomaly_orders table)
@@ -8,19 +8,29 @@
  *   - Corrections (Stock Transfers) are tracked in pick_anomaly_corrections
  *   - No manual date picker needed — system auto-continues from last sync
  *
+ * SHIP-ONLY CAPTURE:
+ *   - Only orders with CombinedShippingStatus=SHIPPED are captured
+ *   - This is the moment Cin7 deducts stock from bins — the correct time to compare picks
+ *   - Orders at other stages (NOT SHIPPED, PARTIALLY SHIPPED, INVOICED-only) are ignored
+ *   - Once an order is captured at SHIP, it is NEVER re-analyzed or overwritten
+ *
+ * IMMUTABLE analyzed_at:
+ *   - Sync uses INSERT with ignore-duplicates (sbInsertIfNew)
+ *   - If order_number already exists in Supabase, the row is completely untouched
+ *   - This prevents analyzed_at from changing when orders are invoiced days later
+ *   - Dedup check is MANDATORY — sync aborts if Supabase dedup query fails
+ *
  * DATE HANDLING (UpdatedSince):
  *   - Cin7 saleList `UpdatedSince` filters by LastModifiedOn (NOT OrderDate)
- *   - This CORRECTLY catches late-fulfilled orders (e.g. order from Feb 24 fulfilled Mar 1)
- *   - We use dateFrom = lastSyncDate (NOT +1 day) to avoid gap on orders modified late in the day
- *   - existingNumbers dedup prevents double-processing on re-fetches
- *   - Rolling 45-day FLOOR_DATE on OrderDate filters out noise (old orders with credits/adjustments)
- *   - When 50-order cap is hit, last_synced_date is NOT advanced — remaining orders fetched next sync
+ *   - Rolling 7-day lookback ensures we catch late-shipped orders
+ *   - Rolling 45-day FLOOR_DATE on OrderDate filters out noise (credits/adjustments)
+ *   - existingNumbers dedup + ignore-duplicates = double protection against re-analysis
  *
  * OPTIMIZATIONS:
  *   - Rate-limited: 2.5s between Cin7 calls (~24/min, safe margin)
  *   - Supabase stock_locator fetched in batch
- *   - Cap of 50 orders per sync run
- *   - Only orders with OrderDate within last 90 days are processed
+ *   - Cap of 200 orders per sync run
+ *   - Only orders with OrderDate within last 45 days are processed
  */
 
 const fetch = require('node-fetch');
@@ -182,6 +192,26 @@ async function sbPost(table, body, conflictColumn) {
     throw new Error(`Supabase POST ${table}: ${res.status} ${txt}`);
   }
   return res.json();
+}
+
+/**
+ * INSERT-only: inserts a new row but does NOTHING if the row already exists
+ * (based on conflictColumn). Unlike sbPost, this will NEVER overwrite
+ * existing data — especially analyzed_at, picks, etc.
+ * Used exclusively by auto-sync to ensure orders are recorded only once.
+ */
+async function sbInsertIfNew(table, body, conflictColumn) {
+  let url = `${SUPABASE_URL}/rest/v1/${table}`;
+  if (conflictColumn) url += `?on_conflict=${conflictColumn}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`Supabase INSERT ${table}: ${res.status} ${txt}`);
+  }
 }
 
 async function sbPatch(table, query, body) {
@@ -471,17 +501,17 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   const floorDate = new Date();
   floorDate.setDate(floorDate.getDate() - 45);
   const FLOOR_DATE = floorDate.toISOString().split('T')[0];
-  // ── STAGE GATE: Only process orders that have SHIPPED / FULFILLED ──
+  // ── STAGE GATE: Only process orders that have SHIPPED ──
   // Dear Systems saleList field mapping (verified via live data analysis):
-  //   FulFilmentStatus:       FULFILLED | PARTIALLY FULFILLED | NOT FULFILLED | NOT AVAILABLE
   //   CombinedShippingStatus: SHIPPED   | PARTIALLY SHIPPED   | NOT SHIPPED   | NOT AVAILABLE
+  //   FulFilmentStatus:       FULFILLED | PARTIALLY FULFILLED | NOT FULFILLED | NOT AVAILABLE
   //   CombinedPackingStatus:  PACKED    | PARTIALLY PACKED    | NOT PACKED    | NOT AVAILABLE
   //   OrderStatus:            FULFILLED | AUTHORISED | CLOSED | VOIDED | NOT AVAILABLE
   //
-  // SHIPPED ≡ FULFILLED: These are always in sync (100% correlation across 300+ orders).
-  // No order ever skips SHIPPED — when CombinedShippingStatus=SHIPPED, FulFilmentStatus=FULFILLED.
-  // PARTIALLY FULFILLED orders are EXCLUDED: some lines still in warehouse = picks not final.
-  // This prevents "ghost" re-appearances of orders still being processed.
+  // SHIPPED is the ONLY status we capture — this is when Cin7 deducts stock from bins.
+  // Other statuses (including FULFILLED after invoicing) are completely ignored.
+  // Invoiced orders still show CombinedShippingStatus=SHIPPED, but the dedup check
+  // + ignore-duplicates INSERT ensures they're never re-analyzed.
   //
   // Statuses that indicate an order was cancelled/voided AFTER processing
   const CANCELLED_STATUSES = ['VOID', 'VOIDED', 'CANCELLED', 'CREDITED'];
@@ -503,8 +533,11 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
       const isRecent = orderDate >= FLOOR_DATE;
       if (!isRecent) continue;
 
-      // Gate: FulFilmentStatus=FULFILLED or CombinedShippingStatus=SHIPPED (equivalent, double-check)
-      const isValidStatus = ful === 'FULFILLED' || shipStatus === 'SHIPPED';
+      // Gate: ONLY CombinedShippingStatus=SHIPPED
+      // We capture orders at the SHIP stage only — this is when Cin7 deducts stock.
+      // FULFILLED is equivalent but we use SHIPPED as the single source of truth.
+      // Invoiced-only or other statuses are completely ignored.
+      const isValidStatus = shipStatus === 'SHIPPED';
       const isCancelled = CANCELLED_STATUSES.includes(ost) || ful === 'NOT AVAILABLE' && CANCELLED_STATUSES.includes(ost);
 
       if (isValidStatus) {
@@ -517,7 +550,7 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     page++;
   }
 
-  console.log(`📋 Found ${orders.length} valid (Shipped/Invoiced) MW orders, ${cancelledFromCin7.length} cancelled`);
+  console.log(`📋 Found ${orders.length} SHIPPED MW orders, ${cancelledFromCin7.length} cancelled`);
 
   // Check which orders we already have in Supabase (skip duplicates)
   let existingNumbers = new Set();
@@ -534,7 +567,13 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
         for (const e of existing) existingNumbers.add(e.order_number);
       }
     } catch (err) {
-      console.warn('⚠️ Dedup check failed, will rely on upsert:', err.message);
+      console.error('❌ Dedup check failed — aborting sync to prevent re-analysis:', err.message);
+      return {
+        success: false,
+        error: 'Dedup check failed (aborting to protect analyzed_at): ' + err.message,
+        newOrders: 0,
+        skippedExisting: 0,
+      };
     }
   }
 
@@ -751,9 +790,11 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
 
     results.push(orderResult);
 
-    // Save to Supabase immediately (upsert on order_number)
+    // Save to Supabase (INSERT only — never overwrite existing orders)
+    // Uses ignore-duplicates: if order_number already exists, row is untouched.
+    // This guarantees analyzed_at is set ONCE on first sync and never changes.
     try {
-      await sbPost('pick_anomaly_orders', orderResult, 'order_number');
+      await sbInsertIfNew('pick_anomaly_orders', orderResult, 'order_number');
       // Log the sync action
       await logAction({
         order_number: order.OrderNumber,
