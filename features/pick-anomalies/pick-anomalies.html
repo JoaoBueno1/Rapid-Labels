@@ -30,6 +30,7 @@
       <div class="pa-title-row">
         <h1 class="log-page-title">📦 Pick Anomalies Monitor</h1>
         <button class="search-btn-small" onclick="PA.syncNewOrders()" title="Manually trigger sync from Cin7" style="font-size:11px;padding:5px 12px">🔄 Sync Now</button>
+        <button class="search-btn-small" onclick="PA.refreshLocators()" title="Re-evaluate all orders using current product locations" style="font-size:11px;padding:5px 12px;background:#7c3aed">📍 Refresh Locators</button>
         <div class="pa-sync-status" id="paSyncStatus">
           <span class="pa-sync-dot" id="paSyncDot"></span>
           <span id="paSyncText">Loading...</span>

@@ -1669,6 +1669,151 @@ function registerPickAnomalyRoutes(app) {
   });
 
   /**
+   * POST /api/pick-anomalies/refresh-locators
+   * Re-evaluate picks for existing orders using CURRENT stock_locator data from cin7_mirror.products.
+   * Fixes false anomalies caused by stale locator data.
+   * Body (optional): { orderNumbers: ["SO-XXXXX"] } — if omitted, refreshes ALL orders.
+   */
+  app.post('/api/pick-anomalies/refresh-locators', async (req, res) => {
+    try {
+      const { orderNumbers } = req.body || {};
+
+      // Fetch orders to refresh
+      let query = 'select=order_number,picks,fg_orders,total_picks,correct_picks,anomaly_picks,fg_count';
+      if (orderNumbers && orderNumbers.length) {
+        const nums = orderNumbers.map(n => `"${n}"`).join(',');
+        query += `&order_number=in.(${encodeURIComponent(nums)})`;
+      }
+      const orders = await sbGetAll('pick_anomaly_orders', query);
+
+      if (!orders.length) {
+        return res.json({ success: true, refreshed: 0, message: 'No orders to refresh' });
+      }
+
+      console.log(`🔄 Refreshing locators for ${orders.length} orders...`);
+
+      // Collect all unique SKUs across all orders
+      const allSkus = new Set();
+      for (const o of orders) {
+        const picks = typeof o.picks === 'string' ? JSON.parse(o.picks) : (o.picks || []);
+        for (const p of picks) if (p.sku) allSkus.add(p.sku);
+        // FG components
+        const fgOrders = typeof o.fg_orders === 'string' ? JSON.parse(o.fg_orders) : (o.fg_orders || []);
+        for (const fg of fgOrders) {
+          for (const c of (fg.components || [])) if (c.sku) allSkus.add(c.sku);
+        }
+      }
+
+      // Batch fetch current locators
+      const locators = await fetchLocators([...allSkus]);
+      console.log(`📍 Fetched ${locators.size} locators for ${allSkus.size} SKUs`);
+
+      let refreshed = 0;
+      let changed = 0;
+      let errors = 0;
+
+      for (const order of orders) {
+        try {
+          const picks = typeof order.picks === 'string' ? JSON.parse(order.picks) : (order.picks || []);
+          let orderChanged = false;
+
+          // Re-evaluate each pick
+          for (const pick of picks) {
+            const info = locators.get(pick.sku);
+            const newExpected = info?.locator || null;
+            const oldExpected = pick.expectedBin || null;
+            const oldStatus = pick.status;
+
+            if (newExpected !== oldExpected) {
+              pick.expectedBin = newExpected;
+
+              // Re-classify the pick
+              if (!pick.hasBin) {
+                if (newExpected === 'BOM' || newExpected === 'Production') {
+                  pick.status = 'no_bin_assembly';
+                  pick.reason = newExpected.toLowerCase();
+                  pick.errorType = null;
+                } else if (newExpected && newExpected.startsWith('MA-')) {
+                  pick.status = 'no_bin_suspect';
+                  pick.errorType = null;
+                } else {
+                  pick.status = 'no_bin_ok';
+                  pick.errorType = null;
+                }
+              } else if (!newExpected || newExpected === '0' || newExpected === 'BOM' || newExpected === 'Production' || !newExpected.startsWith('MA-')) {
+                pick.status = 'correct';
+                pick.errorType = null;
+              } else if (pick.bin === newExpected) {
+                pick.status = 'correct';
+                pick.errorType = null;
+              } else {
+                pick.status = 'anomaly';
+                pick.errorType = classifyError(pick.bin, newExpected);
+              }
+
+              if (oldStatus !== pick.status || oldExpected !== newExpected) {
+                orderChanged = true;
+              }
+            }
+          }
+
+          // Re-evaluate FG components too
+          const fgOrders = typeof order.fg_orders === 'string' ? JSON.parse(order.fg_orders) : (order.fg_orders || []);
+          for (const fg of fgOrders) {
+            for (const comp of (fg.components || [])) {
+              const info = locators.get(comp.sku);
+              const newExpected = info?.locator || null;
+              if (newExpected !== comp.expectedBin) {
+                comp.expectedBin = newExpected;
+                const compBin = comp.bin || null;
+                const isCorrect = !compBin || !newExpected || !newExpected.startsWith('MA-') || compBin === newExpected;
+                comp.status = isCorrect ? 'correct' : 'anomaly';
+                comp.errorType = isCorrect ? null : classifyError(compBin, newExpected);
+                orderChanged = true;
+              }
+            }
+          }
+
+          if (orderChanged) {
+            const filteredPicks = picks.filter(p => p.status === 'correct' || p.status === 'anomaly');
+            const correctCount = filteredPicks.filter(p => p.status === 'correct').length;
+            const anomalyCount = filteredPicks.filter(p => p.status === 'anomaly').length;
+
+            await sbPatch('pick_anomaly_orders', `order_number=eq.${order.order_number}`, {
+              picks,
+              fg_orders: fgOrders,
+              total_picks: filteredPicks.length,
+              correct_picks: correctCount,
+              anomaly_picks: anomalyCount,
+            });
+
+            await logAction({
+              order_number: order.order_number,
+              action: 'locators_refreshed',
+              details: `Locators refreshed: ${correctCount}✅ ${anomalyCount}⚠️ (was ${order.correct_picks}✅ ${order.anomaly_picks}⚠️)`,
+              user_email: 'system@locator-refresh',
+            });
+
+            changed++;
+            console.log(`  ✅ ${order.order_number}: ${order.correct_picks}✅/${order.anomaly_picks}⚠️ → ${correctCount}✅/${anomalyCount}⚠️`);
+          }
+
+          refreshed++;
+        } catch (err) {
+          errors++;
+          console.warn(`  ❌ ${order.order_number}: ${err.message}`);
+        }
+      }
+
+      console.log(`🔄 Locator refresh complete: ${refreshed} checked, ${changed} changed, ${errors} errors`);
+      res.json({ success: true, refreshed, changed, errors, total: orders.length });
+    } catch (err) {
+      console.error('❌ Refresh locators error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
    * GET /api/pick-anomalies/logs?orderNumber=SO-XXXXX
    * Fetch action logs for a specific order
    */

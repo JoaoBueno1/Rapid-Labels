@@ -2027,6 +2027,34 @@
     }
   }
 
+  /**
+   * Refresh stock locators: re-evaluates all stored orders using current
+   * cin7_mirror.products.stock_locator data. Fixes false anomalies caused
+   * by outdated locator cache.
+   */
+  async function refreshLocators() {
+    const btn = document.querySelector('[onclick*="refreshLocators"]');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Refreshing...'; }
+    setSyncStatus('syncing', 'Refreshing locators...');
+    try {
+      const res = await fetch('/api/pick-anomalies/refresh-locators', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await res.json();
+      if (data.success) {
+        setSyncStatus('success', `Locators refreshed: ${data.changed} orders updated`);
+        // Reload everything to show corrected data
+        await loadHistory();
+        await loadStats();
+      } else {
+        setSyncStatus('error', data.error || 'Refresh failed');
+      }
+    } catch (err) {
+      console.error('Refresh locators error:', err);
+      setSyncStatus('error', 'Refresh locators failed');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '📍 Refresh Locators'; }
+    }
+  }
+
   /* ═══════════════════════════════════════════════
      PUBLIC API (window.PA)
      ═══════════════════════════════════════════════ */
@@ -2035,6 +2063,7 @@
     loadStats,
     loadAnalytics,
     syncNewOrders,
+    refreshLocators,
     fetchSyncStatus,
     debounceSearch,
     setFilter,
