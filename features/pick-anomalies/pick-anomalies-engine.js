@@ -255,6 +255,125 @@ async function fetchLocators(skus) {
   return result;
 }
 
+/**
+ * Fetch stock snapshot data from cin7_mirror.stock_snapshot for given SKU+bin pairs.
+ * Returns a Map of "sku|bin" → { on_hand, allocated, available }
+ */
+async function fetchStockForBins(skuBinPairs) {
+  if (!skuBinPairs.length) return new Map();
+  const skus = [...new Set(skuBinPairs.map(p => p.sku).filter(Boolean))];
+  const bins = [...new Set(skuBinPairs.map(p => p.bin).filter(Boolean))];
+  if (!skus.length || !bins.length) return new Map();
+  const result = new Map();
+  const batchSize = 80;
+  for (let i = 0; i < skus.length; i += batchSize) {
+    const skuBatch = skus.slice(i, i + batchSize);
+    const skuIn = skuBatch.map(s => `"${s}"`).join(',');
+    const binIn = bins.map(b => `"${b}"`).join(',');
+    const url = `${SUPABASE_URL}/rest/v1/stock_snapshot?select=sku,bin,on_hand,allocated,available&sku=in.(${encodeURIComponent(skuIn)})&bin=in.(${encodeURIComponent(binIn)})`;
+    const res = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_ANON,
+        'Authorization': `Bearer ${SUPABASE_ANON}`,
+        'Accept-Profile': 'cin7_mirror',
+      },
+    });
+    if (!res.ok) { console.warn(`⚠️ Stock snapshot fetch failed: ${res.status}`); continue; }
+    const rows = await res.json();
+    for (const r of rows) {
+      result.set(`${r.sku}|${r.bin}`, {
+        on_hand: parseFloat(r.on_hand) || 0,
+        allocated: parseFloat(r.allocated) || 0,
+        available: parseFloat(r.available) || 0,
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Classify anomaly confidence: 'suspect' (likely false positive) or 'confirmed' (likely real error).
+ * Also returns a human-readable note explaining the classification.
+ * @param {Object} pick - The pick object with sku, bin, expectedBin, errorType
+ * @param {Map} stockMap - Map of "sku|bin" → { on_hand, ... } from stock_snapshot
+ * @returns {{ confidence: string, note: string }}
+ */
+function classifyAnomalyConfidence(pick, stockMap) {
+  const et = pick.errorType;
+
+  // Pallet-only: always suspect — same location, just different pallet numbering
+  if (et === 'pallet_only') {
+    return { confidence: 'suspect', note: 'Pallet adjacente — mesma posição, apenas pallet diferente' };
+  }
+
+  // Special location: always suspect — DOCK, RETURNS, SAMPLES, etc.
+  if (et === 'special_loc') {
+    return { confidence: 'suspect', note: `Localização especial — "${pick.bin}" não é um bin padrão MA-` };
+  }
+
+  // Check if the picked bin has stock for this SKU (overflow evidence)
+  const key = `${pick.sku}|${pick.bin}`;
+  const stock = stockMap ? stockMap.get(key) : null;
+  if (stock && stock.on_hand > 0) {
+    return { confidence: 'suspect', note: `Overflow: bin "${pick.bin}" tem ${stock.on_hand} un. deste SKU em estoque` };
+  }
+
+  // Same column without overflow evidence → still likely vertical overflow
+  if (et === 'same_column') {
+    return { confidence: 'suspect', note: 'Overflow vertical provável — mesma coluna, nível diferente' };
+  }
+
+  // same_section or different_area without overflow → likely real anomaly
+  if (et === 'same_section') {
+    return { confidence: 'confirmed', note: 'Coluna diferente na mesma seção — sem evidência de overflow' };
+  }
+
+  return { confidence: 'confirmed', note: 'Área diferente — pick de localização incorreta' };
+}
+
+/**
+ * Add anomaly confidence classification to all anomaly picks in an order.
+ * Modifies the picks array in place.
+ */
+async function addAnomalyConfidence(picks, fgOrders) {
+  // Collect all anomaly sku+bin pairs
+  const skuBinPairs = [];
+  for (const p of picks) {
+    if (p.status === 'anomaly' && p.sku && p.bin) skuBinPairs.push({ sku: p.sku, bin: p.bin });
+  }
+  for (const fg of (fgOrders || [])) {
+    for (const c of (fg.components || [])) {
+      if (c.status === 'anomaly' && c.sku && c.bin) skuBinPairs.push({ sku: c.sku, bin: c.bin });
+    }
+  }
+  if (!skuBinPairs.length) return;
+
+  const stockMap = await fetchStockForBins(skuBinPairs);
+
+  for (const p of picks) {
+    if (p.status === 'anomaly') {
+      const { confidence, note } = classifyAnomalyConfidence(p, stockMap);
+      p.anomalyConfidence = confidence;
+      p.anomalyNote = note;
+    } else {
+      delete p.anomalyConfidence;
+      delete p.anomalyNote;
+    }
+  }
+  for (const fg of (fgOrders || [])) {
+    for (const c of (fg.components || [])) {
+      if (c.status === 'anomaly') {
+        const { confidence, note } = classifyAnomalyConfidence(c, stockMap);
+        c.anomalyConfidence = confidence;
+        c.anomalyNote = note;
+      } else {
+        delete c.anomalyConfidence;
+        delete c.anomalyNote;
+      }
+    }
+  }
+}
+
 async function getBinCache() {
   if (binCache && Date.now() - binCacheTime < BIN_CACHE_TTL) return binCache;
   console.log('📍 Building bin LocationID cache...');
@@ -744,6 +863,9 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
 
     // Skip orders with 0 meaningful picks
     if (!filteredPicks.length) continue;
+
+    // ── Anomaly confidence classification ──
+    await addAnomalyConfidence(filteredPicks, fgOrders);
 
     const correctCount = filteredPicks.filter(p => p.status === 'correct').length;
     const anomalyCount = filteredPicks.filter(p => p.status === 'anomaly').length;
@@ -1806,7 +1928,85 @@ function registerPickAnomalyRoutes(app) {
       }
 
       console.log(`🔄 Locator refresh complete: ${refreshed} checked, ${changed} changed, ${errors} errors`);
-      res.json({ success: true, refreshed, changed, errors, total: orders.length });
+
+      // ── Phase 2: Anomaly confidence classification ──
+      // Classify ALL orders (not just changed ones) so every anomaly gets suspect/confirmed badge
+      console.log(`🧠 Classifying anomaly confidence for ${orders.length} orders...`);
+      const allAnomalyPairs = [];
+      for (const order of orders) {
+        const picks = typeof order.picks === 'string' ? JSON.parse(order.picks) : (order.picks || []);
+        for (const p of picks) {
+          if (p.status === 'anomaly' && p.sku && p.bin) allAnomalyPairs.push({ sku: p.sku, bin: p.bin });
+        }
+        const fgOrd = typeof order.fg_orders === 'string' ? JSON.parse(order.fg_orders) : (order.fg_orders || []);
+        for (const fg of fgOrd) {
+          for (const c of (fg.components || [])) {
+            if (c.status === 'anomaly' && c.sku && c.bin) allAnomalyPairs.push({ sku: c.sku, bin: c.bin });
+          }
+        }
+      }
+
+      let classifiedCount = 0;
+      let suspectCount = 0;
+      let confirmedCount = 0;
+
+      if (allAnomalyPairs.length) {
+        const stockMap = await fetchStockForBins(allAnomalyPairs);
+        console.log(`📦 Fetched stock data for ${stockMap.size} SKU+bin combos`);
+
+        for (const order of orders) {
+          const picks = typeof order.picks === 'string' ? JSON.parse(order.picks) : (order.picks || []);
+          const fgOrders = typeof order.fg_orders === 'string' ? JSON.parse(order.fg_orders) : (order.fg_orders || []);
+          let needsSave = false;
+
+          for (const p of picks) {
+            if (p.status === 'anomaly') {
+              const { confidence, note } = classifyAnomalyConfidence(p, stockMap);
+              if (p.anomalyConfidence !== confidence || p.anomalyNote !== note) {
+                p.anomalyConfidence = confidence;
+                p.anomalyNote = note;
+                needsSave = true;
+              }
+              classifiedCount++;
+              if (confidence === 'suspect') suspectCount++;
+              else confirmedCount++;
+            } else {
+              if (p.anomalyConfidence) { delete p.anomalyConfidence; delete p.anomalyNote; needsSave = true; }
+            }
+          }
+          for (const fg of fgOrders) {
+            for (const c of (fg.components || [])) {
+              if (c.status === 'anomaly') {
+                const { confidence, note } = classifyAnomalyConfidence(c, stockMap);
+                if (c.anomalyConfidence !== confidence || c.anomalyNote !== note) {
+                  c.anomalyConfidence = confidence;
+                  c.anomalyNote = note;
+                  needsSave = true;
+                }
+                classifiedCount++;
+                if (confidence === 'suspect') suspectCount++;
+                else confirmedCount++;
+              } else {
+                if (c.anomalyConfidence) { delete c.anomalyConfidence; delete c.anomalyNote; needsSave = true; }
+              }
+            }
+          }
+
+          if (needsSave) {
+            try {
+              await sbPatch('pick_anomaly_orders', `order_number=eq.${order.order_number}`, {
+                picks,
+                fg_orders: fgOrders,
+              });
+            } catch (err) {
+              console.warn(`  ⚠️ Failed to save confidence for ${order.order_number}: ${err.message}`);
+            }
+          }
+        }
+      }
+
+      console.log(`🧠 Confidence: ${classifiedCount} anomalies classified — ${suspectCount} suspect, ${confirmedCount} confirmed`);
+      res.json({ success: true, refreshed, changed, errors, total: orders.length, confidence: { classified: classifiedCount, suspect: suspectCount, confirmed: confirmedCount } });
     } catch (err) {
       console.error('❌ Refresh locators error:', err);
       res.status(500).json({ success: false, error: err.message });

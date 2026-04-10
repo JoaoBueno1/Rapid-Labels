@@ -393,6 +393,39 @@
       const corrections = o.corrections || [];
       const isReviewed = !!o.reviewed;
 
+      // Count suspect vs confirmed anomalies from picks data
+      const picks = o.picks || [];
+      const fgOrders = o.fg_orders || [];
+      let suspectCount = 0, confirmedAnomalyCount = 0;
+      for (const p of picks) {
+        if (p.status === 'anomaly') {
+          if (p.anomalyConfidence === 'suspect') suspectCount++;
+          else if (p.anomalyConfidence === 'confirmed') confirmedAnomalyCount++;
+          else confirmedAnomalyCount++; // unclassified = treat as confirmed
+        }
+      }
+      for (const fg2 of fgOrders) {
+        for (const c of (fg2.components || [])) {
+          if (c.status === 'anomaly') {
+            if (c.anomalyConfidence === 'suspect') suspectCount++;
+            else if (c.anomalyConfidence === 'confirmed') confirmedAnomalyCount++;
+            else confirmedAnomalyCount++;
+          }
+        }
+      }
+
+      // Anomaly cell HTML with color breakdown
+      let anomHtml = '';
+      if (anom > 0) {
+        if (suspectCount > 0 && confirmedAnomalyCount > 0) {
+          anomHtml = `<span style="color:#dc2626;font-weight:700">${confirmedAnomalyCount}</span><span style="color:#9ca3af;font-size:11px"> + </span><span style="color:#d97706;font-weight:600" title="${suspectCount} suspeito(s)">${suspectCount}🟡</span>`;
+        } else if (suspectCount > 0) {
+          anomHtml = `<span style="color:#d97706;font-weight:600" title="Todos suspeitos">${anom}🟡</span>`;
+        } else {
+          anomHtml = `<span style="color:#dc2626;font-weight:700">${anom}</span>`;
+        }
+      }
+
       // Row background: reviewed/correct = green, anomaly pending = orange
       let rowClass = '';
       if (o.is_cancelled) rowClass = 'pa-row-cancelled';
@@ -433,7 +466,9 @@
           statusHtml += `<div class="pa-tr-ref" title="${trRefs.join(', ')}">${trRefs.join(', ')}</div>`;
         }
       } else {
-        statusHtml = `<span class="pa-badge pa-badge-anomaly">⚠️ ${anom} anomal${anom > 1 ? 'ies' : 'y'}</span>`;
+        statusHtml = anom === suspectCount
+          ? `<span class="pa-badge pa-badge-suspect">🟡 ${anom} suspect${anom > 1 ? 's' : ''}</span>`
+          : `<span class="pa-badge pa-badge-anomaly">⚠️ ${anom} anomal${anom > 1 ? 'ies' : 'y'}</span>`;
       }
 
       // Reviewed column
@@ -451,7 +486,7 @@
         <td onclick="PA.openDetail(${idx})"><span class="pa-so-badge ${soClass}">${soStatus}</span></td>
         <td onclick="PA.openDetail(${idx})">${o.total_picks || 0}</td>
         <td onclick="PA.openDetail(${idx})">${correct}</td>
-        <td onclick="PA.openDetail(${idx})">${anom || ''}</td>
+        <td onclick="PA.openDetail(${idx})">${anomHtml}</td>
         <td onclick="PA.openDetail(${idx})">${fg || ''}</td>
         <td onclick="PA.openDetail(${idx})">${statusHtml}</td>
         <td onclick="PA.openDetail(${idx})">${reviewedHtml}</td>
@@ -555,6 +590,27 @@
     const correctedCount = (order.corrections || []).length;
     const correctionPct = totalAnom > 0 ? Math.round((correctedCount / totalAnom) * 100) : 0;
 
+    // Count suspects vs confirmed in this order
+    let modalSuspect = 0, modalConfirmed = 0;
+    for (const p of picks) {
+      if (p.status === 'anomaly') {
+        if (p.anomalyConfidence === 'suspect') modalSuspect++;
+        else modalConfirmed++;
+      }
+    }
+    for (const fg of fgOrders) {
+      for (const c of (fg.components || [])) {
+        if (c.status === 'anomaly') {
+          if (c.anomalyConfidence === 'suspect') modalSuspect++;
+          else modalConfirmed++;
+        }
+      }
+    }
+
+    const anomalyBreakdownHtml = totalAnom > 0 && (modalSuspect > 0 || modalConfirmed > 0)
+      ? `<span style="font-size:11px;margin-left:4px">(${modalConfirmed > 0 ? `🔴 ${modalConfirmed} confirmado${modalConfirmed > 1 ? 's' : ''}` : ''}${modalConfirmed > 0 && modalSuspect > 0 ? ' · ' : ''}${modalSuspect > 0 ? `🟡 ${modalSuspect} suspeito${modalSuspect > 1 ? 's' : ''}` : ''})</span>`
+      : '';
+
     document.getElementById('paModalSummary').innerHTML =
       `${order.is_cancelled ? `<div class="pa-cancelled-banner">
         <div class="pa-cancelled-icon">❌</div>
@@ -577,7 +633,7 @@
           </div>
           <div class="pa-accuracy-legend">
             <span>✅ ${totalCorrect} correct</span>
-            <span>⚠️ ${totalAnom} anomal${totalAnom === 1 ? 'y' : 'ies'}</span>
+            <span>⚠️ ${totalAnom} anomal${totalAnom === 1 ? 'y' : 'ies'}${anomalyBreakdownHtml}</span>
             ${fgOrders.length ? `<span>🔧 ${fgOrders.length} FG orders</span>` : ''}
             ${correctedCount > 0 ? `<span>🔄 ${correctedCount}/${totalAnom} corrected (${correctionPct}%)</span>` : ''}
           </div>
@@ -791,30 +847,65 @@
   function _renderAnomalyCardV2(pick, err, pickId, correction, order, isFg) {
     const sevColors = { low: '#f59e0b', medium: '#f97316', high: '#dc2626', info: '#6366f1' };
     const sevLabels = { low: 'LOW', medium: 'MEDIUM', high: 'HIGH', info: 'INFO' };
-    const borderColor = correction ? '#86efac' : (sevColors[err.severity] || '#e2e8f0');
+
+    // Anomaly confidence-based styling: suspect = yellow, confirmed = red
+    const isSuspect = pick.anomalyConfidence === 'suspect';
+    const isConfirmed = pick.anomalyConfidence === 'confirmed';
+    let borderColor, cardClass;
+    if (correction) {
+      borderColor = '#86efac';
+      cardClass = 'pa-card-v2-corrected';
+    } else if (isSuspect) {
+      borderColor = '#fbbf24'; // amber-400
+      cardClass = 'pa-card-v2-suspect';
+    } else if (isConfirmed) {
+      borderColor = '#dc2626'; // red-600
+      cardClass = 'pa-card-v2-confirmed';
+    } else {
+      borderColor = sevColors[err.severity] || '#e2e8f0';
+      cardClass = '';
+    }
+
+    // Confidence badge
+    const confidenceBadge = isSuspect
+      ? '<span class="pa-confidence-badge pa-confidence-suspect" title="Provável falso positivo — overflow ou pallet adjacente">🟡 Suspeito</span>'
+      : isConfirmed
+        ? '<span class="pa-confidence-badge pa-confidence-confirmed" title="Anomalia confirmada — erro de pick real">🔴 Confirmado</span>'
+        : '';
+
+    // Anomaly note from backend classification
+    const anomalyNoteHtml = pick.anomalyNote
+      ? `<div class="pa-anomaly-note ${isSuspect ? 'pa-note-suspect' : 'pa-note-confirmed'}">
+           <span class="pa-note-icon">${isSuspect ? '💡' : '⚠️'}</span>
+           <span class="pa-note-text">${esc(pick.anomalyNote)}</span>
+         </div>`
+      : '';
 
     return `
-      <div class="pa-card-v2 ${correction ? 'pa-card-v2-corrected' : ''}" id="card-${pickId}" style="border-left:4px solid ${borderColor}">
+      <div class="pa-card-v2 ${cardClass}" id="card-${pickId}" style="border-left:4px solid ${borderColor}">
         <div class="pa-card-v2-top">
           <div class="pa-card-v2-left">
             ${!correction ? `<input type="checkbox" class="pa-fix-check" data-pick-id="${pickId}" onchange="PA.toggleFix('${pickId}', this.checked)" />` : ''}
             <div class="pa-card-v2-sku">
               <strong>${esc(pick.sku)}</strong>
+              ${confidenceBadge}
               ${_repeatSkus.has(pick.sku) ? '<span class="pa-repeat-badge" title="Repeat offender SKU (3+ anomalies)">🔁 Repeat</span>' : ''}
               ${isFg ? `<span class="pa-fg-badge">FG: ${esc(pick._fgLabel)}</span>` : ''}
             </div>
             <span class="pa-card-v2-qty">× ${pick.qty}</span>
             <span class="pa-card-v2-name">${esc(pick.name || '')}</span>
           </div>
-          <div class="pa-card-v2-severity pa-sev-${err.severity}" title="${esc(err.label)}" style="background:${sevColors[err.severity] || '#94a3b8'}">
-            ${sevLabels[err.severity] || '?'}
+          <div class="pa-card-v2-severity pa-sev-${err.severity}" title="${esc(err.label)}" style="background:${isSuspect ? '#fbbf24' : isConfirmed ? '#dc2626' : (sevColors[err.severity] || '#94a3b8')}; ${isSuspect ? 'color:#78350f' : ''}">
+            ${isSuspect ? '⚠️ SUSPECT' : isConfirmed ? '🔴 CONFIRMED' : (sevLabels[err.severity] || '?')}
           </div>
         </div>
 
+        ${anomalyNoteHtml}
+
         <div class="pa-card-v2-body">
           <div class="pa-card-v2-flow">
-            <div class="pa-flow-box pa-flow-wrong">
-              <div class="pa-flow-label">❌ PICKED FROM</div>
+            <div class="pa-flow-box ${isSuspect ? 'pa-flow-suspect' : 'pa-flow-wrong'}">
+              <div class="pa-flow-label">${isSuspect ? '⚠️ PICKED FROM' : '❌ PICKED FROM'}</div>
               <div class="pa-flow-bin">${esc(pick.bin)}</div>
             </div>
             <div class="pa-flow-arrow">→</div>
@@ -991,13 +1082,15 @@
 
       <div class="section-title">⚠️ Anomaly Details (${totalAnom})</div>
       <table>
-        <thead><tr><th>#</th><th>SKU</th><th>Product</th><th>Qty</th><th>Picked From</th><th>Should Be</th><th>Error Type</th><th>Severity</th><th>Corrected?</th></tr></thead>
+        <thead><tr><th>#</th><th>SKU</th><th>Product</th><th>Qty</th><th>Picked From</th><th>Should Be</th><th>Error Type</th><th>Confidence</th><th>Corrected?</th></tr></thead>
         <tbody>
           ${allAnomalies.map((a, i) => {
             const err = classifyError(a.bin, a.expectedBin);
             const pickId = a._fgTaskId ? `fg_${a._fgTaskId}_${a._fgIdx}` : (a.id || `${order.order_number}_pick_${i}`);
             const correction = getCorrection(order, pickId);
-            return `<tr>
+            const confLabel = a.anomalyConfidence === 'suspect' ? '🟡 Suspeito' : a.anomalyConfidence === 'confirmed' ? '🔴 Confirmado' : `<span class="sev-badge sev-${err.severity}">${err.severity}</span>`;
+            const confStyle = a.anomalyConfidence === 'suspect' ? 'background:#fef9c3;color:#854d0e;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px' : a.anomalyConfidence === 'confirmed' ? 'background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px' : '';
+            return `<tr${a.anomalyConfidence === 'suspect' ? ' style="background:#fffbeb"' : ''}>
               <td>${i + 1}</td>
               <td><strong>${esc(a.sku)}</strong>${a._fgLabel ? ` <span style="color:#7c3aed;font-size:10px">(FG)</span>` : ''}</td>
               <td>${esc(a.name || '')}</td>
@@ -1005,7 +1098,7 @@
               <td><span class="bin-code bin-wrong">${esc(a.bin)}</span></td>
               <td><span class="bin-code bin-ok">${esc(a.expectedBin)}</span></td>
               <td>${esc(err.label)}</td>
-              <td><span class="sev-badge sev-${err.severity}">${err.severity}</span></td>
+              <td><span style="${confStyle}">${confLabel}</span>${a.anomalyNote ? `<div style="font-size:10px;color:#64748b;margin-top:2px">${esc(a.anomalyNote)}</div>` : ''}</td>
               <td>${correction ? '<span class="status-ok">✅ Yes</span>' : '<span class="status-pending">⏳ Pending</span>'}</td>
             </tr>`;
           }).join('')}
@@ -2040,7 +2133,8 @@
       const res = await fetch('/api/pick-anomalies/refresh-locators', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
       const data = await res.json();
       if (data.success) {
-        setSyncStatus('success', `Locators refreshed: ${data.changed} orders updated`);
+        const confInfo = data.confidence ? ` | 🧠 ${data.confidence.suspect}🟡 suspect, ${data.confidence.confirmed}🔴 confirmed` : '';
+        setSyncStatus('success', `Locators refreshed: ${data.changed} orders updated${confInfo}`);
         // Reload everything to show corrected data
         await loadHistory();
         await loadStats();
