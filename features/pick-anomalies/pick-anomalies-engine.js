@@ -23,14 +23,15 @@
  * DATE HANDLING (UpdatedSince):
  *   - Cin7 saleList `UpdatedSince` filters by LastModifiedOn (NOT OrderDate)
  *   - Rolling 7-day lookback ensures we catch late-shipped orders
- *   - Rolling 45-day FLOOR_DATE on OrderDate filters out noise (credits/adjustments)
+ *   - Rolling 14-day FLOOR_DATE on OrderDate filters out noise (credits/adjustments)
+ *   - SCANNER_CUTOFF_DATE (2026-03-26): hard floor — no orders before scanner implementation
  *   - existingNumbers dedup + ignore-duplicates = double protection against re-analysis
  *
  * OPTIMIZATIONS:
  *   - Rate-limited: 2.5s between Cin7 calls (~24/min, safe margin)
  *   - Supabase stock_locator fetched in batch
  *   - Cap of 200 orders per sync run
- *   - Only orders with OrderDate within last 45 days are processed
+ *   - Only orders with OrderDate within last 14 days AND after scanner cutoff are processed
  */
 
 const fetch = require('node-fetch');
@@ -52,6 +53,13 @@ const SUPABASE_ANON = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_A
 const RATE_DELAY = 2500;   // 2.5s between Cin7 calls — safe margin, matches sync-service
 const MAX_ORDERS_PER_RUN = 200;
 const MW_LOCATION_ID = '907821e3-c06b-4bf1-a8af-888bc3a2031f';
+
+// ─── Scanner Cutoff Date ───
+// The barcode scanner was implemented on 2026-03-26.
+// Orders before this date had no bin-level tracking, so pick anomaly
+// analysis is meaningless for them. This is a hard floor that overrides
+// the rolling FLOOR_DATE window.
+const SCANNER_CUTOFF_DATE = '2026-03-26';
 
 // ─── In-memory caches ───
 let binCache = null;
@@ -612,14 +620,17 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   const cancelledFromCin7 = [];
   let page = 1;
 
-  // ── FLOOR_DATE: Rolling 45-day lookback ──
-  // Orders with OrderDate older than 45 days are noise (credits, adjustments,
+  // ── FLOOR_DATE: Rolling 14-day lookback ──
+  // Orders with OrderDate older than 14 days are noise (credits, adjustments,
   // late payments that trigger LastModifiedOn changes in Cin7).
-  // 45 days covers any reasonable pick-to-invoice delay while filtering out
+  // 14 days covers any reasonable pick-to-ship delay while filtering out
   // old orders resurfacing due to credit notes or payment updates.
+  // The SCANNER_CUTOFF_DATE (2026-03-26) provides a hard floor below.
   const floorDate = new Date();
-  floorDate.setDate(floorDate.getDate() - 45);
-  const FLOOR_DATE = floorDate.toISOString().split('T')[0];
+  floorDate.setDate(floorDate.getDate() - 14);
+  let FLOOR_DATE = floorDate.toISOString().split('T')[0];
+  // Never go below scanner cutoff — pre-scanner orders have no bin data
+  if (FLOOR_DATE < SCANNER_CUTOFF_DATE) FLOOR_DATE = SCANNER_CUTOFF_DATE;
   // ── STAGE GATE: Only process orders that have SHIPPED ──
   // Dear Systems saleList field mapping (verified via live data analysis):
   //   CombinedShippingStatus: SHIPPED   | PARTIALLY SHIPPED   | NOT SHIPPED   | NOT AVAILABLE
