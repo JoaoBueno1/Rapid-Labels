@@ -106,7 +106,9 @@
     document.getElementById('kpiPicks').textContent = s.picks;
     document.getElementById('kpiCorrect').textContent = s.correct;
     document.getElementById('kpiAnomalies').textContent = s.anomalies;
-    document.getElementById('kpiFg').textContent = s.fg;
+    // Accuracy KPI: correct / total picks
+    const accuracyPct = s.picks > 0 ? ((s.correct / s.picks) * 100).toFixed(1) : '—';
+    document.getElementById('kpiAccuracy').textContent = s.picks > 0 ? `${accuracyPct}%` : '—';
     document.getElementById('kpiReviewed').textContent = anomalyOrders > 0
       ? `${anomalyReviewed}/${anomalyOrders}`
       : '✅';

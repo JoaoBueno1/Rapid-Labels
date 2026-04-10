@@ -230,13 +230,16 @@ class Cin7ApiClient {
 
       if (total === null) {
         total = data.Total || 0;
-        log('info', `Paginating ${endpoint}`, { total, pages: Math.ceil(total / this.config.pageSize) });
+        log('info', `Paginating ${endpoint}`, { reportedTotal: total, estPages: Math.ceil(total / this.config.pageSize) });
       }
 
       allRows.push(...rows);
       log('debug', `Page ${page}: got ${rows.length} rows (total so far: ${allRows.length}/${total})`);
 
-      if (allRows.length >= total || rows.length === 0) break;
+      // Don't trust Cin7's Total — it can be inconsistent.
+      // Stop only when we get an empty page or a page smaller than Limit.
+      if (rows.length === 0) break;
+      if (rows.length < this.config.pageSize) break;
       page++;
     }
 
