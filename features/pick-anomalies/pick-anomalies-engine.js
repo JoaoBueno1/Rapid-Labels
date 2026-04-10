@@ -20,18 +20,23 @@
  *   - This prevents analyzed_at from changing when orders are invoiced days later
  *   - Dedup check is MANDATORY — sync aborts if Supabase dedup query fails
  *
- * DATE HANDLING (UpdatedSince):
+ * DATE HANDLING (UpdatedSince → ShipmentDate gate):
  *   - Cin7 saleList `UpdatedSince` filters by LastModifiedOn (NOT OrderDate)
  *   - Rolling 7-day lookback ensures we catch late-shipped orders
- *   - Rolling 14-day FLOOR_DATE on OrderDate filters out noise (credits/adjustments)
+ *   - Rolling 30-day FLOOR_DATE on OrderDate is a SOFT pre-filter (avoids fetching very old orders)
  *   - SCANNER_CUTOFF_DATE (2026-03-26): hard floor — no orders before scanner implementation
+ *   - HARD GATE on fulfilled_date (ShipmentDate): after fetching sale detail, orders with
+ *     ShipmentDate before cutoff or > 45 days old are REJECTED before analysis
+ *   - This 2-layer approach ensures:
+ *     a) saleList pre-filter is generous (30 days) so late-shipped orders aren't missed
+ *     b) fulfilled_date hard gate is strict — only the actual ship date matters
  *   - existingNumbers dedup + ignore-duplicates = double protection against re-analysis
  *
  * OPTIMIZATIONS:
  *   - Rate-limited: 2.5s between Cin7 calls (~24/min, safe margin)
  *   - Supabase stock_locator fetched in batch
  *   - Cap of 200 orders per sync run
- *   - Only orders with OrderDate within last 14 days AND after scanner cutoff are processed
+ *   - 2-layer date filtering: soft (OrderDate 30d) + hard (ShipmentDate gate)
  */
 
 const fetch = require('node-fetch');
@@ -620,14 +625,16 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   const cancelledFromCin7 = [];
   let page = 1;
 
-  // ── FLOOR_DATE: Rolling 14-day lookback ──
-  // Orders with OrderDate older than 14 days are noise (credits, adjustments,
-  // late payments that trigger LastModifiedOn changes in Cin7).
-  // 14 days covers any reasonable pick-to-ship delay while filtering out
-  // old orders resurfacing due to credit notes or payment updates.
-  // The SCANNER_CUTOFF_DATE (2026-03-26) provides a hard floor below.
+  // ── FLOOR_DATE: Rolling 30-day SOFT pre-filter on OrderDate ──
+  // This is a GENEROUS window to avoid fetching very old orders from saleList.
+  // It is NOT the definitive filter — that role belongs to the fulfilled_date
+  // hard gate (ShipmentDate check) applied after fetching sale detail.
+  // 30 days covers even orders that take 3+ weeks from placement to ship.
+  // Example: Order placed Mar 15, shipped Apr 8 → OrderDate is 26 days old
+  //   → passes 30-day FLOOR_DATE → detail is fetched → ShipmentDate Apr 8 → accepted.
+  // With the old 14-day window, this order would have been silently dropped.
   const floorDate = new Date();
-  floorDate.setDate(floorDate.getDate() - 14);
+  floorDate.setDate(floorDate.getDate() - 30);
   let FLOOR_DATE = floorDate.toISOString().split('T')[0];
   // Never go below scanner cutoff — pre-scanner orders have no bin data
   if (FLOOR_DATE < SCANNER_CUTOFF_DATE) FLOOR_DATE = SCANNER_CUTOFF_DATE;
@@ -730,6 +737,8 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
 
   // ── Step 2: Analyze each new order ──
   const results = [];
+  let skippedPreCutoff = 0;   // fulfilled_date < SCANNER_CUTOFF_DATE
+  let skippedStaleShip = 0;   // fulfilled_date > 45 days old
 
   for (let i = 0; i < newOrders.length; i++) {
     const order = newOrders[i];
@@ -904,6 +913,28 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     // fulfilled_date = shipment date (when goods left the warehouse)
     fulfilledDate = shipmentDate || invoiceDate || null;
 
+    // ── HARD GATE: fulfilled_date must be after scanner cutoff ──
+    // This is the DEFINITIVE check. Unlike the OrderDate soft pre-filter,
+    // this uses the ACTUAL ship date (when Cin7 decremented stock from bins).
+    // Orders that pass the saleList pre-filter but have old ShipmentDates
+    // (e.g., order modified for credit note) are caught here.
+    const fulfilledDateStr = fulfilledDate ? fulfilledDate.split('T')[0] : null;
+    if (fulfilledDateStr && fulfilledDateStr < SCANNER_CUTOFF_DATE) {
+      console.log(`  ⏭️ Skip ${order.OrderNumber}: shipped ${fulfilledDateStr} < cutoff ${SCANNER_CUTOFF_DATE}`);
+      skippedPreCutoff++;
+      continue;
+    }
+    // Also reject if fulfilled_date is suspiciously old (> 45 days)
+    // This catches phantom orders that somehow have SHIPPED status but ancient dates
+    const maxAge = new Date();
+    maxAge.setDate(maxAge.getDate() - 45);
+    const MAX_SHIP_AGE = maxAge.toISOString().split('T')[0];
+    if (fulfilledDateStr && fulfilledDateStr < MAX_SHIP_AGE) {
+      console.log(`  ⏭️ Skip ${order.OrderNumber}: shipped ${fulfilledDateStr} > 45 days ago (stale)`);
+      skippedStaleShip++;
+      continue;
+    }
+
     const orderResult = {
       sale_id: order.SaleID,
       order_number: order.OrderNumber,
@@ -1015,15 +1046,17 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
   const lastSyncedAt = new Date().toISOString();
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1) + 's';
   if (wasCapped) {
-    console.log(`✅ Sync complete (CAPPED): ${results.length} new orders saved. ${cancelledWithCorrections} cancelled w/corrections. ${apiCallCount} API calls, ${elapsed}`);
+    console.log(`✅ Sync complete (CAPPED): ${results.length} new orders saved. ${cancelledWithCorrections} cancelled w/corrections. ${skippedPreCutoff + skippedStaleShip} rejected by ship-date gate. ${apiCallCount} API calls, ${elapsed}`);
   } else {
-    console.log(`✅ Sync complete: ${results.length} new orders saved, ${cancelledWithCorrections} cancelled w/corrections. synced to ${syncDate}. ${apiCallCount} API calls, ${elapsed}`);
+    console.log(`✅ Sync complete: ${results.length} new orders saved, ${cancelledWithCorrections} cancelled w/corrections. ${skippedPreCutoff + skippedStaleShip} rejected by ship-date gate. synced to ${syncDate}. ${apiCallCount} API calls, ${elapsed}`);
   }
 
   return {
     success: true,
     newOrders: results.length,
     skippedExisting: existingNumbers.size,
+    skippedPreCutoff,
+    skippedStaleShip,
     cancelledDetected: cancelledFromCin7.length,
     cancelledWithCorrections,
     wasCapped,
