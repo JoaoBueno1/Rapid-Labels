@@ -149,6 +149,16 @@
   background:rgba(245,158,11,.10) !important;
 }
 .pa-row-anomaly td{ background:rgba(245,158,11,.10); }
+/* Confirmed anomaly rows — red tint */
+.pa-row-anomaly-confirmed{
+  background:rgba(220,38,38,.10) !important;
+}
+.pa-row-anomaly-confirmed td{ background:rgba(220,38,38,.10); }
+/* Suspect-only anomaly rows — yellow tint */
+.pa-row-anomaly-suspect{
+  background:rgba(251,191,36,.12) !important;
+}
+.pa-row-anomaly-suspect td{ background:rgba(251,191,36,.12); }
 
 .pa-row-fg{
   background:rgba(59,130,246,.08) !important;

@@ -303,32 +303,32 @@ function classifyAnomalyConfidence(pick, stockMap) {
 
   // Pallet-only: always suspect — same location, just different pallet numbering
   if (et === 'pallet_only') {
-    return { confidence: 'suspect', note: 'Pallet adjacente — mesma posição, apenas pallet diferente' };
+    return { confidence: 'suspect', note: 'Adjacent pallet — same slot, different pallet number' };
   }
 
   // Special location: always suspect — DOCK, RETURNS, SAMPLES, etc.
   if (et === 'special_loc') {
-    return { confidence: 'suspect', note: `Localização especial — "${pick.bin}" não é um bin padrão MA-` };
+    return { confidence: 'suspect', note: `Special location — "${pick.bin}" is not a standard MA- bin` };
   }
 
   // Check if the picked bin has stock for this SKU (overflow evidence)
   const key = `${pick.sku}|${pick.bin}`;
   const stock = stockMap ? stockMap.get(key) : null;
   if (stock && stock.on_hand > 0) {
-    return { confidence: 'suspect', note: `Overflow: bin "${pick.bin}" tem ${stock.on_hand} un. deste SKU em estoque` };
+    return { confidence: 'suspect', note: `Overflow: bin "${pick.bin}" has ${stock.on_hand} units of this SKU in stock` };
   }
 
   // Same column without overflow evidence → still likely vertical overflow
   if (et === 'same_column') {
-    return { confidence: 'suspect', note: 'Overflow vertical provável — mesma coluna, nível diferente' };
+    return { confidence: 'suspect', note: 'Likely vertical overflow — same column, different level' };
   }
 
   // same_section or different_area without overflow → likely real anomaly
   if (et === 'same_section') {
-    return { confidence: 'confirmed', note: 'Coluna diferente na mesma seção — sem evidência de overflow' };
+    return { confidence: 'confirmed', note: 'Different column in same section — no overflow evidence' };
   }
 
-  return { confidence: 'confirmed', note: 'Área diferente — pick de localização incorreta' };
+  return { confidence: 'confirmed', note: 'Different area — incorrect pick location' };
 }
 
 /**

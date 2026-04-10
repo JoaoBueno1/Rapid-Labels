@@ -418,19 +418,20 @@
       let anomHtml = '';
       if (anom > 0) {
         if (suspectCount > 0 && confirmedAnomalyCount > 0) {
-          anomHtml = `<span style="color:#dc2626;font-weight:700">${confirmedAnomalyCount}</span><span style="color:#9ca3af;font-size:11px"> + </span><span style="color:#d97706;font-weight:600" title="${suspectCount} suspeito(s)">${suspectCount}🟡</span>`;
+          anomHtml = `<span style="color:#dc2626;font-weight:700">${confirmedAnomalyCount}</span><span style="color:#9ca3af;font-size:11px"> + </span><span style="color:#d97706;font-weight:600" title="${suspectCount} suspect">${suspectCount} suspect</span>`;
         } else if (suspectCount > 0) {
-          anomHtml = `<span style="color:#d97706;font-weight:600" title="Todos suspeitos">${anom}🟡</span>`;
+          anomHtml = `<span style="color:#d97706;font-weight:600" title="All suspect">${anom} suspect</span>`;
         } else {
           anomHtml = `<span style="color:#dc2626;font-weight:700">${anom}</span>`;
         }
       }
 
-      // Row background: reviewed/correct = green, anomaly pending = orange
+      // Row background: yellow for suspect-only, red for confirmed anomalies
       let rowClass = '';
       if (o.is_cancelled) rowClass = 'pa-row-cancelled';
       else if (isReviewed) rowClass = 'pa-row-reviewed';
-      else if (anom > 0 && fg > 0) rowClass = 'pa-row-mixed';
+      else if (anom > 0 && confirmedAnomalyCount > 0) rowClass = 'pa-row-anomaly-confirmed';
+      else if (anom > 0 && suspectCount > 0) rowClass = 'pa-row-anomaly-suspect';
       else if (anom > 0) rowClass = 'pa-row-anomaly';
       else if (fg > 0) rowClass = 'pa-row-fg';
       else rowClass = 'pa-row-correct';
@@ -467,7 +468,7 @@
         }
       } else {
         statusHtml = anom === suspectCount
-          ? `<span class="pa-badge pa-badge-suspect">🟡 ${anom} suspect${anom > 1 ? 's' : ''}</span>`
+          ? `<span class="pa-badge pa-badge-suspect">⚠️ ${anom} suspect</span>`
           : `<span class="pa-badge pa-badge-anomaly">⚠️ ${anom} anomal${anom > 1 ? 'ies' : 'y'}</span>`;
       }
 
@@ -608,7 +609,7 @@
     }
 
     const anomalyBreakdownHtml = totalAnom > 0 && (modalSuspect > 0 || modalConfirmed > 0)
-      ? `<span style="font-size:11px;margin-left:4px">(${modalConfirmed > 0 ? `🔴 ${modalConfirmed} confirmado${modalConfirmed > 1 ? 's' : ''}` : ''}${modalConfirmed > 0 && modalSuspect > 0 ? ' · ' : ''}${modalSuspect > 0 ? `🟡 ${modalSuspect} suspeito${modalSuspect > 1 ? 's' : ''}` : ''})</span>`
+      ? `<span style="font-size:11px;margin-left:4px">(${modalConfirmed > 0 ? `${modalConfirmed} confirmed` : ''}${modalConfirmed > 0 && modalSuspect > 0 ? ' · ' : ''}${modalSuspect > 0 ? `${modalSuspect} suspect` : ''})</span>`
       : '';
 
     document.getElementById('paModalSummary').innerHTML =
@@ -866,13 +867,6 @@
       cardClass = '';
     }
 
-    // Confidence badge
-    const confidenceBadge = isSuspect
-      ? '<span class="pa-confidence-badge pa-confidence-suspect" title="Provável falso positivo — overflow ou pallet adjacente">🟡 Suspeito</span>'
-      : isConfirmed
-        ? '<span class="pa-confidence-badge pa-confidence-confirmed" title="Anomalia confirmada — erro de pick real">🔴 Confirmado</span>'
-        : '';
-
     // Anomaly note from backend classification
     const anomalyNoteHtml = pick.anomalyNote
       ? `<div class="pa-anomaly-note ${isSuspect ? 'pa-note-suspect' : 'pa-note-confirmed'}">
@@ -888,7 +882,6 @@
             ${!correction ? `<input type="checkbox" class="pa-fix-check" data-pick-id="${pickId}" onchange="PA.toggleFix('${pickId}', this.checked)" />` : ''}
             <div class="pa-card-v2-sku">
               <strong>${esc(pick.sku)}</strong>
-              ${confidenceBadge}
               ${_repeatSkus.has(pick.sku) ? '<span class="pa-repeat-badge" title="Repeat offender SKU (3+ anomalies)">🔁 Repeat</span>' : ''}
               ${isFg ? `<span class="pa-fg-badge">FG: ${esc(pick._fgLabel)}</span>` : ''}
             </div>
@@ -896,7 +889,7 @@
             <span class="pa-card-v2-name">${esc(pick.name || '')}</span>
           </div>
           <div class="pa-card-v2-severity pa-sev-${err.severity}" title="${esc(err.label)}" style="background:${isSuspect ? '#fbbf24' : isConfirmed ? '#dc2626' : (sevColors[err.severity] || '#94a3b8')}; ${isSuspect ? 'color:#78350f' : ''}">
-            ${isSuspect ? '⚠️ SUSPECT' : isConfirmed ? '🔴 CONFIRMED' : (sevLabels[err.severity] || '?')}
+            ${isSuspect ? 'SUSPECT' : isConfirmed ? 'CONFIRMED' : (sevLabels[err.severity] || '?')}
           </div>
         </div>
 
@@ -1088,7 +1081,7 @@
             const err = classifyError(a.bin, a.expectedBin);
             const pickId = a._fgTaskId ? `fg_${a._fgTaskId}_${a._fgIdx}` : (a.id || `${order.order_number}_pick_${i}`);
             const correction = getCorrection(order, pickId);
-            const confLabel = a.anomalyConfidence === 'suspect' ? '🟡 Suspeito' : a.anomalyConfidence === 'confirmed' ? '🔴 Confirmado' : `<span class="sev-badge sev-${err.severity}">${err.severity}</span>`;
+            const confLabel = a.anomalyConfidence === 'suspect' ? 'Suspect' : a.anomalyConfidence === 'confirmed' ? 'Confirmed' : `<span class="sev-badge sev-${err.severity}">${err.severity}</span>`;
             const confStyle = a.anomalyConfidence === 'suspect' ? 'background:#fef9c3;color:#854d0e;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px' : a.anomalyConfidence === 'confirmed' ? 'background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px' : '';
             return `<tr${a.anomalyConfidence === 'suspect' ? ' style="background:#fffbeb"' : ''}>
               <td>${i + 1}</td>
@@ -2133,7 +2126,7 @@
       const res = await fetch('/api/pick-anomalies/refresh-locators', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
       const data = await res.json();
       if (data.success) {
-        const confInfo = data.confidence ? ` | 🧠 ${data.confidence.suspect}🟡 suspect, ${data.confidence.confirmed}🔴 confirmed` : '';
+        const confInfo = data.confidence ? ` | ${data.confidence.suspect} suspect, ${data.confidence.confirmed} confirmed` : '';
         setSyncStatus('success', `Locators refreshed: ${data.changed} orders updated${confInfo}`);
         // Reload everything to show corrected data
         await loadHistory();
