@@ -4,7 +4,9 @@
 # Syncs Cin7 Sales Orders + Stock Transfers into Supabase
 # cin7_mirror.order_pipeline table for warehouse dashboard KPIs.
 #
-# Runs every 30 minutes so the dashboard is always fresh.
+# Runs every hour at :15 to avoid rate-limit collisions:
+#   Stock Sync runs at :00, Pick Anomalies at :30.
+#   Offset to :15 ensures no overlap with either.
 #
 # Required GitHub Secrets (same as cin7-sync):
 #   SUPABASE_URL          — Supabase project URL
@@ -17,8 +19,8 @@ name: Order Pipeline Sync
 
 on:
   schedule:
-    # Every 30 minutes (UTC)
-    - cron: '*/30 * * * *'
+    # Every hour at :15 (offset from Stock :00 and Pick Anomalies :30)
+    - cron: '15 * * * *'
   workflow_dispatch: {}
 
 jobs:
