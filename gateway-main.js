@@ -346,7 +346,7 @@
     const el = document.getElementById('syncCountdown');
     if (!el) return;
     const now = new Date();
-    const INTERVAL_MS = 2 * 3600000; // 2 hours
+    const INTERVAL_MS = 1 * 3600000; // 1 hour
 
     let nextSync;
     if (_lastSyncEndedAt) {
@@ -356,12 +356,12 @@
         nextSync = new Date(nextSync.getTime() + Math.ceil(elapsed / INTERVAL_MS) * INTERVAL_MS);
       }
     } else {
+      // Fallback: cron schedule '0 * * * *' → every UTC hour at :00
       const utcH = now.getUTCHours();
       const utcM = now.getUTCMinutes();
       const utcS = now.getUTCSeconds();
       let nextH = utcH;
       if (utcM > 0 || utcS > 0) nextH++;
-      if (nextH % 2 !== 0) nextH++;
       nextSync = new Date(Date.UTC(
         now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
         nextH, 0, 0, 0
@@ -375,7 +375,7 @@
     const m = diffMin % 60;
     const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
     el.textContent = `🛡️ Next sync in ${countdown}`;
-    el.title = `Next stock sync ~${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })} (every 2h from last sync). May vary ~5-15 min.`;
+    el.title = `Next stock sync ~${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })} (every 1h from last sync). May vary ~5-15 min.`;
   }
 
   function _refreshSyncAge() {
@@ -392,7 +392,7 @@
       agoStr = remM > 0 ? `${agoH}h ${remM}m ago` : `${agoH}h ago`;
     }
     ageEl.textContent = agoStr;
-    ageEl.style.color = agoMin > 180 ? '#ef4444' : agoMin > 130 ? '#f59e0b' : '#94a3b8';
+    ageEl.style.color = agoMin > 90 ? '#ef4444' : agoMin > 75 ? '#f59e0b' : '#94a3b8';
   }
 
   setInterval(() => { _refreshSyncAge(); _refreshSyncCountdown(); }, 60000);

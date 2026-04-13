@@ -1,6 +1,6 @@
 /**
  * Branch Replenishment Planner - Main Page JS
- * Reads stock directly from cin7_mirror (auto-synced every 2h)
+ * Reads stock directly from cin7_mirror (auto-synced every 1h)
  * No manual upload needed — same approach as Restock V2
  */
 
@@ -157,8 +157,8 @@
     else agoStr = `${Math.floor(agoH / 24)}d ago`;
 
     ageEl.textContent = agoStr;
-    ageEl.style.color = agoMin > 180 ? '#ef4444' : agoMin > 130 ? '#f59e0b' : '#94a3b8';
-    ageEl.style.fontWeight = agoMin > 130 ? '600' : '400';
+    ageEl.style.color = agoMin > 90 ? '#ef4444' : agoMin > 75 ? '#f59e0b' : '#94a3b8';
+    ageEl.style.fontWeight = agoMin > 75 ? '600' : '400';
   }
 
   function _refreshSyncCountdown() {
@@ -167,14 +167,13 @@
     const now = new Date();
     const nextH = new Date(now);
     nextH.setMinutes(0, 0, 0);
-    if (nextH <= now) nextH.setHours(nextH.getHours() + 2);
-    if (nextH.getHours() % 2 !== 0) nextH.setHours(nextH.getHours() + 1);
+    if (nextH <= now) nextH.setHours(nextH.getHours() + 1);
     const diffMin = Math.max(0, Math.ceil((nextH - now) / 60000));
     if (diffMin <= 5) {
       el.textContent = '🔄 Syncing soon…';
       el.style.color = '#3b82f6';
     } else {
-      el.textContent = '🛡️ Auto 2h';
+      el.textContent = '🛡️ Auto 1h';
       el.style.color = '#94a3b8';
     }
   }

@@ -171,7 +171,7 @@
       alertContainer.innerHTML = `
         <div class="alert warning">
           <strong>No stock data available.</strong> 
-          Cin7 mirror sync has not run yet. Stock data auto-syncs every 2 hours.
+          Cin7 mirror sync has not run yet. Stock data auto-syncs every hour.
         </div>
       `;
     }

@@ -48,7 +48,7 @@ const CONFIG = {
     delayMs: 2500,         // 2.5s between calls — matches Rapid-Express-Web pace
   },
   schedule: {
-    stockIntervalMin: 120,      // 2 hours
+    stockIntervalMin: 60,       // 1 hour
     productsDaily: '0 3 * * *', // Daily at 3 AM
     locationsDaily: '0 4 * * *', // Daily at 4 AM
   },
@@ -855,8 +855,8 @@ async function runScheduler() {
   log('info', 'Running initial full sync...');
   await orchestrator.runFullSync();
 
-  // ── Stock snapshot: every 2 hours at :00 ──
-  cron.schedule('0 */2 * * *', async () => {
+  // ── Stock snapshot: every hour at :00 ──
+  cron.schedule('0 * * * *', async () => {
     if (!await acquireSyncLock('stock_sync')) return;
     try {
       log('info', '⏰ Scheduled stock sync triggered');
@@ -937,7 +937,7 @@ async function runScheduler() {
   }
 
   log('info', '🛡️ Scheduler running with safety features:');
-  log('info', '   Stock:          every 2h at :00');
+  log('info', '   Stock:          every 1h at :00');
   log('info', '   Full Rebuild:   daily at 2:00 AM');
   log('info', '   Products:       daily at 3:00 AM');
   log('info', '   Locations:      daily at 4:00 AM');

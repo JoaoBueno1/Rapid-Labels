@@ -15,8 +15,8 @@ name: Cin7 Sync Scheduler
 
 on:
   schedule:
-    # Stock sync: every 2 hours at :00 (UTC)
-    - cron: '0 */2 * * *'
+    # Stock sync: every hour at :00 (UTC)
+    - cron: '0 * * * *'
   workflow_dispatch: {}
 
 jobs:

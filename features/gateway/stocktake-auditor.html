@@ -266,9 +266,9 @@
         if (syncAge) html += ' • <strong>' + syncAge + '</strong>';
         html += '<span style="color:#94a3b8;margin-left:4px">' + fmtDateShort(sync.ended_at) + '</span>';
 
-        // Next sync estimate (every 2h)
+        // Next sync estimate (every 1h)
         if (sync.ended_at) {
-          var nextSync = new Date(new Date(sync.ended_at).getTime() + 2 * 3600000);
+          var nextSync = new Date(new Date(sync.ended_at).getTime() + 1 * 3600000);
           var now2 = new Date();
           if (nextSync > now2) {
             var diffMin = Math.floor((nextSync - now2) / 60000);

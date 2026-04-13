@@ -1017,7 +1017,7 @@
                         const ok = run.status === 'success';
                         const ts = run.ended_at ? new Date(run.ended_at) : null;
                         const ago = fmtAgo(ts);
-                        const color = !ok ? 'red' : ago.min > 180 ? 'red' : ago.min > 130 ? 'yellow' : 'green';
+                        const color = !ok ? 'red' : ago.min > 90 ? 'red' : ago.min > 75 ? 'yellow' : 'green';
                         setHealth('healthStock', color, `${ago.str}${run.products_synced ? ' · ' + run.products_synced + ' products' : ''}`);
                         // Sync badges for buttons
                         if (ts) {
