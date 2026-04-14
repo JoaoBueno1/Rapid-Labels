@@ -30,7 +30,7 @@ const CONFIG = {
     pageSize: 500,
     maxRetries: 3,
     timeoutMs: 30000,
-    throttleMs: 2500,
+    throttleMs: 3500,
   },
   supabase: {
     url: process.env.SUPABASE_URL || '',

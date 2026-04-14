@@ -896,23 +896,27 @@
         ${anomalyNoteHtml}
 
         <div class="pa-card-v2-body">
-          <div class="pa-card-v2-flow">
-            <div class="pa-flow-box ${isSuspect ? 'pa-flow-suspect' : 'pa-flow-wrong'}">
-              <div class="pa-flow-label">${isSuspect ? '⚠️ PICKED FROM' : '❌ PICKED FROM'}</div>
-              <div class="pa-flow-bin">${esc(pick.bin)}</div>
+          <div class="pa-unified-flow">
+            <div class="pa-uf-bins">
+              <div class="pa-uf-bin ${isSuspect ? 'pa-uf-suspect' : 'pa-uf-wrong'}">
+                <div class="pa-uf-bin-label">${isSuspect ? '⚠️ PICKED FROM' : '❌ PICKED FROM'}</div>
+                <div class="pa-uf-bin-code">${esc(pick.bin)}</div>
+                ${state.stockData ? _stockInline(pick.sku, pick.bin) : ''}
+              </div>
+              <div class="pa-uf-arrow-col">
+                <div class="pa-uf-arrow">→</div>
+              </div>
+              <div class="pa-uf-bin pa-uf-expected">
+                <div class="pa-uf-bin-label">✅ SHOULD BE</div>
+                <div class="pa-uf-bin-code">${esc(pick.expectedBin)}</div>
+                ${state.stockData ? _stockInline(pick.sku, pick.expectedBin) : ''}
+              </div>
+              <div class="pa-uf-error-col">
+                <div class="pa-uf-error-badge pa-uf-err-${err.severity}">${esc(err.label)}</div>
+              </div>
             </div>
-            <div class="pa-flow-arrow">→</div>
-            <div class="pa-flow-box pa-flow-expected">
-              <div class="pa-flow-label">✅ SHOULD BE</div>
-              <div class="pa-flow-bin">${esc(pick.expectedBin)}</div>
-            </div>
-            <div class="pa-flow-type">
-              <div class="pa-flow-type-label">Error</div>
-              <div class="pa-flow-type-value">${esc(err.label)}</div>
-            </div>
+            ${state.stockData ? _stockWarnings(pick.sku, pick.expectedBin, pick.bin, pick.qty) : ''}
           </div>
-
-          ${state.stockData ? _stockInfoCompactHtml(pick.sku, pick.expectedBin, pick.bin, pick.qty) : '<div class="pa-stock-info pa-stock-loading">⏳ Loading stock…</div>'}
 
           ${correction ? `
             <div class="pa-correction-v2">
@@ -933,29 +937,40 @@
       </div>`;
   }
 
-  /* ─── Compact stock info for V2 cards ─── */
-  function _stockInfoCompactHtml(sku, expectedBin, pickedBin, qty) {
+  /* ─── Inline stock for each bin inside the unified flow ─── */
+  function _stockInline(sku, bin) {
     if (!state.stockData || !state.stockData.stock) return '';
     const sd = state.stockData.stock;
-    const fromKey = `${sku}|${expectedBin}`;
-    const toKey   = `${sku}|${pickedBin}`;
-    const fromStock = sd[fromKey];
-    const toStock   = sd[toKey];
-    const fmtNum = n => (n != null ? n : '—');
+    const key = `${sku}|${bin}`;
+    const s = sd[key];
+    const fmtNum = n => (n != null ? n.toLocaleString() : '—');
+    if (!s) return '<div class="pa-uf-stock">No stock data</div>';
+    return `<div class="pa-uf-stock">OH ${fmtNum(s.on_hand)} · Avail ${fmtNum(s.available)}</div>`;
+  }
 
-    let warnings = '';
+  /* ─── Stock warnings (shown below the flow when relevant) ─── */
+  function _stockWarnings(sku, expectedBin, pickedBin, qty) {
+    if (!state.stockData || !state.stockData.stock) return '';
+    const sd = state.stockData.stock;
+    const fromStock = sd[`${sku}|${expectedBin}`];
+    const toStock   = sd[`${sku}|${pickedBin}`];
+    let warnings = [];
     if (fromStock && fromStock.available != null && fromStock.available < qty) {
-      warnings += `<span class="pa-stock-flag pa-stock-flag-red">⚠ FROM only ${fromStock.available} avail</span>`;
+      warnings.push(`<span class="pa-stock-flag pa-stock-flag-red">⚠ Expected bin only ${fromStock.available} available</span>`);
+    }
+    if (toStock && toStock.on_hand != null && toStock.on_hand > 50) {
+      warnings.push(`<span class="pa-stock-flag pa-stock-flag-amber">💡 Overflow: bin "${esc(pickedBin)}" has ${toStock.on_hand.toLocaleString()} units of this SKU in stock</span>`);
     }
     if (toStock && toStock.on_hand != null && toStock.on_hand === 0) {
-      warnings += `<span class="pa-stock-flag pa-stock-flag-amber">⚠ TO bin empty</span>`;
+      warnings.push(`<span class="pa-stock-flag pa-stock-flag-amber">⚠ Picked bin now empty</span>`);
     }
+    if (!warnings.length) return '';
+    return `<div class="pa-uf-warnings">${warnings.join('')}</div>`;
+  }
 
-    return `<div class="pa-stock-compact">
-      <span class="pa-stock-chip" title="FROM: ${esc(expectedBin)}">📦 FROM: OH ${fmtNum(fromStock?.on_hand)} · Avail ${fmtNum(fromStock?.available)}</span>
-      <span class="pa-stock-chip" title="TO: ${esc(pickedBin)}">📦 TO: OH ${fmtNum(toStock?.on_hand)} · Avail ${fmtNum(toStock?.available)}</span>
-      ${warnings}
-    </div>`;
+  /* ─── Legacy compat — _stockInfoCompactHtml (unused, kept for reference) ─── */
+  function _stockInfoCompactHtml(sku, expectedBin, pickedBin, qty) {
+    return ''; // Replaced by inline stock in unified flow
   }
 
   /* ═══════════════════════════════════════════════
