@@ -24,6 +24,8 @@
   const CIN7_LOCATION_MAP = {
     'main warehouse': 'MAIN',
     'main': 'MAIN',
+    'gateway': 'MAIN',
+    'gateway warehouse': 'MAIN',
     'sydney': 'SYD',
     'sydney warehouse': 'SYD',
     'melbourne': 'MEL',
@@ -644,11 +646,21 @@
       const metaParts = [dcLine ? dcLine.replace(' · ', '') : '', line.ctn_qty ? line.ctn_qty + '/ctn' : '', avgDisplay].filter(Boolean);
       
       // Branch stock tooltip with AVG
-      const branchTip = line.avg_branch_raw > 0
-        ? `Branch stock: ${line.branch_stock}\nAVG sales: ${formatAvg(line.avg_branch_raw)}/mth (${formatAvg(line.avg_branch_raw / WEEKS_IN_MONTH)}/wk)\nTarget: ${BRANCH_TARGET_WEEKS} weeks = ${Math.ceil((line.avg_branch_raw / WEEKS_IN_MONTH) * BRANCH_TARGET_WEEKS)} units\nNeed: ${line.need_qty}`
-        : `Branch stock: ${line.branch_stock}\nNo AVG data`;
+      const branchTipParts = line.avg_branch_raw > 0
+        ? ['Branch stock: ' + line.branch_stock,
+           'AVG sales: ' + formatAvg(line.avg_branch_raw) + '/mth (' + formatAvg(line.avg_branch_raw / WEEKS_IN_MONTH) + '/wk)',
+           'Target: ' + BRANCH_TARGET_WEEKS + ' weeks = ' + Math.ceil((line.avg_branch_raw / WEEKS_IN_MONTH) * BRANCH_TARGET_WEEKS) + ' units',
+           'Need: ' + line.need_qty]
+        : ['Branch stock: ' + line.branch_stock, 'No AVG data'];
+      const branchTip = branchTipParts.join('&#10;');
       // Main stock tooltip with AVG
-      const mainTip = `Main stock: ${line.main_stock}\nAVG sales: ${formatAvg(line.avg_main_raw)}/mth\nSafety (${MAIN_MIN_WEEKS}wk): ${line.main_safety || 0}\nCan send: ${line.can_send || 0}`;
+      const mainTipParts = [
+        'Main stock: ' + line.main_stock,
+        'AVG sales: ' + formatAvg(line.avg_main_raw) + '/mth',
+        'Safety (' + MAIN_MIN_WEEKS + 'wk): ' + (line.main_safety || 0),
+        'Can send: ' + (line.can_send || 0)
+      ];
+      const mainTip = mainTipParts.join('&#10;');
       
       const checked = state.selectedRows.has(line.product) ? 'checked' : '';
       const dimClass = line.send_qty <= 0 ? ' dim-row' : '';
@@ -659,8 +671,8 @@
         '<td class="product-cell"><div class="prod-code">' + escapeHtml(line.product) + conflictIcon + '</div>' + nameLine + '<div class="prod-meta">' + metaParts.join(' · ') + '</div></td>' +
         '<td class="loc-cell">' + escapeHtml(line.location || '—') + '</td>' +
         '<td class="cover-cell">' + coverBadge + '</td>' +
-        '<td class="num-cell" title="' + escapeHtml(branchTip) + '" style="cursor:help">' + line.branch_stock + '</td>' +
-        '<td class="num-cell main-cell" title="' + escapeHtml(mainTip) + '" style="cursor:help">' + line.main_stock + '</td>' +
+        '<td class="num-cell tip-cell" title="' + branchTip + '">' + line.branch_stock + '</td>' +
+        '<td class="num-cell main-cell tip-cell" title="' + mainTip + '">' + line.main_stock + '</td>' +
         '<td class="send-cell">' + sendDisplay + '</td>' +
         '<td class="ctn-cell">' + cartonDisplay + '</td>' +
         '</tr>';

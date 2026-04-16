@@ -25,6 +25,8 @@
   const CIN7_LOCATION_MAP = {
     'main warehouse': 'MAIN',
     'main': 'MAIN',
+    'gateway': 'MAIN',
+    'gateway warehouse': 'MAIN',
     'sydney': 'SYD',
     'sydney warehouse': 'SYD',
     'melbourne': 'MEL',
