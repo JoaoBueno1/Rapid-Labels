@@ -372,12 +372,14 @@
       if (product.toLowerCase().includes('carton')) continue;
       
       const avgRow = state.avgData[product];
-      const avgMonthBranch = Math.round(avgRow?.[avgField] || 0);
+      const avgMonthBranchRaw = avgRow?.[avgField] || 0;       // raw decimal for display
+      const avgMonthBranch = Math.round(avgMonthBranchRaw);    // rounded for calc
       const branchStock = state.stockData[`${product}:${branchCode}`];
       const mainStock = state.stockData[`${product}:MAIN`];
       const branchAvailable = branchStock?.qty_available || 0;
       const mainAvailable = mainStock?.qty_available || 0;
-      const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);
+      const avgMonthMainRaw = avgRow?.avg_mth_main || 0;        // raw decimal for display
+      const avgMonthMain = Math.round(avgMonthMainRaw);         // rounded for calc
       const ctnQty = state.ctnMap[product] || 0;
       const dcCode = state.dcMap[product] || '';
       const productName = state.productNames[product] || '';
@@ -389,8 +391,8 @@
           lines.push({
             product, dc_code: dcCode, product_name: productName, location,
             category: 'no_avg',
-            cover_days: 999, branch_stock: branchAvailable, avg_branch: 0,
-            main_stock: mainAvailable, avg_main: avgMonthMain,
+            cover_days: 999, branch_stock: branchAvailable, avg_branch: 0, avg_branch_raw: 0,
+            main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
             can_send: 0, main_safety: 0, need_qty: 0,
             send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
             cartons: 0,
@@ -425,8 +427,8 @@
         lines.push({
           product, dc_code: dcCode, product_name: productName, location,
           category,
-          cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
-          main_stock: mainAvailable, avg_main: avgMonthMain,
+          cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
+          main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
           can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
           cartons: 0,
@@ -441,8 +443,8 @@
         lines.push({
           product, dc_code: dcCode, product_name: productName, location,
           category,
-          cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
-          main_stock: mainAvailable, avg_main: avgMonthMain,
+          cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
+          main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
           can_send: 0, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
           cartons: 0,
@@ -500,8 +502,8 @@
       lines.push({
         product, dc_code: dcCode, product_name: productName, location,
         category,
-        cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
-        main_stock: mainAvailable, avg_main: avgMonthMain,
+        cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
+        main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
         can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
         send_qty: sendQty, raw_qty: allocatedQty, blocked_qty: blockedQty,
         ctn_qty: ctnQty || null, rounded,
@@ -635,17 +637,30 @@
         : '';
       const dcLine = line.dc_code ? '<span class="prod-dc">' + escapeHtml(line.dc_code) + '</span> · ' : '';
       
+      // AVG display in meta
+      const avgDisplay = line.avg_branch_raw > 0
+        ? 'avg ' + formatAvg(line.avg_branch_raw) + '/mth'
+        : '';
+      const metaParts = [dcLine ? dcLine.replace(' · ', '') : '', line.ctn_qty ? line.ctn_qty + '/ctn' : '', avgDisplay].filter(Boolean);
+      
+      // Branch stock tooltip with AVG
+      const branchTip = line.avg_branch_raw > 0
+        ? `Branch stock: ${line.branch_stock}\nAVG sales: ${formatAvg(line.avg_branch_raw)}/mth (${formatAvg(line.avg_branch_raw / WEEKS_IN_MONTH)}/wk)\nTarget: ${BRANCH_TARGET_WEEKS} weeks = ${Math.ceil((line.avg_branch_raw / WEEKS_IN_MONTH) * BRANCH_TARGET_WEEKS)} units\nNeed: ${line.need_qty}`
+        : `Branch stock: ${line.branch_stock}\nNo AVG data`;
+      // Main stock tooltip with AVG
+      const mainTip = `Main stock: ${line.main_stock}\nAVG sales: ${formatAvg(line.avg_main_raw)}/mth\nSafety (${MAIN_MIN_WEEKS}wk): ${line.main_safety || 0}\nCan send: ${line.can_send || 0}`;
+      
       const checked = state.selectedRows.has(line.product) ? 'checked' : '';
       const dimClass = line.send_qty <= 0 ? ' dim-row' : '';
       const checkDisabled = line.send_qty <= 0 ? ' disabled' : '';
       
       return '<tr class="plan-row' + dimClass + '">' +
         '<td class="check-cell"><input type="checkbox" class="row-check" ' + checked + checkDisabled + ' onchange="toggleRow(\'' + escapeHtml(line.product) + '\')"></td>' +
-        '<td class="product-cell"><div class="prod-code">' + escapeHtml(line.product) + conflictIcon + '</div>' + nameLine + '<div class="prod-meta">' + dcLine + (line.ctn_qty ? line.ctn_qty + '/ctn' : '') + '</div></td>' +
+        '<td class="product-cell"><div class="prod-code">' + escapeHtml(line.product) + conflictIcon + '</div>' + nameLine + '<div class="prod-meta">' + metaParts.join(' · ') + '</div></td>' +
         '<td class="loc-cell">' + escapeHtml(line.location || '—') + '</td>' +
         '<td class="cover-cell">' + coverBadge + '</td>' +
-        '<td class="num-cell">' + line.branch_stock + '</td>' +
-        '<td class="num-cell main-cell">' + line.main_stock + '</td>' +
+        '<td class="num-cell" title="' + escapeHtml(branchTip) + '" style="cursor:help">' + line.branch_stock + '</td>' +
+        '<td class="num-cell main-cell" title="' + escapeHtml(mainTip) + '" style="cursor:help">' + line.main_stock + '</td>' +
         '<td class="send-cell">' + sendDisplay + '</td>' +
         '<td class="ctn-cell">' + cartonDisplay + '</td>' +
         '</tr>';
