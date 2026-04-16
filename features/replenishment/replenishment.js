@@ -469,20 +469,12 @@
       sumHealth += k.healthPct;
     }
     
-    const avgHealth = branchCodes.length > 0 ? Math.round(sumHealth / branchCodes.length) : 100;
-    
     const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
     setEl('kpiTotalProducts', totalProducts);
     setEl('kpiTotalUnits', totalUnits.toLocaleString());
     setEl('kpiCritical', totalCritical);
     setEl('kpiWarning', totalWarning);
     setEl('kpiConflicts', totalConflicts);
-    
-    const healthEl = document.getElementById('kpiHealthScore');
-    if (healthEl) {
-      healthEl.textContent = avgHealth + '%';
-      healthEl.style.color = avgHealth >= 80 ? '#10b981' : avgHealth >= 50 ? '#f59e0b' : '#dc2626';
-    }
     
     kpiBar.style.display = 'block';
     
@@ -544,7 +536,7 @@
           </div>
           
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#94a3b8">
-            <span>Health: ${kpi.healthPct}%</span>
+            <span>${kpi.totalProducts > 0 ? kpi.totalProducts + ' to send · ' + kpi.totalUnits.toLocaleString() + ' units' : 'Fully stocked ✓'}</span>
             ${planDate ? `<span>Plan: ${planDate}</span>` : ''}
           </div>
         </a>

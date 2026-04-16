@@ -1,6 +1,7 @@
 /**
- * Branch Replenishment Planner - Branch Page JS
- * Handles plan generation, calculation, and management
+ * Branch Replenishment Planner — Redesigned
+ * Shows ONLY actionable items by default (send_qty > 0).
+ * Simplified columns, print-ready transfer sheet.
  */
 
 (function() {
@@ -20,7 +21,6 @@
     SCS: { name: 'Sunshine Coast', avgField: 'avg_mth_sunshine_coast' }
   };
 
-  // Mapping from cin7_mirror.stock_snapshot.location_name → warehouse code
   const CIN7_LOCATION_MAP = {
     'main warehouse': 'MAIN',
     'main': 'MAIN',
@@ -56,17 +56,17 @@
     planLines: [],
     avgData: {},
     stockData: {},
-    ctnMap: {},            // product → qty_per_ctn from restock_setup
-    dcMap: {},             // product → 5DC code from restock_setup
+    ctnMap: {},
+    dcMap: {},
+    productNames: {},      // product → display name
+    locationMap: {},       // product → pickface location
     selectedRows: new Set(),
-    showNoAvg: false,
-    showNoMainStock: false,
-    filter: 'all',
+    filter: 'to_send',    // Default: only actionable items
     search: '',
     currentPage: 1,
     pageSize: 100,
     sortField: 'cover_days',
-    sortAsc: true
+    sortAsc: true          // Most urgent first
   };
 
   // ============================================
@@ -74,7 +74,6 @@
   // ============================================
   
   document.addEventListener('DOMContentLoaded', async () => {
-    // Get branch code from URL
     const params = new URLSearchParams(window.location.search);
     const branchCode = params.get('branch');
     
@@ -86,27 +85,21 @@
     state.branchCode = branchCode;
     state.branchInfo = BRANCHES[branchCode];
     
-    // Update page title elements
     const branchNameEl = document.getElementById('branchName');
     const branchCodeEl = document.getElementById('branchCode');
     if (branchNameEl) branchNameEl.textContent = state.branchInfo.name;
     if (branchCodeEl) branchCodeEl.textContent = `(${branchCode})`;
-    document.title = `${state.branchInfo.name} - Replenishment Plan`;
+    document.title = `${state.branchInfo.name} — Transfer Plan`;
     
     console.log(`📦 Branch Replenishment: ${branchCode} - ${state.branchInfo.name}`);
     
-    await loadData();
-    setupEventListeners();
-  });
-
-  function setupEventListeners() {
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeApprovalModal();
-      }
+    // Set default filter chip active
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.filter === state.filter);
     });
-  }
+    
+    await loadData();
+  });
 
   // ============================================
   // LOAD DATA
@@ -118,7 +111,6 @@
     try {
       await window.supabaseReady;
       
-      // Load cin7_mirror sync status
       const { data: syncRuns, error: syncError } = await window.supabase
         .schema('cin7_mirror')
         .from('sync_runs')
@@ -134,7 +126,6 @@
       state.syncStatus = syncRuns[0];
       updateSnapshotInfo();
       
-      // Load AVG data, stock, CTN info, and existing plan in parallel
       console.log('Loading data...');
       await Promise.all([
         loadAvgData(),
@@ -144,18 +135,11 @@
       ]);
       
       console.log('Data loaded, auto-generating plan...');
-      console.log(`📊 AVG data: ${Object.keys(state.avgData).length} products`);
-      console.log(`📦 Stock data: ${Object.keys(state.stockData).length} entries`);
-      console.log(`🗃️ CTN map: ${Object.keys(state.ctnMap).length} | DC map: ${Object.keys(state.dcMap).length}`);
+      console.log(`📊 AVG: ${Object.keys(state.avgData).length} | 📦 Stock: ${Object.keys(state.stockData).length} | 🗃️ CTN: ${Object.keys(state.ctnMap).length} | 📍 Locations: ${Object.keys(state.locationMap).length} | 🏷️ Names: ${Object.keys(state.productNames).length}`);
       
-      // Auto-generate plan on page load
       calculatePlan();
       renderTable();
-      updateStats();
-      
-      // Show export button
-      const exportBtn = document.getElementById('exportBtn');
-      if (exportBtn) exportBtn.style.display = '';
+      updateSummary();
       
     } catch (err) {
       console.error('Error loading data:', err);
@@ -166,14 +150,9 @@
   }
 
   function showNoSnapshot() {
-    const alertContainer = document.getElementById('alertContainer');
-    if (alertContainer) {
-      alertContainer.innerHTML = `
-        <div class="alert warning">
-          <strong>No stock data available.</strong> 
-          Cin7 mirror sync has not run yet. Stock data auto-syncs every hour.
-        </div>
-      `;
+    const el = document.getElementById('alertContainer');
+    if (el) {
+      el.innerHTML = '<div class="alert warning"><strong>No stock data available.</strong> Cin7 mirror sync has not run yet.</div>';
     }
   }
 
@@ -181,12 +160,11 @@
     const el = document.getElementById('snapshotDate');
     if (el && state.syncStatus) {
       const date = new Date(state.syncStatus.ended_at || state.syncStatus.started_at);
-      el.textContent = `Cin7 sync: ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+      el.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
     }
   }
 
   async function loadAvgData() {
-    // Need to paginate because Supabase has 1000 row limit per request
     let allData = [];
     let from = 0;
     const batchSize = 1000;
@@ -199,26 +177,18 @@
       
       if (error) throw error;
       if (!data || data.length === 0) break;
-      
       allData = allData.concat(data);
-      console.log(`Loaded ${allData.length} AVG records...`);
-      
       if (data.length < batchSize) break;
       from += batchSize;
     }
     
-    // Index by product for quick lookup (e.g., R3206-TRI)
     state.avgData = {};
     for (const row of allData) {
       state.avgData[row.product] = row;
     }
-    console.log(`Total AVG products: ${Object.keys(state.avgData).length}`);
   }
 
   async function loadStockData() {
-    console.log('Loading stock data from cin7_mirror...');
-    
-    // Read directly from cin7_mirror.stock_snapshot (all warehouses)
     let allData = [];
     let from = 0;
     const batchSize = 1000;
@@ -227,23 +197,19 @@
       const { data, error } = await window.supabase
         .schema('cin7_mirror')
         .from('stock_snapshot')
-        .select('sku, location_name, on_hand, available')
+        .select('sku, product_name, location_name, on_hand, available')
         .range(from, from + batchSize - 1);
       
       if (error) throw error;
       if (!data || data.length === 0) break;
-      
       allData = allData.concat(data);
-      console.log(`Loaded ${allData.length} stock rows...`);
-      
       if (data.length < batchSize) break;
       from += batchSize;
     }
     
-    console.log(`Total stock loaded: ${allData.length}`);
-    
-    // Aggregate by SKU + warehouse (sum available across bins)
     state.stockData = {};
+    state.productNames = {};
+    
     for (const row of allData) {
       const locName = (row.location_name || '').toLowerCase().trim();
       const warehouseCode = CIN7_LOCATION_MAP[locName];
@@ -258,21 +224,23 @@
         };
       }
       state.stockData[key].qty_available += (row.available != null ? row.available : row.on_hand || 0);
+      
+      // Build product names map (take first non-empty name per SKU)
+      if (row.product_name && !state.productNames[row.sku]) {
+        state.productNames[row.sku] = row.product_name;
+      }
     }
-    
-    console.log(`Aggregated to ${Object.keys(state.stockData).length} SKU/warehouse entries`);
   }
 
   async function loadCtnData() {
     try {
-      // Load ALL products (not just those with CTN) so we can get 5DC codes
       let allRows = [];
       let from = 0;
       const batchSize = 1000;
       while (true) {
         const { data, error } = await window.supabase
           .from('restock_setup')
-          .select('product, qty_per_ctn')
+          .select('product, qty_per_ctn, pickface_location')
           .range(from, from + batchSize - 1);
         if (error) { console.warn('Could not load CTN data:', error); return; }
         if (!data || data.length === 0) break;
@@ -283,51 +251,36 @@
       
       state.ctnMap = {};
       state.dcMap = {};
+      state.locationMap = {};
+      
       for (const row of allRows) {
         let product = (row.product || '').trim();
         const spaceMatch = product.match(/^(\d{4,6})\s+(.+)$/);
         if (spaceMatch) {
-          state.dcMap[spaceMatch[2].trim()] = spaceMatch[1]; // product_code → 5DC
+          state.dcMap[spaceMatch[2].trim()] = spaceMatch[1];
           product = spaceMatch[2].trim();
         }
         if (product && row.qty_per_ctn > 0) {
           state.ctnMap[product] = Number(row.qty_per_ctn);
         }
+        if (product && row.pickface_location) {
+          state.locationMap[product] = row.pickface_location;
+        }
       }
-      console.log(`📦 Loaded ${Object.keys(state.ctnMap).length} CTN + ${Object.keys(state.dcMap).length} 5DC codes`);
     } catch (err) {
       console.warn('CTN data load failed:', err);
     }
   }
 
-  /**
-   * Smart Carton Rounding: rounds suggestedQty to nearest full carton
-   * if Main safety stock still respected. Falls back to rounding down.
-   * @param {number} suggestedQty - raw qty to send
-   * @param {number} ctnQty - units per carton (0 or null = no rounding)
-   * @param {number} canSendQty - max Main can send (after 8-week safety)
-   * @returns {{ qty: number, rounded: string }} qty and rounding direction
-   */
   function smartCartonRound(suggestedQty, ctnQty, canSendQty) {
     if (!ctnQty || ctnQty <= 0) return { qty: suggestedQty, rounded: 'none' };
     
     const roundedUp = Math.ceil(suggestedQty / ctnQty) * ctnQty;
     const roundedDown = Math.floor(suggestedQty / ctnQty) * ctnQty;
     
-    // Already a full carton multiple
     if (suggestedQty === roundedUp) return { qty: suggestedQty, rounded: 'exact' };
-    
-    // Try rounding up — only if Main can still afford it
-    if (roundedUp <= canSendQty) {
-      return { qty: roundedUp, rounded: 'up' };
-    }
-    
-    // Can't round up — round down (if > 0)
-    if (roundedDown > 0) {
-      return { qty: roundedDown, rounded: 'down' };
-    }
-    
-    // Rounded down = 0 but we had suggested > 0 — keep original (partial carton)
+    if (roundedUp <= canSendQty) return { qty: roundedUp, rounded: 'up' };
+    if (roundedDown > 0) return { qty: roundedDown, rounded: 'down' };
     return { qty: suggestedQty, rounded: 'partial' };
   }
 
@@ -343,53 +296,17 @@
     
     if (plans && plans.length > 0) {
       state.plan = plans[0];
-      
-      // Load plan lines
       const { data: lines, error: linesError } = await window.supabase
         .from('transfer_plan_lines')
         .select('*')
         .eq('plan_id', state.plan.id);
-      
       if (linesError) throw linesError;
-      
       state.planLines = lines || [];
-      
-      // Update UI based on status
-      updatePlanStatus();
-    }
-  }
-
-  function updatePlanStatus() {
-    const approveBtn = document.getElementById('approveBtn');
-    const exportBtn = document.getElementById('exportBtn');
-    const statusBadge = document.getElementById('planStatusBadge');
-    
-    if (!state.plan) {
-      if (statusBadge) {
-        statusBadge.className = 'status-badge no_plan';
-        statusBadge.textContent = 'No Plan';
-      }
-      return;
-    }
-    
-    if (statusBadge) {
-      statusBadge.className = `status-badge ${state.plan.status}`;
-      statusBadge.textContent = state.plan.status.charAt(0).toUpperCase() + state.plan.status.slice(1);
-    }
-    
-    // Disable approve if already approved
-    if (approveBtn) {
-      approveBtn.disabled = state.plan.status === 'approved';
-    }
-    
-    // Enable export only if we have lines
-    if (exportBtn) {
-      exportBtn.disabled = state.planLines.length === 0;
     }
   }
 
   // ============================================
-  // CALCULATION
+  // CALCULATION — Two-pass algorithm (preserved)
   // ============================================
   
   function calculatePlan() {
@@ -407,9 +324,7 @@
     }
     const allProducts = Array.from(productSet);
     
-    console.log(`Calculating for ${allProducts.length} total products (${Object.keys(state.avgData).length} from AVG)...`);
-    
-    // First pass: calculate needs for ALL branches (for conflict detection + proportional allocation)
+    // ──────── FIRST PASS: calculate needs for ALL branches (conflict detection) ────────
     const allBranchNeeds = {};
     for (const product of allProducts) {
       if (product.toLowerCase().includes('carton')) continue;
@@ -419,7 +334,7 @@
       
       const mainStock = state.stockData[`${product}:MAIN`];
       const mainAvailable = mainStock?.qty_available || 0;
-      const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);  // Round to whole units
+      const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);
       const avgWeekMain = avgMonthMain / WEEKS_IN_MONTH;
       const mainMinQty = Math.ceil(avgWeekMain * MAIN_MIN_WEEKS);
       const canSendTotal = Math.max(0, mainAvailable - mainMinQty);
@@ -429,7 +344,7 @@
       
       for (const [code, info] of Object.entries(BRANCHES)) {
         const branchAvgField = info.avgField;
-        const avgMonth = Math.round(avgRow?.[branchAvgField] || 0);  // Round to whole units
+        const avgMonth = Math.round(avgRow?.[branchAvgField] || 0);
         if (avgMonth <= 0) continue;
         
         const branchStk = state.stockData[`${product}:${code}`];
@@ -452,29 +367,33 @@
       };
     }
     
-    // Second pass: build ALL product lines (not just those needing stock)
+    // ──────── SECOND PASS: build product lines ────────
     for (const product of allProducts) {
       if (product.toLowerCase().includes('carton')) continue;
       
       const avgRow = state.avgData[product];
-      const avgMonthBranch = Math.round(avgRow?.[avgField] || 0);  // Round to whole units (0.2→0, 1.4→1, 1.5→2)
+      const avgMonthBranch = Math.round(avgRow?.[avgField] || 0);
       const branchStock = state.stockData[`${product}:${branchCode}`];
       const mainStock = state.stockData[`${product}:MAIN`];
       const branchAvailable = branchStock?.qty_available || 0;
       const mainAvailable = mainStock?.qty_available || 0;
-      const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);  // Round main avg too
+      const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);
       const ctnQty = state.ctnMap[product] || 0;
       const dcCode = state.dcMap[product] || '';
+      const productName = state.productNames[product] || '';
+      const location = state.locationMap[product] || '';
       
       // ── NO AVG for this branch ──
       if (avgMonthBranch <= 0) {
         if (branchAvailable > 0 || mainAvailable > 0) {
           lines.push({
-            product, dc_code: dcCode, category: 'no_avg',
+            product, dc_code: dcCode, product_name: productName, location,
+            category: 'no_avg',
             cover_days: 999, branch_stock: branchAvailable, avg_branch: 0,
             main_stock: mainAvailable, avg_main: avgMonthMain,
             can_send: 0, main_safety: 0, need_qty: 0,
             send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
+            cartons: 0,
             has_conflict: false, conflict_branches: [], conflict_detail: null,
             send_note: 'no_avg'
           });
@@ -490,7 +409,6 @@
       const mainMinQty = Math.ceil(avgWeekMain * MAIN_MIN_WEEKS);
       const canSendQty = Math.max(0, mainAvailable - mainMinQty);
       
-      // Determine category
       let category;
       if (coverDays < 7) category = 'critical';
       else if (coverDays < 21) category = 'warning';
@@ -505,11 +423,13 @@
       // ── SUFFICIENT: no need to send ──
       if (needQty <= 0) {
         lines.push({
-          product, dc_code: dcCode, category,
+          product, dc_code: dcCode, product_name: productName, location,
+          category,
           cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
           main_stock: mainAvailable, avg_main: avgMonthMain,
           can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
+          cartons: 0,
           has_conflict: false, conflict_branches: [], conflict_detail: null,
           send_note: null
         });
@@ -519,11 +439,13 @@
       // ── NO MAIN STOCK to send ──
       if (canSendQty <= 0) {
         lines.push({
-          product, dc_code: dcCode, category,
+          product, dc_code: dcCode, product_name: productName, location,
+          category,
           cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
           main_stock: mainAvailable, avg_main: avgMonthMain,
           can_send: 0, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
+          cartons: 0,
           has_conflict: conflict?.hasConflict || false, conflict_branches: conflictBranches,
           conflict_detail: null, send_note: 'no_main_stock'
         });
@@ -534,7 +456,6 @@
       let allocatedQty = Math.min(needQty, canSendQty);
       let conflictDetail = null;
       
-      // Rule: Proportional Allocation
       if (conflict?.hasConflict && conflict.branches[branchCode]) {
         const thisBranchNeed = conflict.branches[branchCode].need;
         const totalNeed = conflict.totalNeed;
@@ -555,26 +476,13 @@
       let sendNote = null;
       let sendQty = 0;
       let rounded = 'none';
-      let blockedQty = 0;  // Store the would-be send qty for display when blocked
+      let blockedQty = 0;
       
       if (allocatedQty > 0) {
-        // Rule: Smart Carton Rounding
         const ctnResult = smartCartonRound(allocatedQty, ctnQty, canSendQty);
         sendQty = ctnResult.qty;
         rounded = ctnResult.rounded;
         
-        // Rule: Min threshold check — prevent tiny top-ups that aren't worth shipping
-        // BUT: if branch has 0 stock (critical), ALWAYS send regardless of threshold
-        //
-        // Enterprise logic:
-        //   - The threshold should relate to the PRODUCT'S demand, not just CTN size
-        //   - If qty covers less than 1 week of sales → too small to bother
-        //   - But if product only sells 2/month, sending 2 IS meaningful
-        //   - Large CTN sizes (50, 1000) should NOT block small-demand products
-        //
-        // Rule: block if qty < max(1 week of avg sales, 2 units)
-        // This means: R2401 (avg 2/mth → 0.5/wk): threshold = 2, send 2 → OK ✓
-        //             R-CAT6 (avg 49/mth → 11.3/wk): threshold = 12, send 3 → blocked ✓
         if (branchAvailable > 0) {
           const weeklyDemand = avgMonthBranch / WEEKS_IN_MONTH;
           const minThreshold = Math.max(Math.ceil(weeklyDemand), 2);
@@ -585,67 +493,58 @@
             rounded = 'none';
           }
         }
-        // branch == 0: skip threshold — always send, branch is empty
       } else {
         sendNote = 'allocation_zero';
       }
       
       lines.push({
-        product, dc_code: dcCode, category,
+        product, dc_code: dcCode, product_name: productName, location,
+        category,
         cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch,
         main_stock: mainAvailable, avg_main: avgMonthMain,
         can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
-        send_qty: sendQty, raw_qty: allocatedQty, blocked_qty: blockedQty, ctn_qty: ctnQty || null, rounded,
+        send_qty: sendQty, raw_qty: allocatedQty, blocked_qty: blockedQty,
+        ctn_qty: ctnQty || null, rounded,
+        cartons: (sendQty > 0 && ctnQty > 0) ? Math.ceil(sendQty / ctnQty) : 0,
         has_conflict: conflict?.hasConflict || false, conflict_branches: conflictBranches,
         conflict_detail: conflictDetail, send_note: sendNote
       });
     }
     
-    // Sort by cover days (ascending) - most urgent first
     lines.sort((a, b) => a.cover_days - b.cover_days);
     
-    console.log(`Plan built: ${lines.length} total lines (${lines.filter(l => l.send_qty > 0).length} to send, ${lines.filter(l => l.category === 'no_avg').length} no_avg)`);
     state.planLines = lines;
-    state.conflictCount = lines.filter(l => l.has_conflict).length;
+    console.log(`Plan: ${lines.length} total (${lines.filter(l => l.send_qty > 0).length} to send)`);
   }
 
   window.generatePlan = function() {
     showLoading(true);
-    
     try {
-      console.log('Regenerating plan...');
       calculatePlan();
       renderTable();
-      updateStats();
-      
-      console.log('Plan regenerated successfully');
+      updateSummary();
     } catch (err) {
       console.error('Error generating plan:', err);
-      showError('Error generating plan: ' + err.message);
+      showError('Error: ' + err.message);
     } finally {
       showLoading(false);
     }
   };
 
   // ============================================
-  // RENDERING
+  // RENDERING — Simplified
   // ============================================
   
   function renderTable() {
     const tbody = document.getElementById('planTableBody');
     if (!tbody) return;
     
-    // Apply filter + search
     let lines = getFilteredLines();
-    
-    // Apply sorting
     lines = sortLines(lines);
     
-    // Update result count
+    // Result count
     const resultCount = document.getElementById('resultCount');
-    if (resultCount) {
-      resultCount.textContent = `${lines.length} products`;
-    }
+    if (resultCount) resultCount.textContent = `${lines.length} products`;
     
     // Pagination
     const totalPages = Math.ceil(lines.length / state.pageSize);
@@ -653,104 +552,102 @@
     const pageLines = lines.slice(start, start + state.pageSize);
     
     if (pageLines.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#64748b">No products match the current filter</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b">' +
+        (state.filter === 'to_send' ? 'No products to send — branch is fully stocked ✓' : 'No products match the current filter') +
+        '</td></tr>';
       updatePagination(0, 0);
       return;
     }
     
-    // Find max cover days for bar scaling (cap at 60)
-    const maxCover = 60;
-    
-    // Update select-all checkbox
+    // Select-all checkbox
     const selectAllEl = document.getElementById('selectAllCheck');
     if (selectAllEl) {
-      const allSelected = lines.length > 0 && lines.every(l => state.selectedRows.has(l.product));
-      const someSelected = lines.some(l => state.selectedRows.has(l.product));
+      const sendableLines = lines.filter(l => l.send_qty > 0);
+      const allSelected = sendableLines.length > 0 && sendableLines.every(l => state.selectedRows.has(l.product));
+      const someSelected = sendableLines.some(l => state.selectedRows.has(l.product));
       selectAllEl.checked = allSelected;
       selectAllEl.indeterminate = !allSelected && someSelected;
     }
     
     tbody.innerHTML = pageLines.map(line => {
-      // Cover days styling
-      let coverClass = 'cover-ok';
-      let barColor = '#10b981';
-      if (line.category === 'no_avg') { coverClass = ''; barColor = '#cbd5e1'; }
-      else if (line.cover_days < 7) { coverClass = 'cover-critical'; barColor = '#dc2626'; }
-      else if (line.cover_days < 21) { coverClass = 'cover-warning'; barColor = '#f59e0b'; }
+      // Cover badge
+      let coverBadge = '';
+      if (line.category === 'no_avg') {
+        coverBadge = '<span class="cover-badge cover-na">N/A</span>';
+      } else if (line.cover_days >= 999) {
+        coverBadge = '<span class="cover-badge cover-suf">∞</span>';
+      } else if (line.cover_days < 7) {
+        coverBadge = `<span class="cover-badge cover-crit">${line.cover_days}d</span>`;
+      } else if (line.cover_days < 21) {
+        coverBadge = `<span class="cover-badge cover-warn">${line.cover_days}d</span>`;
+      } else if (line.cover_days < 35) {
+        coverBadge = `<span class="cover-badge cover-ok">${line.cover_days}d</span>`;
+      } else {
+        coverBadge = `<span class="cover-badge cover-suf">${line.cover_days}d</span>`;
+      }
       
-      const coverText = line.category === 'no_avg' ? 'N/A' : (line.cover_days >= 999 ? '∞' : `${line.cover_days}d`);
-      const barPct = line.category === 'no_avg' ? 0 : (line.cover_days >= 999 ? 100 : Math.min(100, Math.round((line.cover_days / maxCover) * 100)));
-      
-      // Conflict badge with DETAILED tooltip
-      let conflictBadge = '';
+      // Conflict indicator
+      let conflictIcon = '';
       if (line.has_conflict && line.conflict_branches.length > 0) {
         let tipLines = [];
         if (line.conflict_detail) {
           const cd = line.conflict_detail;
-          tipLines.push('⚠️ ALLOCATION CONFLICT');
-          tipLines.push(`Main can send: ${cd.mainCanSend} units`);
-          tipLines.push(`Total demand: ${cd.totalNeed} units`);
-          tipLines.push(`Your need: ${cd.thisBranchNeed} (${Math.round(cd.thisBranchNeed / cd.totalNeed * 100)}%)`);
+          tipLines.push('ALLOCATION CONFLICT');
+          tipLines.push(`Main can send: ${cd.mainCanSend}`);
+          tipLines.push(`Total demand: ${cd.totalNeed}`);
+          tipLines.push(`Your share: ${cd.proportionalShare} (${Math.round(cd.thisBranchNeed / cd.totalNeed * 100)}%)`);
           for (const ob of cd.otherBranches) {
-            tipLines.push(`${ob.code} needs: ${ob.need} (${Math.round(ob.need / cd.totalNeed * 100)}%)`);
+            tipLines.push(`${ob.code}: ${ob.need}`);
           }
-          tipLines.push(`Your share: ${cd.proportionalShare} units`);
-        } else {
-          tipLines.push(`Also needed by: ${line.conflict_branches.join(', ')}`);
         }
-        conflictBadge = `<span class="conflict-badge" title="${escapeHtml(tipLines.join('\n'))}">⚠️ ${line.conflict_branches.length}</span>`;
+        conflictIcon = ` <span class="conflict-dot" title="${escapeHtml(tipLines.join('\n'))}">⚠️</span>`;
       }
       
       // Send qty display
       let sendDisplay = '';
       if (line.send_qty > 0) {
         let ctnBadge = '';
-        if (line.rounded === 'up') {
-          ctnBadge = ' <span class="ctn-rnd up" title="Rounded up from ' + line.raw_qty + '">▲</span>';
-        } else if (line.rounded === 'down') {
-          ctnBadge = ' <span class="ctn-rnd down" title="Rounded down from ' + line.raw_qty + '">▼</span>';
-        } else if (line.rounded === 'exact') {
-          ctnBadge = ' <span class="ctn-rnd exact" title="Exact carton multiple">=</span>';
-        }
+        if (line.rounded === 'up') ctnBadge = ' <span class="rnd-badge rnd-up" title="Rounded up from ' + line.raw_qty + '">▲</span>';
+        else if (line.rounded === 'down') ctnBadge = ' <span class="rnd-badge rnd-down" title="Rounded down from ' + line.raw_qty + '">▼</span>';
         sendDisplay = '<strong class="send-val">' + line.send_qty + '</strong>' + ctnBadge;
       } else if (line.send_note === 'below_min') {
-        const bq = line.blocked_qty || line.raw_qty;
-        const weeklyDemand = line.avg_branch / WEEKS_IN_MONTH;
-        const minTh = Math.max(Math.ceil(weeklyDemand), 2);
-        const tip = `Need: ${line.need_qty} | Calculated: ${bq} | Min threshold: ${minTh} (1 week demand)\nQty covers less than 1 week of sales — not worth shipping as top-up`;
-        sendDisplay = '<span class="send-blocked" title="' + escapeHtml(tip) + '">' + bq + ' <small>‹ min</small></span>';
+        sendDisplay = '<span class="send-blocked" title="Qty below min threshold">' + (line.blocked_qty || line.raw_qty) + ' ‹min</span>';
       } else if (line.send_note === 'no_main_stock') {
-        const safetyTip = `Main has ${line.main_stock} units but needs ${line.main_safety} for safety (${MAIN_MIN_WEEKS}wk).\nSurplus: ${line.main_stock} − ${line.main_safety} = 0\nBranch needs: ${line.need_qty} units`;
-        if (line.main_stock <= 0) {
-          sendDisplay = '<span class="send-warn" title="' + escapeHtml(safetyTip) + '">No stock</span>';
-        } else {
-          sendDisplay = '<span class="send-warn" title="' + escapeHtml(safetyTip) + '">Main needs it</span>';
-        }
+        sendDisplay = line.main_stock <= 0
+          ? '<span class="send-dim">—</span>'
+          : '<span class="send-dim" title="Main needs its safety stock">safety</span>';
       } else if (line.send_note === 'allocation_zero') {
-        sendDisplay = '<span class="send-hint" title="Proportional allocation resulted in 0">0 (alloc)</span>';
+        sendDisplay = '<span class="send-dim">0</span>';
       } else if (line.category === 'sufficient') {
         sendDisplay = '<span class="send-ok">✓</span>';
-      } else if (line.category === 'no_avg') {
-        sendDisplay = '<span class="send-na">—</span>';
       } else {
-        sendDisplay = '<span class="send-na">0</span>';
+        sendDisplay = '<span class="send-dim">—</span>';
       }
       
-      const checked = state.selectedRows.has(line.product) ? 'checked' : '';
-      const dimClass = line.send_qty <= 0 && line.category !== 'no_avg' ? ' dim-row' : '';
-      const noAvgClass = line.category === 'no_avg' ? ' no-avg-row' : '';
+      // Cartons display
+      const cartonDisplay = (line.send_qty > 0 && line.ctn_qty > 0)
+        ? Math.ceil(line.send_qty / line.ctn_qty)
+        : '—';
       
-      return '<tr class="plan-row' + dimClass + noAvgClass + '">' +
-        '<td class="check-cell"><input type="checkbox" class="row-check" ' + checked + ' onchange="toggleRow(\'' + escapeHtml(line.product) + '\')"></td>' +
-        '<td class="dc-cell">' + escapeHtml(line.dc_code) + '</td>' +
-        '<td class="product-cell">' + escapeHtml(line.product) + conflictBadge + '</td>' +
-        '<td><div class="cover-bar-container"><div class="cover-mini-bar"><div class="cover-mini-fill" style="width:' + barPct + '%;background:' + barColor + '"></div></div><span class="' + coverClass + '">' + coverText + '</span></div></td>' +
+      // Product name line
+      const nameLine = line.product_name
+        ? '<div class="prod-name">' + escapeHtml(line.product_name) + '</div>'
+        : '';
+      const dcLine = line.dc_code ? '<span class="prod-dc">' + escapeHtml(line.dc_code) + '</span> · ' : '';
+      
+      const checked = state.selectedRows.has(line.product) ? 'checked' : '';
+      const dimClass = line.send_qty <= 0 ? ' dim-row' : '';
+      const checkDisabled = line.send_qty <= 0 ? ' disabled' : '';
+      
+      return '<tr class="plan-row' + dimClass + '">' +
+        '<td class="check-cell"><input type="checkbox" class="row-check" ' + checked + checkDisabled + ' onchange="toggleRow(\'' + escapeHtml(line.product) + '\')"></td>' +
+        '<td class="product-cell"><div class="prod-code">' + escapeHtml(line.product) + conflictIcon + '</div>' + nameLine + '<div class="prod-meta">' + dcLine + (line.ctn_qty ? line.ctn_qty + '/ctn' : '') + '</div></td>' +
+        '<td class="loc-cell">' + escapeHtml(line.location || '—') + '</td>' +
+        '<td class="cover-cell">' + coverBadge + '</td>' +
         '<td class="num-cell">' + line.branch_stock + '</td>' +
-        '<td class="avg-cell">' + formatAvg(line.avg_branch) + '</td>' +
-        '<td class="num-cell">' + line.main_stock + '</td>' +
-        '<td class="avg-cell">' + formatAvg(line.avg_main) + '</td>' +
-        '<td class="ctn-cell">' + (line.ctn_qty || '—') + '</td>' +
+        '<td class="num-cell main-cell">' + line.main_stock + '</td>' +
         '<td class="send-cell">' + sendDisplay + '</td>' +
+        '<td class="ctn-cell">' + cartonDisplay + '</td>' +
         '</tr>';
     }).join('');
     
@@ -760,46 +657,43 @@
   function getFilteredLines() {
     let lines = state.planLines;
     
-    // Hide no_avg by default unless toggled on
-    if (!state.showNoAvg) {
+    // Always hide no_avg unless specifically viewing "all"
+    if (state.filter !== 'all_full') {
       lines = lines.filter(l => l.category !== 'no_avg');
     }
     
-    // Hide products where Main can't send anything (nothing actionable) unless toggled on
-    if (!state.showNoMainStock) {
-      lines = lines.filter(l => {
-        if (l.send_qty > 0) return true;                // Has action
-        if (l.category === 'no_avg') return true;       // Handled by showNoAvg toggle
-        if (l.category === 'sufficient') return true;   // Already good
-        if (l.send_note === 'no_main_stock') return false; // Main can't send (no surplus)
-        if (l.send_note === 'below_min') return true;   // There IS surplus, just below threshold — still relevant
-        return true;
-      });
+    // Apply filter
+    switch (state.filter) {
+      case 'to_send':
+        lines = lines.filter(l => l.send_qty > 0);
+        break;
+      case 'critical':
+        lines = lines.filter(l => l.cover_days < 7 && l.category !== 'no_avg');
+        break;
+      case 'needs':
+        lines = lines.filter(l => l.need_qty > 0 && l.category !== 'no_avg');
+        break;
+      case 'conflicts':
+        lines = lines.filter(l => l.has_conflict);
+        break;
+      case 'all':
+        // Show all with avg data (excluding sufficient + no_avg for cleaner view)
+        lines = lines.filter(l => l.category !== 'no_avg');
+        break;
+      case 'all_full':
+        // Really everything
+        break;
     }
     
-    // Filter by category
-    if (state.filter === 'critical') {
-      lines = lines.filter(l => l.cover_days < 7 && l.category !== 'no_avg');
-    } else if (state.filter === 'warning') {
-      lines = lines.filter(l => l.cover_days >= 7 && l.cover_days < 21 && l.category !== 'no_avg');
-    } else if (state.filter === 'ok') {
-      lines = lines.filter(l => l.cover_days >= 21 && l.cover_days < 35 && l.category !== 'no_avg');
-    } else if (state.filter === 'sufficient') {
-      lines = lines.filter(l => l.category === 'sufficient');
-    } else if (state.filter === 'conflict') {
-      lines = lines.filter(l => l.has_conflict);
-    } else if (state.filter === 'no_avg') {
-      lines = lines.filter(l => l.category === 'no_avg');
-    } else if (state.filter === 'to_send') {
-      lines = lines.filter(l => l.send_qty > 0);
-    } else if (state.filter === 'blocked') {
-      lines = lines.filter(l => l.send_note === 'below_min' || l.send_note === 'allocation_zero');
-    }
-    
-    // Search (also matches 5DC code)
+    // Search
     if (state.search) {
       const s = state.search.toLowerCase();
-      lines = lines.filter(l => l.product.toLowerCase().includes(s) || (l.dc_code && l.dc_code.includes(s)));
+      lines = lines.filter(l =>
+        l.product.toLowerCase().includes(s) ||
+        (l.dc_code && l.dc_code.includes(s)) ||
+        (l.product_name && l.product_name.toLowerCase().includes(s)) ||
+        (l.location && l.location.toLowerCase().includes(s))
+      );
     }
     
     return lines;
@@ -812,13 +706,11 @@
     return [...lines].sort((a, b) => {
       let va = a[field];
       let vb = b[field];
-      
       if (typeof va === 'string') {
         va = va.toLowerCase();
         vb = (vb || '').toLowerCase();
         return asc ? va.localeCompare(vb) : vb.localeCompare(va);
       }
-      
       return asc ? (va - vb) : (vb - va);
     });
   }
@@ -827,191 +719,64 @@
     const info = document.getElementById('pageInfo');
     const prevBtn = document.getElementById('prevPageBtn');
     const nextBtn = document.getElementById('nextPageBtn');
-    
-    if (info) {
-      if (total === 0) {
-        info.textContent = 'Page 0 / 0';
-      } else {
-        info.textContent = `Page ${state.currentPage} / ${totalPages}`;
-      }
-    }
-    
+    if (info) info.textContent = total === 0 ? 'Page 0 / 0' : `Page ${state.currentPage} / ${totalPages}`;
     if (prevBtn) prevBtn.disabled = state.currentPage <= 1;
     if (nextBtn) nextBtn.disabled = state.currentPage >= totalPages;
   }
 
-  function updateStats() {
-    // Stats only for products WITH avg (exclude no_avg)
+  function updateSummary() {
     const withAvg = state.planLines.filter(l => l.category !== 'no_avg');
-    const noAvg = state.planLines.filter(l => l.category === 'no_avg');
+    const toSend = withAvg.filter(l => l.send_qty > 0);
+    const totalUnits = toSend.reduce((s, l) => s + l.send_qty, 0);
+    const totalCartons = toSend.reduce((s, l) => s + l.cartons, 0);
+    const criticalCount = withAvg.filter(l => l.cover_days < 7).length;
+    const conflictCount = withAvg.filter(l => l.has_conflict).length;
     
-    const stats = {
-      totalProducts: withAvg.length,
-      toSendCount: withAvg.filter(l => l.send_qty > 0).length,
-      totalUnits: withAvg.reduce((sum, l) => sum + l.send_qty, 0),
-      criticalCount: withAvg.filter(l => l.cover_days < 7).length,
-      warningCount: withAvg.filter(l => l.cover_days >= 7 && l.cover_days < 21).length,
-      okCount: withAvg.filter(l => l.cover_days >= 21 && l.cover_days < 35).length,
-      sufficientCount: withAvg.filter(l => l.category === 'sufficient').length,
-      conflictCount: withAvg.filter(l => l.has_conflict).length,
-      blockedCount: withAvg.filter(l => l.send_note === 'below_min' || l.send_note === 'allocation_zero').length,
-      noAvgCount: noAvg.length,
-      noMainStockCount: withAvg.filter(l => l.send_note === 'no_main_stock').length
-    };
-    
-    // Update UI elements
-    const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
-    setEl('totalProducts', stats.totalProducts);
-    setEl('toSendCount', stats.toSendCount);
-    setEl('totalUnits', stats.totalUnits.toLocaleString());
-    setEl('criticalCount', stats.criticalCount);
-    setEl('warningCount', stats.warningCount);
-    setEl('okCount', stats.okCount);
-    setEl('sufficientCount', stats.sufficientCount);
-    setEl('noAvgCount', stats.noAvgCount);
-    setEl('noMainStockCount', stats.noMainStockCount);
-    
-    const summarySection = document.getElementById('summarySection');
-    if (summarySection) summarySection.style.display = 'flex';
-    
-    // Conflict alert with better explanation
-    const conflictAlert = document.getElementById('conflictAlert');
-    if (conflictAlert) {
-      if (stats.conflictCount > 0) {
-        conflictAlert.innerHTML = `⚠️ <strong>${stats.conflictCount}</strong> products have allocation conflicts — Multiple branches need these products but Main doesn't have enough to fulfill all. Stock is distributed <strong>proportionally</strong> based on each branch's need. Hover the ⚠️ badge on each row for details.`;
-        conflictAlert.style.display = 'block';
-      } else {
-        conflictAlert.style.display = 'none';
-      }
+    const bar = document.getElementById('summaryBar');
+    if (bar) {
+      let parts = [];
+      parts.push(`<span class="sum-item"><strong>${toSend.length}</strong> products to send</span>`);
+      parts.push(`<span class="sum-item"><strong>${totalUnits.toLocaleString()}</strong> units</span>`);
+      if (totalCartons > 0) parts.push(`<span class="sum-item"><strong>${totalCartons}</strong> cartons</span>`);
+      if (criticalCount > 0) parts.push(`<span class="sum-item sum-crit">🔴 <strong>${criticalCount}</strong> critical</span>`);
+      if (conflictCount > 0) parts.push(`<span class="sum-item sum-warn">⚠️ <strong>${conflictCount}</strong> conflicts</span>`);
+      bar.innerHTML = parts.join('<span class="sum-sep">·</span>');
+      bar.style.display = 'flex';
     }
     
     // Update filter chip counts
-    updateFilterChipCounts(stats);
+    const counts = {
+      to_send: toSend.length,
+      critical: criticalCount,
+      needs: withAvg.filter(l => l.need_qty > 0).length,
+      conflicts: conflictCount,
+      all: withAvg.length
+    };
     
-    // Coverage distribution chart
-    renderCoverageChart();
-  }
-
-  function updateFilterChipCounts(stats) {
-    const chips = document.querySelectorAll('.filter-chip');
-    chips.forEach(chip => {
-      const filter = chip.dataset.filter;
-      let count = 0;
-      if (filter === 'all') count = stats.totalProducts;
-      else if (filter === 'critical') count = stats.criticalCount;
-      else if (filter === 'warning') count = stats.warningCount;
-      else if (filter === 'ok') count = stats.okCount;
-      else if (filter === 'sufficient') count = stats.sufficientCount;
-      else if (filter === 'conflict') count = stats.conflictCount;
-      else if (filter === 'to_send') count = stats.toSendCount;
-      else if (filter === 'blocked') count = stats.blockedCount;
-      
-      // Add count badge
-      let badge = chip.querySelector('.chip-count');
-      if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'chip-count';
-        badge.style.cssText = 'font-size:10px;opacity:0.7;margin-left:2px';
-        chip.appendChild(badge);
-      }
-      badge.textContent = `(${count})`;
-    });
-    
-    // Update No AVG toggle count
-    const noAvgEl = document.getElementById('noAvgToggle');
-    if (noAvgEl) {
-      let badge = noAvgEl.querySelector('.chip-count');
-      if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'chip-count';
-        badge.style.cssText = 'font-size:10px;opacity:0.7;margin-left:2px';
-        noAvgEl.appendChild(badge);
-      }
-      badge.textContent = `(${stats.noAvgCount})`;
-    }
-
-    // Update No Main Stock toggle count
-    const noMainStockEl = document.getElementById('noMainStockToggle');
-    if (noMainStockEl) {
-      let badge = noMainStockEl.querySelector('.chip-count');
-      if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'chip-count';
-        badge.style.cssText = 'font-size:10px;opacity:0.7;margin-left:2px';
-        noMainStockEl.appendChild(badge);
-      }
-      badge.textContent = `(${stats.noMainStockCount})`;
-    }
-  }
-
-  function renderCoverageChart() {
-    const container = document.getElementById('coverageChart');
-    const barsEl = document.getElementById('coverageBars');
-    const infoEl = document.getElementById('coverageChartInfo');
-    if (!container || !barsEl) return;
-    
-    if (state.planLines.length === 0) {
-      container.style.display = 'none';
-      return;
-    }
-    
-    // Build histogram buckets: 0-7, 7-14, 14-21, 21-28, 28-35, 35+
-    const buckets = [
-      { label: '0-7d', min: 0, max: 7, color: '#dc2626', count: 0 },
-      { label: '7-14d', min: 7, max: 14, color: '#f87171', count: 0 },
-      { label: '14-21d', min: 14, max: 21, color: '#f59e0b', count: 0 },
-      { label: '21-28d', min: 21, max: 28, color: '#fbbf24', count: 0 },
-      { label: '28-35d', min: 28, max: 35, color: '#34d399', count: 0 },
-      { label: '35d+', min: 35, max: 9999, color: '#10b981', count: 0 }
-    ];
-    
-    for (const line of state.planLines) {
-      if (line.category === 'no_avg') continue;
-      const d = line.cover_days >= 999 ? 60 : line.cover_days;
-      for (const bucket of buckets) {
-        if (d >= bucket.min && d < bucket.max) {
-          bucket.count++;
-          break;
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      const f = chip.dataset.filter;
+      if (counts[f] !== undefined) {
+        let badge = chip.querySelector('.chip-count');
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'chip-count';
+          chip.appendChild(badge);
         }
+        badge.textContent = counts[f];
       }
-    }
-    
-    const maxCount = Math.max(...buckets.map(b => b.count), 1);
-    
-    barsEl.innerHTML = buckets.map(b => {
-      const pct = Math.round((b.count / maxCount) * 100);
-      return `
-        <div class="coverage-bar-item" style="height:${Math.max(pct, 4)}%;background:${b.color}" 
-             title="${b.label}: ${b.count} products">
-          <span class="coverage-bar-label">${b.label}</span>
-        </div>
-      `;
-    }).join('');
-    
-    if (infoEl) {
-      const withAvg = state.planLines.filter(l => l.category !== 'no_avg');
-      const avgCover = withAvg.length > 0
-        ? Math.round(withAvg.reduce((s, l) => s + Math.min(l.cover_days, 60), 0) / withAvg.length)
-        : 0;
-      infoEl.textContent = `Avg: ${avgCover}d`;
-    }
-    
-    container.style.display = 'block';
+    });
   }
 
   // ============================================
-  // FILTERS, SORTING & PAGINATION
+  // FILTERS, SORT & PAGINATION
   // ============================================
   
   window.setFilter = function(filter) {
     state.filter = filter;
     state.currentPage = 1;
-    
-    // Update chip active state
     document.querySelectorAll('.filter-chip').forEach(chip => {
       chip.classList.toggle('active', chip.dataset.filter === filter);
     });
-    
     renderTable();
   };
 
@@ -1020,10 +785,8 @@
       state.sortAsc = !state.sortAsc;
     } else {
       state.sortField = field;
-      state.sortAsc = field === 'product' ? true : true; // asc for all
+      state.sortAsc = (field === 'product' || field === 'location');
     }
-    
-    // Update sort icons
     document.querySelectorAll('.sort-icon').forEach(icon => {
       icon.textContent = '';
       icon.classList.remove('active');
@@ -1033,7 +796,6 @@
       activeIcon.textContent = state.sortAsc ? '▲' : '▼';
       activeIcon.classList.add('active');
     }
-    
     state.currentPage = 1;
     renderTable();
   };
@@ -1054,147 +816,15 @@
   };
 
   // ============================================
-  // EDIT & APPROVAL
+  // EXPORT
   // ============================================
   
-  window.updateApprovedQty = function(product, value) {
-    const line = state.planLines.find(l => l.product === product);
-    if (!line) return;
-    
-    const qty = Math.max(0, Math.min(parseInt(value) || 0, line.can_send_qty));
-    line.approved_qty = qty;
-    
-    updateStats();
-  };
-
-  window.openApprovalModal = function() {
-    // Get lines that will be sent
-    const toSend = state.planLines.filter(l => l.approved_qty > 0);
-    
-    if (toSend.length === 0) {
-      alert('No items with approved quantities to send.');
-      return;
-    }
-    
-    const summary = document.getElementById('approvalSummary');
-    summary.innerHTML = `
-      <p><strong>${toSend.length}</strong> products will be transferred</p>
-      <p><strong>${toSend.reduce((sum, l) => sum + l.approved_qty, 0)}</strong> total units</p>
-    `;
-    
-    document.getElementById('approvalModal')?.classList.remove('hidden');
-  };
-
-  window.closeApprovalModal = function() {
-    document.getElementById('approvalModal')?.classList.add('hidden');
-  };
-
-  window.confirmApproval = async function() {
-    const btn = document.querySelector('#approvalModal .search-btn');
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
-    
-    try {
-      await savePlan('approved');
-      closeApprovalModal();
-      updatePlanStatus();
-      renderTable();
-      
-    } catch (err) {
-      console.error('Error approving plan:', err);
-      alert('Error: ' + err.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Confirm & Approve';
-    }
-  };
-
-  // ============================================
-  // SAVE & EXPORT
-  // ============================================
-  
-  window.savePlanDraft = async function() {
-    try {
-      await savePlan('draft');
-      alert('Draft saved!');
-    } catch (err) {
-      console.error('Error saving draft:', err);
-      alert('Error saving: ' + err.message);
-    }
-  };
-
-  async function savePlan(status) {
-    await window.supabaseReady;
-    
-    // Create or update plan
-    if (!state.plan) {
-      const { data: plan, error: planError } = await window.supabase
-        .from('transfer_plans')
-        .insert({
-          branch_code: state.branchCode,
-          status
-        })
-        .select()
-        .single();
-      
-      if (planError) throw planError;
-      state.plan = plan;
-    } else {
-      const { error: planError } = await window.supabase
-        .from('transfer_plans')
-        .update({
-          status,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', state.plan.id);
-      
-      if (planError) throw planError;
-      state.plan.status = status;
-    }
-    
-    // Delete existing lines and insert new ones
-    await window.supabase
-      .from('transfer_plan_lines')
-      .delete()
-      .eq('plan_id', state.plan.id);
-    
-    // Insert lines with approved > 0
-    const linesToInsert = state.planLines
-      .filter(l => l.approved_qty > 0)
-      .map(l => ({
-        plan_id: state.plan.id,
-        product_code: l.product,
-        branch_available_frozen: l.branch_available,
-        avg_month_frozen: l.avg_month,
-        target_qty: l.target_qty,
-        need_qty: l.need_qty,
-        main_available_frozen: l.main_available,
-        main_min_qty: l.main_min_qty,
-        can_send_qty: l.can_send_qty,
-        suggested_qty: l.suggested_qty,
-        approved_qty: l.approved_qty,
-        status: l.status
-      }));
-    
-    if (linesToInsert.length > 0) {
-      const { error: linesError } = await window.supabase
-        .from('transfer_plan_lines')
-        .insert(linesToInsert);
-      
-      if (linesError) throw linesError;
-    }
-    
-    updatePlanStatus();
-  }
-
   window.exportPlan = function() {
     let linesToExport;
-    
-    // Export selected rows if any, otherwise export all visible (filtered)
     if (state.selectedRows.size > 0) {
-      linesToExport = state.planLines.filter(l => state.selectedRows.has(l.product));
+      linesToExport = state.planLines.filter(l => state.selectedRows.has(l.product) && l.send_qty > 0);
     } else {
-      linesToExport = getFilteredLines();
+      linesToExport = state.planLines.filter(l => l.send_qty > 0);
     }
     
     if (linesToExport.length === 0) {
@@ -1202,23 +832,23 @@
       return;
     }
     
-    const headers = ['5DC', 'Product', 'Cover Days', 'Branch Stock', 'Branch AVG', 'Main Stock', 'Main AVG', 'CTN Qty', 'Send Qty', 'Conflict'];
+    const headers = ['5DC', 'Product', 'Product Name', 'Location', 'Cover Days', 'Branch Stock', 'Main Stock', 'Send Qty', 'Cartons', 'CTN Qty', 'Conflict'];
     const rows = linesToExport.map(l => [
       `"${l.dc_code || ''}"`,
       `"${(l.product || '').replace(/"/g, '""')}"`,
+      `"${(l.product_name || '').replace(/"/g, '""')}"`,
+      `"${(l.location || '').replace(/"/g, '""')}"`,
       l.cover_days >= 999 ? '' : l.cover_days,
       l.branch_stock,
-      Math.round(l.avg_branch || 0),
       l.main_stock,
-      Math.round(l.avg_main || 0),
-      l.ctn_qty || '',
       l.send_qty,
+      l.cartons || '',
+      l.ctn_qty || '',
       l.has_conflict ? 'Yes' : ''
     ]);
     
     const label = state.selectedRows.size > 0 ? `selected-${linesToExport.length}` : 'all';
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1229,6 +859,84 @@
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  // ============================================
+  // PRINT TRANSFER SHEET
+  // ============================================
+  
+  window.printTransferSheet = function() {
+    let lines;
+    if (state.selectedRows.size > 0) {
+      lines = state.planLines.filter(l => state.selectedRows.has(l.product) && l.send_qty > 0);
+    } else {
+      lines = state.planLines.filter(l => l.send_qty > 0);
+    }
+    
+    if (lines.length === 0) {
+      alert('No items to print.');
+      return;
+    }
+    
+    // Sort by location for warehouse walk-through efficiency
+    lines = [...lines].sort((a, b) => (a.location || 'ZZZ').localeCompare(b.location || 'ZZZ'));
+    
+    const totalUnits = lines.reduce((s, l) => s + l.send_qty, 0);
+    const totalCartons = lines.reduce((s, l) => s + l.cartons, 0);
+    const syncDate = state.syncStatus ? new Date(state.syncStatus.ended_at).toLocaleString() : 'N/A';
+    
+    const html = `<!DOCTYPE html>
+<html><head><title>Transfer — ${esc(state.branchInfo.name)}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 12px; margin: 15px; color: #111; }
+  h1 { font-size: 16px; margin-bottom: 2px; }
+  .meta { color: #666; font-size: 10px; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f0f0f0; padding: 5px 8px; text-align: left; border: 1px solid #bbb; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 4px 8px; border: 1px solid #ddd; font-size: 11px; }
+  .r { text-align: right; font-weight: 600; }
+  .loc { font-family: monospace; font-size: 10px; color: #444; }
+  .chk { width: 22px; text-align: center; }
+  .name { font-size: 9px; color: #666; }
+  .footer { margin-top: 10px; font-size: 10px; color: #444; border-top: 2px solid #333; padding-top: 6px; display: flex; justify-content: space-between; }
+  tr:nth-child(even) { background: #fafafa; }
+  @media print { body { margin: 8px; } @page { margin: 10mm; } }
+</style></head><body>
+<h1>Transfer Sheet — ${esc(state.branchInfo.name)} (${esc(state.branchCode)})</h1>
+<div class="meta">Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; Cin7 Sync: ${syncDate}</div>
+<table><thead><tr>
+  <th class="chk">✓</th>
+  <th>Product</th>
+  <th>Location</th>
+  <th style="text-align:right">Send</th>
+  <th style="text-align:right">CTN</th>
+</tr></thead><tbody>
+${lines.map((l, i) => {
+  const cartons = (l.ctn_qty > 0) ? Math.ceil(l.send_qty / l.ctn_qty) : '—';
+  return `<tr>
+    <td class="chk">☐</td>
+    <td><strong>${esc(l.product)}</strong>${l.product_name ? '<br><span class="name">' + esc(l.product_name) + '</span>' : ''}</td>
+    <td class="loc">${esc(l.location || '—')}</td>
+    <td class="r">${l.send_qty}</td>
+    <td class="r">${cartons}</td>
+  </tr>`;
+}).join('')}
+</tbody></table>
+<div class="footer">
+  <span>${lines.length} products · ${totalUnits.toLocaleString()} units · ${totalCartons} cartons</span>
+  <span>Branch: ${esc(state.branchInfo.name)} (${esc(state.branchCode)})</span>
+</div>
+</body></html>`;
+    
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 300);
+  };
+
+  function esc(str) {
+    return escapeHtml(str);
+  }
 
   // ============================================
   // ROW SELECTION
@@ -1244,7 +952,7 @@
   };
   
   window.toggleSelectAll = function() {
-    const visibleLines = getFilteredLines();
+    const visibleLines = getFilteredLines().filter(l => l.send_qty > 0);
     const allSelected = visibleLines.every(l => state.selectedRows.has(l.product));
     
     if (allSelected) {
@@ -1256,34 +964,18 @@
     updateSelectionUI();
   };
   
-  window.toggleNoAvg = function() {
-    state.showNoAvg = !state.showNoAvg;
-    const btn = document.getElementById('noAvgToggle');
-    if (btn) btn.classList.toggle('active', state.showNoAvg);
-    state.currentPage = 1;
-    renderTable();
-  };
-
-  window.toggleNoMainStock = function() {
-    state.showNoMainStock = !state.showNoMainStock;
-    const btn = document.getElementById('noMainStockToggle');
-    if (btn) btn.classList.toggle('active', state.showNoMainStock);
-    state.currentPage = 1;
-    renderTable();
-  };
-  
   function updateSelectionUI() {
     const count = state.selectedRows.size;
     const badge = document.getElementById('selectionBadge');
     const exportBtn = document.getElementById('exportBtn');
+    const printBtn = document.getElementById('printBtn');
     
     if (badge) {
-      badge.style.display = count > 0 ? 'inline' : 'none';
+      badge.style.display = count > 0 ? 'inline-flex' : 'none';
       badge.textContent = `${count} selected`;
     }
-    if (exportBtn) {
-      exportBtn.textContent = count > 0 ? `Export Selected (${count})` : 'Export CSV';
-    }
+    if (exportBtn) exportBtn.textContent = count > 0 ? `Export (${count})` : 'Export CSV';
+    if (printBtn) printBtn.textContent = count > 0 ? `Print (${count})` : 'Print Sheet';
   }
 
   // ============================================
@@ -1291,24 +983,15 @@
   // ============================================
   
   function showLoading(show) {
-    const loader = document.getElementById('loadingOverlay');
-    if (loader) {
-      loader.style.display = show ? 'flex' : 'none';
-    }
+    const el = document.getElementById('loadingOverlay');
+    if (el) el.style.display = show ? 'flex' : 'none';
   }
 
   function showError(message) {
-    const container = document.getElementById('alertContainer');
-    if (container) {
-      container.innerHTML = `<div class="alert warning"><strong>Error:</strong> ${message}</div>`;
-    }
-    console.error('Error:', message);
+    const el = document.getElementById('alertContainer');
+    if (el) el.innerHTML = `<div class="alert warning"><strong>Error:</strong> ${message}</div>`;
   }
 
-  /**
-   * Format AVG values: show 1 decimal for small values, round for big ones
-   * 0 → '—', 0.3 → '0.3', 2.1 → '2.1', 15.6 → '16', 105.2 → '105'
-   */
   function formatAvg(val) {
     if (!val || val <= 0) return '—';
     if (val < 10) return val.toFixed(1);
@@ -1318,11 +1001,7 @@
   function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/[&<>"']/g, c => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[c]));
   }
 
