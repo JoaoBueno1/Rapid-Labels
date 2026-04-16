@@ -109,6 +109,7 @@
     // Accuracy KPI: correct / total picks
     const accuracyPct = s.picks > 0 ? ((s.correct / s.picks) * 100).toFixed(1) : '—';
     document.getElementById('kpiAccuracy').textContent = s.picks > 0 ? `${accuracyPct}%` : '—';
+    document.getElementById('kpiFixes').textContent = s.totalFixes || 0;
     document.getElementById('kpiReviewed').textContent = anomalyOrders > 0
       ? `${anomalyReviewed}/${anomalyOrders}`
       : '✅';
@@ -335,7 +336,7 @@
 
       // Build sync message with datetime
       const now = new Date();
-      const syncTime = now.toLocaleString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+      const syncTime = now.toLocaleString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
       const msg = data.newOrders > 0
         ? `✅ Synced ${data.newOrders} new order${data.newOrders > 1 ? 's' : ''} · Last sync: ${syncTime} · ${data.elapsed}`
         : `✅ Up to date · Last sync: ${syncTime}`;
@@ -640,10 +641,7 @@
           </div>
         </div>
         <div class="pa-summary-meta">
-          <div class="pa-meta-chip"><span class="pa-meta-icon">📅</span>${formatDate(order.order_date)}</div>
-          <div class="pa-meta-chip"><span class="pa-meta-icon">🚚</span>${order.fulfilled_date ? formatDate(order.fulfilled_date) : '—'}</div>
-          <div class="pa-meta-chip"><span class="pa-so-badge ${order.is_cancelled ? 'pa-so-cancelled' : order.order_status === 'FULFILLED' ? 'pa-so-fulfilled' : 'pa-so-other'}">${esc(order.order_status || '—')}</span></div>
-          <div class="pa-meta-chip"><span class="pa-meta-icon">🔍</span>${formatDate(order.analyzed_at)}</div>
+          <div class="pa-meta-chip" title="Cin7 'Ship' stage date — when picks were finalised and stock left the bin locations. This includes dispatched orders AND customer collections/pickups.">Ship Stage: ${order.fulfilled_date ? formatDate(order.fulfilled_date) : '—'}</div>
         </div>
       </div>`;
 
@@ -944,8 +942,9 @@
     const key = `${sku}|${bin}`;
     const s = sd[key];
     const fmtNum = n => (n != null ? n.toLocaleString() : '—');
-    if (!s) return '<div class="pa-uf-stock">No stock data</div>';
-    return `<div class="pa-uf-stock">OH ${fmtNum(s.on_hand)} · Avail ${fmtNum(s.available)}</div>`;
+    if (!s) return '<div class="pa-uf-stock">no stock data</div>';
+    const syncTs = s.synced_at ? new Date(s.synced_at).toLocaleString('en-AU', { hour12: true, day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+    return `<div class="pa-uf-stock">stock: ${fmtNum(s.on_hand)} · available: ${fmtNum(s.available)}${syncTs ? ` <span class="pa-uf-sync-ts" title="Last stock sync from Cin7">(synced ${syncTs})</span>` : ''}</div>`;
   }
 
   /* ─── Stock warnings (shown below the flow when relevant) ─── */
@@ -976,177 +975,145 @@
   /* ═══════════════════════════════════════════════
      PRINT REPORT
      ═══════════════════════════════════════════════ */
-  function printReport() {
+  async function printReport() {
     const order = state.selectedOrder;
     if (!order) return;
 
     const picks = order.picks || [];
     const anomalies = picks.filter(p => p.status === 'anomaly');
-    const correct = picks.filter(p => p.status === 'correct');
-    const fgOrders = order.fg_orders || [];
-    let fgAnomalyCount = 0, fgCorrectCount = 0;
-    for (const fg of fgOrders) {
-      for (const c of (fg.components || [])) {
-        if (c.status === 'anomaly') fgAnomalyCount++;
-        else if (c.status === 'correct') fgCorrectCount++;
-      }
-    }
-    const totalItems = picks.length + fgAnomalyCount + fgCorrectCount;
-    const totalAnom = anomalies.length + fgAnomalyCount;
-    const totalCorrect = correct.length + fgCorrectCount;
-    const accuracyPct = totalItems > 0 ? Math.round((totalCorrect / totalItems) * 100) : 100;
-    const correctedCount = (order.corrections || []).length;
-
-    // FG anomalies for report
+    // FG anomalies
     const fgAnomalies = [];
-    for (const fg of fgOrders) {
-      for (let ci = 0; ci < (fg.components || []).length; ci++) {
-        const comp = fg.components[ci];
+    for (const fg of (order.fg_orders || [])) {
+      for (const comp of (fg.components || [])) {
         if (comp.status === 'anomaly') {
           fgAnomalies.push({ ...comp, _fgLabel: fg.assemblyNumber || fg.taskId });
         }
       }
     }
     const allAnomalies = [...anomalies, ...fgAnomalies];
+    if (!allAnomalies.length) return alert('No anomalies to print.');
 
-    // Group by error type
-    const byType = {};
-    for (const a of allAnomalies) {
-      const err = classifyError(a.bin, a.expectedBin);
-      if (!byType[err.label]) byType[err.label] = [];
-      byType[err.label].push(a);
-    }
+    // Sort anomalies by picked bin (alphabetical)
+    allAnomalies.sort((a, b) => (a.bin || '').localeCompare(b.bin || ''));
+
+    // Fetch 5DC codes + stock levels from backend
+    const skus = [...new Set(allAnomalies.map(a => a.sku))];
+    let products = {}, stock = {}, syncedAt = null;
+    try {
+      const res = await fetch(`/api/pick-anomalies/print-data?skus=${encodeURIComponent(skus.join(','))}`);
+      const data = await res.json();
+      if (data.success) { products = data.products || {}; stock = data.stock || {}; syncedAt = data.syncedAt || null; }
+    } catch (e) { console.warn('Print data fetch failed:', e); }
 
     const now = new Date();
     const printDate = now.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }) + ' ' +
                       now.toLocaleTimeString('en-AU', { hour12:false, hour:'2-digit', minute:'2-digit' });
 
+    // Format sync timestamp for display
+    let syncLabel = 'Unknown';
+    if (syncedAt) {
+      const sd = new Date(syncedAt);
+      const diffMin = Math.round((now - sd) / 60000);
+      const syncTime = sd.toLocaleTimeString('en-AU', { hour12:false, hour:'2-digit', minute:'2-digit' });
+      const syncDate = sd.toLocaleDateString('en-AU', { day:'2-digit', month:'short' });
+      syncLabel = diffMin < 60 ? `${syncDate} ${syncTime} (${diffMin}m ago)` : `${syncDate} ${syncTime} (${Math.round(diffMin/60)}h ago)`;
+    }
+
+    // Helper: pick face + stock combined string
+    const pickFaceStr = (sku, bin) => {
+      const skuStock = stock[sku];
+      const oh = (skuStock && bin) ? skuStock[bin] : undefined;
+      const stockTxt = oh !== undefined ? `  (${Math.round(oh)} in stock)` : '';
+      return `<span class="bin-code bin-ok">${esc(bin)}</span>${stockTxt ? `<span class="stock-val">${stockTxt}</span>` : ''}`;
+    };
+
     let reportHtml = `<!DOCTYPE html><html><head>
       <meta charset="utf-8">
-      <title>Pick Anomaly Report — Order ${esc(order.order_number)}</title>
+      <title>Pick Anomaly Report — ${esc(order.order_number)}</title>
       <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size:12px; color:#1e293b; padding:30px; }
-        .report-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1e293b; padding-bottom:16px; margin-bottom:20px; }
-        .report-title { font-size:22px; font-weight:800; }
-        .report-subtitle { font-size:13px; color:#64748b; margin-top:4px; }
-        .report-logo { text-align:right; font-size:11px; color:#94a3b8; }
-        .report-meta { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-bottom:20px; }
-        .meta-item label { font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; letter-spacing:.5px; }
-        .meta-item .val { font-size:14px; font-weight:600; }
-        .accuracy-section { display:flex; align-items:center; gap:24px; margin-bottom:20px; padding:14px 18px; border-radius:8px; border:1px solid #e2e8f0; }
-        .accuracy-bar-wrap { flex:1; height:14px; background:#e2e8f0; border-radius:7px; overflow:hidden; }
-        .accuracy-bar { height:100%; border-radius:7px; }
-        .accuracy-correct { background:#22c55e; }
-        .accuracy-stats { display:flex; gap:16px; font-size:12px; font-weight:600; }
-        .section-title { font-size:16px; font-weight:800; margin:24px 0 10px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }
-        table { width:100%; border-collapse:collapse; font-size:11px; margin-bottom:16px; }
-        th { background:#f1f5f9; text-align:left; padding:8px 10px; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid #cbd5e1; }
-        td { padding:7px 10px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size:12px; color:#1e293b; padding:24px; }
+        .report-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1e293b; padding-bottom:12px; margin-bottom:16px; }
+        .report-title { font-size:20px; font-weight:800; }
+        .report-subtitle { font-size:12px; color:#64748b; margin-top:3px; }
+        .report-logo { text-align:right; font-size:10px; color:#94a3b8; }
+        .sync-banner { background:#fffbeb; border:1px solid #fbbf24; border-radius:6px; padding:6px 14px; margin-bottom:14px; font-size:10px; color:#92400e; display:flex; align-items:center; gap:6px; }
+        .sync-banner .sync-icon { font-size:14px; }
+        .report-meta { display:flex; gap:24px; margin-bottom:16px; font-size:11px; }
+        .meta-item label { font-weight:700; color:#64748b; text-transform:uppercase; font-size:9px; letter-spacing:.5px; }
+        .meta-item .val { font-weight:600; }
+        table { width:100%; border-collapse:collapse; font-size:11px; }
+        th { background:#f1f5f9; text-align:left; padding:6px 8px; font-weight:700; font-size:9px; text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #cbd5e1; }
+        td { padding:6px 8px; border-bottom:1px solid #e2e8f0; vertical-align:middle; }
         tr:nth-child(even) { background:#fafbfc; }
-        .bin-code { font-family:'Courier New',monospace; font-weight:700; font-size:12px; padding:2px 6px; border-radius:4px; }
+        .bin-code { font-family:'Courier New',monospace; font-weight:700; font-size:11px; padding:1px 4px; border-radius:3px; }
         .bin-wrong { background:#fef2f2; color:#dc2626; }
         .bin-ok { background:#f0fdf4; color:#16a34a; }
-        .sev-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:700; font-size:10px; text-transform:uppercase; color:#fff; }
-        .sev-low { background:#f59e0b; } .sev-medium { background:#f97316; } .sev-high { background:#dc2626; } .sev-info { background:#6366f1; }
-        .status-ok { color:#16a34a; font-weight:700; } .status-pending { color:#f59e0b; font-weight:700; }
-        .summary-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-top:16px; }
-        .summary-box h4 { font-size:13px; margin-bottom:8px; }
-        .error-summary-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f1f5f9; }
-        .footer { margin-top:30px; border-top:2px solid #e2e8f0; padding-top:10px; font-size:10px; color:#94a3b8; text-align:center; }
-        @media print { body { padding:15px; } .no-print { display:none; } }
+        .stock-val { font-family:'Courier New',monospace; font-size:10px; color:#78716c; margin-left:4px; }
+        .fdc { font-family:'Courier New',monospace; font-size:11px; color:#475569; }
+        .notes-col { width:90px; border-bottom:1px solid #e2e8f0; }
+        .notes-box { width:100%; height:18px; border:1px solid #d1d5db; border-radius:3px; }
+        .footer { margin-top:20px; border-top:2px solid #e2e8f0; padding-top:8px; font-size:9px; color:#94a3b8; text-align:center; }
+        .count-badge { font-size:12px; font-weight:800; color:#dc2626; }
+        @media print { body { padding:12px; } }
       </style>
     </head><body>
       <div class="report-header">
         <div>
-          <div class="report-title">🔍 Pick Anomaly Report</div>
-          <div class="report-subtitle">Order ${esc(order.order_number)} — ${esc(order.customer || 'Unknown Customer')}</div>
+          <div class="report-title">Pick Anomaly Report</div>
+          <div class="report-subtitle">${esc(order.order_number)} — ${esc(order.customer || 'Unknown')} · <span class="count-badge">${allAnomalies.length} anomalies</span></div>
         </div>
         <div class="report-logo">
-          Rapid Labels Warehouse<br>
-          Generated: ${printDate}
+          Rapid Labels Warehouse<br>${printDate}
         </div>
+      </div>
+
+      <div class="sync-banner">
+        <span class="sync-icon">⚠️</span>
+        <span><strong>Stock levels from Cin7 snapshot</strong> · Last sync: ${syncLabel} — Actual stock may differ if movements occurred since then.</span>
       </div>
 
       <div class="report-meta">
         <div class="meta-item"><label>Order Date</label><div class="val">${formatDate(order.order_date)}</div></div>
-        <div class="meta-item"><label>Shipped</label><div class="val">${order.fulfilled_date ? formatDate(order.fulfilled_date) : '—'}</div></div>
-        <div class="meta-item"><label>SO Status</label><div class="val">${esc(order.order_status || '—')}</div></div>
+        <div class="meta-item"><label>Ship Stage</label><div class="val">${order.fulfilled_date ? formatDate(order.fulfilled_date) : '—'}</div></div>
+        <div class="meta-item"><label>Status</label><div class="val">${esc(order.order_status || '—')}</div></div>
         <div class="meta-item"><label>Analyzed</label><div class="val">${formatDate(order.analyzed_at)}</div></div>
       </div>
 
-      <div class="accuracy-section">
-        <div style="min-width:100px">
-          <div style="font-size:28px;font-weight:800">${accuracyPct}%</div>
-          <div style="font-size:11px;color:#64748b;font-weight:600">Accuracy</div>
-        </div>
-        <div class="accuracy-bar-wrap"><div class="accuracy-bar accuracy-correct" style="width:${accuracyPct}%"></div></div>
-        <div class="accuracy-stats">
-          <span>✅ ${totalCorrect}</span>
-          <span>⚠️ ${totalAnom}</span>
-          <span>🔄 ${correctedCount} fixed</span>
-        </div>
-      </div>
-
-      <div class="section-title">⚠️ Anomaly Details (${totalAnom})</div>
       <table>
-        <thead><tr><th>#</th><th>SKU</th><th>Product</th><th>Qty</th><th>Picked From</th><th>Should Be</th><th>Error Type</th><th>Confidence</th><th>Corrected?</th></tr></thead>
+        <thead><tr>
+          <th>#</th>
+          <th>Order</th>
+          <th>5DC</th>
+          <th>SKU</th>
+          <th>Picked Qty</th>
+          <th>Picked From</th>
+          <th>Pick Face (Stock)</th>
+          <th style="text-align:center">Notes</th>
+        </tr></thead>
         <tbody>
           ${allAnomalies.map((a, i) => {
-            const err = classifyError(a.bin, a.expectedBin);
-            const pickId = a._fgTaskId ? `fg_${a._fgTaskId}_${a._fgIdx}` : (a.id || `${order.order_number}_pick_${i}`);
-            const correction = getCorrection(order, pickId);
-            const confLabel = a.anomalyConfidence === 'suspect' ? 'Suspect' : a.anomalyConfidence === 'confirmed' ? 'Confirmed' : `<span class="sev-badge sev-${err.severity}">${err.severity}</span>`;
-            const confStyle = a.anomalyConfidence === 'suspect' ? 'background:#fef9c3;color:#854d0e;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px' : a.anomalyConfidence === 'confirmed' ? 'background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px' : '';
-            return `<tr${a.anomalyConfidence === 'suspect' ? ' style="background:#fffbeb"' : ''}>
+            const prod = products[a.sku] || {};
+            const fdc = prod.attribute1 || '';
+            return `<tr>
               <td>${i + 1}</td>
-              <td><strong>${esc(a.sku)}</strong>${a._fgLabel ? ` <span style="color:#7c3aed;font-size:10px">(FG)</span>` : ''}</td>
-              <td>${esc(a.name || '')}</td>
+              <td><strong>${esc(order.order_number)}</strong>${a._fgLabel ? ` <span style="color:#7c3aed;font-size:9px">(FG)</span>` : ''}</td>
+              <td class="fdc">${esc(fdc)}</td>
+              <td><strong>${esc(a.sku)}</strong></td>
               <td>${a.qty}</td>
               <td><span class="bin-code bin-wrong">${esc(a.bin)}</span></td>
-              <td><span class="bin-code bin-ok">${esc(a.expectedBin)}</span></td>
-              <td>${esc(err.label)}</td>
-              <td><span style="${confStyle}">${confLabel}</span>${a.anomalyNote ? `<div style="font-size:10px;color:#64748b;margin-top:2px">${esc(a.anomalyNote)}</div>` : ''}</td>
-              <td>${correction ? '<span class="status-ok">✅ Yes</span>' : '<span class="status-pending">⏳ Pending</span>'}</td>
+              <td>${pickFaceStr(a.sku, a.expectedBin)}</td>
+              <td class="notes-col"><div class="notes-box"></div></td>
             </tr>`;
           }).join('')}
         </tbody>
       </table>
 
-      <div class="summary-box">
-        <h4>📊 Error Type Breakdown</h4>
-        ${Object.entries(byType).map(([label, items]) => `
-          <div class="error-summary-row">
-            <span>${esc(label)}</span>
-            <span><strong>${items.length}</strong> (${Math.round(items.length / totalAnom * 100)}%)</span>
-          </div>
-        `).join('')}
-      </div>
-
-      ${correctedCount > 0 ? `
-        <div class="section-title">🔄 Corrections Applied (${correctedCount})</div>
-        <table>
-          <thead><tr><th>SKU</th><th>From Bin</th><th>To Bin</th><th>Qty</th><th>Transfer Ref</th><th>Status</th><th>Date</th></tr></thead>
-          <tbody>
-            ${(order.corrections || []).map(c => `<tr>
-              <td><strong>${esc(c.sku || '—')}</strong></td>
-              <td><span class="bin-code">${esc(c.from_bin)}</span></td>
-              <td><span class="bin-code">${esc(c.to_bin)}</span></td>
-              <td>${c.qty}</td>
-              <td>${esc(c.transfer_ref || '—')}</td>
-              <td><span class="status-ok">${esc(c.transfer_status || 'DRAFT')}</span></td>
-              <td>${formatDate(c.corrected_at)}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      ` : ''}
-
       <div class="footer">
-        Rapid Labels Warehouse — Pick Anomaly Report · Generated by Pick Anomalies System · ${printDate}
+        Rapid Labels Warehouse · Pick Anomaly Report · ${printDate}
       </div>
     </body></html>`;
 
-    // Open print window
     const printWindow = window.open('', '_blank', 'width=900,height=700');
     printWindow.document.write(reportHtml);
     printWindow.document.close();
@@ -1871,202 +1838,155 @@
 
     if (!selected.length) return;
 
-    // Build combined report
-    let totalPicks = 0, totalAnom = 0, totalCorrect = 0, totalCorrected = 0;
+    // Collect all anomalies
     const allAnomalies = [];
-    const allCorrections = [];
-    const byType = {};
-
     for (const order of selected) {
       const picks = order.picks || [];
       const anomalies = picks.filter(p => p.status === 'anomaly');
-      const correct = picks.filter(p => p.status === 'correct');
-      // FG
-      let fgAnom = 0, fgCorr = 0;
       const fgAnomalies = [];
       for (const fg of (order.fg_orders || [])) {
-        for (let ci = 0; ci < (fg.components || []).length; ci++) {
-          const comp = fg.components[ci];
+        for (const comp of (fg.components || [])) {
           if (comp.status === 'anomaly') {
-            fgAnom++;
-            fgAnomalies.push({ ...comp, _fgLabel: fg.assemblyNumber || fg.taskId, _fgTaskId: fg.taskId, _fgIdx: ci });
+            fgAnomalies.push({ ...comp, _fgLabel: fg.assemblyNumber || fg.taskId });
           }
         }
       }
-
-      totalPicks += picks.length + fgAnom + (order.fg_orders || []).reduce((s, fg) => s + (fg.components || []).filter(c => c.status === 'correct').length, 0);
-      totalAnom += anomalies.length + fgAnom;
-      totalCorrect += correct.length;
-      totalCorrected += (order.corrections || []).length;
-
       for (const a of [...anomalies, ...fgAnomalies]) {
-        const err = classifyError(a.bin, a.expectedBin);
-        const pickId = a._fgTaskId ? `fg_${a._fgTaskId}_${a._fgIdx}` : (a.id || 'unknown');
-        const correction = (order.corrections || []).find(c => c.pick_id === pickId);
-        allAnomalies.push({ ...a, _orderNum: order.order_number, _customer: order.customer, _err: err, _correction: correction });
-        if (!byType[err.label]) byType[err.label] = 0;
-        byType[err.label]++;
+        allAnomalies.push({ ...a, _orderNum: order.order_number });
       }
-      allCorrections.push(...(order.corrections || []));
     }
 
-    const accuracyPct = totalPicks > 0 ? Math.round((totalCorrect / totalPicks) * 100) : 100;
-    const now = new Date();
-    const printDate = now.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }) + ' ' +
-                      now.toLocaleTimeString('en-AU', { hour12:false, hour:'2-digit', minute:'2-digit' });
+    if (!allAnomalies.length) return alert('No anomalies to print.');
 
-    // Date range
-    const dates = selected.map(o => o.order_date).filter(Boolean).sort();
-    const dateRange = dates.length > 1 ? `${formatDate(dates[0])} — ${formatDate(dates[dates.length - 1])}` : (dates[0] ? formatDate(dates[0]) : '—');
+    // Sort by order, then by picked bin
+    allAnomalies.sort((a, b) => a._orderNum.localeCompare(b._orderNum) || (a.bin || '').localeCompare(b.bin || ''));
 
-    let reportHtml = `<!DOCTYPE html><html><head>
-      <meta charset="utf-8">
-      <title>Pick Anomaly Bulk Report — ${selected.length} Orders</title>
-      <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size:12px; color:#1e293b; padding:30px; }
-        .report-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1e293b; padding-bottom:16px; margin-bottom:20px; }
-        .report-title { font-size:22px; font-weight:800; }
-        .report-subtitle { font-size:13px; color:#64748b; margin-top:4px; }
-        .report-logo { text-align:right; font-size:11px; color:#94a3b8; }
-        .summary-cards { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
-        .s-card { padding:14px; border-radius:8px; border:1px solid #e2e8f0; text-align:center; }
-        .s-card-val { font-size:28px; font-weight:800; }
-        .s-card-label { font-size:10px; font-weight:700; text-transform:uppercase; color:#64748b; margin-top:2px; }
-        .s-card-blue { background:#eff6ff; color:#1d4ed8; }
-        .s-card-green { background:#f0fdf4; color:#166534; }
-        .s-card-red { background:#fef2f2; color:#dc2626; }
-        .s-card-amber { background:#fffbeb; color:#92400e; }
-        .s-card-purple { background:#faf5ff; color:#7c3aed; }
-        .accuracy-section { display:flex; align-items:center; gap:24px; margin-bottom:20px; padding:14px 18px; border-radius:8px; border:1px solid #e2e8f0; }
-        .accuracy-bar-wrap { flex:1; height:14px; background:#e2e8f0; border-radius:7px; overflow:hidden; }
-        .accuracy-bar { height:100%; border-radius:7px; background:#22c55e; }
-        .section-title { font-size:16px; font-weight:800; margin:24px 0 10px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }
-        .section-title-small { font-size:13px; font-weight:700; margin:16px 0 8px; color:#64748b; }
-        table { width:100%; border-collapse:collapse; font-size:11px; margin-bottom:16px; }
-        th { background:#f1f5f9; text-align:left; padding:8px 10px; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid #cbd5e1; }
-        td { padding:7px 10px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
-        tr:nth-child(even) { background:#fafbfc; }
-        .bin-code { font-family:'Courier New',monospace; font-weight:700; font-size:12px; padding:2px 6px; border-radius:4px; }
-        .bin-wrong { background:#fef2f2; color:#dc2626; }
-        .bin-ok { background:#f0fdf4; color:#16a34a; }
-        .sev-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:700; font-size:10px; text-transform:uppercase; color:#fff; }
-        .sev-low { background:#f59e0b; } .sev-medium { background:#f97316; } .sev-high { background:#dc2626; } .sev-info { background:#6366f1; }
-        .status-ok { color:#16a34a; font-weight:700; } .status-pending { color:#f59e0b; font-weight:700; }
-        .summary-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-top:16px; }
-        .summary-box h4 { font-size:13px; margin-bottom:8px; }
-        .error-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f1f5f9; }
-        .order-section { margin:20px 0; padding:16px; border:1px solid #e2e8f0; border-radius:10px; page-break-inside:avoid; }
-        .order-section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-        .order-section-title { font-size:14px; font-weight:800; }
-        .order-section-meta { font-size:11px; color:#64748b; }
-        .page-break { page-break-before:always; }
-        .footer { margin-top:30px; border-top:2px solid #e2e8f0; padding-top:10px; font-size:10px; color:#94a3b8; text-align:center; }
-        @media print { body { padding:15px; } .no-print { display:none; } }
-      </style>
-    </head><body>
-      <div class="report-header">
-        <div>
-          <div class="report-title">🔍 Pick Anomaly Report — Bulk</div>
-          <div class="report-subtitle">${selected.length} Orders · ${dateRange}</div>
-        </div>
-        <div class="report-logo">
-          Rapid Labels Warehouse<br>
-          Generated: ${printDate}
-        </div>
-      </div>
+    // Fetch 5DC + stock from backend
+    const skus = [...new Set(allAnomalies.map(a => a.sku))];
+    const doFetch = fetch(`/api/pick-anomalies/print-data?skus=${encodeURIComponent(skus.join(','))}`)
+      .then(r => r.json()).catch(() => ({ success: false }));
 
-      <div class="summary-cards">
-        <div class="s-card s-card-blue"><div class="s-card-val">${selected.length}</div><div class="s-card-label">Orders</div></div>
-        <div class="s-card s-card-green"><div class="s-card-val">${totalPicks}</div><div class="s-card-label">Total Picks</div></div>
-        <div class="s-card s-card-red"><div class="s-card-val">${totalAnom}</div><div class="s-card-label">Anomalies</div></div>
-        <div class="s-card s-card-amber"><div class="s-card-val">${accuracyPct}%</div><div class="s-card-label">Accuracy</div></div>
-        <div class="s-card s-card-purple"><div class="s-card-val">${totalCorrected}</div><div class="s-card-label">Corrected</div></div>
-      </div>
+    doFetch.then(data => {
+      const products = data.success ? (data.products || {}) : {};
+      const stock = data.success ? (data.stock || {}) : {};
 
-      <div class="accuracy-section">
-        <div style="min-width:80px"><div style="font-size:24px;font-weight:800">${accuracyPct}%</div><div style="font-size:10px;color:#64748b;font-weight:600">OVERALL</div></div>
-        <div class="accuracy-bar-wrap"><div class="accuracy-bar" style="width:${accuracyPct}%"></div></div>
-        <div style="font-size:12px;font-weight:600;white-space:nowrap">✅ ${totalCorrect} · ⚠️ ${totalAnom} · 🔄 ${totalCorrected}</div>
-      </div>
+      const pickFaceStr = (sku, bin) => {
+        const s = stock[sku];
+        const oh = (s && bin) ? s[bin] : undefined;
+        const stockTxt = oh !== undefined ? `  (${Math.round(oh)} in stock)` : '';
+        return `<span class="bin-code bin-ok">${esc(bin)}</span>${stockTxt ? `<span class="stock-val">${stockTxt}</span>` : ''}`;
+      };
 
-      <div class="summary-box">
-        <h4>📊 Error Type Breakdown</h4>
-        ${Object.entries(byType).sort((a,b) => b[1] - a[1]).map(([label, count]) => `
-          <div class="error-row">
-            <span>${esc(label)}</span>
-            <span><strong>${count}</strong> (${Math.round(count / totalAnom * 100)}%)</span>
+      const syncedAt = data.syncedAt || null;
+      const now = new Date();
+      const printDate = now.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }) + ' ' +
+                        now.toLocaleTimeString('en-AU', { hour12:false, hour:'2-digit', minute:'2-digit' });
+
+      let syncLabel = 'Unknown';
+      if (syncedAt) {
+        const sd = new Date(syncedAt);
+        const diffMin = Math.round((now - sd) / 60000);
+        const syncTime = sd.toLocaleTimeString('en-AU', { hour12:false, hour:'2-digit', minute:'2-digit' });
+        const syncDate = sd.toLocaleDateString('en-AU', { day:'2-digit', month:'short' });
+        syncLabel = diffMin < 60 ? `${syncDate} ${syncTime} (${diffMin}m ago)` : `${syncDate} ${syncTime} (${Math.round(diffMin/60)}h ago)`;
+      }
+
+      const dates = selected.map(o => o.order_date).filter(Boolean).sort();
+      const dateRange = dates.length > 1 ? `${formatDate(dates[0])} — ${formatDate(dates[dates.length - 1])}` : (dates[0] ? formatDate(dates[0]) : '—');
+
+      let reportHtml = `<!DOCTYPE html><html><head>
+        <meta charset="utf-8">
+        <title>Pick Anomaly Bulk Report — ${selected.length} Orders</title>
+        <style>
+          * { margin:0; padding:0; box-sizing:border-box; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size:12px; color:#1e293b; padding:24px; }
+          .report-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1e293b; padding-bottom:12px; margin-bottom:16px; }
+          .report-title { font-size:20px; font-weight:800; }
+          .report-subtitle { font-size:12px; color:#64748b; margin-top:3px; }
+          .report-logo { text-align:right; font-size:10px; color:#94a3b8; }
+          .count-badge { font-size:12px; font-weight:800; color:#dc2626; }
+          table { width:100%; border-collapse:collapse; font-size:11px; }
+          th { background:#f1f5f9; text-align:left; padding:6px 8px; font-weight:700; font-size:9px; text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #cbd5e1; }
+          td { padding:6px 8px; border-bottom:1px solid #e2e8f0; vertical-align:middle; }
+          tr:nth-child(even) { background:#fafbfc; }
+          .bin-code { font-family:'Courier New',monospace; font-weight:700; font-size:11px; padding:1px 4px; border-radius:3px; }
+          .bin-wrong { background:#fef2f2; color:#dc2626; }
+          .bin-ok { background:#f0fdf4; color:#16a34a; }
+          .stock-val { font-family:'Courier New',monospace; font-size:10px; color:#78716c; margin-left:4px; }
+          .fdc { font-family:'Courier New',monospace; font-size:11px; color:#475569; }
+          .notes-col { width:90px; border-bottom:1px solid #e2e8f0; }
+          .notes-box { width:100%; height:18px; border:1px solid #d1d5db; border-radius:3px; }
+          .order-divider td { background:#e2e8f0; padding:4px 8px; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.4px; }
+          .sync-banner { background:#fffbeb; border:1px solid #fbbf24; border-radius:6px; padding:6px 14px; margin-bottom:14px; font-size:10px; color:#92400e; display:flex; align-items:center; gap:6px; }
+          .sync-banner .sync-icon { font-size:14px; }
+          .footer { margin-top:20px; border-top:2px solid #e2e8f0; padding-top:8px; font-size:9px; color:#94a3b8; text-align:center; }
+          @media print { body { padding:12px; } }
+        </style>
+      </head><body>
+        <div class="report-header">
+          <div>
+            <div class="report-title">Pick Anomaly Report — Bulk</div>
+            <div class="report-subtitle">${selected.length} Orders · ${dateRange} · <span class="count-badge">${allAnomalies.length} anomalies</span></div>
           </div>
-        `).join('')}
-      </div>
+          <div class="report-logo">
+            Rapid Labels Warehouse<br>${printDate}
+          </div>
+        </div>
 
-      <div class="section-title">📋 Orders Summary</div>
-      <table>
-        <thead><tr><th>#</th><th>Order</th><th>Customer</th><th>Date</th><th>Picks</th><th>✅</th><th>⚠️</th><th>Corrected</th><th>Accuracy</th></tr></thead>
-        <tbody>
-          ${selected.map((o, i) => {
-            const acc = o.total_picks > 0 ? Math.round(((o.correct_picks || 0) / o.total_picks) * 100) : 100;
-            return `<tr>
-              <td>${i + 1}</td>
-              <td><strong>${esc(o.order_number)}</strong></td>
-              <td>${esc(o.customer || '')}</td>
-              <td>${formatDate(o.order_date)}</td>
-              <td>${o.total_picks || 0}</td>
-              <td>${o.correct_picks || 0}</td>
-              <td>${o.anomaly_picks || 0}</td>
-              <td>${(o.corrections || []).length}</td>
-              <td style="font-weight:700;color:${acc >= 95 ? '#16a34a' : acc >= 80 ? '#f59e0b' : '#dc2626'}">${acc}%</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
+        <div class="sync-banner">
+          <span class="sync-icon">⚠️</span>
+          <span><strong>Stock levels from Cin7 snapshot</strong> · Last sync: ${syncLabel} — Actual stock may differ if movements occurred since then.</span>
+        </div>
 
-      <div class="section-title">⚠️ All Anomalies (${allAnomalies.length})</div>
-      <table>
-        <thead><tr><th>#</th><th>Order</th><th>SKU</th><th>Product</th><th>Qty</th><th>Picked From</th><th>Should Be</th><th>Error Type</th><th>Severity</th><th>Corrected?</th></tr></thead>
-        <tbody>
-          ${allAnomalies.map((a, i) => `<tr>
-            <td>${i + 1}</td>
-            <td>${esc(a._orderNum)}</td>
-            <td><strong>${esc(a.sku)}</strong>${a._fgLabel ? ' <span style="color:#7c3aed;font-size:10px">(FG)</span>' : ''}</td>
-            <td>${esc(a.name || '')}</td>
-            <td>${a.qty}</td>
-            <td><span class="bin-code bin-wrong">${esc(a.bin)}</span></td>
-            <td><span class="bin-code bin-ok">${esc(a.expectedBin)}</span></td>
-            <td>${esc(a._err.label)}</td>
-            <td><span class="sev-badge sev-${a._err.severity}">${a._err.severity}</span></td>
-            <td>${a._correction ? '<span class="status-ok">✅ Yes</span>' : '<span class="status-pending">⏳ Pending</span>'}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-
-      ${allCorrections.length > 0 ? `
-        <div class="section-title">🔄 Corrections Applied (${allCorrections.length})</div>
         <table>
-          <thead><tr><th>SKU</th><th>From</th><th>To</th><th>Qty</th><th>Transfer Ref</th><th>Status</th><th>Date</th></tr></thead>
+          <thead><tr>
+            <th>#</th>
+            <th>Order</th>
+            <th>5DC</th>
+            <th>SKU</th>
+            <th>Picked Qty</th>
+            <th>Picked From</th>
+            <th>Pick Face (Stock)</th>
+            <th style="text-align:center">Notes</th>
+          </tr></thead>
           <tbody>
-            ${allCorrections.map(c => `<tr>
-              <td><strong>${esc(c.sku || '—')}</strong></td>
-              <td><span class="bin-code">${esc(c.from_bin)}</span></td>
-              <td><span class="bin-code">${esc(c.to_bin)}</span></td>
-              <td>${c.qty}</td>
-              <td>${esc(c.transfer_ref || '—')}</td>
-              <td><span class="status-ok">${esc(c.transfer_status || 'DRAFT')}</span></td>
-              <td>${formatDate(c.corrected_at)}</td>
-            </tr>`).join('')}
+            ${(() => {
+              let html = '';
+              let lastOrder = '';
+              allAnomalies.forEach((a, i) => {
+                if (a._orderNum !== lastOrder) {
+                  lastOrder = a._orderNum;
+                  const orderObj = selected.find(o => o.order_number === a._orderNum);
+                  html += `<tr class="order-divider"><td colspan="8">${esc(a._orderNum)} — ${esc(orderObj ? orderObj.customer || '' : '')}</td></tr>`;
+                }
+                const prod = products[a.sku] || {};
+                const fdc = prod.attribute1 || '';
+                html += `<tr>
+                  <td>${i + 1}</td>
+                  <td><strong>${esc(a._orderNum)}</strong>${a._fgLabel ? ` <span style="color:#7c3aed;font-size:9px">(FG)</span>` : ''}</td>
+                  <td class="fdc">${esc(fdc)}</td>
+                  <td><strong>${esc(a.sku)}</strong></td>
+                  <td>${a.qty}</td>
+                  <td><span class="bin-code bin-wrong">${esc(a.bin)}</span></td>
+                  <td>${pickFaceStr(a.sku, a.expectedBin)}</td>
+                  <td class="notes-col"><div class="notes-box"></div></td>
+                </tr>`;
+              });
+              return html;
+            })()}
           </tbody>
         </table>
-      ` : ''}
 
-      <div class="footer">
-        Rapid Labels Warehouse — Pick Anomaly Bulk Report · ${selected.length} Orders · Generated: ${printDate}
-      </div>
-    </body></html>`;
+        <div class="footer">
+          Rapid Labels Warehouse · Pick Anomaly Bulk Report · ${selected.length} Orders · ${printDate}
+        </div>
+      </body></html>`;
 
-    const printWindow = window.open('', '_blank', 'width=1000,height=800');
-    printWindow.document.write(reportHtml);
-    printWindow.document.close();
-    printWindow.onload = () => { printWindow.print(); };
+      const printWindow = window.open('', '_blank', 'width=1000,height=800');
+      printWindow.document.write(reportHtml);
+      printWindow.document.close();
+      printWindow.onload = () => { printWindow.print(); };
+    });
 
     closeBulkPreview();
   }

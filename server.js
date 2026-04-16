@@ -103,6 +103,43 @@ try {
   console.warn('⚠️  Could not register pick anomaly routes:', e.message);
 }
 
+// ── Order Pipeline Sync (on-demand + scheduled) ──
+let pipelineSyncRunning = false;
+async function _runPipelineSync(source = 'manual') {
+  if (pipelineSyncRunning) return { skipped: true, reason: 'already running' };
+  pipelineSyncRunning = true;
+  try {
+    const { runPipelineSync } = require('./order-pipeline-sync');
+    const result = await runPipelineSync();
+    console.log(`✅ Pipeline sync (${source}) done: ${result.salesOrders} SO, ${result.transfers} TR in ${result.durationSec}s`);
+    return result;
+  } catch (err) {
+    console.error(`❌ Pipeline sync (${source}) error:`, err.message);
+    throw err;
+  } finally {
+    pipelineSyncRunning = false;
+  }
+}
+
+app.post('/api/pipeline-sync', async (req, res) => {
+  try {
+    const result = await _runPipelineSync('api');
+    if (result.skipped) return res.json({ success: false, error: result.reason });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Auto-sync pipeline every hour (backup for GH Actions cron)
+const PIPELINE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+setTimeout(() => {
+  _runPipelineSync('scheduled-initial').catch(() => {});
+  setInterval(() => {
+    _runPipelineSync('scheduled').catch(() => {});
+  }, PIPELINE_INTERVAL_MS);
+}, 30_000); // Wait 30s after server start before first sync
+
 // ── Gateway Transfer routes ──
 try {
   const { registerGatewayRoutes } = require('./features/gateway/gateway-engine');

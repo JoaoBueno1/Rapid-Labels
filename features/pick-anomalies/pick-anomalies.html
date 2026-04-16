@@ -29,13 +29,10 @@
       <!-- ─── Title + Sync Status ─── -->
       <div class="pa-title-row">
         <h1 class="log-page-title">📦 Pick Anomalies Monitor</h1>
-        <button class="search-btn-small" onclick="PA.syncNewOrders()" title="Manually trigger sync from Cin7" style="font-size:11px;padding:5px 12px">🔄 Sync Now</button>
-        <button class="search-btn-small" onclick="PA.refreshLocators()" title="Re-evaluate all orders using current product locations" style="font-size:11px;padding:5px 12px;background:#7c3aed">📍 Refresh Locators</button>
         <div class="pa-sync-status" id="paSyncStatus">
           <span class="pa-sync-dot" id="paSyncDot"></span>
           <span id="paSyncText">Loading...</span>
           <span id="paSyncAge" style="font-size:11px;color:#94a3b8;margin-left:6px"></span>
-          <span id="paSyncCountdown" style="font-size:11px;color:#94a3b8;margin-left:4px" title="Auto-sync every 2h (backend scheduler). Page checks every 30min.">🛡️ Auto 2h</span>
         </div>
       </div>
 
@@ -64,7 +61,7 @@
       </div>
 
       <!-- ─── KPIs ─── -->
-      <div class="kpi-row six" id="paKpis" style="display:none">
+      <div class="kpi-row" id="paKpis" style="display:none">
         <div class="kpi" id="kpi-orders">
           <div class="label">Orders</div>
           <div class="value" id="kpiOrders">0</div>
@@ -84,6 +81,10 @@
         <div class="kpi" id="kpi-accuracy">
           <div class="label">Accuracy</div>
           <div class="value" id="kpiAccuracy">—</div>
+        </div>
+        <div class="kpi" id="kpi-fixes">
+          <div class="label">Fixes Applied</div>
+          <div class="value" id="kpiFixes">0</div>
         </div>
         <div class="kpi" id="kpi-reviewed">
           <div class="label">Anomalies Reviewed</div>
@@ -157,7 +158,7 @@
                 <th>#</th>
                 <th>Order</th>
                 <th>Date</th>
-                <th title="Shipment date — when stock was physically shipped">Shipped</th>
+                <th title="Cin7 'Ship' stage date — when picks were finalised and stock left the bins. Includes dispatched orders and customer collections.">Ship Stage</th>
                 <th>Customer</th>
                 <th title="Cin7 order status">SO Status</th>
                 <th title="Total picks in order">Picks</th>
