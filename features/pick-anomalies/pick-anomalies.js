@@ -1019,13 +1019,15 @@
       syncLabel = diffMin < 60 ? `${syncDate} ${syncTime} (${diffMin}m ago)` : `${syncDate} ${syncTime} (${Math.round(diffMin/60)}h ago)`;
     }
 
-    // Helper: pick face + stock combined string
-    const pickFaceStr = (sku, bin) => {
+    // Helper: bin + stock combined string
+    const binStockStr = (sku, bin, cssClass) => {
       const skuStock = stock[sku];
       const oh = (skuStock && bin) ? skuStock[bin] : undefined;
       const stockTxt = oh !== undefined ? `  (${Math.round(oh)} in stock)` : '';
-      return `<span class="bin-code bin-ok">${esc(bin)}</span>${stockTxt ? `<span class="stock-val">${stockTxt}</span>` : ''}`;
+      return `<span class="bin-code ${cssClass}">${esc(bin)}</span>${stockTxt ? `<span class="stock-val">${stockTxt}</span>` : ''}`;
     };
+    const pickFaceStr = (sku, bin) => binStockStr(sku, bin, 'bin-ok');
+    const pickedFromStr = (sku, bin) => binStockStr(sku, bin, 'bin-wrong');
 
     let reportHtml = `<!DOCTYPE html><html><head>
       <meta charset="utf-8">
@@ -1087,7 +1089,7 @@
           <th>5DC</th>
           <th>SKU</th>
           <th>Picked Qty</th>
-          <th>Picked From</th>
+          <th>Picked From (Stock)</th>
           <th>Pick Face (Stock)</th>
           <th style="text-align:center">Notes</th>
         </tr></thead>
@@ -1101,7 +1103,7 @@
               <td class="fdc">${esc(fdc)}</td>
               <td><strong>${esc(a.sku)}</strong></td>
               <td>${a.qty}</td>
-              <td><span class="bin-code bin-wrong">${esc(a.bin)}</span></td>
+              <td>${pickedFromStr(a.sku, a.bin)}</td>
               <td>${pickFaceStr(a.sku, a.expectedBin)}</td>
               <td class="notes-col"><div class="notes-box"></div></td>
             </tr>`;
@@ -1870,12 +1872,14 @@
       const products = data.success ? (data.products || {}) : {};
       const stock = data.success ? (data.stock || {}) : {};
 
-      const pickFaceStr = (sku, bin) => {
+      const binStockStr = (sku, bin, cssClass) => {
         const s = stock[sku];
         const oh = (s && bin) ? s[bin] : undefined;
         const stockTxt = oh !== undefined ? `  (${Math.round(oh)} in stock)` : '';
-        return `<span class="bin-code bin-ok">${esc(bin)}</span>${stockTxt ? `<span class="stock-val">${stockTxt}</span>` : ''}`;
+        return `<span class="bin-code ${cssClass}">${esc(bin)}</span>${stockTxt ? `<span class="stock-val">${stockTxt}</span>` : ''}`;
       };
+      const pickFaceStr = (sku, bin) => binStockStr(sku, bin, 'bin-ok');
+      const pickedFromStr = (sku, bin) => binStockStr(sku, bin, 'bin-wrong');
 
       const syncedAt = data.syncedAt || null;
       const now = new Date();
@@ -1945,7 +1949,7 @@
             <th>5DC</th>
             <th>SKU</th>
             <th>Picked Qty</th>
-            <th>Picked From</th>
+            <th>Picked From (Stock)</th>
             <th>Pick Face (Stock)</th>
             <th style="text-align:center">Notes</th>
           </tr></thead>
@@ -1967,7 +1971,7 @@
                   <td class="fdc">${esc(fdc)}</td>
                   <td><strong>${esc(a.sku)}</strong></td>
                   <td>${a.qty}</td>
-                  <td><span class="bin-code bin-wrong">${esc(a.bin)}</span></td>
+                  <td>${pickedFromStr(a.sku, a.bin)}</td>
                   <td>${pickFaceStr(a.sku, a.expectedBin)}</td>
                   <td class="notes-col"><div class="notes-box"></div></td>
                 </tr>`;
