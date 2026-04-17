@@ -175,6 +175,9 @@
     .send-dim { color: #cbd5e1; font-size: 11px; }
     .send-ok { color: #10b981; font-size: 14px; }
 
+    .transit-cell { background: #fefce8; }
+    .transit-val { color: #b45309; font-weight: 700; font-size: 12px; cursor: help; text-decoration: underline dotted #d97706; text-underline-offset: 2px; }
+
     .rnd-badge { font-size: 9px; font-weight: 700; padding: 0 3px; border-radius: 3px; margin-left: 2px; cursor: help; }
     .rnd-up { background: #d1fae5; color: #065f46; }
     .rnd-down { background: #fef3c7; color: #92400e; }
@@ -198,6 +201,51 @@
 
     .alert { padding: 10px 14px; border-radius: 8px; margin-bottom: 10px; font-size: 12px; }
     .alert.warning { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
+
+    /* ── Cartons Only Toggle ── */
+    .btn-carton-mode {
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 2px solid #7c3aed;
+      background: white;
+      font-size: 12px;
+      font-weight: 600;
+      color: #7c3aed;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-carton-mode:hover { background: #f5f3ff; }
+    .btn-carton-mode.active { background: #7c3aed; color: white; }
+
+    /* ── Pending TRs Panel ── */
+    .pending-tr-panel {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 8px 14px;
+      background: #fefce8;
+      border: 1px solid #fde68a;
+      border-radius: 10px;
+      font-size: 12px;
+      color: #92400e;
+      margin: 6px 0;
+    }
+    .tr-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 8px;
+      background: white;
+      border: 1px solid #fcd34d;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: help;
+    }
+    .tr-tag small { font-weight: 400; color: #a16207; }
+
+    .sum-transit { color: #b45309; }
   </style>
 </head>
 <body>
@@ -238,8 +286,12 @@
       <button id="printBtn" class="btn-action primary" onclick="printTransferSheet()">🖨️ Print Sheet</button>
       <button id="exportBtn" class="btn-action" onclick="exportPlan()">📥 Export CSV</button>
       <button class="btn-action" onclick="generatePlan()" title="Reload data from Cin7">↻ Refresh</button>
+      <button id="cartonModeBtn" class="btn-carton-mode" onclick="toggleCartonMode()">📦 Cartons Only</button>
       <span id="selectionBadge" class="selection-badge" style="display:none">0 selected</span>
     </div>
+
+    <!-- Pending TRs Panel -->
+    <div id="pendingTRPanel" class="pending-tr-panel"></div>
 
     <!-- Filter Bar -->
     <div class="filter-bar">
@@ -265,13 +317,14 @@
             <th class="sortable" onclick="sortBy('location')" style="text-align:left">Location <span class="sort-icon" id="sort-location"></span></th>
             <th class="sortable" onclick="sortBy('cover_days')">Cover <span class="sort-icon active" id="sort-cover_days">▲</span></th>
             <th class="sortable" onclick="sortBy('branch_stock')">Branch <span class="sort-icon" id="sort-branch_stock"></span></th>
+            <th class="sortable" onclick="sortBy('pending_qty')">In Transit <span class="sort-icon" id="sort-pending_qty"></span></th>
             <th class="sortable" onclick="sortBy('main_stock')">Main <span class="sort-icon" id="sort-main_stock"></span></th>
             <th class="sortable" onclick="sortBy('send_qty')">Send <span class="sort-icon" id="sort-send_qty"></span></th>
             <th>CTN</th>
           </tr>
         </thead>
         <tbody id="planTableBody">
-          <tr><td colspan="8" style="text-align:center;padding:40px;color:#64748b">Loading data...</td></tr>
+          <tr><td colspan="9" style="text-align:center;padding:40px;color:#64748b">Loading data...</td></tr>
         </tbody>
       </table>
     </div>

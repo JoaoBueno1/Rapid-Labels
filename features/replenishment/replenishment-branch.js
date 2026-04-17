@@ -62,6 +62,9 @@
     dcMap: {},
     productNames: {},      // product → display name
     locationMap: {},       // product → pickface location
+    pendingTRs: {},        // product → { pending_qty, transfers: ['TR-XXXXX = QTY'] }
+    pendingTRList: [],     // array of { number, status, lines }
+    cartonMode: false,     // Cartons Only mode toggle
     selectedRows: new Set(),
     filter: 'to_send',    // Default: only actionable items
     search: '',
@@ -133,7 +136,8 @@
         loadAvgData(),
         loadStockData(),
         loadCtnData(),
-        loadExistingPlan()
+        loadExistingPlan(),
+        loadPendingTRs()
       ]);
       
       console.log('Data loaded, auto-generating plan...');
@@ -274,14 +278,25 @@
     }
   }
 
-  function smartCartonRound(suggestedQty, ctnQty, canSendQty) {
+  /**
+   * Smart carton rounding — avoids over-sending for slow movers.
+   * If rounding up to a full carton would exceed 3× the target need,
+   * send the raw qty instead (partial carton is better than 12 months of stock).
+   */
+  function smartCartonRound(suggestedQty, ctnQty, canSendQty, targetQty) {
     if (!ctnQty || ctnQty <= 0) return { qty: suggestedQty, rounded: 'none' };
     
     const roundedUp = Math.ceil(suggestedQty / ctnQty) * ctnQty;
     const roundedDown = Math.floor(suggestedQty / ctnQty) * ctnQty;
     
     if (suggestedQty === roundedUp) return { qty: suggestedQty, rounded: 'exact' };
-    if (roundedUp <= canSendQty) return { qty: roundedUp, rounded: 'up' };
+    
+    // Guard: don't round up if it would create excessive coverage (>3× target)
+    const maxAcceptable = targetQty ? targetQty * 3 : Infinity;
+    
+    if (roundedUp <= canSendQty && roundedUp <= maxAcceptable) {
+      return { qty: roundedUp, rounded: 'up' };
+    }
     if (roundedDown > 0) return { qty: roundedDown, rounded: 'down' };
     return { qty: suggestedQty, rounded: 'partial' };
   }
@@ -304,6 +319,26 @@
         .eq('plan_id', state.plan.id);
       if (linesError) throw linesError;
       state.planLines = lines || [];
+    }
+  }
+
+  async function loadPendingTRs() {
+    try {
+      const resp = await fetch(`/api/replenishment/pending-transfers/${state.branchCode}`);
+      if (!resp.ok) {
+        console.warn('Pending TRs: HTTP', resp.status);
+        return;
+      }
+      const data = await resp.json();
+      state.pendingTRs = data.products || {};
+      state.pendingTRList = data.transfers || [];
+      const trCount = state.pendingTRList.length;
+      const productCount = Object.keys(state.pendingTRs).length;
+      console.log(`📋 Pending TRs: ${trCount} transfers, ${productCount} products in transit`);
+    } catch (err) {
+      console.warn('Could not load pending TRs:', err.message);
+      state.pendingTRs = {};
+      state.pendingTRList = [];
     }
   }
 
@@ -386,6 +421,8 @@
       const dcCode = state.dcMap[product] || '';
       const productName = state.productNames[product] || '';
       const location = state.locationMap[product] || '';
+      const pendingInfo = state.pendingTRs[product] || null;
+      const pendingQty = pendingInfo ? pendingInfo.pending_qty : 0;
       
       // ── NO AVG for this branch ──
       if (avgMonthBranch <= 0) {
@@ -398,6 +435,7 @@
             can_send: 0, main_safety: 0, need_qty: 0,
             send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
             cartons: 0,
+            pending_qty: pendingQty, pending_transfers: pendingInfo?.transfers || [],
             has_conflict: false, conflict_branches: [], conflict_detail: null,
             send_note: 'no_avg'
           });
@@ -434,6 +472,7 @@
           can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
           cartons: 0,
+          pending_qty: pendingQty, pending_transfers: pendingInfo?.transfers || [],
           has_conflict: false, conflict_branches: [], conflict_detail: null,
           send_note: null
         });
@@ -450,6 +489,7 @@
           can_send: 0, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
           cartons: 0,
+          pending_qty: pendingQty, pending_transfers: pendingInfo?.transfers || [],
           has_conflict: conflict?.hasConflict || false, conflict_branches: conflictBranches,
           conflict_detail: null, send_note: 'no_main_stock'
         });
@@ -457,7 +497,9 @@
       }
       
       // ── NEEDS STOCK: apply smart rules ──
-      let allocatedQty = Math.min(needQty, canSendQty);
+      // Account for in-transit stock: reduce effective need
+      const effectiveNeedQty = Math.max(0, needQty - pendingQty);
+      let allocatedQty = Math.min(effectiveNeedQty, canSendQty);
       let conflictDetail = null;
       
       if (conflict?.hasConflict && conflict.branches[branchCode]) {
@@ -482,23 +524,56 @@
       let rounded = 'none';
       let blockedQty = 0;
       
-      if (allocatedQty > 0) {
-        const ctnResult = smartCartonRound(allocatedQty, ctnQty, canSendQty);
-        sendQty = ctnResult.qty;
-        rounded = ctnResult.rounded;
-        
-        if (branchAvailable > 0) {
-          const weeklyDemand = avgMonthBranch / WEEKS_IN_MONTH;
-          const minThreshold = Math.max(Math.ceil(weeklyDemand), 2);
-          if (sendQty < minThreshold) {
-            sendNote = 'below_min';
-            blockedQty = sendQty;
-            sendQty = 0;
-            rounded = 'none';
+      // ── CARTONS ONLY MODE ──
+      if (state.cartonMode) {
+        // Rules: send min 1 full carton, max 6 months AVG, keep Main safety stock
+        if (ctnQty <= 0) {
+          // No carton info → skip in carton mode
+          sendNote = 'no_ctn';
+        } else if (canSendQty < ctnQty) {
+          // Main can't spare even one carton after safety stock
+          sendNote = 'no_main_stock';
+        } else {
+          const MAX_MONTHS_CARTON = 6;
+          const maxBranchStock = Math.ceil(avgMonthBranch * MAX_MONTHS_CARTON);
+          const roomInBranch = Math.max(0, maxBranchStock - branchAvailable - pendingQty);
+          
+          if (roomInBranch < ctnQty) {
+            // Sending 1 carton would exceed 6 months at branch
+            sendNote = 'carton_over_6mth';
+          } else {
+            // How many cartons can we send?
+            const maxCartons = Math.floor(Math.min(canSendQty, roomInBranch) / ctnQty);
+            if (maxCartons >= 1) {
+              sendQty = maxCartons * ctnQty;
+              rounded = 'exact';
+              allocatedQty = sendQty;
+            } else {
+              sendNote = 'carton_over_6mth';
+            }
           }
         }
-      } else {
-        sendNote = 'allocation_zero';
+      }
+      // ── DEFAULT MODE ──
+      else {
+        if (allocatedQty > 0) {
+          const ctnResult = smartCartonRound(allocatedQty, ctnQty, canSendQty, targetQty);
+          sendQty = ctnResult.qty;
+          rounded = ctnResult.rounded;
+          
+          if (branchAvailable > 0) {
+            const weeklyDemand = avgMonthBranch / WEEKS_IN_MONTH;
+            const minThreshold = Math.max(Math.ceil(weeklyDemand), 2);
+            if (sendQty < minThreshold) {
+              sendNote = 'below_min';
+              blockedQty = sendQty;
+              sendQty = 0;
+              rounded = 'none';
+            }
+          }
+        } else {
+          sendNote = effectiveNeedQty <= 0 ? 'already_in_transit' : 'allocation_zero';
+        }
       }
       
       lines.push({
@@ -510,6 +585,7 @@
         send_qty: sendQty, raw_qty: allocatedQty, blocked_qty: blockedQty,
         ctn_qty: ctnQty || null, rounded,
         cartons: (sendQty > 0 && ctnQty > 0) ? Math.ceil(sendQty / ctnQty) : 0,
+        pending_qty: pendingQty, pending_transfers: pendingInfo?.transfers || [],
         has_conflict: conflict?.hasConflict || false, conflict_branches: conflictBranches,
         conflict_detail: conflictDetail, send_note: sendNote
       });
@@ -535,6 +611,18 @@
     }
   };
 
+  window.toggleCartonMode = function() {
+    state.cartonMode = !state.cartonMode;
+    const btn = document.getElementById('cartonModeBtn');
+    if (btn) {
+      btn.classList.toggle('active', state.cartonMode);
+      btn.textContent = state.cartonMode ? '📦 Cartons Only ON' : '📦 Cartons Only';
+    }
+    calculatePlan();
+    renderTable();
+    updateSummary();
+  };
+
   // ============================================
   // RENDERING — Simplified
   // ============================================
@@ -556,7 +644,7 @@
     const pageLines = lines.slice(start, start + state.pageSize);
     
     if (pageLines.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b">' +
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:#64748b">' +
         (state.filter === 'to_send' ? 'No products to send — branch is fully stocked ✓' : 'No products match the current filter') +
         '</td></tr>';
       updatePagination(0, 0);
@@ -622,6 +710,12 @@
           : '<span class="send-dim" title="Main needs its safety stock">safety</span>';
       } else if (line.send_note === 'allocation_zero') {
         sendDisplay = '<span class="send-dim">0</span>';
+      } else if (line.send_note === 'already_in_transit') {
+        sendDisplay = '<span class="send-dim" title="Need covered by pending TRs">in transit</span>';
+      } else if (line.send_note === 'no_ctn') {
+        sendDisplay = '<span class="send-dim" title="No carton info (Cartons Only mode)">no ctn</span>';
+      } else if (line.send_note === 'carton_over_6mth') {
+        sendDisplay = '<span class="send-dim" title="1 carton would exceed 6 months AVG">&gt;6mth</span>';
       } else if (line.category === 'sufficient') {
         sendDisplay = '<span class="send-ok">✓</span>';
       } else {
@@ -662,6 +756,15 @@
       ];
       const mainTip = mainTipParts.join('&#10;');
       
+      // In-Transit display
+      let transitDisplay = '';
+      if (line.pending_qty > 0) {
+        const trTip = line.pending_transfers.join('&#10;');
+        transitDisplay = '<span class="transit-val tip-cell" title="' + escapeHtml(trTip) + '">' + line.pending_qty + '</span>';
+      } else {
+        transitDisplay = '<span class="send-dim">—</span>';
+      }
+      
       const checked = state.selectedRows.has(line.product) ? 'checked' : '';
       const dimClass = line.send_qty <= 0 ? ' dim-row' : '';
       const checkDisabled = line.send_qty <= 0 ? ' disabled' : '';
@@ -672,6 +775,7 @@
         '<td class="loc-cell">' + escapeHtml(line.location || '—') + '</td>' +
         '<td class="cover-cell">' + coverBadge + '</td>' +
         '<td class="num-cell tip-cell" title="' + branchTip + '">' + line.branch_stock + '</td>' +
+        '<td class="num-cell transit-cell">' + transitDisplay + '</td>' +
         '<td class="num-cell main-cell tip-cell" title="' + mainTip + '">' + line.main_stock + '</td>' +
         '<td class="send-cell">' + sendDisplay + '</td>' +
         '<td class="ctn-cell">' + cartonDisplay + '</td>' +
@@ -758,6 +862,8 @@
     const totalCartons = toSend.reduce((s, l) => s + l.cartons, 0);
     const criticalCount = withAvg.filter(l => l.cover_days < 7).length;
     const conflictCount = withAvg.filter(l => l.has_conflict).length;
+    const pendingTRCount = state.pendingTRList.length;
+    const pendingProductCount = Object.keys(state.pendingTRs).length;
     
     const bar = document.getElementById('summaryBar');
     if (bar) {
@@ -767,8 +873,27 @@
       if (totalCartons > 0) parts.push(`<span class="sum-item"><strong>${totalCartons}</strong> cartons</span>`);
       if (criticalCount > 0) parts.push(`<span class="sum-item sum-crit">🔴 <strong>${criticalCount}</strong> critical</span>`);
       if (conflictCount > 0) parts.push(`<span class="sum-item sum-warn">⚠️ <strong>${conflictCount}</strong> conflicts</span>`);
+      if (pendingTRCount > 0) parts.push(`<span class="sum-item sum-transit">🚚 <strong>${pendingTRCount}</strong> pending TR${pendingTRCount > 1 ? 's' : ''} (${pendingProductCount} products)</span>`);
+      if (state.cartonMode) parts.push(`<span class="sum-item" style="color:#7c3aed">📦 Cartons Only</span>`);
       bar.innerHTML = parts.join('<span class="sum-sep">·</span>');
       bar.style.display = 'flex';
+    }
+    
+    // Update Pending TRs panel
+    const trPanel = document.getElementById('pendingTRPanel');
+    if (trPanel) {
+      if (pendingTRCount > 0) {
+        const trLines = state.pendingTRList.map(tr => {
+          const lineCount = tr.lines?.length || 0;
+          const totalQty = (tr.lines || []).reduce((s, l) => s + l.qty, 0);
+          const statusIcon = tr.status === 'IN TRANSIT' ? '🚚' : '📋';
+          return `<span class="tr-tag" title="${lineCount} products, ${totalQty} units">${statusIcon} ${escapeHtml(tr.number)} <small>(${totalQty}u)</small></span>`;
+        }).join('');
+        trPanel.innerHTML = `<strong>Pending Transfers:</strong> ${trLines}`;
+        trPanel.style.display = 'flex';
+      } else {
+        trPanel.style.display = 'none';
+      }
     }
     
     // Update filter chip counts
