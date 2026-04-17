@@ -226,10 +226,12 @@
         state.stockData[key] = {
           product: row.sku,
           warehouse_code: warehouseCode,
-          qty_available: 0
+          qty_available: 0,
+          qty_on_hand: 0
         };
       }
       state.stockData[key].qty_available += (row.available != null ? row.available : row.on_hand || 0);
+      state.stockData[key].qty_on_hand += (row.on_hand || 0);
       
       // Build product names map (take first non-empty name per SKU)
       if (row.product_name && !state.productNames[row.sku]) {
@@ -414,6 +416,8 @@
       const branchStock = state.stockData[`${product}:${branchCode}`];
       const mainStock = state.stockData[`${product}:MAIN`];
       const branchAvailable = branchStock?.qty_available || 0;
+      const branchOnHand = branchStock?.qty_on_hand || 0;
+      const branchCommitted = Math.max(0, branchOnHand - branchAvailable);
       const mainAvailable = mainStock?.qty_available || 0;
       const avgMonthMainRaw = avgRow?.avg_mth_main || 0;        // raw decimal for display
       const avgMonthMain = Math.round(avgMonthMainRaw);         // rounded for calc
@@ -423,14 +427,17 @@
       const location = state.locationMap[product] || '';
       const pendingInfo = state.pendingTRs[product] || null;
       const pendingQty = pendingInfo ? pendingInfo.pending_qty : 0;
+      // Sold deficit: when available < 0, stock is oversold
+      const soldDeficit = branchAvailable < 0 ? Math.abs(branchAvailable) : 0;
       
       // ── NO AVG for this branch ──
       if (avgMonthBranch <= 0) {
-        if (branchAvailable > 0 || mainAvailable > 0) {
+        if (branchAvailable > 0 || branchAvailable < 0 || mainAvailable > 0) {
           lines.push({
             product, dc_code: dcCode, product_name: productName, location,
             category: 'no_avg',
-            cover_days: 999, branch_stock: branchAvailable, avg_branch: 0, avg_branch_raw: 0,
+            cover_days: 999, branch_stock: branchAvailable, branch_on_hand: branchOnHand, branch_committed: branchCommitted, sold_deficit: soldDeficit,
+            avg_branch: 0, avg_branch_raw: 0,
             main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
             can_send: 0, main_safety: 0, need_qty: 0,
             send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
@@ -463,11 +470,12 @@
         : [];
       
       // ── SUFFICIENT: no need to send ──
-      if (needQty <= 0) {
+      if (needQty <= 0 && soldDeficit <= 0) {
         lines.push({
           product, dc_code: dcCode, product_name: productName, location,
           category,
-          cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
+          cover_days: coverDays, branch_stock: branchAvailable, branch_on_hand: branchOnHand, branch_committed: branchCommitted, sold_deficit: soldDeficit,
+          avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
           main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
           can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
@@ -479,12 +487,13 @@
         continue;
       }
       
-      // ── NO MAIN STOCK to send ──
-      if (canSendQty <= 0) {
+      // ── NO MAIN STOCK to send (but allow override for sold deficit) ──
+      if (canSendQty <= 0 && soldDeficit <= 0) {
         lines.push({
           product, dc_code: dcCode, product_name: productName, location,
           category,
-          cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
+          cover_days: coverDays, branch_stock: branchAvailable, branch_on_hand: branchOnHand, branch_committed: branchCommitted, sold_deficit: soldDeficit,
+          avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
           main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
           can_send: 0, main_safety: mainMinQty, need_qty: needQty,
           send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
@@ -499,7 +508,17 @@
       // ── NEEDS STOCK: apply smart rules ──
       // Account for in-transit stock: reduce effective need
       const effectiveNeedQty = Math.max(0, needQty - pendingQty);
-      let allocatedQty = Math.min(effectiveNeedQty, canSendQty);
+      
+      // Safety override: if branch has sold deficit, allow using Main safety stock
+      let effectiveCanSend = canSendQty;
+      let safetyOverride = false;
+      if (soldDeficit > 0 && canSendQty < effectiveNeedQty && mainAvailable > 0) {
+        // Allow sending up to all Main available stock (ignore safety) to cover sold orders
+        effectiveCanSend = mainAvailable;
+        safetyOverride = true;
+      }
+      
+      let allocatedQty = Math.min(effectiveNeedQty, effectiveCanSend);
       let conflictDetail = null;
       
       if (conflict?.hasConflict && conflict.branches[branchCode]) {
@@ -526,11 +545,12 @@
       
       // ── CARTONS ONLY MODE ──
       if (state.cartonMode) {
-        // Rules: send min 1 full carton, max 6 months AVG, keep Main safety stock
+        // Rules: send min 1 full carton, max 6 months AVG, keep Main safety stock (unless oversold)
+        const cartonCanSend = safetyOverride ? mainAvailable : canSendQty;
         if (ctnQty <= 0) {
           // No carton info → skip in carton mode
           sendNote = 'no_ctn';
-        } else if (canSendQty < ctnQty) {
+        } else if (cartonCanSend < ctnQty) {
           // Main can't spare even one carton after safety stock
           sendNote = 'no_main_stock';
         } else {
@@ -543,7 +563,7 @@
             sendNote = 'carton_over_6mth';
           } else {
             // How many cartons can we send?
-            const maxCartons = Math.floor(Math.min(canSendQty, roomInBranch) / ctnQty);
+            const maxCartons = Math.floor(Math.min(cartonCanSend, roomInBranch) / ctnQty);
             if (maxCartons >= 1) {
               sendQty = maxCartons * ctnQty;
               rounded = 'exact';
@@ -557,7 +577,7 @@
       // ── DEFAULT MODE ──
       else {
         if (allocatedQty > 0) {
-          const ctnResult = smartCartonRound(allocatedQty, ctnQty, canSendQty, targetQty);
+          const ctnResult = smartCartonRound(allocatedQty, ctnQty, effectiveCanSend, targetQty);
           sendQty = ctnResult.qty;
           rounded = ctnResult.rounded;
           
@@ -576,14 +596,20 @@
         }
       }
       
+      // If safety override is active, mark send_note
+      if (safetyOverride && sendQty > 0 && sendQty > canSendQty) {
+        sendNote = 'safety_override';
+      }
+      
       lines.push({
         product, dc_code: dcCode, product_name: productName, location,
         category,
-        cover_days: coverDays, branch_stock: branchAvailable, avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
+        cover_days: coverDays, branch_stock: branchAvailable, branch_on_hand: branchOnHand, branch_committed: branchCommitted, sold_deficit: soldDeficit,
+        avg_branch: avgMonthBranch, avg_branch_raw: avgMonthBranchRaw,
         main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
         can_send: canSendQty, main_safety: mainMinQty, need_qty: needQty,
         send_qty: sendQty, raw_qty: allocatedQty, blocked_qty: blockedQty,
-        ctn_qty: ctnQty || null, rounded,
+        ctn_qty: ctnQty || null, rounded, safety_override: safetyOverride && sendQty > canSendQty,
         cartons: (sendQty > 0 && ctnQty > 0) ? Math.ceil(sendQty / ctnQty) : 0,
         pending_qty: pendingQty, pending_transfers: pendingInfo?.transfers || [],
         has_conflict: conflict?.hasConflict || false, conflict_branches: conflictBranches,
@@ -614,9 +640,13 @@
   window.toggleCartonMode = function() {
     state.cartonMode = !state.cartonMode;
     const btn = document.getElementById('cartonModeBtn');
+    const rules = document.getElementById('cartonModeRules');
     if (btn) {
       btn.classList.toggle('active', state.cartonMode);
       btn.textContent = state.cartonMode ? '📦 Cartons Only ON' : '📦 Cartons Only';
+    }
+    if (rules) {
+      rules.style.display = state.cartonMode ? 'inline-block' : 'none';
     }
     calculatePlan();
     renderTable();
@@ -701,7 +731,9 @@
         let ctnBadge = '';
         if (line.rounded === 'up') ctnBadge = ' <span class="rnd-badge rnd-up" title="Rounded up from ' + line.raw_qty + '">▲</span>';
         else if (line.rounded === 'down') ctnBadge = ' <span class="rnd-badge rnd-down" title="Rounded down from ' + line.raw_qty + '">▼</span>';
-        sendDisplay = '<strong class="send-val">' + line.send_qty + '</strong>' + ctnBadge;
+        let safetyBadge = '';
+        if (line.safety_override) safetyBadge = ' <span class="rnd-badge" style="background:#fef2f2;color:#dc2626" title="Safety stock override — covering sold orders">⚡</span>';
+        sendDisplay = '<strong class="send-val">' + line.send_qty + '</strong>' + ctnBadge + safetyBadge;
       } else if (line.send_note === 'below_min') {
         sendDisplay = '<span class="send-blocked" title="Qty below min threshold">' + (line.blocked_qty || line.raw_qty) + ' ‹min</span>';
       } else if (line.send_note === 'no_main_stock') {
@@ -739,14 +771,42 @@
         : '';
       const metaParts = [dcLine ? dcLine.replace(' · ', '') : '', line.ctn_qty ? line.ctn_qty + '/ctn' : '', avgDisplay].filter(Boolean);
       
-      // Branch stock tooltip with AVG
-      const branchTipParts = line.avg_branch_raw > 0
-        ? ['Branch stock: ' + line.branch_stock,
-           'AVG sales: ' + formatAvg(line.avg_branch_raw) + '/mth (' + formatAvg(line.avg_branch_raw / WEEKS_IN_MONTH) + '/wk)',
-           'Target: ' + BRANCH_TARGET_WEEKS + ' weeks = ' + Math.ceil((line.avg_branch_raw / WEEKS_IN_MONTH) * BRANCH_TARGET_WEEKS) + ' units',
-           'Need: ' + line.need_qty]
-        : ['Branch stock: ' + line.branch_stock, 'No AVG data'];
+      // Branch stock tooltip with AVG + committed info
+      const branchTipParts = [];
+      if (line.branch_committed > 0) {
+        branchTipParts.push('On hand: ' + line.branch_on_hand);
+        branchTipParts.push('Committed (sold): ' + line.branch_committed);
+        branchTipParts.push('Available: ' + line.branch_stock);
+      } else {
+        branchTipParts.push('Branch stock: ' + line.branch_stock);
+      }
+      if (line.avg_branch_raw > 0) {
+        branchTipParts.push('───────────');
+        branchTipParts.push('AVG sales: ' + formatAvg(line.avg_branch_raw) + '/mth (' + formatAvg(line.avg_branch_raw / WEEKS_IN_MONTH) + '/wk)');
+        branchTipParts.push('Target: ' + BRANCH_TARGET_WEEKS + ' weeks = ' + Math.ceil((line.avg_branch_raw / WEEKS_IN_MONTH) * BRANCH_TARGET_WEEKS) + ' units');
+        branchTipParts.push('Need: ' + line.need_qty);
+      } else {
+        branchTipParts.push('No AVG data');
+      }
+      if (line.sold_deficit > 0) {
+        branchTipParts.push('───────────');
+        branchTipParts.push('⚠️ OVERSOLD: ' + line.sold_deficit + ' units sold without stock');
+        branchTipParts.push('Safety override active — Main will send to cover');
+      }
       const branchTip = branchTipParts.join('&#10;');
+      
+      // Branch stock display: highlight negative
+      let branchStockDisplay = '';
+      if (line.branch_stock < 0) {
+        branchStockDisplay = '<span class="sold-deficit-val">' + line.branch_stock + '</span>';
+        if (line.branch_committed > 0) {
+          branchStockDisplay += '<div class="sold-badge" title="' + line.branch_committed + ' units committed to orders">🔴 ' + line.branch_committed + ' sold</div>';
+        }
+      } else if (line.branch_committed > 0) {
+        branchStockDisplay = line.branch_stock + '<div class="committed-badge" title="On hand: ' + line.branch_on_hand + ' — Committed: ' + line.branch_committed + '">(' + line.branch_committed + ' sold)</div>';
+      } else {
+        branchStockDisplay = '' + line.branch_stock;
+      }
       // Main stock tooltip with AVG
       const mainTipParts = [
         'Main stock: ' + line.main_stock,
@@ -756,7 +816,7 @@
       ];
       const mainTip = mainTipParts.join('&#10;');
       
-      // In-Transit display
+      // In-Transit display — show products in tooltip
       let transitDisplay = '';
       if (line.pending_qty > 0) {
         const trTip = line.pending_transfers.join('&#10;');
@@ -774,7 +834,7 @@
         '<td class="product-cell"><div class="prod-code">' + escapeHtml(line.product) + conflictIcon + '</div>' + nameLine + '<div class="prod-meta">' + metaParts.join(' · ') + '</div></td>' +
         '<td class="loc-cell">' + escapeHtml(line.location || '—') + '</td>' +
         '<td class="cover-cell">' + coverBadge + '</td>' +
-        '<td class="num-cell tip-cell" title="' + branchTip + '">' + line.branch_stock + '</td>' +
+        '<td class="num-cell tip-cell' + (line.sold_deficit > 0 ? ' sold-deficit-cell' : '') + '" title="' + branchTip + '">' + branchStockDisplay + '</td>' +
         '<td class="num-cell transit-cell">' + transitDisplay + '</td>' +
         '<td class="num-cell main-cell tip-cell" title="' + mainTip + '">' + line.main_stock + '</td>' +
         '<td class="send-cell">' + sendDisplay + '</td>' +
@@ -806,6 +866,9 @@
         break;
       case 'conflicts':
         lines = lines.filter(l => l.has_conflict);
+        break;
+      case 'oversold':
+        lines = lines.filter(l => l.sold_deficit > 0);
         break;
       case 'all':
         // Show all with avg data (excluding sufficient + no_avg for cleaner view)
@@ -864,6 +927,8 @@
     const conflictCount = withAvg.filter(l => l.has_conflict).length;
     const pendingTRCount = state.pendingTRList.length;
     const pendingProductCount = Object.keys(state.pendingTRs).length;
+    const soldDeficitCount = withAvg.filter(l => l.sold_deficit > 0).length;
+    const safetyOverrideCount = withAvg.filter(l => l.safety_override).length;
     
     const bar = document.getElementById('summaryBar');
     if (bar) {
@@ -874,12 +939,14 @@
       if (criticalCount > 0) parts.push(`<span class="sum-item sum-crit">🔴 <strong>${criticalCount}</strong> critical</span>`);
       if (conflictCount > 0) parts.push(`<span class="sum-item sum-warn">⚠️ <strong>${conflictCount}</strong> conflicts</span>`);
       if (pendingTRCount > 0) parts.push(`<span class="sum-item sum-transit">🚚 <strong>${pendingTRCount}</strong> pending TR${pendingTRCount > 1 ? 's' : ''} (${pendingProductCount} products)</span>`);
+      if (soldDeficitCount > 0) parts.push(`<span class="sum-item sum-crit">🔴 <strong>${soldDeficitCount}</strong> oversold</span>`);
+      if (safetyOverrideCount > 0) parts.push(`<span class="sum-item" style="color:#dc2626">⚡ <strong>${safetyOverrideCount}</strong> safety override</span>`);
       if (state.cartonMode) parts.push(`<span class="sum-item" style="color:#7c3aed">📦 Cartons Only</span>`);
       bar.innerHTML = parts.join('<span class="sum-sep">·</span>');
       bar.style.display = 'flex';
     }
     
-    // Update Pending TRs panel
+    // Update Pending TRs panel — show product count + units, tooltip lists products
     const trPanel = document.getElementById('pendingTRPanel');
     if (trPanel) {
       if (pendingTRCount > 0) {
@@ -887,7 +954,13 @@
           const lineCount = tr.lines?.length || 0;
           const totalQty = (tr.lines || []).reduce((s, l) => s + l.qty, 0);
           const statusIcon = tr.status === 'IN TRANSIT' ? '🚚' : '📋';
-          return `<span class="tr-tag" title="${lineCount} products, ${totalQty} units">${statusIcon} ${escapeHtml(tr.number)} <small>(${totalQty}u)</small></span>`;
+          // Build product list tooltip
+          const productList = (tr.lines || []).map(l => {
+            const displayName = l.name ? l.name.substring(0, 40) : l.sku;
+            return `${l.sku}: ${l.qty} — ${displayName}`;
+          }).join('\n');
+          const tipText = `${tr.number} (${tr.status})\n${lineCount} products, ${totalQty} units\n─────────\n${productList}`;
+          return `<span class="tr-tag" title="${escapeHtml(tipText)}">${statusIcon} ${escapeHtml(tr.number)} <small>(${lineCount}P · ${totalQty}u)</small></span>`;
         }).join('');
         trPanel.innerHTML = `<strong>Pending Transfers:</strong> ${trLines}`;
         trPanel.style.display = 'flex';
@@ -902,6 +975,7 @@
       critical: criticalCount,
       needs: withAvg.filter(l => l.need_qty > 0).length,
       conflicts: conflictCount,
+      oversold: soldDeficitCount,
       all: withAvg.length
     };
     

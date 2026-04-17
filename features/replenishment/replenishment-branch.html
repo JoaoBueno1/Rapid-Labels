@@ -246,6 +246,23 @@
     .tr-tag small { font-weight: 400; color: #a16207; }
 
     .sum-transit { color: #b45309; }
+
+    /* ── Sold/Committed Stock ── */
+    .sold-deficit-cell { background: #fef2f2 !important; }
+    .sold-deficit-val { color: #dc2626; font-weight: 700; font-size: 13px; }
+    .sold-badge { font-size: 9px; color: #dc2626; font-weight: 600; margin-top: 1px; white-space: nowrap; }
+    .committed-badge { font-size: 9px; color: #d97706; margin-top: 1px; white-space: nowrap; }
+
+    /* ── Carton Rules ── */
+    .carton-rules {
+      font-size: 10px;
+      color: #7c3aed;
+      background: #f5f3ff;
+      border: 1px solid #ddd6fe;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -286,7 +303,8 @@
       <button id="printBtn" class="btn-action primary" onclick="printTransferSheet()">🖨️ Print Sheet</button>
       <button id="exportBtn" class="btn-action" onclick="exportPlan()">📥 Export CSV</button>
       <button class="btn-action" onclick="generatePlan()" title="Reload data from Cin7">↻ Refresh</button>
-      <button id="cartonModeBtn" class="btn-carton-mode" onclick="toggleCartonMode()">📦 Cartons Only</button>
+      <button id="cartonModeBtn" class="btn-carton-mode" onclick="toggleCartonMode()" title="Full cartons only — Min 1 ctn, max 6 months AVG, respects Main safety stock, skips products without CTN info">📦 Cartons Only</button>
+      <span id="cartonModeRules" class="carton-rules" style="display:none">Min 1 ctn · Max 6mth AVG · Main safety kept · No partial ctns</span>
       <span id="selectionBadge" class="selection-badge" style="display:none">0 selected</span>
     </div>
 
@@ -299,6 +317,7 @@
       <button class="filter-chip" data-filter="critical" onclick="setFilter('critical')">🔴 Critical</button>
       <button class="filter-chip" data-filter="needs" onclick="setFilter('needs')">📋 All Needs</button>
       <button class="filter-chip" data-filter="conflicts" onclick="setFilter('conflicts')">⚠️ Conflicts</button>
+      <button class="filter-chip" data-filter="oversold" onclick="setFilter('oversold')">🔴 Oversold</button>
       <button class="filter-chip" data-filter="all" onclick="setFilter('all')">All</button>
       <div style="border-left:1px solid #e2e8f0;height:18px;margin:0 2px"></div>
       <input type="text" id="searchInput" placeholder="Search product, name, location..."
