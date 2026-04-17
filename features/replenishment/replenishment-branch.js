@@ -43,7 +43,7 @@
   };
 
   const WEEKS_IN_MONTH = 4.345;
-  const BRANCH_TARGET_WEEKS = 5;
+  const BRANCH_TARGET_WEEKS = 6;
   const MAIN_MIN_WEEKS = 8;
 
   // ============================================
@@ -592,7 +592,13 @@
             }
           }
         } else {
-          sendNote = effectiveNeedQty <= 0 ? 'already_in_transit' : 'allocation_zero';
+          if (effectiveNeedQty <= 0) {
+            sendNote = 'already_in_transit';
+          } else if (soldDeficit > 0 && mainAvailable <= 0) {
+            sendNote = 'main_empty_sold';
+          } else {
+            sendNote = 'allocation_zero';
+          }
         }
       }
       
@@ -732,8 +738,26 @@
         if (line.rounded === 'up') ctnBadge = ' <span class="rnd-badge rnd-up" title="Rounded up from ' + line.raw_qty + '">▲</span>';
         else if (line.rounded === 'down') ctnBadge = ' <span class="rnd-badge rnd-down" title="Rounded down from ' + line.raw_qty + '">▼</span>';
         let safetyBadge = '';
-        if (line.safety_override) safetyBadge = ' <span class="rnd-badge" style="background:#fef2f2;color:#dc2626" title="Safety stock override — covering sold orders">⚡</span>';
-        sendDisplay = '<strong class="send-val">' + line.send_qty + '</strong>' + ctnBadge + safetyBadge;
+        let shortBadge = '';
+        if (line.safety_override) {
+          const shortfall = line.need_qty - line.send_qty;
+          const overrideTip = [
+            'SAFETY OVERRIDE — sold orders',
+            '───────────',
+            'Total need: ' + line.need_qty,
+            (line.sold_deficit > 0 ? '  Sold (committed): ' + line.sold_deficit : ''),
+            '  Target (' + BRANCH_TARGET_WEEKS + 'wk): ' + Math.ceil((line.avg_branch / WEEKS_IN_MONTH) * BRANCH_TARGET_WEEKS),
+            '───────────',
+            'Main stock: ' + line.main_stock + ' (all sent)',
+            'Main safety: OVERRIDDEN',
+            (shortfall > 0 ? '⚠ SHORT: ' + shortfall + ' units (Main needs restock)' : '')
+          ].filter(Boolean).join('\n');
+          safetyBadge = ' <span class="rnd-badge" style="background:#fef2f2;color:#dc2626" title="' + escapeHtml(overrideTip) + '">⚡</span>';
+          if (shortfall > 0) {
+            shortBadge = '<div class="short-badge" title="Need ' + line.need_qty + ' but Main only has ' + line.main_stock + '">SHORT ' + shortfall + '</div>';
+          }
+        }
+        sendDisplay = '<strong class="send-val">' + line.send_qty + '</strong>' + ctnBadge + safetyBadge + shortBadge;
       } else if (line.send_note === 'below_min') {
         sendDisplay = '<span class="send-blocked" title="Qty below min threshold">' + (line.blocked_qty || line.raw_qty) + ' ‹min</span>';
       } else if (line.send_note === 'no_main_stock') {
@@ -742,6 +766,8 @@
           : '<span class="send-dim" title="Main needs its safety stock">safety</span>';
       } else if (line.send_note === 'allocation_zero') {
         sendDisplay = '<span class="send-dim">0</span>';
+      } else if (line.send_note === 'main_empty_sold') {
+        sendDisplay = '<span class="send-blocked" title="Branch has ' + line.sold_deficit + ' units oversold but Main has 0 stock">🔴 Main empty</span>';
       } else if (line.send_note === 'already_in_transit') {
         sendDisplay = '<span class="send-dim" title="Need covered by pending TRs">in transit</span>';
       } else if (line.send_note === 'no_ctn') {
@@ -812,8 +838,13 @@
         'Main stock: ' + line.main_stock,
         'AVG sales: ' + formatAvg(line.avg_main_raw) + '/mth',
         'Safety (' + MAIN_MIN_WEEKS + 'wk): ' + (line.main_safety || 0),
-        'Can send: ' + (line.can_send || 0)
+        'Can send (normal): ' + (line.can_send || 0)
       ];
+      if (line.safety_override) {
+        mainTipParts.push('───────────');
+        mainTipParts.push('⚡ SAFETY OVERRIDDEN');
+        mainTipParts.push('Sending ALL ' + line.main_stock + ' to cover sold orders');
+      }
       const mainTip = mainTipParts.join('&#10;');
       
       // In-Transit display — show products in tooltip

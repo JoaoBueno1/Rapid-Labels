@@ -44,7 +44,7 @@
   };
 
   const WEEKS_IN_MONTH = 4.345;
-  const BRANCH_TARGET_WEEKS = 5;
+  const BRANCH_TARGET_WEEKS = 6;
   const MAIN_MIN_WEEKS = 8;
 
   // ============================================
