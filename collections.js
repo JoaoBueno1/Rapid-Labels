@@ -854,7 +854,7 @@ async function lookupCin7Order() {
       console.warn('[Collections] cin7SimpleCache not available - using legacy fallback');
       // Legacy fallback (if cin7SimpleCache not loaded)
       if (typeof cin7Service !== 'undefined' && cin7Service.isEnabled()) {
-        result = await cin7Service.getSalesOrder(reference);
+        result = await cin7Service.lookupOrder(reference);
         if (result && result.success) {
           source = '☁️ CIN7';
         }
