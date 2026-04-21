@@ -19,14 +19,57 @@ window.cin7SimpleCache = {
             console.log('[Cin7 Cache] ✅ CACHE HIT');
             return cacheResult;
         }
+
+        // STEP 2: Fallback to Rapid-Express-Web backend (direct API, skip cache)
+        const backendResult = await this.searchRapidExpressBackend(soNumber);
+        if (backendResult && backendResult.success) {
+            console.log('[Cin7 Cache] ✅ BACKEND API HIT');
+            return backendResult;
+        }
         
-        // STEP 2: Fallback to direct Cin7 API (if configured)
+        // STEP 3: Fallback to direct Cin7 API in browser (if configured)
         if (window.cin7Service && window.cin7Service.isEnabled && window.cin7Service.isEnabled()) {
             console.log('[Cin7 Cache] Cache miss, trying Cin7 API...');
             return await window.cin7Service.lookupOrder(reference);
         }
         
-        return { success: false, error: 'Order not found in cache' };
+        return { success: false, error: 'Order not found (cache miss and API fallback unavailable)' };
+    },
+
+    searchRapidExpressBackend: async function(soNumber) {
+        const baseCandidates = [
+            window.RAPID_EXPRESS_WEB_URL,
+            localStorage.getItem('rapidExpressWebBaseUrl'),
+            'http://127.0.0.1:5050',
+            'http://localhost:5050'
+        ].filter(Boolean);
+
+        for (const base of baseCandidates) {
+            try {
+                const url = base.replace(/\/$/, '')
+                    + '/api/integrations/cin7/lookup?type=sale&reference='
+                    + encodeURIComponent(soNumber)
+                    + '&skip_cache=true';
+
+                const resp = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (!resp.ok) {
+                    continue;
+                }
+
+                const data = await resp.json();
+                if (data && data.success) {
+                    return this._mapBackendResult(data);
+                }
+            } catch (err) {
+                console.warn('[Cin7 Cache] Backend lookup failed on', base, '-', err.message);
+            }
+        }
+
+        return null;
     },
     
     searchCache: async function(soNumber) {
@@ -76,6 +119,27 @@ window.cin7SimpleCache = {
             postcode: r.delivery_postcode || '',
             country: r.delivery_country || 'Australia',
             notes: r.notes || '',
+            sales_rep: r.sales_rep || ''
+        };
+    },
+
+    _mapBackendResult: function(r) {
+        const addr = (r && typeof r.address === 'object' && r.address) ? r.address : {};
+        return {
+            success: true,
+            source: 'api',
+            customer_name: r.customer_name || r.customer || '',
+            contact_name: r.contact_name || '',
+            email: r.email || '',
+            phone: r.phone || '',
+            address: addr.line1 || r.address_line1 || r.address || '',
+            address2: addr.line2 || r.address_line2 || '',
+            suburb: addr.suburb || r.suburb || r.city || '',
+            city: addr.city || r.city || '',
+            state: addr.state || r.state || '',
+            postcode: addr.postcode || r.postcode || '',
+            country: addr.country || r.country || 'Australia',
+            notes: r.notes || r.special_instructions || '',
             sales_rep: r.sales_rep || ''
         };
     }
