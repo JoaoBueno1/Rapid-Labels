@@ -63,6 +63,12 @@
       border: 1px solid #93c5fd;
       color: #1e40af;
     }
+    .alert.critical {
+      background: #fee2e2;
+      border: 1px solid #fca5a5;
+      color: #991b1b;
+      font-weight: 500;
+    }
     
     /* KPI Summary Bar */
     .kpi-bar {
@@ -301,6 +307,9 @@
       </div>
     </div>
 
+    <!-- Data-freshness / partial-sync alert (populated by JS) -->
+    <div id="dataAlertContainer"></div>
+
     <!-- Sync Status Card (auto-loaded from cin7_mirror) -->
     <div id="syncStatusCard" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:10px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
       <div style="display:flex;align-items:center;gap:6px">
@@ -352,56 +361,8 @@
         <span class="rules-chevron">▸</span>
       </summary>
       <div class="rules-content">
-        <div class="rules-grid">
-          <div class="rule-item">
-            <span class="rule-icon">🎯</span>
-            <div>
-              <strong>Branch Target</strong>
-              <span>6 weeks coverage based on avg monthly sales</span>
-            </div>
-          </div>
-          <div class="rule-item">
-            <span class="rule-icon">🛡️</span>
-            <div>
-              <strong>Main Safety Stock</strong>
-              <span>Keep at least 8 weeks before sending</span>
-            </div>
-          </div>
-          <div class="rule-item">
-            <span class="rule-icon">🚫</span>
-            <div>
-              <strong>Zero Sales Skip</strong>
-              <span>Products with 0 avg sales are excluded</span>
-            </div>
-          </div>
-          <div class="rule-item">
-            <span class="rule-icon">📐</span>
-            <div>
-              <strong>Formula</strong>
-              <span>Send = min(Need, Main Can Send)</span>
-            </div>
-          </div>
-          <div class="rule-item">
-            <span class="rule-icon">📦</span>
-            <div>
-              <strong>Smart Carton Rounding</strong>
-              <span>Rounds to full cartons when Main can afford it. Falls back to rounding down.</span>
-            </div>
-          </div>
-          <div class="rule-item">
-            <span class="rule-icon">🔻</span>
-            <div>
-              <strong>Minimum Send Threshold</strong>
-              <span>Skip if qty &lt; ½ carton (or &lt; 3 units when no CTN data)</span>
-            </div>
-          </div>
-          <div class="rule-item">
-            <span class="rule-icon">⚖️</span>
-            <div>
-              <strong>Proportional Allocation</strong>
-              <span>When branches compete for limited Main stock, allocate proportionally by need</span>
-            </div>
-          </div>
+        <div class="rules-grid" id="rulesGrid">
+          <!-- Populated from replenishment-config.js -->
         </div>
       </div>
     </details>
@@ -485,6 +446,7 @@
   </div>
 
   <script src="../../supabase-config.js"></script>
-  <script src="replenishment.js?v=20260326"></script>
+  <script src="replenishment-config.js?v=20260421"></script>
+  <script src="replenishment.js?v=20260421"></script>
 </body>
 </html>

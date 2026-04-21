@@ -3,40 +3,21 @@
  * Distributes Main/Gateway stock across ALL branches simultaneously.
  * Proportional conflict resolution when branches compete for the same SKU.
  * Export as Excel with 1 sheet per branch (SKU, Product, Qty to Send).
+ *
+ * All thresholds live in replenishment-config.js.
  */
 
 (function() {
   'use strict';
 
-  // ============================================
-  // CONSTANTS
-  // ============================================
+  const CFG = window.ReplenishmentConfig;
+  if (!CFG) {
+    console.error('ReplenishmentConfig not loaded — include replenishment-config.js before replenishment-all.js');
+    return;
+  }
 
-  const BRANCHES = [
-    { code: 'SYD', name: 'Sydney', avgField: 'avg_mth_sydney' },
-    { code: 'MEL', name: 'Melbourne', avgField: 'avg_mth_melbourne' },
-    { code: 'BNE', name: 'Brisbane', avgField: 'avg_mth_brisbane' },
-    { code: 'CNS', name: 'Cairns', avgField: 'avg_mth_cairns' },
-    { code: 'CFS', name: 'Coffs Harbour', avgField: 'avg_mth_coffs_harbour' },
-    { code: 'HBA', name: 'Hobart', avgField: 'avg_mth_hobart' },
-    { code: 'SCS', name: 'Sunshine Coast', avgField: 'avg_mth_sunshine_coast' }
-  ];
-
-  const CIN7_LOCATION_MAP = {
-    'main warehouse': 'MAIN', 'main': 'MAIN',
-    'gateway': 'MAIN', 'gateway warehouse': 'MAIN',
-    'sydney': 'SYD', 'sydney warehouse': 'SYD',
-    'melbourne': 'MEL', 'melbourne warehouse': 'MEL',
-    'brisbane': 'BNE', 'brisbane warehouse': 'BNE',
-    'cairns': 'CNS', 'cairns warehouse': 'CNS',
-    'coffs harbour': 'CFS', 'coffs harbour warehouse': 'CFS',
-    'hobart': 'HBA', 'hobart warehouse': 'HBA',
-    'sunshine coast warehouse': 'SCS', 'sunshine coast': 'SCS'
-  };
-
-  const WEEKS_IN_MONTH = 4.345;
-  const BRANCH_TARGET_WEEKS = 6;
-  const MAIN_MIN_WEEKS = 8;
+  const BRANCHES = CFG.BRANCHES;
+  const CIN7_LOCATION_MAP = CFG.CIN7_LOCATION_MAP;
 
   // ============================================
   // STATE
@@ -44,18 +25,20 @@
 
   let state = {
     syncStatus: null,
-    avgData: {},           // product → avg row
-    stockData: {},         // "product:WAREHOUSE" → { qty_available, qty_on_hand }
-    productNames: {},      // product → display name
-    ctnMap: {},            // product → qty_per_ctn
-    dcMap: {},             // product → dc code
-    locationMap: {},       // product → pickface
-    pendingTRs: {},        // branchCode → { product → { pending_qty } }
+    syncAge: null,
+    syncRunClass: null,
+    avgData: {},
+    stockData: {},
+    productNames: {},
+    ctnMap: {},
+    dcMap: {},
+    locationMap: {},
+    pendingTRs: {},
 
     // computed
-    allocations: {},       // product → { branches: { CODE: qty }, mainStock, mainSafety, canSend, conflict }
-    branchSendLists: {},   // CODE → [{ product, product_name, send_qty, ... }]
-    activeTab: 'ALL'       // 'ALL' or branch code
+    allocations: {},
+    branchSendLists: {},
+    activeTab: 'ALL'
   };
 
   // ============================================
@@ -69,11 +52,10 @@
     try {
       await window.supabaseReady;
 
-      // Load sync status
       const { data: syncRuns } = await window.supabase
         .schema('cin7_mirror')
         .from('sync_runs')
-        .select('run_id, started_at, ended_at, status')
+        .select('run_id, started_at, ended_at, status, products_synced, stock_rows_synced')
         .order('ended_at', { ascending: false })
         .limit(1);
 
@@ -85,11 +67,25 @@
       }
 
       state.syncStatus = syncRuns[0];
+      state.syncAge = CFG.classifySyncAge(state.syncStatus.ended_at);
+      state.syncRunClass = CFG.classifySyncRun(state.syncStatus);
+
       const d = new Date(state.syncStatus.ended_at || state.syncStatus.started_at);
       document.getElementById('snapshotDate').textContent =
         d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
 
-      // Load all data in parallel
+      renderDataAlerts();
+
+      if (state.syncAge.level === 'block') {
+        document.getElementById('alertContainer').innerHTML +=
+          `<div class="alert critical" style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:10px">
+            <strong>Recommendations hidden.</strong> Cin7 sync has not succeeded in over
+            ${CFG.SYNC_BLOCK_MINUTES} minutes — refusing to render potentially stale allocations.
+           </div>`;
+        showLoading(false);
+        return;
+      }
+
       await Promise.all([
         loadAvgData(),
         loadStockData(),
@@ -99,13 +95,8 @@
 
       console.log(`📊 AVG: ${Object.keys(state.avgData).length} | Stock: ${Object.keys(state.stockData).length} | CTN: ${Object.keys(state.ctnMap).length}`);
 
-      // Run the global allocation algorithm
       calculateGlobalAllocation();
-
-      // Build branch tabs
       renderBranchTabs();
-
-      // Render table (default: ALL view)
       renderTable();
       updateSummary();
 
@@ -117,6 +108,22 @@
       showLoading(false);
     }
   });
+
+  // ============================================
+  // DATA-FRESHNESS ALERTS
+  // ============================================
+  function renderDataAlerts() {
+    const c = document.getElementById('alertContainer');
+    if (!c) return;
+    const parts = [];
+    if (state.syncAge && state.syncAge.level === 'warn') {
+      parts.push(`<div class="alert warning">⚠️ ${esc(state.syncAge.message)}</div>`);
+    }
+    if (state.syncRunClass && state.syncRunClass.warn && state.syncRunClass.message) {
+      parts.push(`<div class="alert warning">⚠️ ${esc(state.syncRunClass.message)}</div>`);
+    }
+    c.innerHTML = parts.join('');
+  }
 
   // ============================================
   // DATA LOADING
@@ -200,49 +207,35 @@
 
   async function loadAllPendingTRs() {
     state.pendingTRs = {};
-    try {
-      for (const b of BRANCHES) {
+    let anyFailed = false;
+    for (const b of BRANCHES) {
+      try {
         const resp = await fetch(`/api/replenishment/pending-transfers/${b.code}`);
         if (resp.ok) {
           const data = await resp.json();
           state.pendingTRs[b.code] = data.products || {};
+        } else {
+          anyFailed = true;
         }
+      } catch (e) {
+        anyFailed = true;
       }
-    } catch (e) { console.warn('Pending TRs load failed:', e); }
-  }
-
-  // ============================================
-  // SMART CARTON ROUNDING
-  // ============================================
-
-  function smartCartonRound(suggestedQty, ctnQty, canSendQty, targetQty) {
-    if (!ctnQty || ctnQty <= 0) return { qty: suggestedQty, rounded: 'none' };
-    const roundedUp = Math.ceil(suggestedQty / ctnQty) * ctnQty;
-    const roundedDown = Math.floor(suggestedQty / ctnQty) * ctnQty;
-    if (suggestedQty === roundedUp) return { qty: suggestedQty, rounded: 'exact' };
-    const maxAcceptable = targetQty ? targetQty * 3 : Infinity;
-    if (roundedUp <= canSendQty && roundedUp <= maxAcceptable) return { qty: roundedUp, rounded: 'up' };
-    if (roundedDown > 0) return { qty: roundedDown, rounded: 'down' };
-    return { qty: suggestedQty, rounded: 'partial' };
+    }
+    if (anyFailed) {
+      // Non-fatal, but warn so operator knows pending-qty may be undercounted.
+      const c = document.getElementById('alertContainer');
+      if (c) {
+        c.innerHTML += `<div class="alert warning">⚠️ Pending transfer data could not be loaded for one or more branches — In-transit quantities may be missing. Recommendations may double-send.</div>`;
+      }
+    }
   }
 
   // ============================================
   // GLOBAL ALLOCATION ALGORITHM
   // ============================================
-  //
-  // Single pass across ALL branches simultaneously.
-  // 1. For every product, compute each branch's need.
-  // 2. Sum total need vs Main available (after safety).
-  // 3. If enough Main → give each branch what it needs.
-  //    If not enough → distribute proportionally.
-  // 4. Safety override: if any branch has sold deficit (available < 0),
-  //    use Main safety stock to cover.
-  // 5. Apply carton rounding on final quantities.
-  // 6. Apply minimum threshold (skip tiny sends).
 
   function calculateGlobalAllocation() {
     const allProducts = new Set(Object.keys(state.avgData));
-    // Also include products with stock in Main
     for (const key of Object.keys(state.stockData)) {
       const [sku, wh] = key.split(':');
       if (wh === 'MAIN') allProducts.add(sku);
@@ -253,7 +246,7 @@
     for (const b of BRANCHES) state.branchSendLists[b.code] = [];
 
     for (const product of allProducts) {
-      if (product.toLowerCase().includes('carton')) continue;
+      if (CFG.isExcludedProduct(product)) continue;
 
       const avgRow = state.avgData[product];
       if (!avgRow) continue;
@@ -261,14 +254,13 @@
       const mainStock = state.stockData[`${product}:MAIN`];
       const mainAvailable = mainStock?.qty_available || 0;
       const avgMonthMain = Math.round(avgRow.avg_mth_main || 0);
-      const avgWeekMain = avgMonthMain / WEEKS_IN_MONTH;
-      const mainSafety = Math.ceil(avgWeekMain * MAIN_MIN_WEEKS);
+      const mainSafety = CFG.computeMainSafety(avgMonthMain);
       const canSendBase = Math.max(0, mainAvailable - mainSafety);
       const ctnQty = state.ctnMap[product] || 0;
       const productName = state.productNames[product] || '';
 
       // ── Step 1: compute each branch's raw need ──
-      const branchNeeds = []; // { code, need, soldDeficit, branchAvailable, target, avgMonth }
+      const branchNeeds = [];
       let totalNeed = 0;
       let anySoldDeficit = false;
 
@@ -278,14 +270,11 @@
 
         const bStock = state.stockData[`${product}:${b.code}`];
         const branchAvailable = bStock?.qty_available || 0;
-        const branchOnHand = bStock?.qty_on_hand || 0;
         const soldDeficit = branchAvailable < 0 ? Math.abs(branchAvailable) : 0;
 
-        const avgWeek = avgMonth / WEEKS_IN_MONTH;
-        const target = Math.ceil(avgWeek * BRANCH_TARGET_WEEKS);
+        const target = CFG.computeBranchTarget(avgMonth);
         const rawNeed = Math.max(0, target - branchAvailable);
 
-        // Subtract pending TRs
         const pendingQty = state.pendingTRs[b.code]?.[product]?.pending_qty || 0;
         const effectiveNeed = Math.max(0, rawNeed - pendingQty);
 
@@ -302,7 +291,7 @@
       if (branchNeeds.length === 0) continue;
 
       // ── Step 2: determine available pool ──
-      // Safety override: if any branch has sold deficit and canSendBase is not enough → use full Main
+      // Safety override: only for branches with sold deficit.
       let pool = canSendBase;
       let safetyOverride = false;
       if (anySoldDeficit && canSendBase < totalNeed && mainAvailable > 0) {
@@ -310,53 +299,45 @@
         safetyOverride = true;
       }
 
-      if (pool <= 0) continue; // nothing to send
+      if (pool <= 0) continue;
 
-      // ── Step 3: distribute pool across branches ──
+      // ── Step 3: distribute pool ──
+      // When conflict + safety override active, give oversold branches priority:
+      // they are paid in full first (bounded by availability), the remainder is
+      // split proportionally across the others. This prevents the case where an
+      // oversold branch gets only its proportional share while stock is drained.
       const hasConflict = totalNeed > pool;
       const branchAllocs = {};
 
-      for (const bn of branchNeeds) {
+      let remainingPool = pool;
+      const assigned = new Set();
+
+      if (hasConflict && safetyOverride) {
+        // Pay oversold branches first, up to their full need.
+        for (const bn of branchNeeds) {
+          if (bn.soldDeficit <= 0) continue;
+          const give = Math.min(bn.need, remainingPool);
+          if (give > 0) {
+            applyAllocation(product, bn, give, remainingPool, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict);
+            remainingPool -= branchAllocs[bn.code] || 0;
+            assigned.add(bn.code);
+          }
+        }
+      }
+
+      // Distribute remainder.
+      const leftover = branchNeeds.filter(bn => !assigned.has(bn.code));
+      const leftoverTotalNeed = leftover.reduce((s, bn) => s + bn.need, 0);
+      for (const bn of leftover) {
         let allocated;
-        if (hasConflict) {
-          // Proportional distribution
-          allocated = Math.floor((bn.need / totalNeed) * pool);
+        if (leftoverTotalNeed > remainingPool) {
+          allocated = leftoverTotalNeed > 0 ? Math.floor((bn.need / leftoverTotalNeed) * remainingPool) : 0;
         } else {
           allocated = bn.need;
         }
-
-        // Apply carton rounding
-        const availableForRounding = hasConflict ? allocated : Math.min(allocated, pool);
-        const ctnResult = smartCartonRound(allocated, ctnQty, availableForRounding, bn.target);
-        let sendQty = ctnResult.qty;
-
-        // Minimum threshold: skip tiny sends (unless branch has sold deficit)
-        if (sendQty > 0 && bn.branchAvailable > 0 && bn.soldDeficit <= 0) {
-          const weeklyDemand = bn.avgMonth / WEEKS_IN_MONTH;
-          const minThreshold = Math.max(Math.ceil(weeklyDemand), 2);
-          if (sendQty < minThreshold) sendQty = 0;
-        }
-
-        // Don't exceed remaining pool
-        sendQty = Math.min(sendQty, pool);
-
-        if (sendQty > 0) {
-          branchAllocs[bn.code] = sendQty;
-          pool -= sendQty; // deduct from remaining pool
-
-          state.branchSendLists[bn.code].push({
-            product,
-            product_name: productName,
-            send_qty: sendQty,
-            ctn_qty: ctnQty,
-            cartons: ctnQty > 0 ? Math.ceil(sendQty / ctnQty) : 0,
-            branch_stock: bn.branchAvailable,
-            need: bn.need,
-            sold_deficit: bn.soldDeficit,
-            has_conflict: hasConflict,
-            safety_override: safetyOverride && sendQty > canSendBase
-          });
-        }
+        if (allocated <= 0) continue;
+        applyAllocation(product, bn, allocated, remainingPool, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict);
+        remainingPool -= branchAllocs[bn.code] || 0;
       }
 
       state.allocations[product] = {
@@ -371,12 +352,10 @@
       };
     }
 
-    // Sort each branch list by product code
     for (const code of Object.keys(state.branchSendLists)) {
       state.branchSendLists[code].sort((a, b) => a.product.localeCompare(b.product));
     }
 
-    // Stats
     let totalSKUs = 0, totalUnits = 0;
     for (const code of Object.keys(state.branchSendLists)) {
       const list = state.branchSendLists[code];
@@ -384,6 +363,36 @@
       totalUnits += list.reduce((s, l) => s + l.send_qty, 0);
     }
     console.log(`✅ Global allocation: ${totalSKUs} product-branch sends, ${totalUnits} total units`);
+  }
+
+  // Pull-out of the per-branch allocation writeback (carton round + min threshold).
+  function applyAllocation(product, bn, allocated, poolRemaining, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict) {
+    const available = Math.min(allocated, poolRemaining);
+    const ctnResult = CFG.smartCartonRound(available, ctnQty, available, bn.target);
+    let sendQty = ctnResult.qty;
+
+    // Min threshold — but oversold branches always ship.
+    if (sendQty > 0 && bn.branchAvailable > 0 && bn.soldDeficit <= 0) {
+      const minThreshold = CFG.computeMinSend(ctnQty, bn.avgMonth);
+      if (sendQty < minThreshold) sendQty = 0;
+    }
+
+    sendQty = Math.min(sendQty, poolRemaining);
+    if (sendQty <= 0) return;
+
+    branchAllocs[bn.code] = sendQty;
+    state.branchSendLists[bn.code].push({
+      product,
+      product_name: productName,
+      send_qty: sendQty,
+      ctn_qty: ctnQty,
+      cartons: ctnQty > 0 ? Math.ceil(sendQty / ctnQty) : 0,
+      branch_stock: bn.branchAvailable,
+      need: bn.need,
+      sold_deficit: bn.soldDeficit,
+      has_conflict: hasConflict,
+      safety_override: safetyOverride && sendQty > canSendBase
+    });
   }
 
   // ============================================
@@ -394,22 +403,23 @@
     const bar = document.getElementById('branchTabs');
     if (!bar) return;
 
-    let html = `<button class="branch-tab active" onclick="switchTab('ALL')">All <span class="tab-count">${Object.keys(state.allocations).length}</span></button>`;
+    let html = `<button class="branch-tab active" onclick="switchTab('ALL', event)">All <span class="tab-count">${Object.keys(state.allocations).length}</span></button>`;
 
     for (const b of BRANCHES) {
       const list = state.branchSendLists[b.code];
       const count = list.length;
       const units = list.reduce((s, l) => s + l.send_qty, 0);
-      html += `<button class="branch-tab" onclick="switchTab('${b.code}')">${b.name} <span class="tab-count">${count}P · ${units}u</span></button>`;
+      html += `<button class="branch-tab" onclick="switchTab('${b.code}', event)">${b.name} <span class="tab-count">${count}P · ${units}u</span></button>`;
     }
 
     bar.innerHTML = html;
   }
 
-  window.switchTab = function(tab) {
+  window.switchTab = function(tab, evt) {
     state.activeTab = tab;
     document.querySelectorAll('.branch-tab').forEach(el => el.classList.remove('active'));
-    event.target.closest('.branch-tab').classList.add('active');
+    const trigger = (evt && evt.target) ? evt.target.closest('.branch-tab') : null;
+    if (trigger) trigger.classList.add('active');
     renderTable();
   };
 
@@ -429,14 +439,12 @@
   }
 
   function renderAllView(thead, tbody) {
-    // Build branch columns dynamically
     let thHtml = '<th style="text-align:left">Product</th><th>Main Stock</th><th>Main Safety</th><th>Can Send</th>';
     for (const b of BRANCHES) {
       thHtml += `<th><span class="branch-label">${b.code}</span></th>`;
     }
     thead.innerHTML = thHtml;
 
-    // Collect products that have at least one send
     const products = Object.keys(state.allocations).filter(p => {
       const a = state.allocations[p];
       return Object.values(a.branches).some(q => q > 0);
@@ -447,7 +455,6 @@
       return;
     }
 
-    // Sort by product
     products.sort();
 
     let html = '';
@@ -455,7 +462,9 @@
       const a = state.allocations[product];
       const name = a.productName || '';
       const conflictDot = a.hasConflict ? ' <span class="conflict-dot" title="Branches competing for limited stock">⚡</span>' : '';
-      const safetyDot = a.safetyOverride ? ' <span class="safety-badge" title="Safety stock overridden for sold deficit">⛑️</span>' : '';
+      const safetyDot = a.safetyOverride
+        ? ' <span class="safety-badge" title="SAFETY OVERRIDE — Main drained past its 8-week buffer to cover oversold branch(es). Check Main needs a PO.">⛑️</span>'
+        : '';
 
       html += '<tr>';
       html += `<td class="product-cell"><div class="prod-code">${esc(product)}${conflictDot}${safetyDot}</div><div class="prod-name" title="${esc(name)}">${esc(name)}</div></td>`;
@@ -544,7 +553,7 @@
     }
     if (safetyOverrides > 0) {
       html += `<span class="sum-sep">•</span>`;
-      html += `<span class="sum-item sum-crit">⛑️ <strong>${safetyOverrides}</strong> safety overrides</span>`;
+      html += `<span class="sum-item sum-crit" title="Main drained past 8-wk buffer for oversold branches. Main needs a PO.">⛑️ <strong>${safetyOverrides}</strong> safety overrides</span>`;
     }
 
     bar.innerHTML = html;
@@ -552,7 +561,7 @@
   }
 
   // ============================================
-  // EXCEL EXPORT — 1 sheet per branch
+  // EXCEL EXPORT
   // ============================================
 
   window.exportExcel = function() {
@@ -575,14 +584,7 @@
       }));
 
       const ws = XLSX.utils.json_to_sheet(rows);
-
-      // Column widths
-      ws['!cols'] = [
-        { wch: 20 },  // SKU
-        { wch: 45 },  // Product Name
-        { wch: 12 }   // Qty
-      ];
-
+      ws['!cols'] = [{ wch: 20 }, { wch: 45 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, ws, b.name);
       sheetCount++;
     }
@@ -602,8 +604,8 @@
   // ============================================
 
   function esc(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function showLoading(show) {

@@ -8,43 +8,22 @@
   'use strict';
 
   // ============================================
-  // CONSTANTS
+  // CONFIG (shared across replenishment pages)
   // ============================================
-  
-  const BRANCHES = {
-    SYD: { name: 'Sydney', avgField: 'avg_mth_sydney' },
-    MEL: { name: 'Melbourne', avgField: 'avg_mth_melbourne' },
-    BNE: { name: 'Brisbane', avgField: 'avg_mth_brisbane' },
-    CNS: { name: 'Cairns', avgField: 'avg_mth_cairns' },
-    CFS: { name: 'Coffs Harbour', avgField: 'avg_mth_coffs_harbour' },
-    HBA: { name: 'Hobart', avgField: 'avg_mth_hobart' },
-    SCS: { name: 'Sunshine Coast', avgField: 'avg_mth_sunshine_coast' }
-  };
+  const CFG = window.ReplenishmentConfig;
+  if (!CFG) {
+    console.error('ReplenishmentConfig not loaded — include replenishment-config.js before replenishment-branch.js');
+    return;
+  }
 
-  const CIN7_LOCATION_MAP = {
-    'main warehouse': 'MAIN',
-    'main': 'MAIN',
-    'gateway': 'MAIN',
-    'gateway warehouse': 'MAIN',
-    'sydney': 'SYD',
-    'sydney warehouse': 'SYD',
-    'melbourne': 'MEL',
-    'melbourne warehouse': 'MEL',
-    'brisbane': 'BNE',
-    'brisbane warehouse': 'BNE',
-    'cairns': 'CNS',
-    'cairns warehouse': 'CNS',
-    'coffs harbour': 'CFS',
-    'coffs harbour warehouse': 'CFS',
-    'hobart': 'HBA',
-    'hobart warehouse': 'HBA',
-    'sunshine coast warehouse': 'SCS',
-    'sunshine coast': 'SCS'
-  };
+  // Branch metadata as object keyed by code (matches legacy shape).
+  const BRANCHES = {};
+  for (const b of CFG.BRANCHES) BRANCHES[b.code] = { name: b.name, avgField: b.avgField };
 
-  const WEEKS_IN_MONTH = 4.345;
-  const BRANCH_TARGET_WEEKS = 6;
-  const MAIN_MIN_WEEKS = 8;
+  const CIN7_LOCATION_MAP = CFG.CIN7_LOCATION_MAP;
+  const WEEKS_IN_MONTH = CFG.WEEKS_IN_MONTH;
+  const BRANCH_TARGET_WEEKS = CFG.BRANCH_TARGET_WEEKS;
+  const MAIN_MIN_WEEKS = CFG.MAIN_MIN_WEEKS;
 
   // ============================================
   // STATE
@@ -54,6 +33,8 @@
     branchCode: null,
     branchInfo: null,
     syncStatus: null,
+    syncAge: null,
+    syncRunClass: null,
     plan: null,
     planLines: [],
     avgData: {},
@@ -127,10 +108,26 @@
         showNoSnapshot();
         return;
       }
-      
+
       state.syncStatus = syncRuns[0];
+      state.syncAge = CFG.classifySyncAge(state.syncStatus.ended_at);
+      state.syncRunClass = CFG.classifySyncRun(state.syncStatus);
       updateSnapshotInfo();
-      
+      renderDataAlerts();
+
+      if (state.syncAge.level === 'block') {
+        // Hard block — don't render recommendations from stale data.
+        const el = document.getElementById('alertContainer');
+        if (el) {
+          el.innerHTML += `<div class="alert" style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:10px;font-weight:500">
+            <strong>⛔ Recommendations hidden.</strong> Cin7 stock sync is more than ${CFG.SYNC_BLOCK_MINUTES} minutes old — data is likely wrong. Wait for the next successful sync before acting.
+          </div>`;
+        }
+        const tbody = document.getElementById('planTableBody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#64748b">Stock data is stale — refresh once sync recovers.</td></tr>';
+        return;
+      }
+
       console.log('Loading data...');
       await Promise.all([
         loadAvgData(),
@@ -160,6 +157,19 @@
     if (el) {
       el.innerHTML = '<div class="alert warning"><strong>No stock data available.</strong> Cin7 mirror sync has not run yet.</div>';
     }
+  }
+
+  function renderDataAlerts() {
+    const el = document.getElementById('alertContainer');
+    if (!el) return;
+    const parts = [];
+    if (state.syncAge && state.syncAge.level === 'warn') {
+      parts.push(`<div class="alert warning">⚠️ ${escapeHtml(state.syncAge.message)}</div>`);
+    }
+    if (state.syncRunClass && state.syncRunClass.warn && state.syncRunClass.message) {
+      parts.push(`<div class="alert warning">⚠️ ${escapeHtml(state.syncRunClass.message)}</div>`);
+    }
+    el.innerHTML = parts.join('');
   }
 
   function updateSnapshotInfo() {
@@ -280,28 +290,8 @@
     }
   }
 
-  /**
-   * Smart carton rounding — avoids over-sending for slow movers.
-   * If rounding up to a full carton would exceed 3× the target need,
-   * send the raw qty instead (partial carton is better than 12 months of stock).
-   */
-  function smartCartonRound(suggestedQty, ctnQty, canSendQty, targetQty) {
-    if (!ctnQty || ctnQty <= 0) return { qty: suggestedQty, rounded: 'none' };
-    
-    const roundedUp = Math.ceil(suggestedQty / ctnQty) * ctnQty;
-    const roundedDown = Math.floor(suggestedQty / ctnQty) * ctnQty;
-    
-    if (suggestedQty === roundedUp) return { qty: suggestedQty, rounded: 'exact' };
-    
-    // Guard: don't round up if it would create excessive coverage (>3× target)
-    const maxAcceptable = targetQty ? targetQty * 3 : Infinity;
-    
-    if (roundedUp <= canSendQty && roundedUp <= maxAcceptable) {
-      return { qty: roundedUp, rounded: 'up' };
-    }
-    if (roundedDown > 0) return { qty: roundedDown, rounded: 'down' };
-    return { qty: suggestedQty, rounded: 'partial' };
-  }
+  // Delegate to the shared rounder so rules stay consistent across pages.
+  const smartCartonRound = CFG.smartCartonRound;
 
   async function loadExistingPlan() {
     const { data: plans, error } = await window.supabase
@@ -374,24 +364,22 @@
       const mainStock = state.stockData[`${product}:MAIN`];
       const mainAvailable = mainStock?.qty_available || 0;
       const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);
-      const avgWeekMain = avgMonthMain / WEEKS_IN_MONTH;
-      const mainMinQty = Math.ceil(avgWeekMain * MAIN_MIN_WEEKS);
+      const mainMinQty = CFG.computeMainSafety(avgMonthMain);
       const canSendTotal = Math.max(0, mainAvailable - mainMinQty);
-      
+
       let totalNeed = 0;
       const branchNeeds = {};
-      
+
       for (const [code, info] of Object.entries(BRANCHES)) {
         const branchAvgField = info.avgField;
         const avgMonth = Math.round(avgRow?.[branchAvgField] || 0);
         if (avgMonth <= 0) continue;
-        
+
         const branchStk = state.stockData[`${product}:${code}`];
         const branchAvailable = branchStk?.qty_available || 0;
-        const avgWeekBranch = avgMonth / WEEKS_IN_MONTH;
-        const target = Math.ceil(avgWeekBranch * BRANCH_TARGET_WEEKS);
+        const target = CFG.computeBranchTarget(avgMonth);
         const need = Math.max(0, target - branchAvailable);
-        
+
         if (need > 0) {
           branchNeeds[code] = { need };
           totalNeed += need;
@@ -431,37 +419,40 @@
       const soldDeficit = branchAvailable < 0 ? Math.abs(branchAvailable) : 0;
       
       // ── NO AVG for this branch ──
+      // Rule: align with overview/all-branches pages — skip entirely unless
+      //   the branch is OVERSOLD (negative stock) for this SKU. Oversold
+      //   must surface even without AVG history because the customer already
+      //   sold it and we have to chase the stock.
       if (avgMonthBranch <= 0) {
-        if (branchAvailable > 0 || branchAvailable < 0 || mainAvailable > 0) {
+        if (soldDeficit > 0) {
           lines.push({
             product, dc_code: dcCode, product_name: productName, location,
             category: 'no_avg',
-            cover_days: 999, branch_stock: branchAvailable, branch_on_hand: branchOnHand, branch_committed: branchCommitted, sold_deficit: soldDeficit,
+            cover_days: 0, branch_stock: branchAvailable, branch_on_hand: branchOnHand, branch_committed: branchCommitted, sold_deficit: soldDeficit,
             avg_branch: 0, avg_branch_raw: 0,
             main_stock: mainAvailable, avg_main: avgMonthMain, avg_main_raw: avgMonthMainRaw,
-            can_send: 0, main_safety: 0, need_qty: 0,
+            can_send: 0, main_safety: 0, need_qty: soldDeficit,
             send_qty: 0, raw_qty: 0, ctn_qty: ctnQty || null, rounded: 'none',
             cartons: 0,
             pending_qty: pendingQty, pending_transfers: pendingInfo?.transfers || [],
             has_conflict: false, conflict_branches: [], conflict_detail: null,
-            send_note: 'no_avg'
+            send_note: 'no_avg_oversold'
           });
         }
         continue;
       }
       
       const avgWeekBranch = avgMonthBranch / WEEKS_IN_MONTH;
-      const avgWeekMain = avgMonthMain / WEEKS_IN_MONTH;
       const coverDays = avgWeekBranch > 0 ? Math.max(0, Math.round((branchAvailable / avgWeekBranch) * 7)) : 999;
-      const targetQty = Math.ceil(avgWeekBranch * BRANCH_TARGET_WEEKS);
+      const targetQty = CFG.computeBranchTarget(avgMonthBranch);
       const needQty = Math.max(0, targetQty - branchAvailable);
-      const mainMinQty = Math.ceil(avgWeekMain * MAIN_MIN_WEEKS);
+      const mainMinQty = CFG.computeMainSafety(avgMonthMain);
       const canSendQty = Math.max(0, mainAvailable - mainMinQty);
-      
+
       let category;
-      if (coverDays < 7) category = 'critical';
-      else if (coverDays < 21) category = 'warning';
-      else if (coverDays < 35) category = 'ok';
+      if (coverDays < CFG.COVER_CRITICAL_DAYS) category = 'critical';
+      else if (coverDays < CFG.COVER_WARNING_DAYS) category = 'warning';
+      else if (coverDays < CFG.COVER_OK_DAYS) category = 'ok';
       else category = 'sufficient';
       
       const conflict = allBranchNeeds[product];
@@ -554,8 +545,7 @@
           // Main can't spare even one carton after safety stock
           sendNote = 'no_main_stock';
         } else {
-          const MAX_MONTHS_CARTON = 6;
-          const maxBranchStock = Math.ceil(avgMonthBranch * MAX_MONTHS_CARTON);
+          const maxBranchStock = Math.ceil(avgMonthBranch * CFG.CARTON_MODE_MAX_MONTHS);
           const roomInBranch = Math.max(0, maxBranchStock - branchAvailable - pendingQty);
           
           if (roomInBranch < ctnQty) {
@@ -582,8 +572,7 @@
           rounded = ctnResult.rounded;
           
           if (branchAvailable > 0) {
-            const weeklyDemand = avgMonthBranch / WEEKS_IN_MONTH;
-            const minThreshold = Math.max(Math.ceil(weeklyDemand), 2);
+            const minThreshold = CFG.computeMinSend(ctnQty, avgMonthBranch);
             if (sendQty < minThreshold) {
               sendNote = 'below_min';
               blockedQty = sendQty;
@@ -704,11 +693,11 @@
         coverBadge = '<span class="cover-badge cover-na">N/A</span>';
       } else if (line.cover_days >= 999) {
         coverBadge = '<span class="cover-badge cover-suf">∞</span>';
-      } else if (line.cover_days < 7) {
+      } else if (line.cover_days < CFG.COVER_CRITICAL_DAYS) {
         coverBadge = `<span class="cover-badge cover-crit">${line.cover_days}d</span>`;
-      } else if (line.cover_days < 21) {
+      } else if (line.cover_days < CFG.COVER_WARNING_DAYS) {
         coverBadge = `<span class="cover-badge cover-warn">${line.cover_days}d</span>`;
-      } else if (line.cover_days < 35) {
+      } else if (line.cover_days < CFG.COVER_OK_DAYS) {
         coverBadge = `<span class="cover-badge cover-ok">${line.cover_days}d</span>`;
       } else {
         coverBadge = `<span class="cover-badge cover-suf">${line.cover_days}d</span>`;
@@ -768,6 +757,8 @@
         sendDisplay = '<span class="send-dim">0</span>';
       } else if (line.send_note === 'main_empty_sold') {
         sendDisplay = '<span class="send-blocked" title="Branch has ' + line.sold_deficit + ' units oversold but Main has 0 stock">🔴 Main empty</span>';
+      } else if (line.send_note === 'no_avg_oversold') {
+        sendDisplay = '<span class="send-blocked" title="Oversold but no AVG history — manually review. Upload AVG data or use Cartons Only mode.">🔴 review</span>';
       } else if (line.send_note === 'already_in_transit') {
         sendDisplay = '<span class="send-dim" title="Need covered by pending TRs">in transit</span>';
       } else if (line.send_note === 'no_ctn') {
@@ -890,7 +881,7 @@
         lines = lines.filter(l => l.send_qty > 0);
         break;
       case 'critical':
-        lines = lines.filter(l => l.cover_days < 7 && l.category !== 'no_avg');
+        lines = lines.filter(l => l.cover_days < CFG.COVER_CRITICAL_DAYS && l.category !== 'no_avg');
         break;
       case 'needs':
         lines = lines.filter(l => l.need_qty > 0 && l.category !== 'no_avg');
@@ -954,12 +945,29 @@
     const toSend = withAvg.filter(l => l.send_qty > 0);
     const totalUnits = toSend.reduce((s, l) => s + l.send_qty, 0);
     const totalCartons = toSend.reduce((s, l) => s + l.cartons, 0);
-    const criticalCount = withAvg.filter(l => l.cover_days < 7).length;
+    const criticalCount = withAvg.filter(l => l.cover_days < CFG.COVER_CRITICAL_DAYS).length;
     const conflictCount = withAvg.filter(l => l.has_conflict).length;
     const pendingTRCount = state.pendingTRList.length;
     const pendingProductCount = Object.keys(state.pendingTRs).length;
     const soldDeficitCount = withAvg.filter(l => l.sold_deficit > 0).length;
     const safetyOverrideCount = withAvg.filter(l => l.safety_override).length;
+
+    // Safety-override banner: make it obvious Main is being drained past its
+    // safety buffer. Operator needs to raise a Main PO.
+    const alertEl = document.getElementById('alertContainer');
+    if (alertEl) {
+      // Strip previous override banner (keeps other alerts untouched)
+      alertEl.querySelectorAll('[data-alert="safety-override"]').forEach(n => n.remove());
+      if (safetyOverrideCount > 0) {
+        const units = withAvg.filter(l => l.safety_override).reduce((s, l) => s + l.send_qty, 0);
+        const banner = document.createElement('div');
+        banner.setAttribute('data-alert', 'safety-override');
+        banner.className = 'alert';
+        banner.style.cssText = 'background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:10px;font-size:12px;font-weight:500';
+        banner.innerHTML = `⚡ <strong>Safety override active on ${safetyOverrideCount} product${safetyOverrideCount > 1 ? 's' : ''}</strong> (${units.toLocaleString()} units) — Main is being drained past its ${MAIN_MIN_WEEKS}-week safety buffer to cover oversold orders. <strong>Raise a purchase order for Main</strong> once these transfers are sent, or this branch's next transfer will fall short.`;
+        alertEl.appendChild(banner);
+      }
+    }
     
     const bar = document.getElementById('summaryBar');
     if (bar) {
