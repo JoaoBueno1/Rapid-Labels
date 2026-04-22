@@ -23,6 +23,113 @@
     return d.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
+  /* ───── API Routing (handles static host + backend host split) ───── */
+  const PA_API_STORAGE_KEY = 'pickAnomaliesApiBase';
+  const PA_READONLY_STORAGE_KEY = 'pickAnomaliesReadOnly';
+  const _nativeFetch = window.fetch.bind(window);
+
+  function _isReadOnlyMode() {
+    const params = new URLSearchParams(window.location.search || '');
+    const q = (params.get('pa_read_only') || '').toLowerCase();
+    if (q) {
+      const enabled = ['1', 'true', 'yes', 'on'].includes(q);
+      try { localStorage.setItem(PA_READONLY_STORAGE_KEY, enabled ? '1' : '0'); } catch (_) {}
+      return enabled;
+    }
+    try { return localStorage.getItem(PA_READONLY_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+
+  function _normalizeBase(base) {
+    if (!base || typeof base !== 'string') return '';
+    return base.trim().replace(/\/+$/, '');
+  }
+
+  function _getPickApiCandidates() {
+    const params = new URLSearchParams(window.location.search || '');
+    const queryBase = _normalizeBase(params.get('pa_api_base'));
+    if (queryBase) {
+      try { localStorage.setItem(PA_API_STORAGE_KEY, queryBase); } catch (_) {}
+    }
+
+    const configured = _normalizeBase(
+      window.PICK_ANOMALIES_API_BASE ||
+      (() => { try { return localStorage.getItem(PA_API_STORAGE_KEY) || ''; } catch (_) { return ''; } })()
+    );
+
+    const sameOrigin = _normalizeBase(window.location.origin);
+    const candidates = [configured, sameOrigin];
+
+    return [...new Set(candidates.filter(Boolean))];
+  }
+
+  function _jsonErrorResponse(status, message, triedBases) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: message,
+      triedBases: triedBases || []
+    }), {
+      status: status || 503,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  async function _readApiJsonOrThrow(res, fallbackLabel) {
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (_) {
+      throw new Error(`${fallbackLabel || 'API'}: invalid JSON response`);
+    }
+
+    if (!res.ok || (data && data.success === false && data.error)) {
+      const msg = (data && data.error) ? data.error : `${fallbackLabel || 'API'}: HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+
+    return data;
+  }
+
+  async function pickApiFetch(input, init) {
+    const requestPath = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+    const isPickApi = typeof requestPath === 'string' && requestPath.startsWith('/api/pick-anomalies');
+    if (!isPickApi) return _nativeFetch(input, init);
+
+    const method = String((init && init.method) || 'GET').toUpperCase();
+    const readOnly = _isReadOnlyMode();
+    if (readOnly && method !== 'GET' && method !== 'HEAD') {
+      return _jsonErrorResponse(423, `Read-only mode enabled: blocked ${method} ${requestPath}`);
+    }
+
+    const bases = _getPickApiCandidates();
+    let lastErr = null;
+
+    for (const base of bases) {
+      const url = `${base}${requestPath}`;
+      try {
+        const res = await _nativeFetch(url, init);
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        const isJson = contentType.includes('application/json');
+
+        if (isJson) return res;
+
+        const shouldTryNext = !isJson && (res.status === 404 || contentType.includes('text/html'));
+        if (shouldTryNext) {
+          lastErr = new Error(`Non-JSON response from ${url} (${res.status})`);
+          continue;
+        }
+
+        return _jsonErrorResponse(res.status || 500, `Invalid API response from ${base} (expected JSON).`, bases);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+
+    const reason = lastErr ? (lastErr.message || String(lastErr)) : 'Pick API unavailable';
+    return _jsonErrorResponse(503, `Pick API unavailable. Configure ?pa_api_base=http://HOST:PORT (${reason})`, bases);
+  }
+
+  window.fetch = pickApiFetch;
+
   /* ───── State ───── */
   const state = {
     orders: [],
@@ -80,7 +187,7 @@
   async function loadStats() {
     try {
       const res = await fetch('/api/pick-anomalies/stats');
-      const data = await res.json();
+      const data = await _readApiJsonOrThrow(res, 'Stats');
       if (data.success && data.stats) {
         state.stats = data.stats;
         updateKpis();
@@ -247,7 +354,7 @@
       }
       
       if (!res.ok) throw new Error(`${res.status}`);
-      const data = await res.json();
+      const data = await _readApiJsonOrThrow(res, 'History');
       if (!data.success) throw new Error(data.error || 'Load failed');
 
       state.orders = data.orders || [];
@@ -274,7 +381,7 @@
     try {
       const res = await fetch('/api/pick-anomalies/sync-status');
       if (!res.ok) return;
-      const data = await res.json();
+      const data = await _readApiJsonOrThrow(res, 'Sync status');
       if (!data.success) return;
 
       if (data.lastSyncedAt) {
@@ -1548,7 +1655,7 @@
     document.getElementById('paAnalyticsLoading').style.display = '';
     try {
       const res = await fetch('/api/pick-anomalies/analytics');
-      const data = await res.json();
+      const data = await _readApiJsonOrThrow(res, 'Analytics');
       if (!data.success) throw new Error(data.error);
       _analyticsCache = data.analytics;
       // Cache repeat offenders for badges in order detail
@@ -2118,7 +2225,11 @@
 
   /* ─── Init ─── */
   document.addEventListener('DOMContentLoaded', async () => {
-    setSyncStatus('idle', 'Loading...');
+    if (_isReadOnlyMode()) {
+      setSyncStatus('idle', 'Loading... (READ-ONLY TEST MODE)');
+    } else {
+      setSyncStatus('idle', 'Loading...');
+    }
 
     // 1. Load existing history + global stats from Supabase (zero Cin7 calls)
     await loadHistory();
