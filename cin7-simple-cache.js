@@ -40,6 +40,7 @@ window.cin7SimpleCache = {
         const baseCandidates = [
             window.RAPID_EXPRESS_WEB_URL,
             localStorage.getItem('rapidExpressWebBaseUrl'),
+            'https://www.rapidexpress.com.au',
             'http://127.0.0.1:5050',
             'http://localhost:5050'
         ].filter(Boolean);
