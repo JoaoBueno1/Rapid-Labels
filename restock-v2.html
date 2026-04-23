@@ -40,6 +40,12 @@
         <button class="rv2-nav-tab" data-view="map" onclick="switchRestockView('map')">
           🗺️ Map
         </button>
+        <button class="rv2-nav-tab" data-view="shelfCheck" onclick="switchRestockView('shelfCheck')">
+          📦 Shelf Check
+        </button>
+        <button class="rv2-nav-tab" data-view="pickfaceCheck" onclick="switchRestockView('pickfaceCheck')">
+          🏷️ Pick Face Check
+        </button>
       </div>
       <div class="header-actions">
         <div class="search-input-group" id="restockSearchGroup">
@@ -234,6 +240,38 @@
       <div id="mapStatsBar" style="display:flex;gap:16px;padding:8px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:8px;flex-wrap:wrap"></div>
       <div id="mapGrid" style="overflow-x:auto"></div>
       <div id="mapBinDetail" style="display:none;margin-top:12px;padding:16px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)"></div>
+    </div>
+
+    <!-- Shelf Check View -->
+    <div id="shelfCheckView" style="display:none;margin-top:8px">
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;flex-wrap:wrap">
+        <span style="font-weight:700;font-size:14px;color:#0f172a">📦 Shelf / Reserve Stocktake</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap" id="shelfAisleBtns"></div>
+        <div style="flex:1"></div>
+        <button id="shelfPrintBtn" onclick="printShelfCheck()" class="search-btn-small" style="display:none">🖨️ Print Aisle</button>
+      </div>
+      <div id="shelfSyncInfo" style="display:none;background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:11px;color:#92400e;display:none">
+        ⚠️ <strong>Stock levels from Cin7 snapshot</strong> · <span id="shelfSyncLabel">Last sync: Unknown</span> — Actual stock may differ.
+      </div>
+      <div id="shelfContent" style="min-height:100px">
+        <div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">Select an aisle above to view shelf/reserve stock</div>
+      </div>
+    </div>
+
+    <!-- Pick Face Check View -->
+    <div id="pickfaceCheckView" style="display:none;margin-top:8px">
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;flex-wrap:wrap">
+        <span style="font-weight:700;font-size:14px;color:#0f172a">🏷️ Pick Face Stocktake</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap" id="pfAisleBtns"></div>
+        <div style="flex:1"></div>
+        <button id="pfPrintBtn" onclick="printPickfaceCheck()" class="search-btn-small" style="display:none">🖨️ Print Aisle</button>
+      </div>
+      <div id="pfSyncInfo" style="display:none;background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:11px;color:#92400e;display:none">
+        ⚠️ <strong>Stock levels from Cin7 snapshot</strong> · <span id="pfSyncLabel">Last sync: Unknown</span> — Actual stock may differ.
+      </div>
+      <div id="pfContent" style="min-height:100px">
+        <div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">Select an aisle above to view pick face stock</div>
+      </div>
     </div>
 
     <!-- Insights View (replaces table when Redistribute, Consolidate or Priorities active) -->

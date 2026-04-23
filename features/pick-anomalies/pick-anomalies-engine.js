@@ -1626,9 +1626,12 @@ function registerPickAnomalyRoutes(app) {
     try {
       // Use Supabase REST API to aggregate across all orders
       // sbGetAll paginates automatically (Supabase default limit = 1000 rows)
-      const allOrders = await sbGetAll('pick_anomaly_orders',
-        'select=total_picks,correct_picks,anomaly_picks,fg_count,reviewed'
-      );
+      const [allOrders, allCorrections] = await Promise.all([
+        sbGetAll('pick_anomaly_orders',
+          'select=total_picks,correct_picks,anomaly_picks,fg_count,reviewed'
+        ),
+        sbGetAll('pick_anomaly_corrections', 'select=id'),
+      ]);
 
       let totalOrders = 0, totalPicks = 0, totalCorrect = 0, totalAnomalies = 0, totalFg = 0, totalReviewed = 0;
       let anomalyOrders = 0; // Orders that have anomalies (for reviewed KPI)
@@ -1658,6 +1661,7 @@ function registerPickAnomalyRoutes(app) {
           reviewed: totalReviewed,
           anomalyOrders,
           anomalyOrdersReviewed,
+          totalFixes: allCorrections.length,
         },
       });
     } catch (err) {
@@ -1667,6 +1671,74 @@ function registerPickAnomalyRoutes(app) {
         success: true,
         stats: { orders: 0, picks: 0, correct: 0, anomalies: 0, fg: 0, reviewed: 0 },
       });
+    }
+  });
+
+  /**
+   * GET /api/pick-anomalies/print-data?skus=SKU1,SKU2
+   * Returns 5DC (attribute1) and stock-on-hand by bin for given SKUs.
+   * Used by print report to enrich anomaly rows.
+   */
+  app.get('/api/pick-anomalies/print-data', async (req, res) => {
+    try {
+      const { skus } = req.query;
+      if (!skus) return res.json({ success: true, products: {}, stock: {} });
+
+      const skuList = skus.split(',').map(s => s.trim()).filter(Boolean);
+      if (!skuList.length) return res.json({ success: true, products: {}, stock: {} });
+
+      const skuIn = skuList.map(s => `"${s}"`).join(',');
+
+      // 1. Fetch attribute1 (5DC) + stock_locator from products
+      const prodUrl = `${SUPABASE_URL}/rest/v1/products?select=sku,attribute1,stock_locator&sku=in.(${encodeURIComponent(skuIn)})`;
+      const prodRes = await fetch(prodUrl, {
+        headers: {
+          'apikey': SUPABASE_ANON,
+          'Authorization': `Bearer ${SUPABASE_ANON}`,
+          'Accept-Profile': 'cin7_mirror',
+        },
+      });
+      const prodRows = prodRes.ok ? await prodRes.json() : [];
+      const products = {};
+      for (const r of prodRows) {
+        products[r.sku] = { attribute1: r.attribute1 || '', stock_locator: r.stock_locator || '' };
+      }
+
+      // 2. Fetch stock on hand by SKU+bin from stock_snapshot (Main Warehouse only)
+      const snapUrl = `${SUPABASE_URL}/rest/v1/stock_snapshot?select=sku,bin,on_hand&sku=in.(${encodeURIComponent(skuIn)})&location_name=eq.Main%20Warehouse&on_hand=gt.0`;
+      const snapRes = await fetch(snapUrl, {
+        headers: {
+          'apikey': SUPABASE_ANON,
+          'Authorization': `Bearer ${SUPABASE_ANON}`,
+          'Accept-Profile': 'cin7_mirror',
+        },
+      });
+      const snapRows = snapRes.ok ? await snapRes.json() : [];
+      // Group by SKU → { bin: on_hand }
+      const stock = {};
+      let latestSync = null;
+      for (const r of snapRows) {
+        if (!stock[r.sku]) stock[r.sku] = {};
+        stock[r.sku][r.bin] = parseFloat(r.on_hand) || 0;
+        if (r.synced_at && (!latestSync || r.synced_at > latestSync)) latestSync = r.synced_at;
+      }
+
+      // If no sync timestamp from matched rows, fetch latest from any row
+      if (!latestSync) {
+        try {
+          const syncUrl = `${SUPABASE_URL}/rest/v1/stock_snapshot?select=synced_at&order=synced_at.desc&limit=1`;
+          const syncRes = await fetch(syncUrl, {
+            headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}`, 'Accept-Profile': 'cin7_mirror' },
+          });
+          const syncRows = syncRes.ok ? await syncRes.json() : [];
+          if (syncRows.length) latestSync = syncRows[0].synced_at;
+        } catch (_) { /* ignore */ }
+      }
+
+      res.json({ success: true, products, stock, syncedAt: latestSync });
+    } catch (err) {
+      console.error('Print data error:', err);
+      res.json({ success: true, products: {}, stock: {} });
     }
   });
 

@@ -103,6 +103,43 @@ try {
   console.warn('⚠️  Could not register pick anomaly routes:', e.message);
 }
 
+// ── Order Pipeline Sync (on-demand + scheduled) ──
+let pipelineSyncRunning = false;
+async function _runPipelineSync(source = 'manual') {
+  if (pipelineSyncRunning) return { skipped: true, reason: 'already running' };
+  pipelineSyncRunning = true;
+  try {
+    const { runPipelineSync } = require('./order-pipeline-sync');
+    const result = await runPipelineSync();
+    console.log(`✅ Pipeline sync (${source}) done: ${result.salesOrders} SO, ${result.transfers} TR in ${result.durationSec}s`);
+    return result;
+  } catch (err) {
+    console.error(`❌ Pipeline sync (${source}) error:`, err.message);
+    throw err;
+  } finally {
+    pipelineSyncRunning = false;
+  }
+}
+
+app.post('/api/pipeline-sync', async (req, res) => {
+  try {
+    const result = await _runPipelineSync('api');
+    if (result.skipped) return res.json({ success: false, error: result.reason });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Auto-sync pipeline every hour (backup for GH Actions cron)
+const PIPELINE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+setTimeout(() => {
+  _runPipelineSync('scheduled-initial').catch(() => {});
+  setInterval(() => {
+    _runPipelineSync('scheduled').catch(() => {});
+  }, PIPELINE_INTERVAL_MS);
+}, 30_000); // Wait 30s after server start before first sync
+
 // ── Gateway Transfer routes ──
 try {
   const { registerGatewayRoutes } = require('./features/gateway/gateway-engine');
@@ -118,6 +155,122 @@ try {
 } catch (e) {
   console.warn('⚠️  Could not register stocktake routes:', e.message);
 }
+
+// ── Replenishment: Pending TR Lines (fetches line details from Cin7 API) ──
+(function registerPendingTRRoutes() {
+  const https = require('https');
+  const CIN7_ACCOUNT_ID = process.env.CIN7_ACCOUNT_ID || '';
+  const CIN7_API_KEY    = process.env.CIN7_API_KEY || '';
+
+  // Map branch codes to Cin7 location names (lowercase for matching)
+  const BRANCH_LOCATION_MAP = {
+    SYD: ['sydney', 'sydney warehouse'],
+    MEL: ['melbourne', 'melbourne warehouse'],
+    BNE: ['brisbane', 'brisbane warehouse'],
+    CNS: ['cairns', 'cairns warehouse'],
+    CFS: ['coffs harbour', 'coffs harbour warehouse'],
+    HBA: ['hobart', 'hobart warehouse'],
+    SCS: ['sunshine coast', 'sunshine coast warehouse'],
+  };
+
+  function cin7GetTR(taskId) {
+    return new Promise((resolve, reject) => {
+      const qs = `TaskID=${encodeURIComponent(taskId)}`;
+      const opts = {
+        hostname: 'inventory.dearsystems.com',
+        path: `/ExternalApi/v2/stockTransfer?${qs}`,
+        headers: {
+          'api-auth-accountid': CIN7_ACCOUNT_ID,
+          'api-auth-applicationkey': CIN7_API_KEY,
+        },
+        timeout: 30000,
+      };
+      const req = https.get(opts, res => {
+        let body = '';
+        res.on('data', c => body += c);
+        res.on('end', () => {
+          if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}`));
+          try { resolve(JSON.parse(body)); }
+          catch (e) { reject(new Error('Bad JSON from Cin7')); }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+    });
+  }
+
+  // GET /api/replenishment/pending-transfers/:branchCode
+  app.get('/api/replenishment/pending-transfers/:branchCode', async (req, res) => {
+    try {
+      const branchCode = (req.params.branchCode || '').toUpperCase();
+      const branchNames = BRANCH_LOCATION_MAP[branchCode];
+      if (!branchNames) return res.status(400).json({ error: 'Invalid branch code' });
+      if (!supabaseBackend) return res.status(500).json({ error: 'Supabase not configured' });
+
+      // 1) Find active TRs from Main → this branch
+      const { data: trs, error } = await supabaseBackend
+        .schema('cin7_mirror')
+        .from('order_pipeline')
+        .select('id, number, status, to_location, from_location')
+        .eq('type', 'TR')
+        .in('status', ['ORDERED', 'IN TRANSIT']);
+
+      if (error) throw error;
+
+      // Filter: from = Main Warehouse, to = this branch
+      const mainNames = ['main warehouse', 'gateway', 'gateway warehouse'];
+      const branchTRs = (trs || []).filter(tr => {
+        const from = (tr.from_location || '').toLowerCase().trim();
+        const to   = (tr.to_location || '').toLowerCase().trim();
+        return mainNames.includes(from) && branchNames.includes(to);
+      });
+
+      if (branchTRs.length === 0) {
+        return res.json({ transfers: [], products: {} });
+      }
+
+      // 2) For each TR, fetch line items from Cin7 API (with 3.5s throttle)
+      const transfers = [];
+      const productMap = {}; // { sku: { pending_qty, transfers: ['TR-XXXXX = QTY'] } }
+
+      for (const tr of branchTRs) {
+        try {
+          const detail = await cin7GetTR(tr.id);
+          const lines = detail?.Lines || detail?.Line || [];
+          const trInfo = { number: tr.number, status: tr.status, lines: [] };
+
+          for (const line of lines) {
+            const sku = line.SKU || line.ProductCode || '';
+            const qty = line.TransferQuantity || line.Quantity || 0;
+            if (!sku || qty <= 0) continue;
+
+            trInfo.lines.push({ sku, qty, name: line.ProductName || line.Name || '' });
+
+            if (!productMap[sku]) productMap[sku] = { pending_qty: 0, transfers: [] };
+            productMap[sku].pending_qty += qty;
+            productMap[sku].transfers.push(`${tr.number} = ${qty}`);
+          }
+
+          transfers.push(trInfo);
+          // Throttle between API calls
+          if (branchTRs.indexOf(tr) < branchTRs.length - 1) {
+            await new Promise(r => setTimeout(r, 3500));
+          }
+        } catch (err) {
+          console.error(`Failed to fetch TR ${tr.number} (${tr.id}):`, err.message);
+          transfers.push({ number: tr.number, status: tr.status, lines: [], error: err.message });
+        }
+      }
+
+      res.json({ transfers, products: productMap });
+    } catch (err) {
+      console.error('Pending TR error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  console.log('✅ Pending TR lines endpoint registered');
+})();
 
 // Only listen on port when running locally (not on Vercel serverless)
 if (!process.env.VERCEL) {

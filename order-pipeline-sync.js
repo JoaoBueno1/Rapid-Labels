@@ -685,6 +685,7 @@ async function cleanupCompleted(sb) {
 
 async function main() {
   const startTime = Date.now();
+  callCount = 0; // Reset API call counter for each run
   log('info', '═══ Order Pipeline Sync Started ═══', {
     mode: FLAGS.full ? 'FULL' : 'INCREMENTAL',
     dryRun: FLAGS.dryRun,
@@ -693,36 +694,46 @@ async function main() {
 
   // Validate config
   if (!CONFIG.cin7.accountId || !CONFIG.cin7.apiKey) {
-    log('error', 'Missing CIN7_ACCOUNT_ID or CIN7_API_KEY');
-    process.exit(1);
+    throw new Error('Missing CIN7_ACCOUNT_ID or CIN7_API_KEY');
   }
 
   const sb = getSupabaseClient();
 
-  try {
-    const soResult = await syncSalesOrders(sb);
-    const trResult = await syncStockTransfers(sb);
+  const soResult = await syncSalesOrders(sb);
+  const trResult = await syncStockTransfers(sb);
 
-    // Detect orders that left active status (now COMPLETED/INVOICED in Cin7)
-    const completed = await detectCompleted(sb, soResult.ids, trResult.ids);
+  // Detect orders that left active status (now COMPLETED/INVOICED in Cin7)
+  const completed = await detectCompleted(sb, soResult.ids, trResult.ids);
 
-    const cleaned = await cleanupCompleted(sb);
+  const cleaned = await cleanupCompleted(sb);
 
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    log('info', '═══ Order Pipeline Sync Complete ═══', {
-      salesOrders: soResult.count,
-      transfers: trResult.count,
-      newlyCompleted: completed,
-      cleaned,
-      apiCalls: callCount,
-      durationSec: duration,
-    });
+  const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+  log('info', '═══ Order Pipeline Sync Complete ═══', {
+    salesOrders: soResult.count,
+    transfers: trResult.count,
+    newlyCompleted: completed,
+    cleaned,
+    apiCalls: callCount,
+    durationSec: duration,
+  });
 
-  } catch (err) {
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    log('error', 'Sync failed', { error: err.message, apiCalls: callCount, durationSec: duration });
-    process.exit(1);
-  }
+  return {
+    salesOrders: soResult.count,
+    transfers: trResult.count,
+    newlyCompleted: completed,
+    cleaned,
+    apiCalls: callCount,
+    durationSec: parseFloat(duration),
+  };
 }
 
-main();
+// Export for use as a module (e.g. from server.js endpoint)
+module.exports = { runPipelineSync: main };
+
+// Run directly when executed as a script
+if (require.main === module) {
+  main().then(() => process.exit(0)).catch(err => {
+    log('error', 'Sync failed', { error: err.message, apiCalls: callCount });
+    process.exit(1);
+  });
+}

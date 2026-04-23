@@ -2007,6 +2007,8 @@
     const restockView = document.getElementById('restockView');
     const insightsView = document.getElementById('insightsView');
     const mapView = document.getElementById('mapView');
+    const shelfView = document.getElementById('shelfCheckView');
+    const pfView = document.getElementById('pickfaceCheckView');
     const searchGroup = document.getElementById('restockSearchGroup');
     const syncCard = document.getElementById('syncStatusCard');
 
@@ -2022,6 +2024,8 @@
     if (restockView) restockView.style.display = 'none';
     if (insightsView) insightsView.style.display = 'none';
     if (mapView) mapView.style.display = 'none';
+    if (shelfView) shelfView.style.display = 'none';
+    if (pfView) pfView.style.display = 'none';
 
     if (view === 'restock') {
       if (restockView) restockView.style.display = '';
@@ -2030,6 +2034,14 @@
       if (mapView) mapView.style.display = 'block';
       if (searchGroup) searchGroup.style.display = 'none';
       initWarehouseMap();
+    } else if (view === 'shelfCheck') {
+      if (shelfView) shelfView.style.display = 'block';
+      if (searchGroup) searchGroup.style.display = 'none';
+      initShelfCheck();
+    } else if (view === 'pickfaceCheck') {
+      if (pfView) pfView.style.display = 'block';
+      if (searchGroup) searchGroup.style.display = 'none';
+      initPickfaceCheck();
     } else {
       // priorities, redistribute, consolidate
       if (insightsView) insightsView.style.display = 'block';
@@ -2991,6 +3003,383 @@
     detail.innerHTML = html;
     detail.scrollIntoView({ behavior:'smooth', block:'nearest' });
   };
+
+  /* ═══════════════════════════════════════════════
+     SHELF CHECK & PICK FACE CHECK
+     Stocktake sheets — print by aisle for visual audit.
+     ═══════════════════════════════════════════════ */
+
+  const aisleState = {
+    loaded: false,
+    stockRows: [],       // stock_snapshot Main Warehouse – on_hand > 0, non-empty bin, no Carton
+    productMap: {},       // sku → { attribute1, stock_locator, name }
+    pickBaySet: null,     // Set of normalized bin strings that are Pick Bays
+    syncedAt: null,
+    aisles: [],           // sorted unique aisle prefixes (MA-A, MA-B, …)
+    selectedShelfAisle: null,
+    selectedPfAisle: null,
+  };
+
+  const NON_AISLE_PREFIXES = ['MA-GA', 'MA-GH', 'MA-DOCK', 'MA-OFFICE', 'MA-PRODUCTION', 'MA-SAMPLES', 'MA-RETURNS', 'UNASSIGNED', '', 'MA-SC', 'MA-CH', 'MA-SY', 'MA-CA', 'MA-ME', 'MA-HO', 'MA-BR', 'MA-PR', 'MA-ADAM'];
+
+  function getAisleFromBin(bin) {
+    if (!bin) return null;
+    const m = bin.match(/^(MA-[A-Z]+)/i);
+    return m ? m[1].toUpperCase() : null;
+  }
+
+  function _normBin(b) {
+    if (!b) return '';
+    let n = b.trim().replace(/\./g, '-');
+    if (!/^MA-/i.test(n)) n = 'MA-' + n;
+    return n.toUpperCase();
+  }
+
+  /** True if the SKU looks like a Carton/BOM aggregate (can't be physically verified) */
+  function _isCartonSku(sku, productName) {
+    const s = (sku || '').toLowerCase();
+    const n = (productName || '').toLowerCase();
+    return /-carton\d*/i.test(s) || /\bcarton\d/i.test(n);
+  }
+
+  /**
+   * Build a GLOBAL set of all Pick Bay bin locations.
+   * A bin is a Pick Bay if ANY product uses it as a pickface.
+   * Sources (same priority as main restock tab):
+   *   1. restock_setup.pickface_location (user-configured) — highest trust
+   *   2. cin7_mirror.products.stock_locator
+   */
+  async function _buildPickBaySet() {
+    const set = new Set();
+
+    // restock_setup  (user-configured pickface locations)
+    const setupRows = await fetchAllRows('restock_setup', 'pickface_location');
+    for (const s of setupRows) {
+      const pf = (s.pickface_location || '').trim();
+      if (pf) set.add(_normBin(pf));
+    }
+
+    // cin7_mirror.products.stock_locator
+    const prodRows = await fetchAllRows('products', 'stock_locator', { schema: 'cin7_mirror' });
+    for (const p of prodRows) {
+      const loc = (p.stock_locator || '').trim();
+      if (loc && loc !== '0' && !/^(BOM|PRODUCTION)$/i.test(loc)) set.add(_normBin(loc));
+    }
+
+    return set;
+  }
+
+  /** Is this normalized bin a registered Pick Bay? (global — product-agnostic) */
+  function isPickBayBin(bin) {
+    if (!aisleState.pickBaySet) return false;
+    const nb = _normBin(bin);
+    return nb ? aisleState.pickBaySet.has(nb) : false;
+  }
+
+  async function loadAisleData() {
+    if (aisleState.loaded) return;
+    await window.supabaseReady;
+
+    // Stock snapshot — Main Warehouse, on_hand > 0, non-empty bin
+    const rawStock = await fetchAllRows('stock_snapshot', 'sku, product_name, bin, on_hand, available, allocated, synced_at', {
+      schema: 'cin7_mirror',
+      eq: [['location_name', 'Main Warehouse']],
+    });
+    // Filter: on_hand > 0, has bin, exclude Carton SKUs
+    aisleState.stockRows = rawStock.filter(r =>
+      r.on_hand > 0 && (r.bin || '').trim() && !_isCartonSku(r.sku, r.product_name)
+    );
+
+    // Latest synced_at
+    let latest = null;
+    for (const r of aisleState.stockRows) {
+      if (r.synced_at && (!latest || r.synced_at > latest)) latest = r.synced_at;
+    }
+    aisleState.syncedAt = latest;
+
+    // Products map (for 5DC, name)
+    const prodRows = await fetchAllRows('products', 'sku, name, attribute1, stock_locator', { schema: 'cin7_mirror' });
+    for (const p of prodRows) {
+      aisleState.productMap[p.sku] = { attribute1: p.attribute1 || '', stock_locator: p.stock_locator || '', name: p.name || '' };
+    }
+
+    // Build global Pick Bay set
+    aisleState.pickBaySet = await _buildPickBaySet();
+    console.log('[Shelf/PF Check] Pick Bay set:', aisleState.pickBaySet.size, 'locations');
+
+    // Discover aisles from stock with bins
+    const aisleSet = new Set();
+    for (const r of aisleState.stockRows) {
+      const a = getAisleFromBin(r.bin);
+      if (a && !NON_AISLE_PREFIXES.includes(a)) aisleSet.add(a);
+    }
+    aisleState.aisles = [...aisleSet].sort();
+    aisleState.loaded = true;
+  }
+
+  function formatSyncLabel(syncedAt) {
+    if (!syncedAt) return 'Unknown';
+    const sd = new Date(syncedAt);
+    const now = new Date();
+    const diffMin = Math.round((now - sd) / 60000);
+    const syncTime = sd.toLocaleTimeString('en-AU', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const syncDate = sd.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+    return diffMin < 60
+      ? `${syncDate} ${syncTime} (${diffMin}m ago)`
+      : `${syncDate} ${syncTime} (${Math.round(diffMin / 60)}h ago)`;
+  }
+
+  function renderAisleButtons(containerId, selectedAisle, onClickFn) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = aisleState.aisles.map(a => {
+      const active = a === selectedAisle;
+      return `<button class="chip${active ? ' active' : ''}" style="${active ? 'background:#6366f1;color:#fff;border-color:#6366f1' : ''}" onclick="${onClickFn}('${a}')">${a}</button>`;
+    }).join('');
+  }
+
+  // ─── SHELF CHECK (only NON-pickbay bins) ───
+
+  async function initShelfCheck() {
+    const content = document.getElementById('shelfContent');
+    if (aisleState.loaded) { renderAisleButtons('shelfAisleBtns', aisleState.selectedShelfAisle, 'selectShelfAisle'); return; }
+    content.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8">Loading stock data…</div>';
+    try {
+      await loadAisleData();
+      renderAisleButtons('shelfAisleBtns', null, 'selectShelfAisle');
+      content.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">Select an aisle above to view shelf/reserve stock</div>';
+    } catch (e) {
+      content.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444">Error loading: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  window.selectShelfAisle = function (aisle) {
+    aisleState.selectedShelfAisle = aisle;
+    renderAisleButtons('shelfAisleBtns', aisle, 'selectShelfAisle');
+    renderShelfTable(aisle);
+    document.getElementById('shelfPrintBtn').style.display = '';
+    // Sync info
+    const syncEl = document.getElementById('shelfSyncInfo');
+    if (syncEl) { syncEl.style.display = ''; document.getElementById('shelfSyncLabel').textContent = 'Last sync: ' + formatSyncLabel(aisleState.syncedAt); }
+  };
+
+  function renderShelfTable(aisle) {
+    const content = document.getElementById('shelfContent');
+    // Shelf = bins NOT in the global Pick Bay set, on_hand > 0, no Carton
+    const rows = aisleState.stockRows.filter(r => {
+      return getAisleFromBin(r.bin) === aisle && !isPickBayBin(r.bin);
+    });
+
+    rows.sort((a, b) => (a.bin || '').localeCompare(b.bin || '', undefined, { numeric: true }));
+
+    if (!rows.length) {
+      content.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8">No shelf/reserve stock found in ${escapeHtml(aisle)}</div>`;
+      return;
+    }
+
+    let html = `<div style="font-size:12px;color:#64748b;margin-bottom:8px">${rows.length} items in <strong>${escapeHtml(aisle)}</strong> — reserve/shelf only (pick bays excluded)</div>`;
+    html += '<div class="table-wrapper"><table class="app-table" style="font-size:12px">';
+    html += `<thead><tr>
+      <th style="width:30px">#</th>
+      <th>5DC</th>
+      <th>SKU</th>
+      <th>Product</th>
+      <th>Location</th>
+      <th style="text-align:right">Cin7 Qty</th>
+      <th style="width:100px;text-align:center">Actual Qty</th>
+    </tr></thead><tbody>`;
+
+    rows.forEach((r, i) => {
+      const prod = aisleState.productMap[r.sku] || {};
+      html += `<tr>
+        <td style="color:#94a3b8">${i + 1}</td>
+        <td style="font-family:monospace;font-weight:600;color:#6366f1">${escapeHtml(prod.attribute1 || '—')}</td>
+        <td style="font-weight:600">${escapeHtml(r.sku)}</td>
+        <td style="color:#64748b;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((r.product_name || prod.name || '').substring(0, 50))}</td>
+        <td><span style="font-family:monospace;font-weight:700;background:#f1f5f9;padding:1px 6px;border-radius:4px">${escapeHtml(r.bin)}</span></td>
+        <td style="text-align:right;font-weight:700">${Math.round(r.on_hand)}</td>
+        <td style="text-align:center"><div style="width:80px;height:20px;border:1px solid #d1d5db;border-radius:4px;margin:0 auto"></div></td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+    content.innerHTML = html;
+  }
+
+  window.printShelfCheck = function () {
+    const aisle = aisleState.selectedShelfAisle;
+    if (!aisle) return;
+    const rows = aisleState.stockRows.filter(r =>
+      getAisleFromBin(r.bin) === aisle && !isPickBayBin(r.bin)
+    ).sort((a, b) => (a.bin || '').localeCompare(b.bin || '', undefined, { numeric: true }));
+
+    if (!rows.length) return alert('No data to print.');
+    _printStocktakeSheet(aisle, rows, 'Shelf / Reserve Stocktake', false);
+  };
+
+  // ─── PICK FACE CHECK (only Pick Bay bins, with stock) ───
+
+  async function initPickfaceCheck() {
+    const content = document.getElementById('pfContent');
+    if (aisleState.loaded) { renderAisleButtons('pfAisleBtns', aisleState.selectedPfAisle, 'selectPfAisle'); return; }
+    content.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8">Loading stock data…</div>';
+    try {
+      await loadAisleData();
+      renderAisleButtons('pfAisleBtns', null, 'selectPfAisle');
+      content.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">Select an aisle above to view pick face stock</div>';
+    } catch (e) {
+      content.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444">Error loading: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  window.selectPfAisle = function (aisle) {
+    aisleState.selectedPfAisle = aisle;
+    renderAisleButtons('pfAisleBtns', aisle, 'selectPfAisle');
+    renderPfTable(aisle);
+    document.getElementById('pfPrintBtn').style.display = '';
+    const syncEl = document.getElementById('pfSyncInfo');
+    if (syncEl) { syncEl.style.display = ''; document.getElementById('pfSyncLabel').textContent = 'Last sync: ' + formatSyncLabel(aisleState.syncedAt); }
+  };
+
+  function renderPfTable(aisle) {
+    const content = document.getElementById('pfContent');
+    // Pick Face = bins IN the global Pick Bay set, on_hand > 0, no Carton
+    // (stock already filtered in loadAisleData — on_hand > 0, no Carton)
+    const rows = aisleState.stockRows.filter(r => {
+      return getAisleFromBin(r.bin) === aisle && isPickBayBin(r.bin);
+    });
+
+    rows.sort((a, b) => (a.bin || '').localeCompare(b.bin || '', undefined, { numeric: true }));
+
+    if (!rows.length) {
+      content.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8">No pick face stock found in ${escapeHtml(aisle)}</div>`;
+      return;
+    }
+
+    let html = `<div style="font-size:12px;color:#64748b;margin-bottom:8px">${rows.length} items in <strong>${escapeHtml(aisle)}</strong> pick bays</div>`;
+    html += '<div class="table-wrapper"><table class="app-table" style="font-size:12px">';
+    html += `<thead><tr>
+      <th style="width:30px">#</th>
+      <th>5DC</th>
+      <th>SKU</th>
+      <th>Product</th>
+      <th>Pick Face</th>
+      <th style="text-align:right">Cin7 Qty</th>
+      <th style="width:100px;text-align:center">Actual Qty</th>
+    </tr></thead><tbody>`;
+
+    rows.forEach((r, i) => {
+      const prod = aisleState.productMap[r.sku] || {};
+      html += `<tr>
+        <td style="color:#94a3b8">${i + 1}</td>
+        <td style="font-family:monospace;font-weight:600;color:#6366f1">${escapeHtml(prod.attribute1 || '—')}</td>
+        <td style="font-weight:600">${escapeHtml(r.sku)}</td>
+        <td style="color:#64748b;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((r.product_name || prod.name || '').substring(0, 50))}</td>
+        <td><span style="font-family:monospace;font-weight:700;background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:4px">${escapeHtml(r.bin)}</span></td>
+        <td style="text-align:right;font-weight:700">${Math.round(r.on_hand)}</td>
+        <td style="text-align:center"><div style="width:80px;height:20px;border:1px solid #d1d5db;border-radius:4px;margin:0 auto"></div></td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+    content.innerHTML = html;
+  }
+
+  window.printPickfaceCheck = function () {
+    const aisle = aisleState.selectedPfAisle;
+    if (!aisle) return;
+
+    const rows = aisleState.stockRows.filter(r =>
+      getAisleFromBin(r.bin) === aisle && isPickBayBin(r.bin)
+    ).sort((a, b) => (a.bin || '').localeCompare(b.bin || '', undefined, { numeric: true }));
+
+    if (!rows.length) return alert('No data to print.');
+    _printStocktakeSheet(aisle, rows, 'Pick Face Stocktake', true);
+  };
+
+  // ─── SHARED PRINT HELPER ───
+
+  function _printStocktakeSheet(aisle, rows, title, isPickFace) {
+    const now = new Date();
+    const printDate = now.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' +
+                      now.toLocaleTimeString('en-AU', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const syncLabel = formatSyncLabel(aisleState.syncedAt);
+    const locLabel = isPickFace ? 'Pick Face' : 'Location';
+
+    const html = `<!DOCTYPE html><html><head>
+      <meta charset="utf-8">
+      <title>${escapeHtml(title)} — ${escapeHtml(aisle)}</title>
+      <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:11px; color:#1e293b; padding:20px; }
+        .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1e293b; padding-bottom:10px; margin-bottom:6px; }
+        .header-title { font-size:18px; font-weight:800; }
+        .header-sub { font-size:11px; color:#64748b; margin-top:2px; }
+        .header-right { text-align:right; font-size:10px; color:#94a3b8; }
+        .sync-banner { background:#fffbeb; border:1px solid #fbbf24; border-radius:6px; padding:5px 12px; margin-bottom:10px; font-size:9px; color:#92400e; display:flex; align-items:center; gap:5px; }
+        table { width:100%; border-collapse:collapse; font-size:10px; }
+        th { background:#f1f5f9; text-align:left; padding:4px 6px; font-weight:700; font-size:8px; text-transform:uppercase; letter-spacing:.4px; border-bottom:2px solid #cbd5e1; }
+        td { padding:4px 6px; border-bottom:1px solid #e2e8f0; }
+        tr:nth-child(even) { background:#fafbfc; }
+        .mono { font-family:'Courier New',monospace; font-weight:700; font-size:10px; }
+        .loc-badge { padding:1px 5px; border-radius:3px; }
+        .loc-shelf { background:#f1f5f9; color:#1e293b; }
+        .loc-pf { background:#f0fdf4; color:#16a34a; }
+        .empty-row { background:#fef2f2 !important; }
+        .empty-qty { color:#ef4444; }
+        .write-col { width:80px; }
+        .write-box { width:70px; height:16px; border:1px solid #d1d5db; border-radius:3px; }
+        .footer { margin-top:12px; border-top:2px solid #e2e8f0; padding-top:6px; font-size:8px; color:#94a3b8; text-align:center; }
+        @media print { body { padding:10px; } }
+      </style>
+    </head><body>
+      <div class="header">
+        <div>
+          <div class="header-title">${escapeHtml(title)}</div>
+          <div class="header-sub">Aisle <strong>${escapeHtml(aisle)}</strong> · ${rows.length} items · ${printDate}</div>
+        </div>
+        <div class="header-right">Rapid Labels Warehouse<br>${printDate}</div>
+      </div>
+      <div class="sync-banner">
+        <span style="font-size:12px">⚠️</span>
+        <span><strong>Stock from Cin7 snapshot</strong> · Last sync: ${escapeHtml(syncLabel)} — Verify actual quantities on shelf.</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>#</th>
+          <th>5DC</th>
+          <th>SKU</th>
+          <th>Product</th>
+          <th>${escapeHtml(locLabel)}</th>
+          <th style="text-align:right">Cin7 Qty</th>
+          <th class="write-col" style="text-align:center">Actual Qty</th>
+          <th class="write-col" style="text-align:center">Variance</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map((r, i) => {
+            const prod = aisleState.productMap[r.sku] || {};
+            const locCls = isPickFace ? 'loc-pf' : 'loc-shelf';
+            return `<tr>
+              <td style="color:#94a3b8">${i + 1}</td>
+              <td class="mono" style="color:#6366f1">${escapeHtml(prod.attribute1 || '—')}</td>
+              <td style="font-weight:600">${escapeHtml(r.sku)}</td>
+              <td style="color:#64748b">${escapeHtml((r.product_name || prod.name || '').substring(0, 45))}</td>
+              <td><span class="mono loc-badge ${locCls}">${escapeHtml(r.bin)}</span></td>
+              <td style="text-align:right;font-weight:700">${Math.round(r.on_hand)}</td>
+              <td class="write-col" style="text-align:center"><div class="write-box"></div></td>
+              <td class="write-col" style="text-align:center"><div class="write-box"></div></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div class="footer">
+        Rapid Labels Warehouse · ${escapeHtml(title)} · Aisle ${escapeHtml(aisle)} · ${printDate}
+      </div>
+    </body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.print(); };
+  }
 
   console.log('✅ Re-Stock V2 loaded — data source: cin7_mirror');
 })();
