@@ -377,8 +377,6 @@ function printBarcodes3Up(){
             } else if(r.mode === 'location') {
                 const { code } = r.location;
                 if(!code){ return; }
-                const exists = await ensureLocation(code);
-                if(!exists){ errors.push(`Section ${i} (Location): code not found.`); return; }
                 finalSections.push({ mode:'location', location: code });
             } else if(r.mode === 'manual') {
                 const { code, title, ean13 } = r.manual;
