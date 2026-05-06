@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Container Plan — Read only</title>
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="container-builder.css?v=20260424b" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="/index.html" class="nav-link">Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container wide-container cb-shell">
+
+    <div class="cb-topbar">
+      <div class="cb-topbar-left">
+        <h1 class="cb-page-title">🚢 <span id="vPlanName">Container Plan</span></h1>
+        <span class="cb-status-pill cb-status-draft" id="vStatus">draft</span>
+        <span class="cb-source-tag" id="vSource" style="display:none"></span>
+        <span class="cb-user-tag" id="vUser" style="display:none"></span>
+      </div>
+      <div class="cb-topbar-right">
+        <button class="cb-btn cb-btn-secondary" id="vBtnPDF" type="button">📄 PDF</button>
+        <a class="cb-btn cb-btn-primary" id="vBtnEdit" href="#">Edit</a>
+      </div>
+    </div>
+
+    <div id="vBanners"></div>
+
+    <div class="cb-builder">
+      <div class="cb-col-left">
+        <section class="cb-card">
+          <div class="cb-card-header"><h2 class="cb-card-title">Container</h2></div>
+          <div class="cb-container-picker" id="vContainerPicker"></div>
+        </section>
+
+        <section class="cb-card">
+          <div class="cb-card-header"><h2 class="cb-card-title">Cartons (<span id="vCartonCount">0</span>)</h2></div>
+          <div class="cb-table">
+            <div class="cb-thead" style="grid-template-columns:12px 1.8fr 0.7fr 0.7fr 0.7fr 0.7fr 0.7fr;">
+              <div></div>
+              <div>SKU</div>
+              <div class="r">L</div><div class="r">W</div><div class="r">H</div>
+              <div class="r">kg</div>
+              <div class="r">qty</div>
+            </div>
+            <div class="cb-tbody" id="vTbody"></div>
+          </div>
+          <div class="cb-summary" id="vSummary"></div>
+        </section>
+      </div>
+
+      <div class="cb-col-right">
+        <div class="cb-metrics" id="vMetrics"></div>
+        <div class="cb-container-tabs" id="vContainerTabs"></div>
+        <div class="cb-viz" id="vViz"><div class="cb-viz-badge" id="vVizBadge">Loading…</div></div>
+        <div id="vUtilBars"></div>
+      </div>
+    </div>
+
+    <section class="cb-card cb-loadplan-card" id="vLoadCard" style="display:none">
+      <div class="cb-card-header"><h2 class="cb-card-title">Load plan — Container <span id="vLoadIdx">1</span></h2></div>
+      <div class="cb-table">
+        <div class="cb-thead cb-thead-plan">
+          <div></div>
+          <div>SKU</div>
+          <div class="r">Qty</div>
+          <div class="r">Volume (m³)</div>
+          <div class="r">Weight (kg)</div>
+          <div class="r">% of container</div>
+        </div>
+        <div id="vLoadBody"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="cbToast" class="cb-toast" style="display:none"></div>
+
+  <script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+  <script type="module" src="view.js?v=20260424a"></script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Container Plan — {{PLAN_NAME}}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Helvetica', Arial, sans-serif; color: #1a1a1a; font-size: 11px; padding: 0; }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #475569; margin-bottom: 6px; margin-top: 14px; }
+  .header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; border-bottom: 2px solid #1a1a1a; margin-bottom: 14px; }
+  .header .meta { text-align: right; font-size: 10px; color: #64748b; }
+  .meta b { color: #1a1a1a; font-weight: 600; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .kpi { border: 1px solid #cbd5e1; padding: 10px 12px; border-radius: 6px; }
+  .kpi-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
+  .kpi-value { font-size: 18px; font-weight: 600; margin-top: 2px; }
+  .viz { border: 1px solid #cbd5e1; padding: 8px; border-radius: 6px; text-align: center; min-height: 240px; }
+  .viz img { max-width: 100%; max-height: 320px; border-radius: 4px; }
+  .viz .placeholder { padding: 80px 20px; color: #94a3b8; font-style: italic; }
+  table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  th { background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 1px solid #cbd5e1; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: #475569; }
+  td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .notes { padding: 10px 12px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; margin-top: 12px; font-size: 10px; white-space: pre-wrap; }
+  .footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid #cbd5e1; font-size: 9px; color: #94a3b8; text-align: center; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .badge-draft     { background: #fef3c7; color: #92400e; }
+  .badge-confirmed { background: #d1fae5; color: #065f46; }
+  .badge-loaded    { background: #dbeafe; color: #1e40af; }
+  .badge-archived  { background: #e2e8f0; color: #475569; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>{{PLAN_NAME}}</h1>
+      <div style="margin-top:4px"><span class="badge badge-{{STATUS}}">{{STATUS}}</span> · {{CONTAINER_TYPE}} · {{CONTAINER_DIMS}} · source: {{SOURCE}}</div>
+    </div>
+    <div class="meta">
+      <div>Created by <b>{{CREATED_BY}}</b></div>
+      <div>{{CREATED_AT}}</div>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="kpi"><div class="kpi-label">Total cartons</div><div class="kpi-value">{{TOTAL_CARTONS}}</div></div>
+    <div class="kpi"><div class="kpi-label">Total weight</div><div class="kpi-value">{{TOTAL_KG}} kg</div></div>
+    <div class="kpi"><div class="kpi-label">Volume utilisation</div><div class="kpi-value">{{UTIL_PCT}}%</div></div>
+    <div class="kpi"><div class="kpi-label">Container</div><div class="kpi-value">{{CONTAINER_TYPE}}</div></div>
+  </div>
+
+  <h2>3D layout (container 1)</h2>
+  <div class="viz">{{VIZ_IMG}}</div>
+
+  <h2>Load list</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>SKU</th>
+        <th style="text-align:right">Cartons</th>
+        <th style="text-align:right">L×W×H (cm)</th>
+        <th style="text-align:right">Kg/carton</th>
+        <th style="text-align:right">Total kg</th>
+      </tr>
+    </thead>
+    <tbody>{{LINES}}</tbody>
+  </table>
+
+  <div class="notes" style="display: {{NOTES}}-block">{{NOTES}}</div>
+
+  <div class="footer">Generated {{GENERATED_AT}} · Rapid Led WMS · Container Builder</div>
+
+</body>
+</html>

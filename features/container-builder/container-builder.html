@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Container Builder — Rapid Led</title>
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="container-builder.css?v=20260424b" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="/index.html" class="nav-link">Home</a>
+        <a href="#" class="nav-link" id="navAudit">Audit</a>
+        <a href="#" class="nav-link" id="navMyPlans">My Plans</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container wide-container cb-shell">
+
+    <!-- ═══════════════ Top bar: plan name + status + actions ═══════════════ -->
+    <div class="cb-topbar">
+      <div class="cb-topbar-left">
+        <h1 class="cb-page-title">🚢 Container Builder</h1>
+        <input type="text" id="cbPlanName" class="cb-plan-name" placeholder="Untitled plan…" />
+        <span class="cb-status-pill cb-status-draft" id="cbStatusPill">draft</span>
+        <span class="cb-source-tag" id="cbSourceTag" style="display:none"></span>
+        <span class="cb-user-tag" id="cbUserTag" style="display:none"></span>
+      </div>
+      <div class="cb-topbar-right">
+        <button class="cb-btn cb-btn-secondary" id="btnFromPO" type="button" title="Import from open PO">📋 From PO</button>
+        <button class="cb-btn cb-btn-secondary" id="btnAddSku" type="button" title="Add SKU manually">＋ Add SKU</button>
+        <button class="cb-btn cb-btn-secondary" id="btnSolve" type="button" title="Force re-solve and refresh viewport">↻ Re-solve</button>
+        <button class="cb-btn cb-btn-secondary" id="btnSave" type="button">💾 Save</button>
+        <button class="cb-btn cb-btn-primary"   id="btnConfirm" type="button" style="display:none">✓ Confirm</button>
+        <button class="cb-btn cb-btn-secondary" id="btnReopen" type="button" style="display:none">🔓 Reopen</button>
+        <button class="cb-btn cb-btn-secondary" id="btnExportPDF" type="button">📄 PDF</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════ Banners ═══════════════ -->
+    <div id="cbBanners"></div>
+
+    <!-- ═══════════════ Builder layout ═══════════════ -->
+    <div class="cb-builder">
+
+      <!-- ── LEFT column: container + cartons table ── -->
+      <div class="cb-col-left">
+
+        <section class="cb-card">
+          <div class="cb-card-header"><h2 class="cb-card-title">Container</h2></div>
+          <div class="cb-container-picker" id="cbContainerPicker"></div>
+        </section>
+
+        <section class="cb-card">
+          <div class="cb-card-header">
+            <h2 class="cb-card-title">Cartons (<span id="cbCartonCount">0</span>)</h2>
+            <div class="cb-card-actions">
+              <button class="cb-mini-btn" id="cbBtnClear" type="button">Clear</button>
+            </div>
+          </div>
+
+          <div class="cb-table">
+            <div class="cb-thead">
+              <div></div>
+              <div>SKU</div>
+              <div class="r">L</div>
+              <div class="r">W</div>
+              <div class="r">H</div>
+              <div class="r">kg</div>
+              <div class="r">qty</div>
+              <div></div>
+            </div>
+            <div class="cb-tbody" id="cbTbody"></div>
+          </div>
+
+          <div class="cb-summary" id="cbSummary"></div>
+        </section>
+
+      </div>
+
+      <!-- ── RIGHT column: metrics + 3D viewport + util bars ── -->
+      <div class="cb-col-right">
+        <div class="cb-metrics" id="cbMetrics"></div>
+        <div class="cb-container-tabs" id="cbContainerTabs"></div>
+        <div class="cb-viz" id="cbViz">
+          <div class="cb-viz-badge" id="cbVizBadge">No cartons</div>
+        </div>
+        <div id="cbUtilBars"></div>
+      </div>
+
+    </div>
+
+    <!-- ═══════════════ Load plan table ═══════════════ -->
+    <section class="cb-card cb-loadplan-card" id="cbLoadplanCard" style="display:none">
+      <div class="cb-card-header">
+        <h2 class="cb-card-title">Load plan — Container <span id="cbLoadplanIdx">1</span></h2>
+      </div>
+      <div class="cb-table">
+        <div class="cb-thead cb-thead-plan">
+          <div></div>
+          <div>SKU</div>
+          <div class="r">Qty</div>
+          <div class="r">Volume (m³)</div>
+          <div class="r">Weight (kg)</div>
+          <div class="r">% of container</div>
+        </div>
+        <div id="cbLoadplanBody"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ Audit panel (collapsible) ═══════════════ -->
+    <section class="cb-card cb-audit-collapse" id="cbAuditCard" style="display:none">
+      <div class="cb-card-header">
+        <h2 class="cb-card-title">📊 Master data quality (cin7_mirror.products)</h2>
+        <div class="cb-card-actions">
+          <button class="cb-mini-btn" id="cbBtnRefreshAudit" type="button">Refresh</button>
+          <button class="cb-mini-btn" id="cbBtnHideAudit" type="button">Hide</button>
+        </div>
+      </div>
+      <div id="cbAuditBody"><div class="cb-loader">Loading audit…</div></div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════════ Modals ═══════════════ -->
+
+  <!-- User name prompt -->
+  <div id="cbUserModal" class="cb-modal" style="display:none">
+    <div class="cb-modal-box">
+      <h3>Your name</h3>
+      <p>Used to track who created or edited each plan. Stored only in this browser.</p>
+      <input type="text" id="cbUserInput" placeholder="e.g. Joao" />
+      <div class="cb-modal-actions">
+        <button class="cb-btn cb-btn-primary" id="cbUserSave" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SKU picker -->
+  <div id="cbSkuModal" class="cb-modal" style="display:none">
+    <div class="cb-modal-box cb-modal-wide">
+      <div class="cb-modal-head">
+        <h3>Add SKU</h3>
+        <button class="cb-modal-close" type="button" data-close="cbSkuModal">×</button>
+      </div>
+      <input type="text" id="cbSkuSearch" placeholder="Search by SKU, name, 5DC or barcode…" />
+      <div class="cb-sku-results" id="cbSkuResults"></div>
+    </div>
+  </div>
+
+  <!-- PO picker -->
+  <div id="cbPoModal" class="cb-modal" style="display:none">
+    <div class="cb-modal-box cb-modal-wide">
+      <div class="cb-modal-head">
+        <h3>Open Purchase Orders</h3>
+        <button class="cb-modal-close" type="button" data-close="cbPoModal">×</button>
+      </div>
+      <div class="cb-po-list" id="cbPoList"><div class="cb-loader">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- My plans list -->
+  <div id="cbPlansModal" class="cb-modal" style="display:none">
+    <div class="cb-modal-box cb-modal-wide">
+      <div class="cb-modal-head">
+        <h3>Saved plans</h3>
+        <button class="cb-modal-close" type="button" data-close="cbPlansModal">×</button>
+      </div>
+      <div class="cb-plans-list" id="cbPlansList"><div class="cb-loader">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="cbToast" class="cb-toast" style="display:none"></div>
+
+  <script type="importmap">
+  { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  } }
+  </script>
+  <script type="module" src="container-builder.js?v=20260424b"></script>
+</body>
+</html>

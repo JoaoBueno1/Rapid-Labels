@@ -156,6 +156,13 @@ try {
   console.warn('⚠️  Could not register stocktake routes:', e.message);
 }
 
+// ── Container Builder routes ──
+try {
+  require('./features/container-builder/container-builder-engine')(app, supabaseBackend);
+} catch (e) {
+  console.warn('⚠️  Could not register Container Builder routes:', e.message);
+}
+
 // ── Replenishment: Pending TR Lines (fetches line details from Cin7 API) ──
 (function registerPendingTRRoutes() {
   const https = require('https');
