@@ -55,8 +55,8 @@
       { icon: '🚚', title: 'Lead Time', text: `+${CFG.LEAD_TIME_DAYS} days freight buffer added to target` },
       { icon: '🚫', title: 'Zero Sales Skip', text: 'SKUs with 0 avg for a branch are excluded from that branch\'s plan' },
       { icon: '📐', title: 'Formula', text: 'Send = min(Need − In-transit, Main Can Send)' },
-      { icon: '📦', title: 'Smart Carton Rounding', text: `Rounds up only if ≤ ${CFG.CARTON_ROUND_UP_MAX_RATIO}× target (avoids flooding slow movers)` },
-      { icon: '🔻', title: 'Min Send Threshold', text: `Skip if qty < ½ carton (or < ${CFG.MIN_SEND_FALLBACK_UNITS} units when no CTN data)` },
+      { icon: '📦', title: 'Smart Carton Rounding', text: `Round up only if post-send stock ≤ ${CFG.CARTON_ROUND_UP_MAX_MONTHS} months cover (also ≤ ${CFG.CARTON_ROUND_UP_MAX_RATIO}× target)` },
+      { icon: '🔻', title: 'Min Send Threshold', text: `Skip if qty < ½ carton (CTN < 50) or < ${CFG.MIN_SEND_FALLBACK_UNITS} units (CTN ≥ 50 / no CTN data)` },
       { icon: '⚖️', title: 'Proportional Allocation', text: 'Competing branches get a share of Main proportional to need' },
       { icon: '⚡', title: 'Safety Override', text: 'Oversold branches bypass Main safety — flagged in UI' },
       { icon: '⏰', title: 'Stale Data Block', text: `Plans hidden if sync > ${CFG.SYNC_BLOCK_MINUTES} min old` }
@@ -437,7 +437,10 @@
         if (suggestedQty <= 0) continue;
 
         const ctnQty = state.ctnMap[product] || 0;
-        const rounded = CFG.smartCartonRound(suggestedQty, ctnQty, pool, targetQty);
+        const rounded = CFG.smartCartonRound(suggestedQty, ctnQty, pool, targetQty, {
+          avgMonthBranch: avgMonth,
+          branchAvailable
+        });
         suggestedQty = rounded.qty;
 
         // Minimum threshold

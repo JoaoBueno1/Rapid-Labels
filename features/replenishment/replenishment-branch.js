@@ -43,7 +43,8 @@
     dcMap: {},
     productNames: {},      // product → display name
     locationMap: {},       // product → pickface location
-    pendingTRs: {},        // product → { pending_qty, transfers: ['TR-XXXXX = QTY'] }
+    pendingTRs: {},        // product → { pending_qty, transfers: ['TR-XXXXX = QTY'] } — current branch only
+    pendingTRsAllBranches: {}, // branchCode → { product → { pending_qty } } — used in conflict pass
     pendingTRList: [],     // array of { number, status, lines }
     cartonMode: false,     // Cartons Only mode toggle
     selectedRows: new Set(),
@@ -315,23 +316,57 @@
   }
 
   async function loadPendingTRs() {
-    try {
-      const resp = await fetch(`/api/replenishment/pending-transfers/${state.branchCode}`);
-      if (!resp.ok) {
-        console.warn('Pending TRs: HTTP', resp.status);
-        return;
+    // Load pending TRs for ALL branches so the conflict-detection pass below
+    // can subtract in-transit qty from each branch's effective need.
+    //
+    // Strategy: await ONLY the current branch (needed for second pass).
+    // Other branches load in parallel in background — if they finish before
+    // calculatePlan() runs they're used; if not, conflict detection falls
+    // back to raw need for those branches (still correct, just less precise).
+    // A 4s timeout per call prevents a slow API from blocking the page.
+    state.pendingTRs = {};
+    state.pendingTRList = [];
+    state.pendingTRsAllBranches = {};
+
+    const fetchBranchPending = async (code) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
+      try {
+        const resp = await fetch(`/api/replenishment/pending-transfers/${code}`, { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch (err) {
+        clearTimeout(timer);
+        return null;
       }
-      const data = await resp.json();
-      state.pendingTRs = data.products || {};
-      state.pendingTRList = data.transfers || [];
-      const trCount = state.pendingTRList.length;
-      const productCount = Object.keys(state.pendingTRs).length;
-      console.log(`📋 Pending TRs: ${trCount} transfers, ${productCount} products in transit`);
-    } catch (err) {
-      console.warn('Could not load pending TRs:', err.message);
-      state.pendingTRs = {};
-      state.pendingTRList = [];
+    };
+
+    // Step 1: await current branch (blocks page so calculatePlan has accurate data for self)
+    const currentData = await fetchBranchPending(state.branchCode);
+    if (currentData) {
+      state.pendingTRs = currentData.products || {};
+      state.pendingTRList = currentData.transfers || [];
+      state.pendingTRsAllBranches[state.branchCode] = currentData.products || {};
+    } else {
+      console.warn(`Pending TRs for ${state.branchCode}: failed or timed out`);
     }
+
+    const trCount = state.pendingTRList.length;
+    const productCount = Object.keys(state.pendingTRs).length;
+    console.log(`📋 Pending TRs (current ${state.branchCode}): ${trCount} transfers, ${productCount} products in transit`);
+
+    // Step 2: load OTHER branches in background — non-blocking.
+    const otherBranches = Object.keys(BRANCHES).filter(c => c !== state.branchCode);
+    Promise.allSettled(otherBranches.map(async (code) => {
+      const data = await fetchBranchPending(code);
+      if (data) {
+        state.pendingTRsAllBranches[code] = data.products || {};
+      }
+    })).then(() => {
+      const loadedCount = Object.keys(state.pendingTRsAllBranches).length;
+      console.log(`📋 Pending TRs background load complete: ${loadedCount}/${Object.keys(BRANCHES).length} branches`);
+    });
   }
 
   // ============================================
@@ -354,20 +389,29 @@
     const allProducts = Array.from(productSet);
     
     // ──────── FIRST PASS: calculate needs for ALL branches (conflict detection) ────────
+    // Each branch's "need" here is the EFFECTIVE need (target − branch stock − pending TRs).
+    // Using effective need (not raw) prevents wasted canSend: a branch with stock
+    // already in transit would otherwise be allocated a proportional share larger
+    // than its remaining real need, leaving Main canSend orphaned.
+    //
+    // canSendTotal also accounts for the safety-override pool: if any competing
+    // branch is oversold, the conflict pool grows to mainAvailable (override active),
+    // matching how the second pass actually distributes stock.
     const allBranchNeeds = {};
     for (const product of allProducts) {
-      if (product.toLowerCase().includes('carton')) continue;
-      
+      if (CFG.isExcludedProduct(product)) continue;
+
       const avgRow = state.avgData[product];
       if (!avgRow) continue;
-      
+
       const mainStock = state.stockData[`${product}:MAIN`];
       const mainAvailable = mainStock?.qty_available || 0;
       const avgMonthMain = Math.round(avgRow?.avg_mth_main || 0);
       const mainMinQty = CFG.computeMainSafety(avgMonthMain);
-      const canSendTotal = Math.max(0, mainAvailable - mainMinQty);
+      const canSendBase = Math.max(0, mainAvailable - mainMinQty);
 
       let totalNeed = 0;
+      let anyOversold = false;
       const branchNeeds = {};
 
       for (const [code, info] of Object.entries(BRANCHES)) {
@@ -377,26 +421,43 @@
 
         const branchStk = state.stockData[`${product}:${code}`];
         const branchAvailable = branchStk?.qty_available || 0;
+        const soldDeficit = branchAvailable < 0 ? Math.abs(branchAvailable) : 0;
         const target = CFG.computeBranchTarget(avgMonth);
-        const need = Math.max(0, target - branchAvailable);
+        const rawNeed = Math.max(0, target - branchAvailable);
 
-        if (need > 0) {
-          branchNeeds[code] = { need };
-          totalNeed += need;
+        const pending = state.pendingTRsAllBranches?.[code]?.[product]?.pending_qty || 0;
+        const effectiveNeed = Math.max(0, rawNeed - pending);
+
+        if (effectiveNeed > 0) {
+          branchNeeds[code] = { need: effectiveNeed, soldDeficit };
+          totalNeed += effectiveNeed;
+          if (soldDeficit > 0) anyOversold = true;
         }
       }
-      
+
+      // If any competing branch is oversold AND base canSend can't cover total
+      // need, the safety-override pool kicks in (mainAvailable, ignoring safety).
+      // The conflict pool must reflect this so proportional shares match reality.
+      let conflictPool = canSendBase;
+      let overrideActiveInConflict = false;
+      if (anyOversold && canSendBase < totalNeed && mainAvailable > 0) {
+        conflictPool = mainAvailable;
+        overrideActiveInConflict = true;
+      }
+
       allBranchNeeds[product] = {
         totalNeed,
-        canSend: canSendTotal,
+        canSend: conflictPool,
+        canSendBase,
+        overrideActiveInConflict,
         branches: branchNeeds,
-        hasConflict: totalNeed > canSendTotal && canSendTotal > 0 && Object.keys(branchNeeds).length > 1
+        hasConflict: totalNeed > conflictPool && conflictPool > 0 && Object.keys(branchNeeds).length > 1
       };
     }
     
     // ──────── SECOND PASS: build product lines ────────
     for (const product of allProducts) {
-      if (product.toLowerCase().includes('carton')) continue;
+      if (CFG.isExcludedProduct(product)) continue;
       
       const avgRow = state.avgData[product];
       const avgMonthBranchRaw = avgRow?.[avgField] || 0;       // raw decimal for display
@@ -511,18 +572,30 @@
       
       let allocatedQty = Math.min(effectiveNeedQty, effectiveCanSend);
       let conflictDetail = null;
-      
+
       if (conflict?.hasConflict && conflict.branches[branchCode]) {
         const thisBranchNeed = conflict.branches[branchCode].need;
         const totalNeed = conflict.totalNeed;
+
+        // When safety override is active for THIS branch (it's oversold),
+        // bypass the proportional cap. Oversold branches are paid first up
+        // to their full need; remaining stock then splits proportionally
+        // across the others (mirrors the all-branches global allocator).
+        // Without this, an oversold branch could be capped to a tiny share
+        // while Main has stock to clear its deficit.
+        const skipProportionalCap = safetyOverride && soldDeficit > 0;
+
         const proportionalShare = Math.floor((thisBranchNeed / totalNeed) * conflict.canSend);
-        allocatedQty = Math.min(allocatedQty, proportionalShare);
-        
+        if (!skipProportionalCap) {
+          allocatedQty = Math.min(allocatedQty, proportionalShare);
+        }
+
         conflictDetail = {
           thisBranchNeed,
           totalNeed,
           mainCanSend: conflict.canSend,
           proportionalShare,
+          oversoldPriority: skipProportionalCap,
           otherBranches: Object.entries(conflict.branches)
             .filter(([c]) => c !== branchCode)
             .map(([code, info]) => ({ code, need: info.need }))
@@ -567,7 +640,10 @@
       // ── DEFAULT MODE ──
       else {
         if (allocatedQty > 0) {
-          const ctnResult = smartCartonRound(allocatedQty, ctnQty, effectiveCanSend, targetQty);
+          const ctnResult = smartCartonRound(allocatedQty, ctnQty, effectiveCanSend, targetQty, {
+            avgMonthBranch,
+            branchAvailable
+          });
           sendQty = ctnResult.qty;
           rounded = ctnResult.rounded;
           
@@ -1097,20 +1173,24 @@
       return;
     }
     
-    const headers = ['5DC', 'Product', 'Product Name', 'Location', 'Cover Days', 'Branch Stock', 'Main Stock', 'Send Qty', 'Cartons', 'CTN Qty', 'Conflict'];
-    const rows = linesToExport.map(l => [
-      `"${l.dc_code || ''}"`,
-      `"${(l.product || '').replace(/"/g, '""')}"`,
-      `"${(l.product_name || '').replace(/"/g, '""')}"`,
-      `"${(l.location || '').replace(/"/g, '""')}"`,
-      l.cover_days >= 999 ? '' : l.cover_days,
-      l.branch_stock,
-      l.main_stock,
-      l.send_qty,
-      l.cartons || '',
-      l.ctn_qty || '',
-      l.has_conflict ? 'Yes' : ''
-    ]);
+    const headers = ['Product', 'Product Name', 'Weeks Cover After', 'AVG/mth', 'Branch Stock', 'Main Stock', 'Send Qty', 'Cartons', 'CTN Qty'];
+    const rows = linesToExport.map(l => {
+      const avgWeek = l.avg_branch_raw > 0 ? l.avg_branch_raw / WEEKS_IN_MONTH : 0;
+      const postStock = l.branch_stock + l.send_qty;
+      const weeksAfter = avgWeek > 0 ? (postStock / avgWeek).toFixed(1) : '';
+      const avgDisplay = l.avg_branch_raw > 0 ? l.avg_branch_raw.toFixed(1) : '';
+      return [
+        `"${(l.product || '').replace(/"/g, '""')}"`,
+        `"${(l.product_name || '').replace(/"/g, '""')}"`,
+        weeksAfter,
+        avgDisplay,
+        l.branch_stock,
+        l.main_stock,
+        l.send_qty,
+        l.cartons || '',
+        l.ctn_qty || ''
+      ];
+    });
     
     const label = state.selectedRows.size > 0 ? `selected-${linesToExport.length}` : 'all';
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');

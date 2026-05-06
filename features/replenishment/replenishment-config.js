@@ -39,11 +39,23 @@
   // ──────────────────────────────────────────────────────────────────
   // CARTON ROUNDING
   // ──────────────────────────────────────────────────────────────────
-  // Round-up is accepted only if it stays under this multiple of target.
-  //   3× = up to 18 weeks cover when target is 6 weeks.
-  //   Prevents slow movers from getting flooded when a carton is big
-  //   relative to demand (e.g. CTN=12 but branch needs 4).
-  const CARTON_ROUND_UP_MAX_RATIO = 3;
+  // Carton round-up uses TWO caps — both must be satisfied:
+  //
+  //   1. Ratio cap: roundedUp ≤ targetQty × CARTON_ROUND_UP_MAX_RATIO
+  //      Falls back when avg/branch_avail aren't available. Used as guard.
+  //
+  //   2. Months cap (preferred when avg known): post-send branch coverage
+  //      ≤ CARTON_ROUND_UP_MAX_MONTHS months of branch demand.
+  //      → "Don't let a carton round-up push the branch past 2 months stock."
+  //      This is the easier-to-verify intuition for ops review.
+  //
+  // Examples:
+  //   avg 58, branch 8, ctn 50 → max post-stock = 116, max qty = 108.
+  //     roundedUp 100 ≤ 108 → ships 100 (~1.9 months cover) ✓
+  //   avg 17, branch 24, ctn 100 → max post-stock = 34, max qty = 10.
+  //     roundedUp 100 > 10 → reject. Sends raw 3 (then min-send may block).
+  const CARTON_ROUND_UP_MAX_RATIO = 2;
+  const CARTON_ROUND_UP_MAX_MONTHS = 2;
 
   // Max months of stock a branch can hold when Cartons Only mode is on.
   //   Hard ceiling independent of target weeks.
@@ -69,9 +81,13 @@
   const SYNC_BLOCK_MINUTES = 120; // 2h — hard block, data likely wrong
 
   // Expected rows per successful sync — flags partial failures.
-  // Tune as the catalogue grows. Null disables the check.
-  const SYNC_MIN_STOCK_ROWS = 500;
-  const SYNC_MIN_PRODUCTS = 100;
+  // Set to ~60% of the live catalog so a partial sync (well below normal)
+  // raises a warning. Live catalog is currently:
+  //   stock_snapshot ≈ 14,200 rows  → threshold 8,000
+  //   products       ≈ 10,700 rows  → threshold 5,000
+  // Was 500 / 100 — way too low to detect partial syncs.
+  const SYNC_MIN_STOCK_ROWS = 8000;
+  const SYNC_MIN_PRODUCTS = 5000;
 
   // ──────────────────────────────────────────────────────────────────
   // COVER DAY BANDS (UI categorisation)
@@ -84,10 +100,14 @@
   // PRODUCT FILTERS
   // ──────────────────────────────────────────────────────────────────
   // SKUs whose name matches any of these regexes are excluded.
-  //   Original rule was substring 'carton' — kept but made explicit.
-  //   Add more here if new non-stocked SKU patterns appear.
+  //   First pattern: SKU contains the word "carton" as its own token.
+  //   Second pattern: catches variant SKUs like R-WPI220-Carton50,
+  //     R-SLGPO2-WH-Carton100 — bundle/multipack codes that we don't
+  //     replenish independently. Without this, the carton variants got
+  //     planned alongside the base SKU and double-counted.
   const EXCLUDED_NAME_PATTERNS = [
-    /\bcarton\b/i
+    /\bcarton\b/i,
+    /[-_ ]carton\d+/i
   ];
 
   // Whether zero-AVG branches are surfaced as 'no data' rows (branch detail
@@ -154,8 +174,23 @@
     return Math.ceil(avgWeek * MAIN_MIN_WEEKS);
   }
 
-  // Minimum send threshold in units (pass carton qty when known).
+  // Minimum send threshold in units.
+  //
+  // Large carton (≥50 units): the "½ carton" rule blocks small but legitimate
+  //   needs (e.g. R-GP1-WH has CTN=200, target=28 — half-carton 100 would
+  //   refuse to ship the 28 it actually needs). For these, only block tiny
+  //   dribbles below the absolute fallback floor (3 units).
+  //   Validated against real manager TRs: ops sends qty 3 to top-up branches
+  //   even at 6+ weeks cover (e.g. R-SW1-WH CFS) — so we keep the floor low.
+  // Small carton (1-49): half-carton is reasonable — encourages full-carton
+  //   sends when feasible.
+  // No CTN: scale with branch's weekly demand. The "MIN_SEND_FALLBACK_UNITS - 1"
+  //   floor (= 2 units) is intentional — for very slow movers without carton
+  //   info, we still want to allow 2-unit sends rather than blocking them.
   function computeMinSend(ctnQty, avgMonthBranch) {
+    if (ctnQty && ctnQty >= 50) {
+      return MIN_SEND_FALLBACK_UNITS;
+    }
     if (ctnQty && ctnQty > 0) {
       return Math.ceil(ctnQty / 2);
     }
@@ -221,12 +256,27 @@
 
   // Shared smart carton rounder.
   // Returns { qty, rounded: 'none'|'exact'|'up'|'down'|'partial' }
-  function smartCartonRound(suggestedQty, ctnQty, canSendQty, targetQty) {
+  //
+  // opts (optional, recommended): { avgMonthBranch, branchAvailable }
+  //   When provided, applies the "post-send ≤ N months coverage" cap on top
+  //   of the ratio cap. Both must be satisfied for the round-up to proceed.
+  function smartCartonRound(suggestedQty, ctnQty, canSendQty, targetQty, opts) {
     if (!ctnQty || ctnQty <= 0) return { qty: suggestedQty, rounded: 'none' };
     const roundedUp = Math.ceil(suggestedQty / ctnQty) * ctnQty;
     const roundedDown = Math.floor(suggestedQty / ctnQty) * ctnQty;
     if (suggestedQty === roundedUp) return { qty: suggestedQty, rounded: 'exact' };
-    const maxAcceptable = targetQty ? targetQty * CARTON_ROUND_UP_MAX_RATIO : Infinity;
+
+    // Cap 1: ratio of target (always applied as a guard).
+    let maxAcceptable = targetQty ? targetQty * CARTON_ROUND_UP_MAX_RATIO : Infinity;
+
+    // Cap 2 (preferred when avg known): post-send coverage ≤ N months.
+    if (opts && opts.avgMonthBranch && opts.avgMonthBranch > 0) {
+      const branchAvail = Math.max(0, opts.branchAvailable || 0);
+      const maxPostStock = Math.ceil(opts.avgMonthBranch * CARTON_ROUND_UP_MAX_MONTHS);
+      const monthsCapMaxQty = Math.max(0, maxPostStock - branchAvail);
+      if (monthsCapMaxQty < maxAcceptable) maxAcceptable = monthsCapMaxQty;
+    }
+
     if (roundedUp <= canSendQty && roundedUp <= maxAcceptable) return { qty: roundedUp, rounded: 'up' };
     if (roundedDown > 0) return { qty: roundedDown, rounded: 'down' };
     return { qty: suggestedQty, rounded: 'partial' };
@@ -250,6 +300,7 @@
     MAIN_MIN_WEEKS,
     LEAD_TIME_DAYS,
     CARTON_ROUND_UP_MAX_RATIO,
+    CARTON_ROUND_UP_MAX_MONTHS,
     CARTON_MODE_MAX_MONTHS,
     MIN_SEND_FALLBACK_UNITS,
     SYNC_WARN_MINUTES,

@@ -368,7 +368,10 @@
   // Pull-out of the per-branch allocation writeback (carton round + min threshold).
   function applyAllocation(product, bn, allocated, poolRemaining, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict) {
     const available = Math.min(allocated, poolRemaining);
-    const ctnResult = CFG.smartCartonRound(available, ctnQty, available, bn.target);
+    const ctnResult = CFG.smartCartonRound(available, ctnQty, available, bn.target, {
+      avgMonthBranch: bn.avgMonth,
+      branchAvailable: bn.branchAvailable
+    });
     let sendQty = ctnResult.qty;
 
     // Min threshold — but oversold branches always ship.
@@ -388,6 +391,7 @@
       ctn_qty: ctnQty,
       cartons: ctnQty > 0 ? Math.ceil(sendQty / ctnQty) : 0,
       branch_stock: bn.branchAvailable,
+      avg_month: bn.avgMonth,
       need: bn.need,
       sold_deficit: bn.soldDeficit,
       has_conflict: hasConflict,
@@ -573,18 +577,32 @@
     const wb = XLSX.utils.book_new();
     let sheetCount = 0;
 
+    const WEEKS_IN_MONTH = CFG.WEEKS_IN_MONTH;
     for (const b of BRANCHES) {
       const list = state.branchSendLists[b.code];
       if (list.length === 0) continue;
 
-      const rows = list.map(item => ({
-        'SKU': item.product,
-        'Product Name': item.product_name,
-        'Qty to Send': item.send_qty
-      }));
+      const rows = list.map(item => {
+        const avgWeek = item.avg_month > 0 ? item.avg_month / WEEKS_IN_MONTH : 0;
+        const postStock = item.branch_stock + item.send_qty;
+        const weeksAfter = avgWeek > 0 ? Number((postStock / avgWeek).toFixed(1)) : '';
+        return {
+          'Product': item.product,
+          'Product Name': item.product_name,
+          'Weeks Cover After': weeksAfter,
+          'AVG/mth': item.avg_month || '',
+          'Branch Stock': item.branch_stock,
+          'Send Qty': item.send_qty,
+          'Cartons': item.cartons || '',
+          'CTN Qty': item.ctn_qty || ''
+        };
+      });
 
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws['!cols'] = [{ wch: 20 }, { wch: 45 }, { wch: 12 }];
+      ws['!cols'] = [
+        { wch: 22 }, { wch: 45 }, { wch: 18 }, { wch: 10 },
+        { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }
+      ];
       XLSX.utils.book_append_sheet(wb, ws, b.name);
       sheetCount++;
     }
