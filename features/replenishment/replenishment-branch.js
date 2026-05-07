@@ -647,13 +647,13 @@
           sendQty = ctnResult.qty;
           rounded = ctnResult.rounded;
           
-          if (branchAvailable > 0) {
+          if (branchAvailable > 0 && sendQty > 0) {
             const minThreshold = CFG.computeMinSend(ctnQty, avgMonthBranch);
             if (sendQty < minThreshold) {
-              sendNote = 'below_min';
-              blockedQty = sendQty;
-              sendQty = 0;
-              rounded = 'none';
+              // Soft flag: keep qty so manager sees the recommendation,
+              // but mark as small send (below typical threshold).
+              sendNote = 'small_send';
+              blockedQty = minThreshold;
             }
           }
         } else {
@@ -823,8 +823,10 @@
           }
         }
         sendDisplay = '<strong class="send-val">' + line.send_qty + '</strong>' + ctnBadge + safetyBadge + shortBadge;
-      } else if (line.send_note === 'below_min') {
-        sendDisplay = '<span class="send-blocked" title="Qty below min threshold">' + (line.blocked_qty || line.raw_qty) + ' ‹min</span>';
+      } else if (line.send_note === 'small_send') {
+        const minTip = 'Below typical send size (min ~' + (line.blocked_qty || '?') + '). Manager review — may batch with other reorders.';
+        sendDisplay = '<strong class="send-val" style="color:#b45309">' + line.send_qty + '</strong>'
+          + ' <span class="rnd-badge" style="background:#fef3c7;color:#92400e" title="' + escapeHtml(minTip) + '">small</span>';
       } else if (line.send_note === 'no_main_stock') {
         sendDisplay = line.main_stock <= 0
           ? '<span class="send-dim">—</span>'
@@ -946,9 +948,11 @@
   function getFilteredLines() {
     let lines = state.planLines;
     
-    // Always hide no_avg unless specifically viewing "all"
+    // Always hide no_avg unless specifically viewing "all" — but keep
+    // oversold no_avg rows visible (emergency: branch has committed sales
+    // with no AVG history, ops must review).
     if (state.filter !== 'all_full') {
-      lines = lines.filter(l => l.category !== 'no_avg');
+      lines = lines.filter(l => l.category !== 'no_avg' || l.sold_deficit > 0);
     }
     
     // Apply filter
