@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rapid Inventory SKU — Dashboard</title>
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+
+  <!-- Supabase client (carregado pelo supabase-config.js) -->
+  <script src="../../supabase-config.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #f1f5f9;
+      --bg-card:   #ffffff;
+      --border:    #e2e8f0;
+      --text:      #0f172a;
+      --text-mute: #64748b;
+      --primary:   #6366f1;
+      --primary-d: #4f46e5;
+      --red:       #ef4444;
+      --green:     #10b981;
+      --yellow:    #eab308;
+      --blue:      #3b82f6;
+      --pink:      #ec4899;
+      --header:    #0f172a;
+    }
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      font-size: 14px;
+    }
+
+    /* ── Top bar ─────────────────────────────────────────────── */
+    .topbar {
+      background: var(--header);
+      color: #fff;
+      padding: 12px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 1px 0 rgba(0,0,0,.05);
+    }
+    .topbar .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .topbar .brand-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #6366f1, #ec4899);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+    }
+    .topbar .accent {
+      background: linear-gradient(120deg, #a5b4fc, #f9a8d4);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .topbar .right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+    }
+    .topbar .pill {
+      background: rgba(255,255,255,.1);
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .topbar .pill.ok { background: #064e3b; color: #6ee7b7; }
+    .topbar a.icon-btn {
+      width: 32px; height: 32px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.1);
+      border-radius: 8px;
+      color: #fff;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .topbar a.icon-btn:hover { background: rgba(255,255,255,.2); }
+
+    /* ── Layout: sidebar + main ──────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      height: calc(100vh - 56px);
+    }
+    .sidebar {
+      background: #ffffff;
+      border-right: 1px solid var(--border);
+      padding: 14px 10px;
+      overflow-y: auto;
+    }
+    .sidebar h3 {
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-mute);
+      padding: 10px 12px 6px;
+      font-weight: 700;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 9px;
+      cursor: pointer;
+      color: var(--text);
+      font-weight: 600;
+      font-size: 13.5px;
+      transition: all 0.12s;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+    .nav-item:hover { background: #f8fafc; }
+    .nav-item.active {
+      background: #ede9fe;
+      color: var(--primary-d);
+    }
+    .nav-item .ico { font-size: 16px; width: 22px; text-align: center; }
+    .nav-item .count {
+      margin-left: auto;
+      background: #f1f5f9;
+      color: var(--text-mute);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .nav-item.active .count { background: var(--primary); color: #fff; }
+
+    .main {
+      overflow-y: auto;
+      padding: 24px 28px;
+    }
+
+    /* ── KPI Cards ───────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .kpi {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 4px;
+      background: var(--accent, var(--primary));
+    }
+    .kpi-label {
+      font-size: 11px;
+      color: var(--text-mute);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .kpi-value {
+      font-size: 26px;
+      font-weight: 800;
+      margin-top: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi-sub {
+      font-size: 11px;
+      color: var(--text-mute);
+      margin-top: 4px;
+    }
+    .kpi.kpi-blue   { --accent: var(--blue); }
+    .kpi.kpi-pink   { --accent: var(--pink); }
+    .kpi.kpi-red    { --accent: var(--red); }
+    .kpi.kpi-yellow { --accent: var(--yellow); }
+    .kpi.kpi-green  { --accent: var(--green); }
+    .kpi.kpi-purple { --accent: #8b5cf6; }
+    .kpi.kpi-red .kpi-value    { color: var(--red); }
+    .kpi.kpi-yellow .kpi-value { color: #b45309; }
+
+    /* ── Section card ────────────────────────────────────────── */
+    .section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 18px;
+    }
+    .section h2 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section .desc {
+      color: var(--text-mute);
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Excel-like table ────────────────────────────────────── */
+    .xtable-wrap {
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-height: 60vh;
+    }
+    table.xtable {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12.5px;
+      font-variant-numeric: tabular-nums;
+    }
+    table.xtable thead th {
+      position: sticky;
+      top: 0;
+      background: #f8fafc;
+      color: #334155;
+      font-weight: 700;
+      text-align: left;
+      padding: 7px 10px;
+      border-bottom: 1px solid #cbd5e1;
+      border-right: 1px solid #e2e8f0;
+      white-space: nowrap;
+      z-index: 2;
+    }
+    table.xtable tbody td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #f1f5f9;
+      border-right: 1px solid #f1f5f9;
+      white-space: nowrap;
+    }
+    table.xtable tbody tr:nth-child(even) { background: #fafbfc; }
+    table.xtable tbody tr:hover { background: #eff6ff; }
+    table.xtable tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.xtable .cell-red    { background: #fee2e2 !important; color: #b91c1c; font-weight: 700; }
+    table.xtable .cell-yellow { background: #fef3c7 !important; color: #92400e; font-weight: 700; }
+    table.xtable .cell-green  { background: #d1fae5 !important; color: #065f46; }
+
+    /* ── Forecast Excel-like ─────────────────────────────────── */
+    table.xtable.forecast { font-size: 11.5px; }
+    table.xtable.forecast tbody td { padding: 4px 8px; white-space: nowrap; }
+    table.xtable.forecast tbody tr:hover { background: transparent !important; }
+    table.xtable.forecast thead th { font-size: 10.5px; padding: 6px 6px; line-height: 1.15; }
+
+    .empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-mute);
+      font-size: 13px;
+    }
+    .empty .big { font-size: 36px; margin-bottom: 10px; }
+
+    /* ── Buttons ─────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      font-weight: 600;
+      font-size: 12.5px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn:hover { background: #f8fafc; }
+    .btn.primary {
+      background: var(--header);
+      color: #fff;
+      border-color: var(--header);
+    }
+    .btn.primary:hover { background: #1e293b; }
+    .btn.danger {
+      background: #fef2f2;
+      color: #991b1b;
+      border-color: #fecaca;
+    }
+
+    /* ── Status banner ───────────────────────────────────────── */
+    .banner {
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13.5px;
+      font-weight: 500;
+    }
+    .banner.warn  { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .banner.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .banner.ok    { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+
+    /* ── Coming soon placeholder ─────────────────────────────── */
+    .placeholder {
+      background: var(--bg-card);
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 60px 30px;
+      text-align: center;
+      color: var(--text-mute);
+    }
+    .placeholder .big-ico { font-size: 56px; margin-bottom: 14px; }
+    .placeholder h3 { color: var(--text); font-size: 18px; margin-bottom: 6px; }
+    .placeholder p { font-size: 13px; max-width: 460px; margin: 0 auto; }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Mobile ──────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .main { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Top bar ─────────────────────────────────────────────── -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-logo">📊</div>
+      <span>Rapid <span class="accent">Inventory</span> SKU</span>
+    </div>
+    <div class="right">
+      <span class="pill" id="dbStatus">Connecting…</span>
+      <span class="pill" id="rangePill">Range 2024 → 2030</span>
+      <a class="icon-btn" href="../../index.html" title="Back to main app">←</a>
+    </div>
+  </div>
+
+  <!-- ── Main layout ─────────────────────────────────────────── -->
+  <div class="layout">
+    <aside class="sidebar">
+      <h3>Modules</h3>
+      <button class="nav-item active" data-view="overview">
+        <span class="ico">📈</span><span>Overview</span>
+      </button>
+      <button class="nav-item" data-view="project">
+        <span class="ico">📋</span><span>Project Lines</span>
+        <span class="count" id="cntProject">—</span>
+      </button>
+      <button class="nav-item" data-view="pos">
+        <span class="ico">🛒</span><span>Purchase Orders</span>
+        <span class="count" id="cntPOs">—</span>
+      </button>
+      <button class="nav-item" data-view="analysis">
+        <span class="ico">🧠</span><span>Analysis</span>
+        <span class="count" id="cntAlerts">—</span>
+      </button>
+      <button class="nav-item" data-view="forecast">
+        <span class="ico">🔮</span><span>Forecast 2030</span>
+      </button>
+
+      <h3>Live (Cin7)</h3>
+      <button class="nav-item" data-view="skus">
+        <span class="ico">🏷️</span><span>SKUs</span>
+        <span class="count" id="cntSkus">—</span>
+      </button>
+      <button class="nav-item" data-view="stock">
+        <span class="ico">📦</span><span>Stock Live</span>
+        <span class="count" id="cntStock">—</span>
+      </button>
+      <button class="nav-item" data-view="opensos">
+        <span class="ico">🧾</span><span>Open SOs</span>
+        <span class="count" id="cntOpenSOs">—</span>
+      </button>
+
+      <h3>Tools</h3>
+      <button class="nav-item" data-view="import">
+        <span class="ico">📥</span><span>Cin7 Import</span>
+      </button>
+      <button class="nav-item" data-view="audit">
+        <span class="ico">🕵️</span><span>Audit Log</span>
+      </button>
+      <button class="nav-item" data-view="settings">
+        <span class="ico">⚙️</span><span>Settings</span>
+      </button>
+    </aside>
+
+    <main class="main">
+
+      <!-- ─── OVERVIEW VIEW ─────────────────────────────────── -->
+      <section class="view active" id="view-overview">
+        <div id="setupBanner" style="display:none"></div>
+
+        <div class="kpi-grid" id="kpiGrid">
+          <div class="kpi kpi-blue">
+            <div class="kpi-label">Open SO Lines</div>
+            <div class="kpi-value" id="kpi-openSO">—</div>
+            <div class="kpi-sub">Project pending</div>
+          </div>
+          <div class="kpi kpi-pink">
+            <div class="kpi-label">Open POs</div>
+            <div class="kpi-value" id="kpi-openPO">—</div>
+            <div class="kpi-sub">Incoming</div>
+          </div>
+          <div class="kpi kpi-red">
+            <div class="kpi-label">SKUs Critical</div>
+            <div class="kpi-value" id="kpi-red">—</div>
+            <div class="kpi-sub">Mths Stock &lt; threshold</div>
+          </div>
+          <div class="kpi kpi-yellow">
+            <div class="kpi-label">SKUs Warning</div>
+            <div class="kpi-value" id="kpi-yellow">—</div>
+            <div class="kpi-sub">Low stock alert</div>
+          </div>
+          <div class="kpi kpi-green">
+            <div class="kpi-label">Pack & Hold</div>
+            <div class="kpi-value" id="kpi-hold">—</div>
+            <div class="kpi-sub">Reserved qty</div>
+          </div>
+          <div class="kpi kpi-purple">
+            <div class="kpi-label">PO Pipeline</div>
+            <div class="kpi-value" id="kpi-pipeline">—</div>
+            <div class="kpi-sub">AUD value</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>🔥 Top critical SKUs</h2>
+          <div class="desc">SKUs where Mths Stock &lt; threshold (Red). Sorted by criticality.</div>
+          <div id="topCritical" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>📅 Next picks (7 days)</h2>
+          <div class="desc">Project lines with pick_date in the next 7 days.</div>
+          <div id="nextPicks" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── PROJECT VIEW ──────────────────────────────────── -->
+      <section class="view" id="view-project">
+        <div class="section">
+          <h2>📋 Project Lines</h2>
+          <div class="desc">Sales Order lines com pack-and-hold, pick_date e qty_held customizados. Substitui o Project sheet do Excel.</div>
+          <div id="projectTable" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+          <div id="projectEmpty" style="display:none">
+            <div class="placeholder">
+              <div class="big-ico">📥</div>
+              <h3>Project Lines está vazio</h3>
+              <p>Os SOs do Cin7 só têm o cabeçalho (cliente, número, status). As linhas individuais com SKU, qty, pick_date, qty_held customizado precisam vir do seu Excel <code>Rapid-Inventory SKU 2025.xlsx</code>.</p>
+              <div style="margin-top:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+                <button class="btn primary" type="button" onclick="document.querySelector('[data-view=&quot;import&quot;]').click()">📥 Ir para Cin7 Import</button>
+                <button class="btn" type="button" onclick="document.querySelector('[data-view=&quot;opensos&quot;]').click()">🧾 Ver Open SOs (Cin7 live)</button>
+              </div>
+              <p style="margin-top:16px;font-size:11px;color:#94a3b8">
+                Alternativa rápida: a aba <strong>Open SOs</strong> mostra os 496 SOs abertos do Cin7 ao vivo (só headers, sem pack-and-hold).
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── POs VIEW ──────────────────────────────────────── -->
+      <section class="view" id="view-pos">
+        <div class="section">
+          <h2>🛒 Purchase Orders</h2>
+          <div class="desc">POs abertas. Substitui o PO's sheet do Excel.</div>
+          <div id="poTable" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── ANALYSIS VIEW ─────────────────────────────────── -->
+      <section class="view" id="view-analysis">
+        <div class="section">
+          <h2>🧠 Analysis</h2>
+          <div class="desc">SOH, Wk/Avg, Mths Stock por SKU. Semáforos automáticos. Substitui Analysis sheet.</div>
+          <div id="analysisTable" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── FORECAST VIEW ─────────────────────────────────── -->
+      <section class="view" id="view-forecast">
+        <div class="section">
+          <h2>🔮 Forward Forecast <span style="font-size:11px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-weight:700;margin-left:6px">até 2030</span></h2>
+          <div class="desc">Projeção semanal por SKU/Fornecedor. Substitui as 23 supplier sheets do Excel. Balance &lt; 0 = vermelho.</div>
+
+          <!-- Filtros -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0 14px;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid var(--border)">
+            <label style="display:flex;flex-direction:column;font-size:11px;font-weight:700;color:#475569;letter-spacing:.3px;text-transform:uppercase">
+              Fornecedor
+              <select id="fcSupplier" style="margin-top:4px;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:13px;min-width:180px">
+                <option value="">— escolha —</option>
+              </select>
+            </label>
+            <label style="display:flex;flex-direction:column;font-size:11px;font-weight:700;color:#475569;letter-spacing:.3px;text-transform:uppercase">
+              Buscar SKU
+              <input id="fcSearch" type="text" placeholder="ex: R3206" style="margin-top:4px;padding:7px 10px;border-radius:7px;border:1px solid var(--border);font-size:13px;min-width:140px">
+            </label>
+            <label style="display:flex;flex-direction:column;font-size:11px;font-weight:700;color:#475569;letter-spacing:.3px;text-transform:uppercase">
+              Semanas à frente
+              <select id="fcWeeks" style="margin-top:4px;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:13px">
+                <option value="13">13 (3 meses)</option>
+                <option value="26" selected>26 (6 meses)</option>
+                <option value="52">52 (1 ano)</option>
+                <option value="104">104 (2 anos)</option>
+                <option value="260">260 (5 anos — até 2030)</option>
+              </select>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#475569;margin-top:18px">
+              <input type="checkbox" id="fcOnlyRisk" style="margin:0">
+              <span>Só SKUs em risco (balance &lt; 0)</span>
+            </label>
+            <button id="fcLoad" class="btn primary" style="margin-top:18px">Carregar Forecast →</button>
+            <span id="fcStatus" style="margin-top:22px;font-size:12px;color:var(--text-mute)"></span>
+          </div>
+
+          <div id="fcTable" class="xtable-wrap" style="max-height:70vh">
+            <div class="empty"><div class="big">🔮</div>Escolha um fornecedor para carregar a projeção</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── SKUs VIEW ─────────────────────────────────────── -->
+      <section class="view" id="view-skus">
+        <div class="section">
+          <h2>🏷️ SKUs <span style="font-size:11px;background:#ecfdf5;color:#047857;padding:2px 8px;border-radius:999px;font-weight:700;margin-left:6px">LIVE</span></h2>
+          <div class="desc">Catálogo ao vivo do Cin7 (<code>cin7_mirror.products</code> — sync a cada 30 min).</div>
+          <div id="skusTable" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── STOCK LIVE VIEW ───────────────────────────────── -->
+      <section class="view" id="view-stock">
+        <div class="section">
+          <h2>📦 Stock Live <span style="font-size:11px;background:#ecfdf5;color:#047857;padding:2px 8px;border-radius:999px;font-weight:700;margin-left:6px">LIVE · 2h sync</span></h2>
+          <div class="desc">SOH ao vivo do Cin7 (<code>cin7_mirror.stock_snapshot</code>). Substitui SOH/DALTON/GATEWAY sheets.</div>
+          <div id="stockTable" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── OPEN SOs VIEW ─────────────────────────────────── -->
+      <section class="view" id="view-opensos">
+        <div class="section">
+          <h2>🧾 Open Sales Orders <span style="font-size:11px;background:#ecfdf5;color:#047857;padding:2px 8px;border-radius:999px;font-weight:700;margin-left:6px">LIVE</span></h2>
+          <div class="desc">SOs abertos do Cin7 (<code>cin7_mirror.order_pipeline</code>). Headers — para ver linhas de SO, importe via Excel.</div>
+          <div id="openSosTable" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── IMPORT VIEW ───────────────────────────────────── -->
+      <section class="view" id="view-import">
+        <div class="section">
+          <h2>📥 Cin7 Import</h2>
+          <div class="desc">Importação dos 4 exports do Cin7 (SOH, Projects, WEEK SALES, WK Project) por paste/upload.</div>
+          <div class="placeholder">
+            <div class="big-ico">📁</div>
+            <h3>Próximo entregável</h3>
+            <p>Drag-and-drop dos 4 arquivos Excel do Cin7 → parser → upsert em <code>soh_snapshot</code>, <code>weekly_sales</code>, e <code>skus</code>. Próxima iteração.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── AUDIT VIEW ────────────────────────────────────── -->
+      <section class="view" id="view-audit">
+        <div class="section">
+          <h2>🕵️ Audit Log</h2>
+          <div class="desc">Toda mudança em qualquer tabela fica registrada aqui (quem, o quê, antes/depois, quando).</div>
+          <div id="auditTable" class="xtable-wrap">
+            <div class="empty"><div class="big">⏳</div>Loading…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── SETTINGS VIEW ─────────────────────────────────── -->
+      <section class="view" id="view-settings">
+        <div class="section">
+          <h2>⚙️ Settings</h2>
+          <div class="desc">Configurações do dashboard.</div>
+          <div style="display:flex; flex-direction:column; gap:14px; max-width:500px;">
+            <div>
+              <strong>Acesso</strong>
+              <p style="color:#64748b; font-size:13px; margin:4px 0 8px;">Acesso protegido pelo PIN do card Quality &amp; Compliance no app principal.</p>
+              <button class="btn" id="logoutBtn2">← Back to main app</button>
+            </div>
+            <div>
+              <strong>Database</strong>
+              <p style="color:#64748b; font-size:13px; margin:4px 0 8px;">Schema: <code>rapid_inv</code> · Status: <span id="dbStatus2">—</span></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <!-- JS: dashboard logic                                       -->
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <script>
+    // O acesso a esta página é protegido pelo PIN do card Quality & Compliance
+    // (overlay #qcLocked com PIN 4209 no index.html principal). Não há lock screen próprio.
+    const SCHEMA = 'rapid_inv';
+
+    // ── Helpers ──────────────────────────────────────────────
+    function $(sel) { return document.querySelector(sel); }
+    function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
+    function fmtNum(n) {
+      if (n === null || n === undefined || isNaN(n)) return '—';
+      return Number(n).toLocaleString('en-AU', { maximumFractionDigits: 2 });
+    }
+    function fmtMoney(n) {
+      if (n === null || n === undefined || isNaN(n)) return '—';
+      return 'A$ ' + Number(n).toLocaleString('en-AU', { maximumFractionDigits: 0 });
+    }
+    function fmtDate(d) {
+      if (!d) return '';
+      const dt = new Date(d);
+      if (isNaN(dt)) return d;
+      return dt.toISOString().slice(0, 10);
+    }
+    function setDbStatus(text, ok) {
+      const pill = $('#dbStatus');
+      const pill2 = $('#dbStatus2');
+      pill.textContent = text;
+      pill.className = 'pill' + (ok ? ' ok' : '');
+      if (pill2) pill2.textContent = text;
+    }
+
+    // ── Supabase client (carregado via window.supabaseReady) ─
+    let sb = null;
+    async function getSb() {
+      if (sb) return sb;
+      await window.supabaseReady;
+      // .schema('rapid_inv') força o PostgREST a usar o schema custom
+      sb = window.supabase;
+      return sb;
+    }
+    function db() { return sb.schema(SCHEMA); }
+
+    // ── Nav switching ────────────────────────────────────────
+    $$('.nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const view = btn.dataset.view;
+        $$('.nav-item').forEach(b => b.classList.toggle('active', b === btn));
+        $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+        if (view in viewLoaders && !loadedViews[view]) {
+          viewLoaders[view]();
+          loadedViews[view] = true;
+        }
+      });
+    });
+
+    // ── Voltar ao app principal ──────────────────────────────
+    function backToHome() {
+      window.location.href = '../../index.html';
+    }
+    document.addEventListener('click', (e) => {
+      if (e.target.id === 'logoutBtn2') backToHome();
+    });
+
+    // ── Setup banner if rapid_inv schema not exposed ─────────
+    function showSetupBanner(msg) {
+      const el = $('#setupBanner');
+      el.innerHTML = `
+        <div class="banner warn">
+          <span>⚠️</span>
+          <div>
+            <strong>Database not ready.</strong> ${msg}<br>
+            <span style="font-weight:400">Rode o arquivo <code>sql/rapid_inv_setup.sql</code> no Supabase SQL Editor,
+              depois exponha o schema em <em>Project Settings → API → Exposed schemas</em>.</span>
+          </div>
+        </div>`;
+      el.style.display = 'block';
+    }
+
+    // ── Render Excel-like table from array of rows ───────────
+    function renderTable(containerSel, rows, cols, opts = {}) {
+      const el = $(containerSel);
+      if (!rows || rows.length === 0) {
+        el.innerHTML = '<div class="empty"><div class="big">📭</div>Sem dados ainda</div>';
+        return;
+      }
+      const html = [
+        '<table class="xtable"><thead><tr>',
+        ...cols.map(c => `<th>${c.label}</th>`),
+        '</tr></thead><tbody>',
+        ...rows.map(r => '<tr>' + cols.map(c => {
+          const v = c.get ? c.get(r) : r[c.key];
+          const cls = (c.cellClass && c.cellClass(r)) || (c.num ? 'num' : '');
+          const disp = c.fmt ? c.fmt(v, r) : (v === null || v === undefined ? '' : v);
+          return `<td class="${cls}">${disp}</td>`;
+        }).join('') + '</tr>'),
+        '</tbody></table>'
+      ].join('');
+      el.innerHTML = html;
+    }
+
+    // ── Load: KPIs ───────────────────────────────────────────
+    async function loadKPIs() {
+      try {
+        const { data, error } = await db().from('v_dashboard_kpis').select('*').limit(1);
+        if (error) throw error;
+        const k = (data && data[0]) || {};
+        $('#kpi-openSO').textContent  = fmtNum(k.open_so_lines);
+        $('#kpi-openPO').textContent  = fmtNum(k.open_po_lines);
+        $('#kpi-red').textContent     = fmtNum(k.skus_critical_red);
+        $('#kpi-yellow').textContent  = fmtNum(k.skus_warning_yellow);
+        $('#kpi-hold').textContent    = fmtNum(k.qty_pack_and_hold);
+        $('#kpi-pipeline').textContent = fmtMoney(k.po_pipeline_aud);
+        $('#cntProject').textContent  = fmtNum(k.open_so_lines);
+        $('#cntPOs').textContent      = fmtNum(k.open_po_lines);
+        $('#cntAlerts').textContent   = fmtNum(k.skus_critical_red);
+        $('#cntSkus').textContent     = fmtNum(k.total_active_skus);
+        $('#cntOpenSOs').textContent  = fmtNum(k.open_so_lines);
+        // Status pill: include "synced X min ago" if available
+        const syncStr = k.soh_last_synced_at
+          ? '· stock ' + relTime(k.soh_last_synced_at)
+          : '';
+        setDbStatus('Connected · rapid_inv ' + syncStr, true);
+      } catch (e) {
+        setDbStatus('Not connected', false);
+        const msg = (e && e.message) || String(e);
+        if (/schema|rapid_inv|relation/i.test(msg)) {
+          showSetupBanner('Schema <code>rapid_inv</code> não está exposto na API. Rode <code>sql/rapid_inv_setup.sql</code> + <code>sql/rapid_inv_live_views.sql</code> e exponha o schema em Settings → API.');
+        } else if (/cin7_mirror|permission denied/i.test(msg)) {
+          showSetupBanner('Falta permissão para ler de <code>cin7_mirror</code>. Rode <code>sql/rapid_inv_live_views.sql</code>.');
+        } else {
+          showSetupBanner('Erro: ' + msg);
+        }
+        console.error(e);
+      }
+    }
+
+    // ── helper: tempo relativo (5 min ago, 2h ago, etc.) ────
+    function relTime(iso) {
+      try {
+        const diffMs = Date.now() - new Date(iso).getTime();
+        const m = Math.floor(diffMs / 60000);
+        if (m < 1)   return 'just now';
+        if (m < 60)  return m + ' min ago';
+        const h = Math.floor(m / 60);
+        if (h < 24)  return h + 'h ago';
+        return Math.floor(h / 24) + 'd ago';
+      } catch (e) { return ''; }
+    }
+
+    // ── Load: top critical (Overview) ───────────────────────
+    async function loadTopCritical() {
+      try {
+        const { data, error } = await db()
+          .from('v_analysis')
+          .select('sku, soh, project_orders, mths_stock, threshold_red, threshold_yel')
+          .not('mths_stock', 'is', null)
+          .order('mths_stock', { ascending: true })
+          .limit(20);
+        if (error) throw error;
+        renderTable('#topCritical', data, [
+          { label: 'SKU',           key: 'sku' },
+          { label: 'SOH',           key: 'soh',           num: true, fmt: fmtNum },
+          { label: 'Project Ord.',  key: 'project_orders', num: true, fmt: fmtNum },
+          { label: 'Mths Stock',    key: 'mths_stock',    num: true,
+            fmt: (v) => v === null ? '—' : Number(v).toFixed(2),
+            cellClass: r => r.mths_stock < r.threshold_red ? 'num cell-red'
+                          : r.mths_stock < r.threshold_yel ? 'num cell-yellow'
+                          : 'num cell-green' },
+        ]);
+      } catch (e) {
+        $('#topCritical').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+      }
+    }
+
+    // ── Load: next picks (Overview) ─────────────────────────
+    async function loadNextPicks() {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const in7   = new Date(Date.now() + 7*86400000).toISOString().slice(0, 10);
+        const { data, error } = await db()
+          .from('project_lines')
+          .select('id, date_opened, customer, sku, qty, qty_to_pick, pick_date, rep, warehouse, status')
+          .gte('pick_date', today)
+          .lte('pick_date', in7)
+          .is('finish_date', null)
+          .order('pick_date', { ascending: true })
+          .limit(30);
+        if (error) throw error;
+        renderTable('#nextPicks', data, [
+          { label: 'Pick Date', key: 'pick_date', fmt: fmtDate },
+          { label: 'Customer',  key: 'customer' },
+          { label: 'SKU',       key: 'sku' },
+          { label: 'Qty',       key: 'qty',         num: true, fmt: fmtNum },
+          { label: 'To Pick',   key: 'qty_to_pick', num: true, fmt: fmtNum,
+            cellClass: r => Number(r.qty_to_pick) > 0 ? 'num cell-yellow' : 'num cell-green' },
+          { label: 'Rep',       key: 'rep' },
+          { label: 'Wh',        key: 'warehouse' },
+          { label: 'Status',    key: 'status' },
+        ]);
+      } catch (e) {
+        $('#nextPicks').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+      }
+    }
+
+    // ── View loaders ─────────────────────────────────────────
+    const loadedViews = { overview: true };
+
+    const viewLoaders = {
+      async project() {
+        try {
+          const { data, error } = await db()
+            .from('project_lines')
+            .select('id, date_opened, customer, reference, rep, sku, qty, type, qty_to_pick, po_ref, pick_date, qty_held, qty_inv, warehouse, status')
+            .is('finish_date', null)
+            .order('pick_date', { ascending: true, nullsFirst: false })
+            .limit(500);
+          if (error) throw error;
+          // Vazio → mostra placeholder, não a tabela
+          if (!data || data.length === 0) {
+            $('#projectTable').style.display = 'none';
+            $('#projectEmpty').style.display = 'block';
+            return;
+          }
+          $('#projectTable').style.display = '';
+          $('#projectEmpty').style.display = 'none';
+          renderTable('#projectTable', data, [
+            { label: 'Date',     key: 'date_opened', fmt: fmtDate },
+            { label: 'Customer', key: 'customer' },
+            { label: 'Ref',      key: 'reference' },
+            { label: 'Rep',      key: 'rep' },
+            { label: 'SKU',      key: 'sku' },
+            { label: 'Qty',      key: 'qty',         num: true, fmt: fmtNum },
+            { label: 'Type',     key: 'type' },
+            { label: 'To Pick',  key: 'qty_to_pick', num: true, fmt: fmtNum,
+              cellClass: r => Number(r.qty_to_pick) > 0 ? 'num cell-yellow' : 'num cell-green' },
+            { label: 'PO',       key: 'po_ref' },
+            { label: 'Pick',     key: 'pick_date',   fmt: fmtDate },
+            { label: 'Held',     key: 'qty_held',    num: true, fmt: fmtNum },
+            { label: 'Inv',      key: 'qty_inv',     num: true, fmt: fmtNum },
+            { label: 'Wh',       key: 'warehouse' },
+            { label: 'Status',   key: 'status' },
+          ]);
+        } catch (e) {
+          $('#projectTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+        }
+      },
+
+      async pos() {
+        try {
+          const { data, error } = await db()
+            .from('po_lines')
+            .select('id, po_number, po_date, supplier_code, sku, qty, due_date, value_usd, value_aud, require_status, is_received')
+            .eq('is_received', false)
+            .order('due_date', { ascending: true, nullsFirst: false })
+            .limit(500);
+          if (error) throw error;
+          renderTable('#poTable', data, [
+            { label: 'PO #',      key: 'po_number' },
+            { label: 'Date',      key: 'po_date',  fmt: fmtDate },
+            { label: 'Supplier',  key: 'supplier_code' },
+            { label: 'SKU',       key: 'sku' },
+            { label: 'Qty',       key: 'qty',       num: true, fmt: fmtNum },
+            { label: 'Due',       key: 'due_date',  fmt: fmtDate },
+            { label: 'Value USD', key: 'value_usd', num: true, fmt: (v)=>v==null?'':'$'+fmtNum(v) },
+            { label: 'Value AUD', key: 'value_aud', num: true, fmt: (v)=>v==null?'':fmtMoney(v) },
+            { label: 'Status',    key: 'require_status' },
+          ]);
+        } catch (e) {
+          $('#poTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+        }
+      },
+
+      async analysis() {
+        try {
+          const { data, error } = await db()
+            .from('v_analysis')
+            .select('*')
+            .order('mths_stock', { ascending: true, nullsFirst: false })
+            .limit(500);
+          if (error) throw error;
+          renderTable('#analysisTable', data, [
+            { label: 'SKU',           key: 'sku' },
+            { label: 'Wk/Avg',        key: 'wk_avg',          num: true, fmt: fmtNum },
+            { label: 'Mth Avg',       key: 'mth_avg',         num: true, fmt: fmtNum },
+            { label: 'SOH',           key: 'soh',             num: true, fmt: fmtNum },
+            { label: 'Project Ord.',  key: 'project_orders',  num: true, fmt: fmtNum },
+            { label: 'Mths Stock',    key: 'mths_stock',      num: true,
+              fmt: (v) => v === null ? '—' : Number(v).toFixed(2),
+              cellClass: r => r.mths_stock === null ? 'num'
+                            : r.mths_stock < r.threshold_red ? 'num cell-red'
+                            : r.mths_stock < r.threshold_yel ? 'num cell-yellow'
+                            : 'num cell-green' },
+            { label: 'Comments',      key: 'comments' },
+          ]);
+        } catch (e) {
+          $('#analysisTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+        }
+      },
+
+      async skus() {
+        try {
+          const { data, error } = await db()
+            .from('v_skus_live')                       // ao vivo do cin7_mirror.products
+            .select('sku, description, barcode, category, supplier_hint, uom, average_cost, is_active, synced_at')
+            .eq('is_active', true)
+            .order('sku', { ascending: true })
+            .limit(2000);
+          if (error) throw error;
+          renderTable('#skusTable', data, [
+            { label: 'SKU',          key: 'sku' },
+            { label: 'Description',  key: 'description' },
+            { label: 'Barcode',      key: 'barcode' },
+            { label: 'Category',     key: 'category' },
+            { label: 'Brand',        key: 'supplier_hint' },
+            { label: 'UoM',          key: 'uom' },
+            { label: 'Avg Cost',     key: 'average_cost', num: true,
+              fmt: v => v == null ? '' : '$' + fmtNum(v) },
+            { label: 'Synced',       key: 'synced_at',    fmt: v => relTime(v) },
+          ]);
+        } catch (e) {
+          $('#skusTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+        }
+      },
+
+      async stock() {
+        try {
+          const { data, error } = await db()
+            .from('v_soh_live')                        // ao vivo do cin7_mirror.stock_snapshot
+            .select('sku, warehouse, qty_on_hand, allocated, available, on_order, in_transit, next_delivery_date, synced_at')
+            .order('available', { ascending: true })
+            .limit(2000);
+          if (error) throw error;
+          $('#cntStock').textContent = fmtNum(data.length);
+          renderTable('#stockTable', data, [
+            { label: 'SKU',       key: 'sku' },
+            { label: 'Warehouse', key: 'warehouse' },
+            { label: 'On Hand',   key: 'qty_on_hand', num: true, fmt: fmtNum },
+            { label: 'Allocated', key: 'allocated',   num: true, fmt: fmtNum },
+            { label: 'Available', key: 'available',   num: true, fmt: fmtNum,
+              cellClass: r => Number(r.available) < 0 ? 'num cell-red'
+                            : Number(r.available) === 0 ? 'num cell-yellow'
+                            : 'num cell-green' },
+            { label: 'On Order',  key: 'on_order',    num: true, fmt: fmtNum },
+            { label: 'In Transit',key: 'in_transit',  num: true, fmt: fmtNum },
+            { label: 'Next ETA',  key: 'next_delivery_date', fmt: fmtDate },
+            { label: 'Synced',    key: 'synced_at',   fmt: v => relTime(v) },
+          ]);
+        } catch (e) {
+          $('#stockTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+        }
+      },
+
+      async opensos() {
+        try {
+          const { data, error } = await db()
+            .from('v_open_sos')                        // ao vivo do cin7_mirror.order_pipeline
+            .select('sales_order, customer, reference, status, pick_status, pack_status, ship_status, invoice_status, order_date, line_count, total_qty, synced_at')
+            .order('order_date', { ascending: false })
+            .limit(500);
+          if (error) throw error;
+          $('#cntOpenSOs').textContent = fmtNum(data.length);
+          renderTable('#openSosTable', data, [
+            { label: 'SO #',        key: 'sales_order' },
+            { label: 'Customer',    key: 'customer' },
+            { label: 'Reference',   key: 'reference' },
+            { label: 'Status',      key: 'status' },
+            { label: 'Pick',        key: 'pick_status',
+              cellClass: r => /PICKED/i.test(r.pick_status) ? 'cell-green'
+                            : /PICKING/i.test(r.pick_status) ? 'cell-yellow' : '' },
+            { label: 'Pack',        key: 'pack_status',
+              cellClass: r => /PACKED/i.test(r.pack_status) ? 'cell-green'
+                            : /PACKING/i.test(r.pack_status) ? 'cell-yellow' : '' },
+            { label: 'Ship',        key: 'ship_status' },
+            { label: 'Invoice',     key: 'invoice_status' },
+            { label: 'Date',        key: 'order_date',  fmt: fmtDate },
+            { label: 'Lines',       key: 'line_count',  num: true, fmt: fmtNum },
+            { label: 'Qty',         key: 'total_qty',   num: true, fmt: fmtNum },
+            { label: 'Synced',      key: 'synced_at',   fmt: v => relTime(v) },
+          ]);
+        } catch (e) {
+          $('#openSosTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+        }
+      },
+
+      async audit() {
+        try {
+          const { data, error } = await db()
+            .from('audit_log')
+            .select('changed_at, table_name, record_id, action, user_email, user_pin')
+            .order('changed_at', { ascending: false })
+            .limit(200);
+          if (error) throw error;
+          renderTable('#auditTable', data, [
+            { label: 'When',     key: 'changed_at', fmt: v => new Date(v).toLocaleString('en-AU') },
+            { label: 'Table',    key: 'table_name' },
+            { label: 'Record',   key: 'record_id' },
+            { label: 'Action',   key: 'action',
+              cellClass: r => r.action==='DELETE' ? 'cell-red'
+                          : r.action==='UPDATE' ? 'cell-yellow'
+                          : 'cell-green' },
+            { label: 'User',     key: 'user_email' },
+            { label: 'PIN',      key: 'user_pin' },
+          ]);
+        } catch (e) {
+          $('#auditTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+        }
+      },
+
+      async forecast() { await initForecast(); },
+      import()   { /* placeholder shown in HTML */ },
+      settings() { /* static */ },
+    };
+
+    // ─────────────────────────────────────────────────────────
+    // FORECAST 2030 — pivot SKU × Semanas
+    // ─────────────────────────────────────────────────────────
+    let forecastInited = false;
+
+    async function initForecast() {
+      if (forecastInited) return;
+      forecastInited = true;
+      try {
+        const { data, error } = await db()
+          .from('v_forecast_suppliers')
+          .select('supplier_code, supplier_name, source, sku_count');
+        if (error) throw error;
+        const sel = $('#fcSupplier');
+        // Agrupa em 2 optgroups: 23 seeds (todos visíveis) + brands do Cin7
+        const seeds  = data.filter(r => r.source === 'seed').sort((a,b)=>a.supplier_code.localeCompare(b.supplier_code));
+        const brands = data.filter(r => r.source === 'cin7_brand').sort((a,b)=>b.sku_count-a.sku_count);
+        const esc = s => String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+        let html = '<option value="">— escolha —</option>';
+        if (seeds.length) {
+          html += '<optgroup label="📌 Suppliers cadastrados (23)">';
+          html += seeds.map(r =>
+            `<option value="${esc(r.supplier_code)}">${esc(r.supplier_code)} (${fmtNum(r.sku_count)} SKUs)</option>`
+          ).join('');
+          html += '</optgroup>';
+        }
+        if (brands.length) {
+          html += '<optgroup label="🏷️ Outras brands no Cin7 (não mapeadas)">';
+          html += brands.map(r =>
+            `<option value="${esc(r.supplier_code)}">${esc(r.supplier_code)} (${fmtNum(r.sku_count)} SKUs)</option>`
+          ).join('');
+          html += '</optgroup>';
+        }
+        sel.innerHTML = html;
+      } catch (e) {
+        $('#fcStatus').textContent = '⚠️ ' + (e.message || e);
+      }
+      $('#fcLoad').addEventListener('click', loadForecast);
+      $('#fcSearch').addEventListener('keydown', e => { if (e.key==='Enter') loadForecast(); });
+    }
+
+    async function loadForecast() {
+      const supplier = $('#fcSupplier').value;
+      const search   = $('#fcSearch').value.trim();
+      const weeks    = parseInt($('#fcWeeks').value, 10) || 26;
+      const onlyRisk = $('#fcOnlyRisk').checked;
+
+      if (!supplier && !search) {
+        $('#fcStatus').textContent = '⚠️ Escolha um fornecedor OU digite uma busca de SKU';
+        return;
+      }
+
+      $('#fcStatus').textContent = '⏳ Carregando…';
+      $('#fcTable').innerHTML = '<div class="empty"><div class="big">⏳</div>Loading…</div>';
+
+      // Apenas mantemos "today" para o header (mostrar semanas passadas em cinza).
+      // O range de datas é calculado dentro da RPC server-side a partir de p_weeks.
+      const today = new Date();
+
+      try {
+        // RPC com filtros empurrados pra dentro das CTEs → performance ~500ms
+        // (versus 500/timeout quando filtrava na view)
+        const { data, error } = await db().rpc('get_forecast', {
+          p_supplier: supplier || null,
+          p_sku_like: search   || null,
+          p_weeks:    weeks,
+        });
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          $('#fcTable').innerHTML = '<div class="empty"><div class="big">📭</div>Sem resultados (talvez esse supplier não tenha SKUs ativos com brand no Cin7)</div>';
+          $('#fcStatus').textContent = '0 linhas';
+          return;
+        }
+
+        // Pivot por SKU + lista de semanas
+        const skuMap  = new Map();
+        const weekSet = new Set();
+        for (const r of data) {
+          weekSet.add(r.week_start);
+          if (!skuMap.has(r.sku)) skuMap.set(r.sku, { sku: r.sku, supplier: r.supplier_code, weeks: {}, minBal: Infinity, currentSoh: Number(r.current_soh)||0 });
+          const row = skuMap.get(r.sku);
+          row.weeks[r.week_start] = r;
+          if (Number(r.projected_balance) < row.minBal) row.minBal = Number(r.projected_balance);
+        }
+        const weeksSorted = Array.from(weekSet).sort();
+
+        // Filtro "só risco"
+        let skuList = Array.from(skuMap.values());
+        if (onlyRisk) skuList = skuList.filter(r => r.minBal < 0);
+        // Ordena pior balance primeiro
+        skuList.sort((a, b) => a.minBal - b.minBal);
+
+        const RENDER_CAP = 80;     // 80 SKUs × 5 linhas = 400 rows visíveis
+        const truncated = skuList.length > RENDER_CAP;
+        const toRender = skuList.slice(0, RENDER_CAP);
+
+        // ── Excel-like layout: 5 linhas por SKU ──
+        const html = [];
+        html.push('<table class="xtable forecast">');
+        // Cabeçalho: SKU | Linha | semanas
+        html.push('<thead><tr>');
+        html.push('<th style="position:sticky;left:0;top:0;background:#0f172a;color:#fff;z-index:5;min-width:170px">SKU</th>');
+        html.push('<th style="position:sticky;left:170px;top:0;background:#0f172a;color:#fff;z-index:5;min-width:120px">Linha</th>');
+        for (const w of weeksSorted) {
+          const d = new Date(w);
+          const isPast = d < today;
+          const lbl = d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+          const yr  = d.getFullYear();
+          html.push(`<th style="position:sticky;top:0;text-align:right;min-width:62px;background:${isPast?'#475569':'#0f172a'};color:#fff;z-index:4">${lbl}<br><span style="font-size:9px;font-weight:400;opacity:.7">${yr}</span></th>`);
+        }
+        html.push('</tr></thead><tbody>');
+
+        // 5 tipos de linha (espelha o Excel):
+        const ROWS = [
+          { key: 'opening_inventory', label: 'Opening Inv',    bg: '#f8fafc' },
+          { key: 'incoming',          label: 'Incoming PO',    bg: '#ecfdf5' },
+          { key: 'outflow',           label: 'Outgoing (Avg)', bg: '#fef2f2' },
+          { key: 'project_draws',     label: 'Project Draws',  bg: '#fef3c7' },
+          { key: 'projected_balance', label: 'Balance',        bg: '#e0e7ff', bold: true },
+        ];
+
+        for (let idx = 0; idx < toRender.length; idx++) {
+          const row = toRender[idx];
+          const zebra = idx % 2 === 1 ? '#fafbfc' : '#ffffff';
+          for (let li = 0; li < ROWS.length; li++) {
+            const lineDef = ROWS[li];
+            const isFirstLine  = li === 0;
+            const isLastLine   = li === ROWS.length - 1;
+            const isBalanceRow = lineDef.key === 'projected_balance';
+            // Borda inferior entre SKUs
+            const borderBottom = isLastLine ? 'border-bottom:2px solid #cbd5e1;' : '';
+            html.push(`<tr style="background:${lineDef.bg}">`);
+            // 1ª coluna: SKU (mesclado verticalmente — só na 1ª linha do bloco)
+            if (isFirstLine) {
+              html.push(`<td rowspan="5" style="position:sticky;left:0;background:${zebra};z-index:1;font-weight:700;vertical-align:top;padding-top:8px;border-bottom:2px solid #cbd5e1">`);
+              html.push(`<div>${row.sku}</div>`);
+              html.push(`<div style="font-size:10px;font-weight:500;color:#64748b;margin-top:3px">${row.supplier || ''}</div>`);
+              html.push(`<div style="font-size:9px;color:#94a3b8;margin-top:6px">SOH hoje: <strong>${fmtNum(row.currentSoh)}</strong></div>`);
+              if (row.minBal < 0) html.push(`<div style="font-size:9px;color:#b91c1c;margin-top:2px">⚠️ min ${fmtNum(row.minBal)}</div>`);
+              html.push('</td>');
+            }
+            // 2ª coluna: nome da linha
+            html.push(`<td style="position:sticky;left:170px;background:${lineDef.bg};z-index:1;font-weight:600;font-size:12px;${borderBottom}">${lineDef.label}</td>`);
+            // Demais colunas: valor por semana
+            for (const w of weeksSorted) {
+              const cell = row.weeks[w];
+              if (!cell) { html.push(`<td class="num" style="${borderBottom}"></td>`); continue; }
+              const v = Number(cell[lineDef.key]) || 0;
+              let cls = 'num';
+              if (isBalanceRow) {
+                if (v < 0)      cls += ' cell-red';
+                else if (v === 0) cls += ' cell-yellow';
+                else            cls += ' cell-green';
+              }
+              const disp = v === 0 ? '<span style="color:#cbd5e1">–</span>' : fmtNum(v);
+              const style = (lineDef.bold ? 'font-weight:700;' : '') + borderBottom;
+              const past  = cell.is_past ? 'opacity:.7;' : '';
+              html.push(`<td class="${cls}" style="${style}${past}">${disp}</td>`);
+            }
+            html.push('</tr>');
+          }
+        }
+        html.push('</tbody></table>');
+        $('#fcTable').innerHTML = html.join('');
+        $('#fcStatus').textContent =
+          `${fmtNum(skuList.length)} SKUs · ${weeksSorted.length} semanas` +
+          (truncated ? ` · mostrando primeiros ${RENDER_CAP} (use filtros para reduzir)` : '');
+      } catch (e) {
+        $('#fcTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
+        $('#fcStatus').textContent = '';
+      }
+    }
+
+    // ── Boot ─────────────────────────────────────────────────
+    (async function boot() {
+      try {
+        await getSb();
+        await loadKPIs();
+        await loadTopCritical();
+        await loadNextPicks();
+      } catch (e) {
+        setDbStatus('Init failed', false);
+        showSetupBanner('Não consegui inicializar o cliente Supabase: ' + (e.message || e));
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -20,6 +20,8 @@
     "sync:verify": "node cin7-stock-sync/verify-sync.js",
     "sync:verify:quick": "node cin7-stock-sync/verify-sync.js --quick",
     "sync:verify:compat": "node cin7-stock-sync/verify-compatibility.js",
+    "rapid-inv:sync:sales": "node cin7-stock-sync/sync-rapid-inv-sales.js",
+    "rapid-inv:sync:sales:test": "node cin7-stock-sync/sync-rapid-inv-sales.js --limit=5 --dry-run --verbose",
     "test:packer": "node --test features/container-builder/packer.test.js"
   },
   "keywords": [
