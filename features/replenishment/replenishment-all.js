@@ -52,10 +52,13 @@
     try {
       await window.supabaseReady;
 
+      // status=success + ended_at IS NOT NULL — avoid zombie "running" rows
       const { data: syncRuns } = await window.supabase
         .schema('cin7_mirror')
         .from('sync_runs')
         .select('run_id, started_at, ended_at, status, products_synced, stock_rows_synced')
+        .eq('status', 'success')
+        .not('ended_at', 'is', null)
         .order('ended_at', { ascending: false })
         .limit(1);
 
@@ -245,19 +248,27 @@
     state.branchSendLists = {};
     for (const b of BRANCHES) state.branchSendLists[b.code] = [];
 
+    // ABC classification (once per render)
+    state.abcRanks = CFG.computeAbcRanks(Object.values(state.avgData));
+
     for (const product of allProducts) {
-      if (CFG.isExcludedProduct(product)) continue;
+      if (CFG.isExcludedProduct(product, state.productNames[product])) continue;
 
       const avgRow = state.avgData[product];
       if (!avgRow) continue;
 
       const mainStock = state.stockData[`${product}:MAIN`];
       const mainAvailable = mainStock?.qty_available || 0;
-      const avgMonthMain = Math.round(avgRow.avg_mth_main || 0);
+      const avgMonthMain = CFG.pickMainAvg(avgRow);  // raw, not rounded
       const mainSafety = CFG.computeMainSafety(avgMonthMain);
       const canSendBase = Math.max(0, mainAvailable - mainSafety);
       const ctnQty = state.ctnMap[product] || 0;
       const productName = state.productNames[product] || '';
+      const tier = state.abcRanks.get(product) || 'C';
+      const targetWeeks = CFG.targetWeeksForTier(tier);
+      const mainAbundant = avgMonthMain > 0
+        ? (mainAvailable / avgMonthMain) > 12
+        : mainAvailable > 0;
 
       // ── Step 1: compute each branch's raw need ──
       const branchNeeds = [];
@@ -265,14 +276,14 @@
       let anySoldDeficit = false;
 
       for (const b of BRANCHES) {
-        const avgMonth = Math.round(avgRow[b.avgField] || 0);
+        const avgMonth = CFG.pickAvg(avgRow, b);  // raw, no early round
         if (avgMonth <= 0) continue;
 
         const bStock = state.stockData[`${product}:${b.code}`];
         const branchAvailable = bStock?.qty_available || 0;
         const soldDeficit = branchAvailable < 0 ? Math.abs(branchAvailable) : 0;
 
-        const target = CFG.computeBranchTarget(avgMonth);
+        const target = CFG.computeBranchTarget(avgMonth, targetWeeks);
         const rawNeed = Math.max(0, target - branchAvailable);
 
         const pendingQty = state.pendingTRs[b.code]?.[product]?.pending_qty || 0;
@@ -318,7 +329,7 @@
           if (bn.soldDeficit <= 0) continue;
           const give = Math.min(bn.need, remainingPool);
           if (give > 0) {
-            applyAllocation(product, bn, give, remainingPool, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict);
+            applyAllocation(product, bn, give, remainingPool, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict, mainAbundant);
             remainingPool -= branchAllocs[bn.code] || 0;
             assigned.add(bn.code);
           }
@@ -336,7 +347,7 @@
           allocated = bn.need;
         }
         if (allocated <= 0) continue;
-        applyAllocation(product, bn, allocated, remainingPool, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict);
+        applyAllocation(product, bn, allocated, remainingPool, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict, mainAbundant);
         remainingPool -= branchAllocs[bn.code] || 0;
       }
 
@@ -366,11 +377,12 @@
   }
 
   // Pull-out of the per-branch allocation writeback (carton round + min threshold).
-  function applyAllocation(product, bn, allocated, poolRemaining, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict) {
+  function applyAllocation(product, bn, allocated, poolRemaining, ctnQty, safetyOverride, canSendBase, branchAllocs, productName, hasConflict, mainAbundant) {
     const available = Math.min(allocated, poolRemaining);
     const ctnResult = CFG.smartCartonRound(available, ctnQty, available, bn.target, {
       avgMonthBranch: bn.avgMonth,
-      branchAvailable: bn.branchAvailable
+      branchAvailable: bn.branchAvailable,
+      mainAbundant: !!mainAbundant
     });
     let sendQty = ctnResult.qty;
 

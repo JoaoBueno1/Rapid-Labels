@@ -50,20 +50,19 @@
     const grid = document.getElementById('rulesGrid');
     if (!grid) return;
     const items = [
-      { icon: '🎯', title: 'Branch Target', text: `${CFG.BRANCH_TARGET_WEEKS} weeks cover + ${CFG.LEAD_TIME_DAYS}d lead-time buffer` },
-      { icon: '🛡️', title: 'Main Safety Stock', text: `Keep ≥ ${CFG.MAIN_MIN_WEEKS} weeks before sending` },
-      { icon: '🚚', title: 'Lead Time', text: `+${CFG.LEAD_TIME_DAYS} days freight buffer added to target` },
-      { icon: '🚫', title: 'Zero Sales Skip', text: 'SKUs with 0 avg for a branch are excluded from that branch\'s plan' },
-      { icon: '📐', title: 'Formula', text: 'Send = min(Need − In-transit, Main Can Send)' },
-      { icon: '📦', title: 'Smart Carton Rounding', text: `Round up only if post-send stock ≤ ${CFG.CARTON_ROUND_UP_MAX_MONTHS} months cover (also ≤ ${CFG.CARTON_ROUND_UP_MAX_RATIO}× target)` },
-      { icon: '🔻', title: 'Min Send Threshold', text: `Skip if qty < ½ carton (CTN < 50) or < ${CFG.MIN_SEND_FALLBACK_UNITS} units (CTN ≥ 50 / no CTN data)` },
-      { icon: '⚖️', title: 'Proportional Allocation', text: 'Competing branches get a share of Main proportional to need' },
-      { icon: '⚡', title: 'Safety Override', text: 'Oversold branches bypass Main safety — flagged in UI' },
-      { icon: '⏰', title: 'Stale Data Block', text: `Plans hidden if sync > ${CFG.SYNC_BLOCK_MINUTES} min old` }
+      { title: 'Branch Target', text: `${CFG.BRANCH_TARGET_WEEKS} weeks cover + ${CFG.LEAD_TIME_DAYS}d lead-time buffer` },
+      { title: 'Main Safety Stock', text: `Keep ≥ ${CFG.MAIN_MIN_WEEKS} weeks before sending` },
+      { title: 'Lead Time', text: `+${CFG.LEAD_TIME_DAYS} days freight buffer added to target` },
+      { title: 'Zero Sales Skip', text: 'SKUs with 0 avg for a branch are excluded from that branch\'s plan' },
+      { title: 'Formula', text: 'Send = min(Need − In-transit, Main Can Send)' },
+      { title: 'Smart Carton Rounding', text: `Round up only if post-send stock ≤ ${CFG.CARTON_ROUND_UP_MAX_MONTHS} months cover (also ≤ ${CFG.CARTON_ROUND_UP_MAX_RATIO}× target)` },
+      { title: 'Min Send Threshold', text: `Skip if qty < ½ carton (CTN < 50) or < ${CFG.MIN_SEND_FALLBACK_UNITS} units (CTN ≥ 50 / no CTN data)` },
+      { title: 'Proportional Allocation', text: 'Competing branches get a share of Main proportional to need' },
+      { title: 'Safety Override', text: 'Oversold branches bypass Main safety — flagged in UI' },
+      { title: 'Stale Data Block', text: `Plans hidden if sync > ${CFG.SYNC_BLOCK_MINUTES} min old` }
     ];
     grid.innerHTML = items.map(r => `
       <div class="rule-item">
-        <span class="rule-icon">${r.icon}</span>
         <div>
           <strong>${escapeHtml(r.title)}</strong>
           <span>${escapeHtml(r.text)}</span>
@@ -86,22 +85,27 @@
 
     try {
       await window.supabaseReady;
+      // IMPORTANT: filter status=success to avoid zombie "running" rows that
+      // crashed mid-sync. PG default ORDER BY x DESC puts NULLs FIRST, so
+      // raw "order ended_at desc" returns the oldest zombie (started days ago
+      // with ended_at NULL). Filtering on success+ended_at is the safest.
       const { data, error } = await window.supabase
         .schema('cin7_mirror')
         .from('sync_runs')
         .select('run_id, started_at, ended_at, status, sync_type, products_synced, stock_rows_synced, duration_ms')
+        .eq('status', 'success')
+        .not('ended_at', 'is', null)
         .order('ended_at', { ascending: false })
         .limit(1);
 
       if (error) {
-        dot.style.background = '#94a3b8';
+        dot.className = 'dot';
         text.textContent = 'Sync status unavailable — cin7_mirror schema needs to be exposed in Supabase';
-        text.style.color = '#64748b';
         return;
       }
 
       if (!data || data.length === 0) {
-        dot.style.background = '#94a3b8';
+        dot.className = 'dot';
         text.textContent = 'No sync runs found — run the first sync to populate data';
         state.syncStatus = null;
         return;
@@ -113,7 +117,7 @@
 
       const isSuccess = run.status === 'success';
       const isRunning = run.status === 'running';
-      dot.style.background = isSuccess ? '#22c55e' : isRunning ? '#3b82f6' : '#ef4444';
+      dot.className = 'dot ' + (isSuccess ? 'ok' : isRunning ? 'warn' : 'crit');
 
       const prodCount = run.products_synced || 0;
       const stockCount = run.stock_rows_synced || 0;
@@ -177,11 +181,9 @@
     if (nextH <= now) nextH.setHours(nextH.getHours() + 1);
     const diffMin = Math.max(0, Math.ceil((nextH - now) / 60000));
     if (diffMin <= 5) {
-      el.textContent = '🔄 Syncing soon…';
-      el.style.color = '#3b82f6';
+      el.textContent = 'Syncing soon';
     } else {
-      el.textContent = '🛡️ Auto 1h';
-      el.style.color = '#94a3b8';
+      el.textContent = 'Auto 1h';
     }
   }
 
@@ -203,11 +205,11 @@
       if (state.syncAge.level === 'block') {
         parts.push(`<div class="alert critical">⛔ ${escapeHtml(state.syncAge.message)}</div>`);
       } else if (state.syncAge.level === 'warn') {
-        parts.push(`<div class="alert warning">⚠️ ${escapeHtml(state.syncAge.message)}</div>`);
+        parts.push(`<div class="alert warning">${escapeHtml(state.syncAge.message)}</div>`);
       }
     }
     if (state.syncRunClass && state.syncRunClass.warn && state.syncRunClass.message) {
-      parts.push(`<div class="alert warning">⚠️ ${escapeHtml(state.syncRunClass.message)}</div>`);
+      parts.push(`<div class="alert warning">${escapeHtml(state.syncRunClass.message)}</div>`);
     }
     container.innerHTML = parts.join('');
   }
@@ -224,7 +226,7 @@
     const grid = document.getElementById('branchGrid');
     if (!grid) return;
 
-    grid.innerHTML = '<p style="color:#64748b;text-align:center;padding:20px">Loading stock data from Cin7…</p>';
+    grid.innerHTML = '<p class="empty-state">Loading stock data from Cin7…</p>';
 
     try {
       await window.supabaseReady;
@@ -271,7 +273,7 @@
               </div>
               <span class="status-badge no_plan">No Data</span>
             </div>
-            <div style="font-size:12px;color:#64748b;padding:8px 0">Waiting for Cin7 stock sync…</div>
+            <div class="empty-state-sub">Waiting for Cin7 stock sync…</div>
           </div>
         `).join('');
         return;
@@ -283,7 +285,7 @@
 
     } catch (err) {
       console.error('Error loading branch statuses:', err);
-      grid.innerHTML = '<p style="color:#dc2626">Error loading branches</p>';
+      grid.innerHTML = '<p class="empty-state error">Error loading branches</p>';
     }
   }
 
@@ -324,7 +326,7 @@
       const { data, error } = await window.supabase
         .schema('cin7_mirror')
         .from('stock_snapshot')
-        .select('sku, location_name, on_hand, available')
+        .select('sku, product_name, location_name, on_hand, available')
         .range(from, from + batchSize - 1);
 
       if (error) throw new Error('Cannot read cin7_mirror.stock_snapshot: ' + error.message);
@@ -337,7 +339,11 @@
     console.log(`📦 Loaded ${allStock.length} stock rows from cin7_mirror`);
 
     const aggregated = {};
+    const names = {};
     for (const row of allStock) {
+      // Capture first non-empty name per SKU — needed for per-metre / by-name exclusions.
+      if (row.product_name && !names[row.sku]) names[row.sku] = row.product_name;
+
       const locName = (row.location_name || '').toLowerCase().trim();
       const warehouseCode = CIN7_LOCATION_MAP[locName];
       if (!warehouseCode) continue;
@@ -353,6 +359,7 @@
       aggregated[key].qty_available += (row.available != null ? row.available : row.on_hand || 0);
     }
 
+    state.productNames = names;
     state.stockDataMap = aggregated;
     console.log(`📊 Aggregated to ${Object.keys(state.stockDataMap).length} SKU/warehouse entries`);
     return aggregated;
@@ -386,15 +393,19 @@
   // KPI COMPUTATION — uses config helpers
   // ============================================
 
-  const AVG_FIELDS = {};
-  for (const b of CFG.BRANCHES) AVG_FIELDS[b.code] = b.avgField;
+  // Branch lookup by code (for pickAvg, which needs both avgField and avgRepField).
+  const BRANCH_BY_CODE = {};
+  for (const b of CFG.BRANCHES) BRANCH_BY_CODE[b.code] = b;
 
   function computeBranchKPIs() {
     const products = Object.keys(state.avgDataMap);
     state.branchKPIs = {};
 
+    // ABC ranks computed once per render (top-20% A → 12wk target)
+    state.abcRanks = CFG.computeAbcRanks(Object.values(state.avgDataMap));
+
     for (const b of BRANCHES) {
-      const avgField = AVG_FIELDS[b.code];
+      const branchInfo = BRANCH_BY_CODE[b.code];
       let totalProducts = 0;
       let totalUnits = 0;
       let critical = 0;
@@ -404,22 +415,28 @@
       let safetyOverrides = 0;
 
       for (const product of products) {
-        if (CFG.isExcludedProduct(product)) continue;
+        if (CFG.isExcludedProduct(product, state.productNames?.[product])) continue;
 
         const avgRow = state.avgDataMap[product];
-        const avgMonth = avgRow?.[avgField] || 0;
+        const avgMonth = CFG.pickAvg(avgRow, branchInfo);
         if (avgMonth <= 0) continue;
 
         const branchStock = state.stockDataMap[`${product}:${b.code}`];
         const mainStock = state.stockDataMap[`${product}:MAIN`];
         const branchAvailable = branchStock?.qty_available || 0;
         const mainAvailable = mainStock?.qty_available || 0;
-        const avgMonthMain = avgRow?.avg_mth_main || 0;
+        const avgMonthMain = CFG.pickMainAvg(avgRow);
+
+        const tier = state.abcRanks.get(product) || 'C';
+        const targetWeeks = CFG.targetWeeksForTier(tier);
+        const mainAbundant = avgMonthMain > 0
+          ? (mainAvailable / avgMonthMain) > 12
+          : mainAvailable > 0;
 
         const avgWeekBranch = avgMonth / WEEKS_IN_MONTH;
         const coverDays = avgWeekBranch > 0 ? Math.round((branchAvailable / avgWeekBranch) * 7) : 999;
 
-        const targetQty = CFG.computeBranchTarget(avgMonth);
+        const targetQty = CFG.computeBranchTarget(avgMonth, targetWeeks);
         const needQty = Math.max(0, targetQty - branchAvailable);
         const mainMinQty = CFG.computeMainSafety(avgMonthMain);
         const canSendQty = Math.max(0, mainAvailable - mainMinQty);
@@ -439,7 +456,8 @@
         const ctnQty = state.ctnMap[product] || 0;
         const rounded = CFG.smartCartonRound(suggestedQty, ctnQty, pool, targetQty, {
           avgMonthBranch: avgMonth,
-          branchAvailable
+          branchAvailable,
+          mainAbundant
         });
         suggestedQty = rounded.qty;
 
@@ -461,11 +479,15 @@
       }
 
       const total = critical + warning + ok;
-      const healthPct = total > 0 ? Math.round(((ok + warning * 0.5) / total) * 100) : 100;
+      // Proportions for the stacked bar (only meaningful when total > 0)
+      const critPct = total > 0 ? (critical / total) * 100 : 0;
+      const warnPct = total > 0 ? (warning  / total) * 100 : 0;
+      const okPct   = total > 0 ? (ok       / total) * 100 : 0;
 
       state.branchKPIs[b.code] = {
         totalProducts, totalUnits, critical, warning, ok,
-        conflicts, safetyOverrides, healthPct
+        conflicts, safetyOverrides,
+        critPct, warnPct, okPct, total
       };
     }
   }
@@ -507,29 +529,57 @@
       const plan = planMap[b.code];
       const status = plan ? plan.status : 'no_plan';
       const statusLabel = status === 'no_plan' ? 'No Plan' : status.charAt(0).toUpperCase() + status.slice(1);
-      const kpi = state.branchKPIs[b.code] || { totalProducts: 0, totalUnits: 0, critical: 0, warning: 0, ok: 0, safetyOverrides: 0, healthPct: 100 };
+      const kpi = state.branchKPIs[b.code] || { totalProducts:0, totalUnits:0, critical:0, warning:0, ok:0, safetyOverrides:0, critPct:0, warnPct:0, okPct:0, total:0 };
 
+      // Card severity — based on PROPORTION of critical, not raw count.
+      // Avoids "everything is red" when most branches have 1-2 criticals.
+      //  critical: > 25% of products to send are critical
+      //  warning:  any critical present OR >25% warning
+      //  good:     fully stocked OR <25% warning and 0 critical
       let healthClass = 'health-good';
-      if (kpi.critical > 0) healthClass = 'health-critical';
-      else if (kpi.warning > 0) healthClass = 'health-warning';
+      if (kpi.critPct > 25 || kpi.critical >= 10) healthClass = 'health-critical';
+      else if (kpi.critical > 0 || kpi.warnPct > 25) healthClass = 'health-warning';
 
-      let barColor = '#10b981';
-      if (kpi.healthPct < 50) barColor = '#dc2626';
-      else if (kpi.healthPct < 80) barColor = '#f59e0b';
+      // Severity label (more meaningful than "no_plan"/"draft")
+      let severityLabel = 'Stable', severityClass = 'sev-ok';
+      if (healthClass === 'health-critical') { severityLabel = 'Critical'; severityClass = 'sev-crit'; }
+      else if (healthClass === 'health-warning') { severityLabel = 'Attention'; severityClass = 'sev-warn'; }
+      if (kpi.totalProducts === 0) { severityLabel = 'Stocked'; severityClass = 'sev-stocked'; }
 
-      const planDate = plan ? new Date(plan.created_at).toLocaleDateString() : '';
       const overrideBadge = kpi.safetyOverrides > 0
-        ? `<span title="${kpi.safetyOverrides} safety-override product(s) — Main drained for oversold lines" style="font-size:10px;color:#dc2626;font-weight:700"> ⚡${kpi.safetyOverrides}</span>`
+        ? ` <span class="override-badge" title="${kpi.safetyOverrides} safety-override product(s) — Main drained for oversold lines">OVR ${kpi.safetyOverrides}</span>`
         : '';
 
+      // Stacked bar — only renders when there ARE products to send.
+      // Shows ACTUAL breakdown (critical | warning | ok) so you see the
+      // distribution at a glance — not a synthetic "health %" that misleads.
+      const stackedBar = kpi.total > 0 ? `
+        <div class="card-bar-row" title="${kpi.critical} critical · ${kpi.warning} warning · ${kpi.ok} ok">
+          <div class="card-bar">
+            ${kpi.critPct > 0 ? `<div class="seg seg-crit" style="width:${kpi.critPct}%"></div>` : ''}
+            ${kpi.warnPct > 0 ? `<div class="seg seg-warn" style="width:${kpi.warnPct}%"></div>` : ''}
+            ${kpi.okPct   > 0 ? `<div class="seg seg-ok"   style="width:${kpi.okPct}%"></div>`   : ''}
+          </div>
+          <div class="card-bar-legend">
+            <span class="lg-crit">${kpi.critical}</span>
+            <span class="lg-warn">${kpi.warning}</span>
+            <span class="lg-ok">${kpi.ok}</span>
+          </div>
+        </div>
+      ` : '';
+
+      const footerMsg = kpi.totalProducts > 0
+        ? `${kpi.totalProducts} to send · ${kpi.totalUnits.toLocaleString()} units`
+        : 'Fully stocked';
+
       return `
-        <a href="replenishment-branch.html?branch=${b.code}" class="branch-card ${healthClass}" style="text-decoration:none;color:inherit">
+        <a href="replenishment-branch.html?branch=${b.code}" class="branch-card ${healthClass}">
           <div class="card-header">
             <div>
               <div class="branch-name">${escapeHtml(b.name)}</div>
               <div class="branch-code">${escapeHtml(b.code)}${overrideBadge}</div>
             </div>
-            <span class="status-badge ${status}">${statusLabel}</span>
+            <span class="severity-badge ${severityClass}">${severityLabel}</span>
           </div>
 
           <div class="card-stats">
@@ -551,13 +601,11 @@
             </div>
           </div>
 
-          <div class="card-health-bar">
-            <div class="card-health-fill" style="width:${kpi.healthPct}%;background:${barColor}"></div>
-          </div>
+          ${stackedBar}
 
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#94a3b8">
-            <span>${kpi.totalProducts > 0 ? kpi.totalProducts + ' to send · ' + kpi.totalUnits.toLocaleString() + ' units' : 'Fully stocked ✓'}</span>
-            ${planDate ? `<span>Plan: ${planDate}</span>` : ''}
+          <div class="card-footer">
+            <span>${footerMsg}</span>
+            ${status !== 'no_plan' ? `<span class="card-status">${statusLabel}</span>` : ''}
           </div>
         </a>
       `;
@@ -581,20 +629,31 @@
     const tbody = document.getElementById('avgTableBody');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px">Loading…</td></tr>';
 
     try {
       await window.supabaseReady;
 
-      const { data, error } = await window.supabase
-        .from('branch_avg_monthly_sales')
-        .select('*')
-        .order('product')
-        .limit(5000);
+      // Supabase has a 1000-row hard cap per request (PostgREST max-rows).
+      // We have ~3000+ rows in branch_avg_monthly_sales — must paginate.
+      let allData = [];
+      let from = 0;
+      const batchSize = 1000;
+      while (true) {
+        const { data, error } = await window.supabase
+          .from('branch_avg_monthly_sales')
+          .select('*')
+          .order('product')
+          .range(from, from + batchSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData = allData.concat(data);
+        if (data.length < batchSize) break;
+        from += batchSize;
+        if (from > 100000) break; // safety
+      }
 
-      if (error) throw error;
-
-      state.avgData = data || [];
+      state.avgData = allData;
       renderAvgTable(state.avgData);
 
     } catch (err) {

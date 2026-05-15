@@ -7,262 +7,932 @@
   <link rel="stylesheet" href="../../styles.css">
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <link rel="manifest" href="../../manifest.json">
-  <meta name="theme-color" content="#232946">
+  <meta name="theme-color" content="#0f172a">
   <link rel="icon" type="image/svg+xml" href="../../icon-192.svg">
   <style>
-    .main-container { max-width: 1440px; }
+    /* ============================================================
+       Replenishment — Branch Detail
+       Slate-dark palette, semantic data colors only.
+       ============================================================ */
 
-    /* ── Summary Bar ── */
+    :root {
+      /* Corporate medium gray bg with white cards floating on top */
+      --bg:           #e8eaee;   /* page bg — medium corporate gray */
+      --bg-card:      #ffffff;   /* cards stand out */
+      --bg-soft:      #f9fafb;   /* table alt rows */
+      --bg-subtle:    #eef0f3;
+      --bg-hover:     #eef0f3;
+      --border:       #e2e5ea;
+      --border-soft:  #eaecf0;
+      --border-strong:#cbd0d8;
+      --text:         #0f172a;   /* slate-900 — bold dark */
+      --text-mute:    #475569;   /* slate-600 — readable */
+      --text-soft:    #64748b;   /* slate-500 — fine print */
+      --primary:      #0f172a;
+      --primary-h:    #1e293b;
+      --primary-fg:   #ffffff;
+      --focus:        #2563eb;
+
+      /* Semantic — light mode */
+      --crit-bg:   #fee2e2; --crit-fg: #991b1b; --crit-bd: #fecaca; --crit-solid: #dc2626;
+      --warn-bg:   #fef3c7; --warn-fg: #92400e; --warn-bd: #fcd34d; --warn-solid: #d97706;
+      --ok-bg:     #d1fae5; --ok-fg:   #065f46; --ok-bd:   #a7f3d0; --ok-solid:   #059669;
+      --info-bg:   #dbeafe; --info-fg: #1e40af; --info-bd: #bfdbfe; --info-solid: #2563eb;
+
+      /* Mono */
+      --mono: 'SF Mono', 'JetBrains Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+
+      /* Density */
+      --gutter: 24px;
+
+      color-scheme: light;
+    }
+
+    /* CRITICAL — styles.css line 1145 redefines --bg/--text inside body{}
+       with dark navy values. We must override --bg/--text in body's own
+       cascade scope, otherwise var(--bg) inside body resolves to the dark
+       one (closer scope wins, not :root). */
+    html {
+      background: #e8eaee !important;
+      color: #0f172a !important;
+    }
+    body {
+      /* shadow the dark CSS vars styles.css sets on body */
+      --bg: #e8eaee !important;
+      --surface: #ffffff !important;
+      --text: #0f172a !important;
+      --header: #ffffff !important;
+      --header-text: #0f172a !important;
+      --muted: #64748b !important;
+      --primary: #0f172a !important;
+      --border: #e2e5ea !important;
+      --hover: #eef0f3 !important;
+
+      /* literal background — bypass any var() ambiguity */
+      background: #e8eaee !important;
+      background-image: none !important;
+      color: #0f172a !important;
+
+      display: block !important;
+      align-items: stretch !important;
+      justify-content: stretch !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      min-height: 100vh;
+    }
+
+    /* Force inheritance on everything inside main — explicit color rules
+       (cover badges, send-val, semantic alerts, etc.) all use class selectors
+       which have higher specificity than this universal rule, so they win. */
+    main, main * { color: inherit; }
+
+    /* Native form-control defaults — they ignore body inherit */
+    input, button, select, textarea {
+      background: var(--bg-card);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    button { cursor: pointer; }
+
+    /* Chromium autofill — kill the white background */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus {
+      -webkit-text-fill-color: var(--text) !important;
+      -webkit-box-shadow: 0 0 0 1000px var(--bg-card) inset !important;
+      caret-color: var(--text);
+    }
+
+    /* Selection */
+    ::selection { background: rgba(37, 99, 235, .18); color: var(--text); }
+
+    /* Scrollbar (webkit) — subtle on light */
+    ::-webkit-scrollbar { width: 12px; height: 12px; }
+    ::-webkit-scrollbar-track { background: var(--bg-soft); }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-soft); }
+
+    /* Full-bleed container — overrides global max-width 500px */
+    .main-container {
+      max-width: none !important;
+      width: 100% !important;
+      padding: 18px var(--gutter) 36px !important;
+      margin: 0 !important;
+      background: transparent !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      text-align: left !important;
+    }
+
+    @media (min-width: 1600px) { :root { --gutter: 32px; } }
+    @media (min-width: 2000px) { :root { --gutter: 48px; } }
+
+    /* Site header (light corporate) — literal values to bypass --header (navy) */
+    .site-header {
+      background: #ffffff !important;
+      color: #0f172a !important;
+      border-bottom: 1px solid #e2e5ea !important;
+      box-shadow: 0 1px 0 rgba(15,23,42,.03) !important;
+    }
+    .site-header .brand,
+    .site-header .nav-link { color: #0f172a !important; opacity: 1 !important; }
+    .site-header .nav-link:hover { background: #e8eaee !important; color: #2563eb !important; }
+    .site-header .nav-link.active { background: #eef0f3 !important; border-color: #e2e5ea !important; }
+    .site-footer {
+      background: transparent !important;
+      color: #64748b !important;
+      border-top: 1px solid #e2e5ea !important;
+      padding: 14px 0 !important;
+    }
+    .site-footer .footer-inner { color: #64748b !important; }
+
+    /* ── Page header ────────────────────────────────────────── */
+    .page-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .breadcrumb {
+      font-size: 14px;
+      color: var(--text-mute);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .breadcrumb a {
+      color: var(--text-mute);
+      text-decoration: none;
+      transition: color .12s;
+    }
+    .breadcrumb a:hover { color: var(--text); }
+    .breadcrumb .sep { color: var(--text-soft); font-weight: 300; }
+    .breadcrumb .current { color: var(--text); font-weight: 600; font-size: 15px; }
+    .breadcrumb .branch-code {
+      color: var(--text-soft);
+      font-family: var(--mono);
+      font-weight: 500;
+      margin-left: 4px;
+      font-size: 12.5px;
+      letter-spacing: -.2px;
+    }
+
+    .sync-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px 6px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--text-mute);
+      white-space: nowrap;
+    }
+    .sync-pill .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--ok-fg);
+      box-shadow: 0 0 0 3px rgba(110, 231, 183, .12);
+    }
+    .sync-pill.warn .dot { background: var(--warn-fg); box-shadow: 0 0 0 3px rgba(251, 191, 36, .14); }
+    .sync-pill.block .dot { background: var(--crit-fg); box-shadow: 0 0 0 3px rgba(252, 165, 165, .14); }
+    .sync-pill strong { color: var(--text); font-weight: 600; }
+
+    /* ── KPI grid — flush, no card-box look ─────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-card);
+      overflow: hidden;
+    }
+    .kpi-card {
+      padding: 13px 18px 12px;
+      position: relative;
+      border-right: 1px solid var(--border-soft);
+    }
+    .kpi-card:last-child { border-right: none; }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      left: 0; right: 0; top: 0;
+      height: 2px;
+      background: var(--accent, transparent);
+    }
+    .kpi-label {
+      font-size: 11px;
+      color: var(--text-mute);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+    .kpi-value {
+      font-size: 25px;
+      font-weight: 700;
+      margin-top: 5px;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      letter-spacing: -.4px;
+    }
+    .kpi-sub {
+      font-size: 11px;
+      color: var(--text-mute);
+      margin-top: 5px;
+    }
+    /* Accent strips use solid colors; KPI value stays uniform slate-900 */
+    .kpi-card.kpi-crit { --accent: var(--crit-solid); }
+    .kpi-card.kpi-warn { --accent: var(--warn-solid); }
+    .kpi-card.kpi-info { --accent: var(--info-solid); }
+    .kpi-card.kpi-ok   { --accent: var(--ok-solid); }
+    .kpi-card::before { height: 3px; }
+
+    @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    /* ── Alerts ──────────────────────────────────────────────── */
+    .alert {
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .alert.warning { background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-fg); }
+    .alert.critical { background: var(--crit-bg); border: 1px solid var(--crit-bd); color: var(--crit-fg); }
+    [data-alert="safety-override"] {
+      background: var(--crit-bg) !important;
+      border: 1px solid var(--crit-bd) !important;
+      color: var(--crit-fg) !important;
+    }
+
+    /* ── Summary bar ─────────────────────────────────────────── */
     .summary-bar {
       display: none;
       align-items: center;
-      gap: 6px;
+      gap: 10px;
       flex-wrap: wrap;
       padding: 10px 14px;
-      background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-      border: 1px solid #bbf7d0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 10px;
       font-size: 13px;
-      color: #166534;
-      margin: 10px 0;
+      color: var(--text);
+      margin: 12px 0;
     }
-    .sum-item { display: inline-flex; align-items: center; gap: 3px; }
-    .sum-sep { color: #86efac; margin: 0 2px; }
-    .sum-crit { color: #dc2626; }
-    .sum-warn { color: #d97706; }
+    .sum-item { display: inline-flex; align-items: center; gap: 4px; }
+    .sum-item strong { font-weight: 700; }
+    .sum-sep { color: var(--border-strong); margin: 0 2px; }
+    .sum-crit { color: var(--crit-fg); }
+    .sum-warn { color: var(--warn-fg); }
+    .sum-transit { color: var(--warn-fg); }
 
-    /* ── Filter Bar ── */
-    .filter-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin: 10px 0;
-      padding: 8px 12px;
-      background: #f8fafc;
-      border-radius: 8px;
-    }
-    .filter-chip {
-      padding: 5px 10px;
-      border-radius: 20px;
-      border: 1px solid #e2e8f0;
-      background: white;
-      font-size: 11px;
-      font-weight: 600;
-      color: #475569;
-      cursor: pointer;
-      transition: all 0.15s;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .filter-chip:hover { background: #f1f5f9; border-color: #94a3b8; }
-    .filter-chip.active { background: #059669; color: white; border-color: #059669; }
-    .filter-chip .chip-count {
-      font-size: 10px;
-      opacity: 0.8;
-      background: rgba(0,0,0,0.1);
-      padding: 1px 5px;
-      border-radius: 8px;
-      min-width: 18px;
-      text-align: center;
-    }
-    .filter-chip.active .chip-count { background: rgba(255,255,255,0.25); }
-
-    /* ── Snapshot Badge ── */
-    .snapshot-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      background: #f0f9ff;
-      border: 1px solid #bae6fd;
-      border-radius: 8px;
-      font-size: 11px;
-      color: #0369a1;
-    }
-
-    /* ── Action Buttons ── */
+    /* ── Action bar ──────────────────────────────────────────── */
     .action-bar {
       display: flex;
-      gap: 8px;
-      margin: 12px 0;
+      gap: 6px;
+      margin: 12px 0 8px;
       flex-wrap: wrap;
       align-items: center;
     }
     .btn-action {
-      padding: 7px 14px;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-      background: white;
-      font-size: 12px;
+      padding: 7px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      font-size: 13px;
       font-weight: 600;
-      color: #334155;
+      color: var(--text);
       cursor: pointer;
-      transition: all 0.15s;
+      transition: background .1s, border-color .1s;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
+      box-shadow: 0 1px 0 rgba(15,23,42,.02);
     }
-    .btn-action:hover { background: #f8fafc; border-color: #94a3b8; }
-    .btn-action.primary { background: #059669; color: white; border-color: #059669; }
-    .btn-action.primary:hover { background: #047857; }
-    .selection-badge {
-      background: #6366f1;
-      color: white;
-      padding: 3px 10px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 600;
+    .btn-action:hover { background: var(--bg-soft); border-color: var(--border-strong); }
+    .btn-action.primary {
+      background: var(--primary);
+      color: var(--primary-fg);
+      border-color: var(--primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,.3);
     }
-
-    /* ── Table ── */
-    #planTable { width: 100%; font-size: 12px; border-collapse: collapse; }
-    #planTable th, #planTable td { vertical-align: middle; padding: 7px 8px; white-space: nowrap; }
-    #planTable th {
-      text-align: center;
-      font-size: 10px;
-      font-weight: 700;
-      color: #64748b;
-      background: #f8fafc;
-      border-bottom: 2px solid #e2e8f0;
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    #planTable td { text-align: center; border-bottom: 1px solid #f1f5f9; }
-    #planTable tbody tr:hover { background: #f0fdf4; }
-    #planTable tbody tr:hover td { opacity: 1 !important; }
-
-    .check-cell { width: 32px; text-align: center !important; }
-    .row-check { cursor: pointer; width: 14px; height: 14px; accent-color: #059669; }
-
-    .product-cell {
-      text-align: left !important;
-      max-width: 280px;
-      white-space: normal;
-    }
-    .prod-code { font-weight: 600; font-size: 12px; color: #0f172a; }
-    .prod-name { font-size: 10px; color: #64748b; line-height: 1.3; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
-    .prod-meta { font-size: 9px; color: #94a3b8; margin-top: 1px; }
-    .prod-dc { font-family: monospace; }
-    .conflict-dot { cursor: help; font-size: 11px; }
-
-    .loc-cell { font-family: 'SF Mono', monospace; font-size: 11px; color: #475569; text-align: left !important; }
-    .num-cell { font-variant-numeric: tabular-nums; }
-    .main-cell { color: #64748b; font-size: 11px; background: #fafbfc; }
-    .tip-cell { cursor: help; text-decoration: underline dotted #cbd5e1; text-underline-offset: 2px; }
-
-    .cover-cell { }
-    .cover-badge {
-      display: inline-block;
-      padding: 2px 7px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-weight: 700;
-    }
-    .cover-crit { background: #fef2f2; color: #dc2626; }
-    .cover-warn { background: #fffbeb; color: #d97706; }
-    .cover-ok { background: #f0fdf4; color: #16a34a; }
-    .cover-suf { background: #f0f9ff; color: #0284c7; }
-    .cover-na { background: #f1f5f9; color: #94a3b8; }
-
-    .send-cell { font-weight: 600; }
-    .send-val { color: #059669; font-size: 14px; }
-    .send-blocked { color: #dc2626; font-size: 11px; cursor: help; }
-    .send-dim { color: #cbd5e1; font-size: 11px; }
-    .send-ok { color: #10b981; font-size: 14px; }
-
-    .transit-cell { background: #fefce8; }
-    .transit-val { color: #b45309; font-weight: 700; font-size: 12px; cursor: help; text-decoration: underline dotted #d97706; text-underline-offset: 2px; }
-
-    .rnd-badge { font-size: 9px; font-weight: 700; padding: 0 3px; border-radius: 3px; margin-left: 2px; cursor: help; }
-    .rnd-up { background: #d1fae5; color: #065f46; }
-    .rnd-down { background: #fef3c7; color: #92400e; }
-
-    .ctn-cell { color: #64748b; font-size: 12px; font-weight: 600; }
-
-    .dim-row td { opacity: 0.45; }
-    .dim-row:hover td { opacity: 0.8 !important; }
-
-    .sortable { cursor: pointer; user-select: none; }
-    .sortable:hover { color: #059669; }
-    .sort-icon { font-size: 9px; opacity: 0.3; margin-left: 1px; }
-    .sort-icon.active { opacity: 1; color: #059669; }
-
-    .table-scroll-wrapper {
-      overflow-x: auto;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      background: white;
-    }
-
-    .alert { padding: 10px 14px; border-radius: 8px; margin-bottom: 10px; font-size: 12px; }
-    .alert.warning { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
-
-    /* ── Cartons Only Toggle ── */
+    .btn-action.primary:hover { background: var(--primary-h); color: var(--primary-fg); }
     .btn-carton-mode {
-      padding: 7px 14px;
-      border-radius: 8px;
-      border: 2px solid #7c3aed;
-      background: white;
+      padding: 7px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      transition: all .1s;
+    }
+    .btn-carton-mode:hover { background: var(--bg-soft); border-color: var(--border-strong); }
+    .btn-carton-mode.active {
+      background: var(--primary);
+      color: var(--primary-fg);
+      border-color: var(--primary);
+    }
+    .carton-rules {
+      font-size: 11px;
+      color: var(--text-mute);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 8px;
+    }
+    .selection-badge {
+      background: var(--primary);
+      color: var(--primary-fg);
+      padding: 4px 10px;
+      border-radius: 12px;
       font-size: 12px;
       font-weight: 600;
-      color: #7c3aed;
-      cursor: pointer;
-      transition: all 0.15s;
     }
-    .btn-carton-mode:hover { background: #f5f3ff; }
-    .btn-carton-mode.active { background: #7c3aed; color: white; }
 
-    /* ── Pending TRs Panel ── */
+    /* ── Filter pills — flat, borderless when inactive ──────── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin: 14px 0 12px;
+      padding: 0;
+      background: transparent;
+      border: none;
+    }
+    .filter-chip {
+      padding: 7px 13px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-mute);
+      cursor: pointer;
+      transition: all .1s;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .filter-chip:hover {
+      background: var(--bg-subtle);
+      color: var(--text);
+    }
+    .filter-chip.active {
+      background: var(--primary);
+      color: var(--primary-fg);
+    }
+    .filter-chip .chip-count {
+      font-size: 11px;
+      font-weight: 700;
+      background: var(--bg-subtle);
+      color: var(--text-mute);
+      padding: 1px 7px;
+      border-radius: 999px;
+      min-width: 20px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .filter-chip:hover .chip-count {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+    .filter-chip.active .chip-count {
+      background: rgba(11, 13, 18, .18);
+      color: var(--primary-fg);
+    }
+    /* Severity-tinted counts for inactive chips — keeps colour readable */
+    .filter-chip[data-filter="critical"]:not(.active) .chip-count,
+    .filter-chip[data-filter="oversold"]:not(.active) .chip-count {
+      background: var(--crit-bg);
+      color: var(--crit-fg);
+      border: 1px solid var(--crit-bd);
+    }
+    .filter-chip[data-filter="conflicts"]:not(.active) .chip-count {
+      background: var(--warn-bg);
+      color: var(--warn-fg);
+      border: 1px solid var(--warn-bd);
+    }
+    .filter-chip[data-filter="to_send"]:not(.active) .chip-count {
+      background: var(--ok-bg);
+      color: var(--ok-fg);
+      border: 1px solid var(--ok-bd);
+    }
+    .filter-divider {
+      width: 1px;
+      height: 22px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+    .search-input {
+      flex: 1;
+      min-width: 180px;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg-card);
+      transition: border-color .12s, box-shadow .12s;
+    }
+    .search-input::placeholder { color: var(--text-soft); }
+    .search-input:focus {
+      outline: none;
+      border-color: var(--focus);
+      box-shadow: 0 0 0 3px rgba(102, 119, 255, .18);
+    }
+    .result-count {
+      color: var(--text-mute);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Pending TRs panel ───────────────────────────────────── */
     .pending-tr-panel {
       display: none;
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
-      padding: 8px 14px;
-      background: #fefce8;
-      border: 1px solid #fde68a;
+      padding: 10px 14px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-bd);
       border-radius: 10px;
-      font-size: 12px;
-      color: #92400e;
+      font-size: 13px;
+      color: var(--warn-fg);
       margin: 6px 0;
     }
+    .pending-tr-panel strong { color: var(--warn-fg); font-weight: 700; }
     .tr-tag {
       display: inline-flex;
       align-items: center;
-      gap: 3px;
-      padding: 2px 8px;
-      background: white;
-      border: 1px solid #fcd34d;
+      gap: 4px;
+      padding: 3px 9px;
+      background: var(--bg-card);
+      border: 1px solid var(--warn-bd);
       border-radius: 6px;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
+      color: var(--warn-fg);
       cursor: help;
     }
-    .tr-tag small { font-weight: 400; color: #a16207; }
+    .tr-tag small { font-weight: 400; color: var(--text-mute); }
 
-    .sum-transit { color: #b45309; }
+    /* ── Table — flat borders, alt rows, no vertical lines ──── */
+    .table-scroll-wrapper {
+      overflow: auto;
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      background: var(--bg-card);
+      max-height: 72vh;
+    }
+    #planTable {
+      width: 100%;
+      font-size: 13.5px;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    #planTable th {
+      text-align: center;
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--text-mute);
+      background: var(--bg-soft);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 12px;
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+    #planTable td {
+      vertical-align: middle;
+      padding: 7px 12px;
+      text-align: center;
+      border-bottom: 1px solid var(--border-soft);
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      font-size: 13px;
+    }
+    /* No alternating rows — cleaner. Strong hover instead. */
+    #planTable tbody tr:hover td {
+      background: var(--bg-subtle) !important;
+      opacity: 1 !important;
+    }
+    #planTable tbody tr:last-child td { border-bottom: none; }
 
-    /* ── Sold/Committed Stock ── */
-    .sold-deficit-cell { background: #fef2f2 !important; }
-    .sold-deficit-val { color: #dc2626; font-weight: 700; font-size: 13px; }
-    .sold-badge { font-size: 9px; color: #dc2626; font-weight: 600; margin-top: 1px; white-space: nowrap; }
-    .committed-badge { font-size: 9px; color: #d97706; margin-top: 1px; white-space: nowrap; }
-    .short-badge { font-size: 9px; color: #dc2626; font-weight: 700; margin-top: 1px; cursor: help; text-decoration: underline dotted #dc2626; text-underline-offset: 2px; }
+    .check-cell { width: 36px; }
+    .row-check {
+      cursor: pointer;
+      width: 15px; height: 15px;
+      accent-color: var(--primary);
+    }
 
-    /* ── Carton Rules ── */
-    .carton-rules {
-      font-size: 10px;
-      color: #7c3aed;
-      background: #f5f3ff;
-      border: 1px solid #ddd6fe;
+    .product-cell {
+      text-align: left !important;
+      max-width: 300px;
+      white-space: normal;
+    }
+    .prod-code {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text);
+      font-family: var(--mono);
+      letter-spacing: -.2px;
+    }
+    .prod-name {
+      font-size: 12px;
+      color: var(--text);
+      line-height: 1.35;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 280px;
+    }
+    .prod-meta {
+      font-size: 11px;
+      color: var(--text-mute);
+      margin-top: 3px;
+    }
+    .prod-dc { font-family: var(--mono); color: var(--text-mute); }
+    .conflict-dot { cursor: help; font-size: 12px; margin-left: 2px; color: var(--warn-fg); font-weight: 700; }
+
+    .loc-cell {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--text);
+      text-align: left !important;
+      letter-spacing: -.2px;
+    }
+    .num-cell { font-variant-numeric: tabular-nums; color: var(--text); }
+    .main-cell { color: var(--text); }
+    .tip-cell {
+      cursor: help;
+      text-decoration: underline dotted var(--border-strong);
+      text-underline-offset: 3px;
+    }
+
+    /* Cover badges — pill with semantic tint + border. Strong tint for
+       readability without solid alarm. */
+    .cover-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -.2px;
+      border: 1px solid transparent;
+      min-width: 36px;
+      text-align: center;
+    }
+    .cover-crit { background: var(--crit-bg); color: var(--crit-fg); border-color: var(--crit-bd); }
+    .cover-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-bd); }
+    .cover-ok   { background: var(--ok-bg);   color: var(--ok-fg);   border-color: var(--ok-bd); }
+    .cover-suf  { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-bd); }
+    .cover-na   { background: var(--bg-subtle); color: var(--text-soft); border-color: var(--border); }
+
+    /* Send cell — the action quantity. Emphasised. */
+    .send-cell { font-weight: 700; }
+    .send-val {
+      color: var(--ok-fg);
+      font-size: 15px;
+      font-weight: 700;
+      background: var(--ok-bg);
+      padding: 2px 8px;
       border-radius: 6px;
-      padding: 3px 8px;
+      border: 1px solid var(--ok-bd);
+      display: inline-block;
+      min-width: 32px;
+    }
+    .send-blocked { color: var(--crit-fg); font-size: 12px; cursor: help; font-weight: 600; }
+    .send-dim { color: var(--text-mute); font-size: 12px; }
+    .send-ok { color: var(--ok-fg); font-size: 14px; font-weight: 700; }
+
+    .transit-cell { background: var(--warn-bg); }
+    .transit-val {
+      color: var(--warn-fg);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: help;
+      text-decoration: underline dotted var(--warn-fg);
+      text-underline-offset: 3px;
+    }
+
+    .rnd-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+      margin-left: 3px;
+      cursor: help;
+    }
+    .rnd-up       { background: var(--ok-bg);   color: var(--ok-fg); }
+    .rnd-down     { background: var(--warn-bg); color: var(--warn-fg); }
+    .rnd-override { background: var(--crit-bg); color: var(--crit-fg); letter-spacing: .3px; }
+    .rnd-small    { background: var(--warn-bg); color: var(--warn-fg); }
+    .send-small   { color: var(--warn-fg) !important; }
+
+    /* Empty / placeholder cell */
+    .empty-cell {
+      text-align: center;
+      padding: 36px 20px !important;
+      color: var(--text-soft) !important;
+      font-size: 13px;
+    }
+
+    .ctn-cell { color: var(--text-mute); font-size: 13px; font-weight: 600; }
+
+    .dim-row td { opacity: .82; }
+    .dim-row:hover td { opacity: 1 !important; }
+
+    /* Sold-deficit / committed */
+    .sold-deficit-cell {
+      background: var(--crit-bg) !important;
+    }
+    .sold-deficit-val {
+      color: var(--crit-fg);
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .sold-badge {
+      font-size: 10px;
+      color: var(--crit-fg);
+      font-weight: 600;
+      margin-top: 2px;
+      white-space: nowrap;
+    }
+    .committed-badge {
+      font-size: 10px;
+      color: var(--warn-fg);
+      margin-top: 2px;
+      white-space: nowrap;
+    }
+    .short-badge {
+      font-size: 10px;
+      color: var(--crit-fg);
+      font-weight: 700;
+      margin-top: 2px;
+      cursor: help;
+      text-decoration: underline dotted var(--crit-fg);
+      text-underline-offset: 2px;
+    }
+
+    /* Conflict row — left amber stripe + tint. Visible without alarming. */
+    .plan-row.has-conflict td:first-child {
+      box-shadow: inset 3px 0 0 var(--warn-solid);
+    }
+    .plan-row.has-conflict td { background: rgba(217, 119, 6, .055); }
+    .plan-row.has-conflict:hover td { background: rgba(217, 119, 6, .10) !important; }
+
+    /* Sort headers */
+    .sortable { cursor: pointer; user-select: none; }
+    .sortable:hover { color: var(--text); }
+    .sort-icon { font-size: 10px; opacity: .3; margin-left: 3px; }
+    .sort-icon.active { opacity: 1; color: var(--text); }
+
+    /* Target banner — big yellow strip when custom target active */
+    .target-banner {
+      display: none;                  /* shown only when override active */
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-bd);
+      border-left: 4px solid var(--warn-solid);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--warn-fg);
+      margin: 10px 0;
       font-weight: 500;
+    }
+    .target-banner strong { font-weight: 700; }
+    .target-banner .target-edit-btn {
+      margin-left: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--warn-bd);
+      color: var(--warn-fg);
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .target-banner .target-edit-btn:hover {
+      background: var(--warn-bd);
+    }
+
+    /* Target settings modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,.45);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-panel {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 22px 24px 18px;
+      max-width: 560px;
+      width: 92%;
+      max-height: 86vh;
+      overflow: auto;
+      box-shadow: 0 24px 64px rgba(15,23,42,.2);
+      position: relative;
+    }
+    .modal-panel h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -.2px;
+    }
+    .modal-panel .modal-sub {
+      color: var(--text-mute);
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .modal-panel .close-x {
+      position: absolute;
+      top: 14px; right: 18px;
+      font-size: 22px;
+      color: var(--text-mute);
+      cursor: pointer;
+      line-height: 1;
+      background: transparent;
+      border: none;
+    }
+    .modal-panel .close-x:hover { color: var(--text); }
+
+    .target-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background .12s, border-color .12s;
+      margin-bottom: 8px;
+    }
+    .target-option:hover { background: var(--bg-soft); border-color: var(--border-strong); }
+    .target-option.selected { background: var(--info-bg); border-color: var(--info-bd); }
+    .target-option input[type="radio"] {
+      margin-top: 3px;
+      accent-color: var(--focus);
+    }
+    .target-option .opt-content { flex: 1; }
+    .target-option .opt-title { font-weight: 700; font-size: 13.5px; color: var(--text); }
+    .target-option .opt-desc { color: var(--text-mute); font-size: 12px; margin-top: 3px; line-height: 1.4; }
+    .target-option .opt-input {
+      width: 90px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--bg-card);
+      margin-top: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .target-option .opt-input:focus {
+      outline: none;
+      border-color: var(--focus);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .18);
+    }
+
+    .target-preview {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-bd);
+      border-left: 4px solid var(--warn-solid);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--warn-fg);
+      margin: 14px 0 4px;
+      font-weight: 500;
+      line-height: 1.5;
+    }
+    .target-preview strong { font-weight: 700; }
+    .target-preview .formula {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: var(--bg-card);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--warn-bd);
+      color: var(--text);
+      margin: 0 2px;
+    }
+
+    .rules-block {
+      margin-top: 18px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+    .rules-block h3 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-mute);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+    .rules-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+      font-size: 12px;
+    }
+    .rules-list .rule {
+      padding: 8px 10px;
+      background: var(--bg-soft);
+      border: 1px solid var(--border-soft);
+      border-radius: 6px;
+    }
+    .rules-list .rule b {
+      display: block;
+      color: var(--text);
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .rules-list .rule span {
+      color: var(--text-mute);
+      line-height: 1.4;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--text-mute);
+    }
+    .pages-btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+      transition: background .12s;
+    }
+    .pages-btn:hover:not(:disabled) { background: var(--bg-hover); }
+    .pages-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* Loading overlay */
+    #loadingOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(255, 255, 255, .82);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #loadingOverlay .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      .main-container { padding: 12px; }
+      .page-head { flex-direction: column; align-items: flex-start; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi-value { font-size: 22px; }
     }
   </style>
 </head>
@@ -280,87 +950,189 @@
   </header>
 
   <main class="main-container">
-    <!-- Header -->
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-      <div>
-        <a href="replenishment.html" style="font-size:11px;color:#059669;text-decoration:none;font-weight:500">&larr; All Branches</a>
-        <h1 style="margin:4px 0 0;font-size:20px;color:#0f172a;display:flex;align-items:center;gap:8px">
-          <span id="branchName">Loading...</span>
-          <span id="branchCode" style="font-size:12px;color:#64748b;font-weight:400"></span>
-        </h1>
-      </div>
-      <div class="snapshot-badge">
-        📡 Cin7: <strong id="snapshotDate">—</strong>
+
+    <!-- ── Page head: breadcrumb + sync pill ─────────────── -->
+    <div class="page-head">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="replenishment.html">Replenishment</a>
+        <span class="sep">/</span>
+        <span class="current" id="branchName">Loading…</span>
+        <span class="branch-code" id="branchCode"></span>
+      </nav>
+      <div class="sync-pill" id="syncPill" title="Last Cin7 sync">
+        <span class="dot"></span>
+        <span>Cin7 sync</span>
+        <strong id="snapshotDate">—</strong>
       </div>
     </div>
 
     <div id="alertContainer"></div>
 
-    <!-- Summary Bar -->
+    <!-- ── KPI grid ──────────────────────────────────────── -->
+    <div class="kpi-grid">
+      <div class="kpi-card kpi-crit">
+        <div class="kpi-label">Critical cover</div>
+        <div class="kpi-value" id="kpi-critical">—</div>
+        <div class="kpi-sub">SKUs &lt; 7 days</div>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-label">Conflicts</div>
+        <div class="kpi-value" id="kpi-conflicts">—</div>
+        <div class="kpi-sub">competing branches</div>
+      </div>
+      <div class="kpi-card kpi-info">
+        <div class="kpi-label">Pending TRs</div>
+        <div class="kpi-value" id="kpi-pending">—</div>
+        <div class="kpi-sub" id="kpi-pending-sub">in transit</div>
+      </div>
+      <div class="kpi-card kpi-crit">
+        <div class="kpi-label">Oversold</div>
+        <div class="kpi-value" id="kpi-oversold">—</div>
+        <div class="kpi-sub">sold without stock</div>
+      </div>
+    </div>
+
+    <!-- ── Summary bar (totals after plan computed) ──────── -->
     <div id="summaryBar" class="summary-bar"></div>
 
-    <!-- Action Bar -->
+    <!-- ── Action bar ────────────────────────────────────── -->
     <div class="action-bar">
-      <button id="printBtn" class="btn-action primary" onclick="printTransferSheet()">🖨️ Print Sheet</button>
-      <button id="exportBtn" class="btn-action" onclick="exportPlan()">📥 Export CSV</button>
-      <button class="btn-action" onclick="generatePlan()" title="Reload data from Cin7">↻ Refresh</button>
-      <button id="cartonModeBtn" class="btn-carton-mode" onclick="toggleCartonMode()" title="Full cartons only — Min 1 ctn, max 6 months AVG, respects Main safety stock, skips products without CTN info">📦 Cartons Only</button>
-      <span id="cartonModeRules" class="carton-rules" style="display:none">Min 1 ctn · Max 6mth AVG · Main safety kept · No partial ctns</span>
+      <button id="printBtn" class="btn-action primary" onclick="printTransferSheet()">Print sheet</button>
+      <button id="exportBtn" class="btn-action" onclick="exportPlan()">Export CSV</button>
+      <button class="btn-action" onclick="generatePlan()" title="Reload data from Cin7">Refresh</button>
+      <button id="targetBtn" class="btn-action" onclick="openTargetModal()" title="Choose how many weeks of stock cover">
+        Target settings
+      </button>
+      <button id="cartonModeBtn" class="btn-carton-mode" onclick="toggleCartonMode()"
+              title="Full cartons only — min 1 ctn, max 6 months AVG, respects Main safety stock, skips products without CTN info">
+        Cartons only
+      </button>
+      <span id="cartonModeRules" class="carton-rules" style="display:none">
+        Min 1 ctn · Caps follow modal target · Main safety kept · No partial ctns
+      </span>
       <span id="selectionBadge" class="selection-badge" style="display:none">0 selected</span>
     </div>
 
-    <!-- Pending TRs Panel -->
-    <div id="pendingTRPanel" class="pending-tr-panel"></div>
-
-    <!-- Filter Bar -->
-    <div class="filter-bar">
-      <button class="filter-chip active" data-filter="to_send" onclick="setFilter('to_send')">📦 To Send</button>
-      <button class="filter-chip" data-filter="critical" onclick="setFilter('critical')">🔴 Critical</button>
-      <button class="filter-chip" data-filter="needs" onclick="setFilter('needs')">📋 All Needs</button>
-      <button class="filter-chip" data-filter="conflicts" onclick="setFilter('conflicts')">⚠️ Conflicts</button>
-      <button class="filter-chip" data-filter="oversold" onclick="setFilter('oversold')">🔴 Oversold</button>
-      <button class="filter-chip" data-filter="all" onclick="setFilter('all')">All</button>
-      <div style="border-left:1px solid #e2e8f0;height:18px;margin:0 2px"></div>
-      <input type="text" id="searchInput" placeholder="Search product, name, location..."
-             style="flex:1;min-width:160px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px"
-             oninput="applyFilters()">
-      <span id="resultCount" style="color:#64748b;font-size:11px"></span>
+    <!-- ── Target banner (visible when custom override active) ─ -->
+    <div id="targetBanner" class="target-banner">
+      <span>
+        <strong>Custom target active:</strong>
+        <span id="targetBannerText">all SKUs aiming for X weeks of cover</span>
+      </span>
+      <button class="target-edit-btn" onclick="openTargetModal()">Change</button>
     </div>
 
-    <!-- Table -->
+    <!-- ── Pending TRs panel ─────────────────────────────── -->
+    <div id="pendingTRPanel" class="pending-tr-panel"></div>
+
+    <!-- ── Filter pills + search ─────────────────────────── -->
+    <div class="filter-bar">
+      <button class="filter-chip active" data-filter="to_send" onclick="setFilter('to_send')">To send</button>
+      <button class="filter-chip" data-filter="critical" onclick="setFilter('critical')">Critical</button>
+      <button class="filter-chip" data-filter="needs" onclick="setFilter('needs')">All needs</button>
+      <button class="filter-chip" data-filter="conflicts" onclick="setFilter('conflicts')">Conflicts</button>
+      <button class="filter-chip" data-filter="oversold" onclick="setFilter('oversold')">Oversold</button>
+      <button class="filter-chip" data-filter="all" onclick="setFilter('all')">All</button>
+      <div class="filter-divider"></div>
+      <input type="text" id="searchInput" class="search-input"
+             placeholder="Search product, name, location…"
+             oninput="applyFilters()">
+      <span id="resultCount" class="result-count"></span>
+    </div>
+
+    <!-- ── Plan table ────────────────────────────────────── -->
     <div class="table-scroll-wrapper">
       <table id="planTable">
         <thead>
           <tr>
-            <th class="check-cell"><input type="checkbox" id="selectAllCheck" class="row-check" onchange="toggleSelectAll()"></th>
-            <th class="sortable" onclick="sortBy('product')" style="text-align:left">Product <span class="sort-icon" id="sort-product"></span></th>
-            <th class="sortable" onclick="sortBy('location')" style="text-align:left">Location <span class="sort-icon" id="sort-location"></span></th>
-            <th class="sortable" onclick="sortBy('cover_days')">Cover <span class="sort-icon active" id="sort-cover_days">▲</span></th>
-            <th class="sortable" onclick="sortBy('branch_stock')">Branch <span class="sort-icon" id="sort-branch_stock"></span></th>
-            <th class="sortable" onclick="sortBy('pending_qty')">In Transit <span class="sort-icon" id="sort-pending_qty"></span></th>
-            <th class="sortable" onclick="sortBy('main_stock')">Main <span class="sort-icon" id="sort-main_stock"></span></th>
-            <th class="sortable" onclick="sortBy('send_qty')">Send <span class="sort-icon" id="sort-send_qty"></span></th>
+            <th class="check-cell">
+              <input type="checkbox" id="selectAllCheck" class="row-check" onchange="toggleSelectAll()">
+            </th>
+            <th class="sortable" onclick="sortBy('product')" style="text-align:left">
+              Product <span class="sort-icon" id="sort-product"></span>
+            </th>
+            <th class="sortable" onclick="sortBy('location')" style="text-align:left">
+              Location <span class="sort-icon" id="sort-location"></span>
+            </th>
+            <th class="sortable" onclick="sortBy('cover_days')">
+              Cover <span class="sort-icon active" id="sort-cover_days">▲</span>
+            </th>
+            <th class="sortable" onclick="sortBy('branch_stock')">
+              Branch <span class="sort-icon" id="sort-branch_stock"></span>
+            </th>
+            <th class="sortable" onclick="sortBy('pending_qty')">
+              In transit <span class="sort-icon" id="sort-pending_qty"></span>
+            </th>
+            <th class="sortable" onclick="sortBy('main_stock')">
+              Main <span class="sort-icon" id="sort-main_stock"></span>
+            </th>
+            <th class="sortable" onclick="sortBy('send_qty')">
+              Send <span class="sort-icon" id="sort-send_qty"></span>
+            </th>
             <th>CTN</th>
           </tr>
         </thead>
         <tbody id="planTableBody">
-          <tr><td colspan="9" style="text-align:center;padding:40px;color:#64748b">Loading data...</td></tr>
+          <tr><td colspan="9" style="text-align:center;padding:48px;color:var(--text-mute)">Loading data…</td></tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Pagination -->
-    <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px">
+    <!-- ── Pagination ────────────────────────────────────── -->
+    <div class="pagination">
       <button id="prevPageBtn" class="pages-btn" onclick="changePage(-1)">‹</button>
-      <span id="pageInfo" class="small-note">Page 1 / 1</span>
+      <span id="pageInfo">Page 1 / 1</span>
       <button id="nextPageBtn" class="pages-btn" onclick="changePage(1)">›</button>
     </div>
 
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.85);z-index:100;align-items:center;justify-content:center">
+    <!-- ── Loading overlay ───────────────────────────────── -->
+    <div id="loadingOverlay">
       <div style="text-align:center">
         <div class="spinner"></div>
-        <p style="margin-top:12px;color:#475569;font-size:13px">Loading data...</p>
+        <p style="margin-top:14px;color:var(--text-mute);font-size:13px">Loading…</p>
+      </div>
+    </div>
+
+    <!-- ── Target settings modal ─────────────────────────── -->
+    <div id="targetModal" class="modal-backdrop" onclick="if(event.target===this)closeTargetModal()">
+      <div class="modal-panel">
+        <button class="close-x" onclick="closeTargetModal()" aria-label="Close">&times;</button>
+        <h2>Target settings</h2>
+        <p class="modal-sub">Choose how many weeks of stock each branch should aim to cover. Applied per-SKU using each SKU's monthly average.</p>
+
+        <label class="target-option" id="optAbc" onclick="selectTargetMode('abc')">
+          <input type="radio" name="target-mode" value="abc" id="targetModeAbc" checked>
+          <div class="opt-content">
+            <div class="opt-title">ABC tiers (default)</div>
+            <div class="opt-desc">Top 20% movers → 10 weeks · Mid 30% → 8 weeks · Tail 50% → 6 weeks. Recommended — adapts cover to demand profile.</div>
+          </div>
+        </label>
+
+        <label class="target-option" id="optCustom" onclick="selectTargetMode('custom')">
+          <input type="radio" name="target-mode" value="custom" id="targetModeCustom">
+          <div class="opt-content">
+            <div class="opt-title">Custom — same target for all SKUs</div>
+            <div class="opt-desc">Single value applied to every SKU. Lower = leaner branches, more frequent transfers. Higher = more capital tied at branch.</div>
+            <input type="number" id="targetWeeksInput" class="opt-input" min="1" max="999" step="1"
+                   value="6" oninput="updateTargetPreview()" onfocus="selectTargetMode('custom')">
+            <span style="font-size:12px;color:var(--text-mute);margin-left:4px">weeks (1–999)</span>
+          </div>
+        </label>
+
+        <div class="target-preview" id="targetPreview">
+          Each SKU's target = <span class="formula" id="formulaText">round-up(avg × <em>N</em>/4.345 + avg × 5/(4.345×7))</span>
+          <br><span id="examplePreview"></span>
+        </div>
+
+        <div class="rules-block">
+          <h3>Active rules</h3>
+          <div class="rules-list" id="targetModalRules"></div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-action" onclick="closeTargetModal()">Cancel</button>
+          <button class="btn-action primary" onclick="applyTargetSettings()">Apply</button>
+        </div>
       </div>
     </div>
   </main>
@@ -370,7 +1142,7 @@
   </footer>
 
   <script src="../../supabase-config.js"></script>
-  <script src="replenishment-config.js?v=20260421"></script>
-  <script src="replenishment-branch.js?v=20260421"></script>
+  <script src="replenishment-config.js?v=20260515g"></script>
+  <script src="replenishment-branch.js?v=20260515g"></script>
 </body>
 </html>
