@@ -648,6 +648,7 @@
         .schema('cin7_mirror')
         .from('sync_runs')
         .select('run_id, started_at, ended_at, status, sync_type, products_synced, stock_rows_synced, duration_ms')
+        .not('ended_at', 'is', null)
         .order('ended_at', { ascending: false })
         .limit(1);
 
