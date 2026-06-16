@@ -105,12 +105,21 @@ class MovementProcessor {
           // ONLY ship ENRICHES (needs the pick lines to detect anomalies + the
           // real stock-out). Every other sale event is recorded RAW only.
           movements = await this._processSaleOrder(payload);
+        } else if (t.includes('voided') || t.includes('undo')) {
+          // Cancellation → mark the order cancelled in pick_anomaly_orders in
+          // real time (no Cin7 call). Best-effort.
+          try {
+            const pa = require('../features/pick-anomalies/pick-anomalies-engine');
+            const on = payload.OrderNumber || payload.SaleOrderNumber || payload.Number;
+            if (on) {
+              const r = await pa.markOrderCancelledRealtime(on, t.includes('undo') ? 'UNDO' : 'VOIDED');
+              console.log(`  🚫 Cancellation (realtime) ${on}: ${JSON.stringify(r)}`);
+            }
+          } catch (e) { console.warn(`  ⚠️ Cancellation realtime failed: ${e.message}`); }
         } else {
-          // Pick/Pack/Invoice/Voided/Undo/Created/Order/Backordered/payment… are
-          // recorded RAW in webhook_events — NO Cin7 call. Keeps the full sale
-          // lifecycle cheap + rate-limit-safe; the raw payload (SaleID/OrderNumber/
-          // timestamp) IS the lifecycle/timeline record. Acting on them (mark
-          // cancelled, mark invoiced, build timeline) is done by readers/wiring.
+          // Pick/Pack/Invoice/Created/Order/Backordered/payment… recorded RAW in
+          // webhook_events — NO Cin7 call. Keeps the full lifecycle cheap; the
+          // raw payload IS the timeline record (readers/wiring act on it later).
           console.log(`ℹ️  Sale event ${topic} — recorded raw (no enrichment)`);
         }
       } else if (t.includes('stock/transfer') || t.includes('stocktransfer')) {
@@ -217,6 +226,19 @@ class MovementProcessor {
 
     const movements = [];
     const order = soData;
+
+    // ── Feed the Pick-Anomalies engine in REAL TIME, reusing the detail we
+    // already fetched (no extra sale call). This catches OLD orders shipped
+    // today that the 2h date-based sync misses. Best-effort — a failure here
+    // never blocks the stock-movement ledger.
+    try {
+      const pa = require('../features/pick-anomalies/pick-anomalies-engine');
+      const r = await pa.analyzeOrderRealtime(order.ID || soId, order.OrderNumber || soNumber, order, 'webhook');
+      if (r && r.ok) console.log(`  🧷 Pick-anomalies (realtime): ${r.orderNumber} → ${r.anomalies} anomalies, ${r.correct} correct`);
+      else if (r && r.skipped) console.log(`  🧷 Pick-anomalies (realtime): ${order.OrderNumber} skipped (${r.skipped})`);
+    } catch (e) {
+      console.warn(`  ⚠️ Pick-anomalies realtime failed: ${e.message}`);
+    }
 
     // Extract customer and sales rep info
     const customer = order.Customer || order.CustomerName || '';

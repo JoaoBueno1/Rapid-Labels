@@ -1618,6 +1618,208 @@ function registerPickAnomalyRoutes(app) {
   });
 
   /**
+   * GET /api/pick-anomalies/analytics-v2
+   * Filter-aware analytics for the redesigned dashboard tab.
+   * Query params:
+   *   from, to       — YYYY-MM-DD (inclusive). Floored to SCANNER_CUTOFF_DATE.
+   *   granularity    — day | week | month (default: auto from range width)
+   *   onlyFixed      — '1' to restrict to orders that received a correction
+   * Returns time-series (chosen granularity), error breakdowns, repeat offenders,
+   * a full Corrections/Fixes section (who/when/from→to/qty/status/reversed),
+   * review funnel + SLA, by-customer, and cancellation-conflict metrics.
+   * Zero Cin7 API calls — Supabase only. Leaves /analytics (v1) untouched.
+   */
+  app.get('/api/pick-anomalies/analytics-v2', async (req, res) => {
+    try {
+      // ── Resolve date window (hard floor at scanner cutoff) ──
+      const floor = SCANNER_CUTOFF_DATE;
+      let from = (req.query.from || '').slice(0, 10) || floor;
+      if (from < floor) from = floor;
+      const today = new Date().toISOString().slice(0, 10);
+      let to = (req.query.to || '').slice(0, 10) || today;
+      const onlyFixed = ['1', 'true', 'yes'].includes(String(req.query.onlyFixed || '').toLowerCase());
+
+      // Auto granularity if not supplied
+      const spanDays = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000));
+      let granularity = String(req.query.granularity || '').toLowerCase();
+      if (!['day', 'week', 'month'].includes(granularity)) {
+        granularity = spanDays <= 31 ? 'day' : spanDays <= 120 ? 'week' : 'month';
+      }
+
+      const bucketKey = (dateStr) => {
+        if (!dateStr) return 'unknown';
+        const d = new Date(dateStr.slice(0, 10) + 'T00:00:00');
+        if (granularity === 'day') return dateStr.slice(0, 10);
+        if (granularity === 'month') return dateStr.slice(0, 7);
+        // ISO-ish week bucket
+        const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000);
+        const weekNum = Math.ceil((dayOfYear + 1) / 7);
+        return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+      };
+
+      // ── Fetch orders (date-filtered) and corrections (date-filtered) in parallel ──
+      const orderQ =
+        `select=order_number,order_date,customer,total_picks,correct_picks,anomaly_picks,fg_count,` +
+        `reviewed,reviewed_at,analyzed_at,is_cancelled,has_correction_conflict,picks,fg_orders` +
+        `&order_date=gte.${from}&order_date=lte.${to}`;
+      const corrQ =
+        `select=order_number,sku,from_bin,to_bin,qty,transfer_ref,transfer_status,corrected_at,` +
+        `is_reversed,reversed_at,reversal_transfer_ref` +
+        `&corrected_at=gte.${from}T00:00:00&corrected_at=lte.${to}T23:59:59` +
+        `&order=corrected_at.desc`;
+
+      const [allOrdersRaw, allCorrections] = await Promise.all([
+        sbGetAll('pick_anomaly_orders', orderQ),
+        sbGetAll('pick_anomaly_corrections', corrQ),
+      ]);
+
+      // Set of order_numbers that received a correction (for onlyFixed + fix-rate)
+      const fixedOrderSet = new Set(allCorrections.map(c => c.order_number));
+      const allOrders = onlyFixed
+        ? allOrdersRaw.filter(o => fixedOrderSet.has(o.order_number))
+        : allOrdersRaw;
+
+      // ── Aggregators ──
+      const tsMap = {};            // bucket → {orders,picks,anomalies,correct}
+      const etypeTrendMap = {};    // bucket → {errorType: count}
+      const errorTypes = {};
+      const skuCounts = {};
+      const binCounts = {};
+      const routeMap = {};
+      const sectionAnomalies = {};
+      const customerAnoms = {};    // customer → anomaly count
+
+      let totalPicks = 0, totalAnomalies = 0, totalCorrect = 0;
+      let anomalyOrders = 0, anomalyOrdersReviewed = 0, fixedAnomalyOrders = 0;
+      let cancelledCount = 0, conflictCount = 0;
+      let reviewLagSum = 0, reviewLagN = 0;
+
+      const addType = (et, bucket) => {
+        errorTypes[et] = (errorTypes[et] || 0) + 1;
+        if (!etypeTrendMap[bucket]) etypeTrendMap[bucket] = {};
+        etypeTrendMap[bucket][et] = (etypeTrendMap[bucket][et] || 0) + 1;
+      };
+
+      for (const o of allOrders) {
+        totalPicks += o.total_picks || 0;
+        totalAnomalies += o.anomaly_picks || 0;
+        totalCorrect += o.correct_picks || 0;
+        if ((o.anomaly_picks || 0) > 0) {
+          anomalyOrders++;
+          if (o.reviewed) anomalyOrdersReviewed++;
+          if (fixedOrderSet.has(o.order_number)) fixedAnomalyOrders++;
+          if (o.customer) customerAnoms[o.customer] = (customerAnoms[o.customer] || 0) + (o.anomaly_picks || 0);
+        }
+        if (o.is_cancelled) cancelledCount++;
+        if (o.has_correction_conflict) conflictCount++;
+
+        // Review SLA: order_date → reviewed_at (days)
+        if (o.reviewed_at && o.order_date) {
+          const lag = (new Date(o.reviewed_at) - new Date(o.order_date + 'T00:00:00')) / 86400000;
+          if (lag >= 0 && lag < 365) { reviewLagSum += lag; reviewLagN++; }
+        }
+
+        const bucket = bucketKey(o.order_date);
+        if (!tsMap[bucket]) tsMap[bucket] = { bucket, orders: 0, picks: 0, anomalies: 0, correct: 0 };
+        tsMap[bucket].orders++;
+        tsMap[bucket].picks += o.total_picks || 0;
+        tsMap[bucket].anomalies += o.anomaly_picks || 0;
+        tsMap[bucket].correct += o.correct_picks || 0;
+
+        for (const p of (o.picks || [])) {
+          if (p.status !== 'anomaly') continue;
+          addType(p.errorType || 'unknown', bucket);
+          if (p.sku) skuCounts[p.sku] = (skuCounts[p.sku] || 0) + 1;
+          if (p.bin) binCounts[p.bin] = (binCounts[p.bin] || 0) + 1;
+          if (p.expectedBin && p.bin) {
+            const k = `${p.expectedBin}→${p.bin}`;
+            if (!routeMap[k]) routeMap[k] = { from: p.expectedBin, to: p.bin, count: 0, skus: [] };
+            routeMap[k].count++;
+            if (!routeMap[k].skus.includes(p.sku)) routeMap[k].skus.push(p.sku);
+          }
+          if (p.bin) {
+            const m = p.bin.match(/^MA-([A-Z])/i);
+            if (m) { const a = m[1].toUpperCase(); sectionAnomalies[a] = (sectionAnomalies[a] || 0) + 1; }
+          }
+        }
+        for (const fg of (o.fg_orders || [])) {
+          for (const c of (fg.components || [])) {
+            if (c.status !== 'anomaly') continue;
+            addType(c.errorType || 'unknown', bucket);
+            if (c.sku) skuCounts[c.sku] = (skuCounts[c.sku] || 0) + 1;
+            if (c.bin) binCounts[c.bin] = (binCounts[c.bin] || 0) + 1;
+          }
+        }
+      }
+
+      // ── Corrections summary (the "what/how we adjusted" story) ──
+      const fixesReversed = allCorrections.filter(c => c.is_reversed).length;
+      const fixesApplied = allCorrections.length;
+      const fixesNet = fixesApplied - fixesReversed;
+      // Fix rate = anomaly orders (in view) that received a correction / anomaly orders.
+      // Bounded to ≤100% by construction (fixedAnomalyOrders ⊆ anomalyOrders).
+      const fixRate = anomalyOrders > 0 ? (fixedAnomalyOrders / anomalyOrders) * 100 : 0;
+
+      // Corrections time-series (applied vs reversed per bucket)
+      const corrTsMap = {};
+      for (const c of allCorrections) {
+        const b = bucketKey((c.corrected_at || '').slice(0, 10));
+        if (!corrTsMap[b]) corrTsMap[b] = { bucket: b, applied: 0, reversed: 0 };
+        corrTsMap[b].applied++;
+        if (c.is_reversed) corrTsMap[b].reversed++;
+      }
+
+      // Recent corrections list for the table (cap 300 rows; full count in summary)
+      const correctionsList = allCorrections.slice(0, 300).map(c => ({
+        order_number: c.order_number, sku: c.sku, from: c.from_bin, to: c.to_bin,
+        qty: c.qty, ref: c.transfer_ref, status: c.transfer_status,
+        corrected_at: c.corrected_at, is_reversed: !!c.is_reversed, reversed_at: c.reversed_at,
+      }));
+
+      // ── Build sorted outputs ──
+      const sortBucket = (a, b) => a.bucket.localeCompare(b.bucket);
+      const timeSeries = Object.values(tsMap).sort(sortBucket).map(t => ({
+        ...t, rate: t.picks > 0 ? Math.round((t.anomalies / t.picks) * 1000) / 10 : 0,
+      }));
+      const allEtypes = Object.keys(errorTypes);
+      const errorTypeTrend = Object.keys(etypeTrendMap).sort().map(b => ({
+        bucket: b, ...Object.fromEntries(allEtypes.map(t => [t, etypeTrendMap[b][t] || 0])),
+      }));
+      const correctionsTrend = Object.values(corrTsMap).sort(sortBucket);
+      const anomalyRate = totalPicks > 0 ? Math.round((totalAnomalies / totalPicks) * 1000) / 10 : 0;
+
+      res.json({
+        success: true,
+        meta: { from, to, granularity, onlyFixed, spanDays },
+        analytics: {
+          summary: {
+            totalOrders: allOrders.length, totalPicks, totalAnomalies, totalCorrect, anomalyRate,
+            anomalyOrders, anomalyOrdersReviewed,
+            reviewRate: anomalyOrders > 0 ? Math.round((anomalyOrdersReviewed / anomalyOrders) * 1000) / 10 : 0,
+            fixedOrders: fixedAnomalyOrders, fixesApplied, fixesReversed, fixesNet,
+            fixRate: Math.round(fixRate * 10) / 10,
+            cancelledCount, conflictCount,
+            avgReviewLagDays: reviewLagN > 0 ? Math.round((reviewLagSum / reviewLagN) * 10) / 10 : null,
+          },
+          timeSeries,
+          errorTypes: Object.entries(errorTypes).sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
+          errorTypeTrend, errorTypeKeys: allEtypes,
+          topSkus: Object.entries(skuCounts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([sku, count]) => ({ sku, count })),
+          topBins: Object.entries(binCounts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([bin, count]) => ({ bin, count })),
+          repeatRoutes: Object.values(routeMap).filter(r => r.count >= 2).sort((a, b) => b.count - a.count).slice(0, 15),
+          sectionHeatmap: Object.entries(sectionAnomalies).sort((a, b) => b[1] - a[1]).map(([section, count]) => ({ section, count })),
+          byCustomer: Object.entries(customerAnoms).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([customer, count]) => ({ customer, count })),
+          corrections: { trend: correctionsTrend, list: correctionsList },
+          reviewFunnel: { anomalyOrders, reviewed: anomalyOrdersReviewed, fixed: fixedAnomalyOrders, reversed: fixesReversed },
+        },
+      });
+    } catch (err) {
+      console.error('Analytics-v2 error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
    * GET /api/pick-anomalies/stats
    * Aggregated KPI stats across ALL orders (not paginated).
    * Zero Cin7 API calls — Supabase only.
@@ -2146,4 +2348,163 @@ function registerPickAnomalyRoutes(app) {
   });
 }
 
-module.exports = { registerPickAnomalyRoutes, syncNewOrders, loadHistory, createCorrectionTransfer, markOrderReviewed, getOrderLogs, logAction };
+// ═══════════════════════════════════════════════════════════════════
+// REAL-TIME (webhook) path — analyze ONE shipped order.
+// Reuses the SAME helpers/logic as the 2h batch sync, but for a single
+// order and WITHOUT the OrderDate floor — so an OLD order shipped today
+// (which the date-based batch sync misses) IS analyzed. Same gates as the
+// batch (ShipmentDate ≥ SCANNER_CUTOFF, ≤ 45 days) and the SAME dedup
+// (sbInsertIfNew/ignore-duplicates) so it's safe to run alongside the batch:
+// whichever path sees the order first wins; the other is a no-op.
+// The 2h batch (_analyzeAndSave) is left completely untouched as the backstop.
+// ═══════════════════════════════════════════════════════════════════
+async function analyzeOrderRealtime(saleId, orderNumber, preFetchedDetail = null, source = 'webhook') {
+  let saleDetail = preFetchedDetail;
+  if (!saleDetail) {
+    try {
+      saleDetail = await cin7Get(`sale?ID=${saleId}`);
+    } catch (err) {
+      return { ok: false, skipped: 'fetch_failed', error: err.message };
+    }
+  }
+
+  const ordNum = orderNumber || saleDetail.OrderNumber;
+  const ordId = saleId || saleDetail.ID;
+  const orderDate = saleDetail.SaleOrderDate || saleDetail.OrderDate || null;
+  const customer = saleDetail.Customer || null;
+
+  // ── Extract picks (Fulfilments → Pick → Lines) ──
+  const picks = [];
+  const noBinSkus = [];
+  let pickIdx = 0;
+  for (const ful of (saleDetail.Fulfilments || saleDetail.Fulfillments || [])) {
+    let lines = [];
+    if (ful.Pick && ful.Pick.Lines) lines = ful.Pick.Lines;
+    else if (Array.isArray(ful.Pick)) lines = ful.Pick;
+    else if (Array.isArray(ful.Lines)) lines = ful.Lines;
+    for (const line of lines) {
+      if (!line || !line.SKU) continue;
+      const bin = extractBin(line.Location);
+      picks.push({
+        id: `${ordNum}-${pickIdx++}`,
+        sku: line.SKU || line.ProductCode, productId: line.ProductID,
+        name: line.Name || line.ProductName, qty: line.Quantity,
+        location: line.Location, locationId: line.LocationID, bin, hasBin: !!bin,
+      });
+      if (!bin) noBinSkus.push(line.SKU || line.ProductCode);
+    }
+  }
+  if (!picks.length) return { ok: false, skipped: 'no_picks' };
+
+  const rawOrderStatus = saleDetail.FulFilmentStatus || saleDetail.OrderStatus || saleDetail.Status || 'Unknown';
+
+  // ── Classify each pick vs its pickface (identical to batch) ──
+  const allSkus = [...new Set(picks.map(p => p.sku))];
+  const locators = await fetchLocators(allSkus);
+  for (const pick of picks) {
+    const info = locators.get(pick.sku);
+    const expected = info?.locator || null;
+    if (!pick.hasBin) {
+      if (expected === 'BOM' || expected === 'Production') { pick.status = 'no_bin_assembly'; pick.reason = expected.toLowerCase(); }
+      else if (expected && expected.startsWith('MA-')) { pick.status = 'no_bin_suspect'; pick.expectedBin = expected; }
+      else { pick.status = 'no_bin_ok'; }
+    } else if (!expected || expected === '0' || expected === 'BOM' || expected === 'Production' || !expected.startsWith('MA-')) {
+      pick.status = 'correct'; pick.expectedBin = expected;
+    } else if (pick.bin === expected) {
+      pick.status = 'correct'; pick.expectedBin = expected;
+    } else {
+      pick.status = 'anomaly'; pick.expectedBin = expected; pick.errorType = classifyError(pick.bin, expected);
+    }
+  }
+
+  // ── Finished-goods (assembly) search, only if needed (identical to batch) ──
+  const fgOrders = [];
+  const hasAssemblyPicks = noBinSkus.length > 0 || picks.some(p => p.status === 'no_bin_assembly');
+  if (hasAssemblyPicks) {
+    try {
+      const fgSearch = await cin7Get(`finishedGoodsList?Search=${ordNum}&Limit=20`);
+      const fgList = (fgSearch.FinishedGoodsList || fgSearch.FinishedGoods || []);
+      for (const fg of fgList) {
+        if (fg.Status === 'VOIDED') continue;
+        if (fg.Notes && !fg.Notes.includes(ordNum)) continue;
+        let fgDetail;
+        try { fgDetail = await cin7Get(`finishedGoods?TaskID=${fg.TaskID}`); }
+        catch (err) { continue; }
+        const compSkus = (fgDetail.PickLines || []).map(pl => pl.ProductCode).filter(Boolean);
+        const compLocators = await fetchLocators([...new Set(compSkus)]);
+        const components = (fgDetail.PickLines || []).map(pl => {
+          const compInfo = compLocators.get(pl.ProductCode);
+          const compExpected = compInfo?.locator || null;
+          const compBin = pl.Bin || null;
+          const isCorrect = !compBin || !compExpected || !compExpected.startsWith('MA-') || compBin === compExpected;
+          return { sku: pl.ProductCode, productId: pl.ProductID, qty: pl.Quantity, cost: pl.Cost, bin: compBin, binId: pl.BinID, expectedBin: compExpected, status: isCorrect ? 'correct' : 'anomaly', errorType: isCorrect ? null : classifyError(compBin, compExpected) };
+        });
+        let createdBy = null;
+        if (fgDetail.Notes) { const m = fgDetail.Notes.match(/by\s+(\S+@\S+)/i); if (m) createdBy = m[1]; }
+        fgOrders.push({ taskId: fg.TaskID, assemblyNumber: fgDetail.AssemblyNumber || fg.AssemblyNumber, productCode: fgDetail.ProductCode || fg.ProductCode, status: fgDetail.Status || fg.Status, completionDate: fgDetail.CompletionDate, quantity: fgDetail.Quantity, createdBy, components });
+      }
+    } catch (err) { /* FG search best-effort */ }
+  }
+
+  const filteredPicks = picks.filter(p => p.status === 'correct' || p.status === 'anomaly');
+  if (!filteredPicks.length) return { ok: false, skipped: 'no_picks' };
+  await addAnomalyConfidence(filteredPicks, fgOrders);
+  const correctCount = filteredPicks.filter(p => p.status === 'correct').length;
+  const anomalyCount = filteredPicks.filter(p => p.status === 'anomaly').length;
+
+  // ── Real dates + the SAME hard ship-date gates as the batch ──
+  let shipmentDate = null, invoiceDate = null;
+  for (const ful of (saleDetail.Fulfilments || saleDetail.Fulfillments || [])) {
+    if (ful.Ship && ful.Ship.Lines && ful.Ship.Lines[0] && ful.Ship.Lines[0].ShipmentDate) { shipmentDate = ful.Ship.Lines[0].ShipmentDate; break; }
+  }
+  if (saleDetail.Invoices && saleDetail.Invoices[0] && saleDetail.Invoices[0].InvoiceDate) invoiceDate = saleDetail.Invoices[0].InvoiceDate;
+  const fulfilledDate = shipmentDate || invoiceDate || null;
+  const fulfilledDateStr = fulfilledDate ? fulfilledDate.split('T')[0] : null;
+  if (fulfilledDateStr && fulfilledDateStr < SCANNER_CUTOFF_DATE) return { ok: false, skipped: 'pre_cutoff' };
+  const maxAge = new Date(); maxAge.setDate(maxAge.getDate() - 45);
+  if (fulfilledDateStr && fulfilledDateStr < maxAge.toISOString().split('T')[0]) return { ok: false, skipped: 'stale_ship' };
+
+  const orderResult = {
+    sale_id: ordId, order_number: ordNum,
+    order_date: orderDate ? orderDate.split('T')[0] : null,
+    fulfilled_date: fulfilledDateStr,
+    invoice_date: invoiceDate ? invoiceDate.split('T')[0] : null,
+    customer, order_status: rawOrderStatus,
+    total_picks: filteredPicks.length, correct_picks: correctCount, anomaly_picks: anomalyCount,
+    fg_count: fgOrders.length, picks: filteredPicks, fg_orders: fgOrders,
+    analyzed_at: new Date().toISOString(),
+  };
+
+  // INSERT-if-new (ignore-duplicates) → never overwrites a batch-analyzed order.
+  const inserted = await sbInsertIfNew('pick_anomaly_orders', orderResult, 'order_number');
+  await logAction({
+    order_number: ordNum, action: 'synced',
+    details: `[realtime] ${correctCount} correct, ${anomalyCount} anomalies, ${fgOrders.length} FG`,
+    user_email: source === 'webhook' ? 'system@webhook' : 'system@auto-sync',
+  });
+  return { ok: true, anomalies: anomalyCount, correct: correctCount, orderNumber: ordNum };
+}
+
+// Mark an order cancelled in real time (Sale/Voided or Sale/Undo webhook).
+// Mirrors the batch cancellation logic for a single order — no Cin7 call.
+async function markOrderCancelledRealtime(orderNumber, status = 'VOIDED') {
+  const matched = await sbGet('pick_anomaly_orders', `select=order_number,is_cancelled&order_number=eq.${orderNumber}&limit=1`);
+  if (!matched.length) return { ok: false, skipped: 'not_in_history' };
+  if (matched[0].is_cancelled) return { ok: true, alreadyCancelled: true };
+  const corrections = await sbGet('pick_anomaly_corrections', `select=id&order_number=eq.${orderNumber}&limit=1`);
+  const hasConflict = corrections.length > 0;
+  await sbPatch('pick_anomaly_orders', `order_number=eq.${orderNumber}`, {
+    is_cancelled: true, cancelled_at: new Date().toISOString(),
+    order_status: String(status).toUpperCase(), has_correction_conflict: hasConflict,
+  });
+  await logAction({
+    order_number: orderNumber, action: 'cancellation_detected',
+    details: hasConflict
+      ? `[realtime] Order cancelled (${status}) AFTER a correction — stock transfer may need reversal.`
+      : `[realtime] Order cancelled (${status}). No corrections — no action needed.`,
+    user_email: 'system@webhook',
+  });
+  return { ok: true, hasConflict };
+}
+
+module.exports = { registerPickAnomalyRoutes, syncNewOrders, loadHistory, createCorrectionTransfer, markOrderReviewed, getOrderLogs, logAction, analyzeOrderRealtime, markOrderCancelledRealtime };
