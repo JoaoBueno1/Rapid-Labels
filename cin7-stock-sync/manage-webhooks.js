@@ -138,6 +138,27 @@ async function del(id) {
   console.log(`DELETE ${id} → ${status}`, status !== 200 ? body : 'OK');
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Activate every OUR_EVENTS webhook that's registered but inactive (gentle:
+// spaced PUTs so we don't burst the Cin7 rate limit). Skips already-active ones.
+async function activateAll() {
+  const cur = await req('GET', '/webhooks');
+  const hooks = (cur.body && cur.body.Webhooks) || [];
+  const todo = hooks.filter(h => OUR_EVENTS.includes(h.Type) && !h.IsActive);
+  console.log(`Activating ${todo.length} webhook(s) (of ${OUR_EVENTS.length} ours):\n`);
+  for (const h of todo) {
+    const { status, body } = await req('PUT', '/webhooks', {
+      ID: h.ID, Type: h.Type, IsActive: true, ExternalURL: h.ExternalURL,
+      ExternalAuthorizationType: h.ExternalAuthorizationType || 'bearerauth',
+      ExternalBearerToken: TOKEN,
+    });
+    console.log(`  ${status === 200 ? '✓' : '✗ ' + status} ${h.Type}` + (status !== 200 ? `  ${JSON.stringify(body).slice(0, 120)}` : ''));
+    await sleep(2500); // gentle: stay well under the 60/min cap
+  }
+  await list();
+}
+
 // ── CLI ──
 const [cmd] = process.argv.slice(2);
 const arg = (name) => { const i = process.argv.indexOf(name); return i > -1 ? process.argv[i + 1] : null; };
@@ -148,9 +169,10 @@ const flag = (name) => process.argv.includes(name);
     case 'list': await list(); break;
     case 'register': await register(arg('--url'), flag('--activate')); break;
     case 'activate': await setActive(arg('--id'), true); break;
+    case 'activate-all': await activateAll(); break;
     case 'deactivate': await setActive(arg('--id'), false); break;
     case 'delete': await del(arg('--id')); break;
     default:
-      console.log('Commands: list | register --url <https> [--activate] | activate --id <guid> | deactivate --id <guid> | delete --id <guid>');
+      console.log('Commands: list | register --url <https> [--activate] | activate-all | activate --id <guid> | deactivate --id <guid> | delete --id <guid>');
   }
 })();

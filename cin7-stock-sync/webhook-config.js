@@ -17,13 +17,17 @@
  */
 module.exports = {
   // The events we register. Curated for stock + anomaly monitoring; expand freely.
+  // The sale lifecycle + purchase. Only ShipmentAuthorised + Purchase enrich
+  // (Cin7 API call); the rest are recorded raw (no call) — see movement-processor.
+  // Stock/AvailableStockLevelChanged is intentionally NOT here (high-volume
+  // firehose; enable later only if we build a live stock-level view).
   OUR_EVENTS: [
-    'Sale/ShipmentAuthorised',          // ⭐ stock leaves the system — pick anomalies
-    'Sale/Voided',                      // ⭐ cancellation → correction-conflict check
-    'Sale/Undo',                        // ⭐ fulfilment reversed
-    'Sale/InvoiceAuthorised',           // ⭐ invoiced → clears the non-invoiced monitor
-    'Sale/PickAuthorised',              //    pick committed (richer trail)
-    'Purchase/StockReceivedAuthorised', //    stock comes in (replenishment)
-    'Stock/AvailableStockLevelChanged', //    catch-all on-hand change
+    'Sale/ShipmentAuthorised',          // ⭐ stock leaves — anomalies (ENRICHES)
+    'Sale/Voided',                      // ⭐ cancellation (raw)
+    'Sale/Undo',                        // ⭐ fulfilment reversed (raw)
+    'Sale/InvoiceAuthorised',           // ⭐ invoiced → non-invoiced monitor (raw)
+    'Sale/PickAuthorised',              //    pick step — timeline (raw)
+    'Sale/PackAuthorised',              //    pack step — timeline (raw)
+    'Purchase/StockReceivedAuthorised', //    stock in — replenishment (ENRICHES)
   ],
 };
