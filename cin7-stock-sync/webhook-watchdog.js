@@ -78,7 +78,15 @@ async function main() {
       continue;
     }
     // Cin7 disabled it → reactivate
-    const put = await cin7('PUT', '/webhooks', { ID: h.ID, IsActive: true });
+    // PUT is a full replace → resend all fields incl. our bearer token
+    const put = await cin7('PUT', '/webhooks', {
+      ID: h.ID,
+      Type: h.Type,
+      IsActive: true,
+      ExternalURL: h.ExternalURL,
+      ExternalAuthorizationType: h.ExternalAuthorizationType || 'bearerauth',
+      ExternalBearerToken: process.env.CIN7_WEBHOOK_TOKEN || '',
+    });
     const ok = put.status === 200;
     reactivated += ok ? 1 : 0;
     console.log(`  ${ok ? '✓ reactivated' : '✗ failed to reactivate'} ${h.Type} (${h.ID})`);

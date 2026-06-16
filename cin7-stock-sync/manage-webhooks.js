@@ -115,8 +115,21 @@ async function register(url, activate) {
 
 async function setActive(id, active) {
   if (!id) { console.error('--id <guid> required'); process.exit(1); }
-  const { status, body } = await req('PUT', '/webhooks', { ID: id, IsActive: active });
-  console.log(`PUT (IsActive=${active}) ${id} → ${status}`, status !== 200 ? body : 'OK');
+  // Cin7 PUT is a FULL replace → fetch current and resend every field.
+  // The GET returns an empty ExternalBearerToken, so we MUST resend ours
+  // (otherwise the bearer secret would be wiped).
+  const cur = await req('GET', '/webhooks');
+  const hook = ((cur.body && cur.body.Webhooks) || []).find(h => h.ID === id);
+  if (!hook) { console.error(`webhook ${id} not found`); process.exit(1); }
+  const { status, body } = await req('PUT', '/webhooks', {
+    ID: id,
+    Type: hook.Type,
+    IsActive: active,
+    ExternalURL: hook.ExternalURL,
+    ExternalAuthorizationType: hook.ExternalAuthorizationType || 'bearerauth',
+    ExternalBearerToken: TOKEN,
+  });
+  console.log(`PUT (IsActive=${active}) ${hook.Type} → ${status}`, status !== 200 ? body : 'OK');
 }
 
 async function del(id) {
