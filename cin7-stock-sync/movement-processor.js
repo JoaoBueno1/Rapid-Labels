@@ -33,9 +33,10 @@ class MovementProcessor {
 
   // ── Cin7 API call with throttle ──
   async _cin7Request(endpoint, params = {}, _retry = 0) {
-    // Throttle: 1.2s between calls
+    // Throttle: 2.5s between calls — gentle enough to coexist with the other
+    // Cin7 sync jobs (stock/pick-anomalies/order-pipeline) under the 60/min cap.
     const now = Date.now();
-    const wait = Math.max(0, 1200 - (now - this.lastApiCall));
+    const wait = Math.max(0, 2500 - (now - this.lastApiCall));
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
 
     const url = new URL(`${CIN7_CONFIG.baseUrl}/${endpoint}`);
@@ -126,6 +127,11 @@ class MovementProcessor {
       } else {
         console.warn(`⚠️  Unhandled webhook topic: ${topic}`);
       }
+
+      // Idempotent reprocess: clear this event's prior movements + alerts so a
+      // re-run (retry/backfill) never duplicates or leaves stale rows.
+      await this.sb.schema('cin7_mirror').from('movement_alerts').delete().eq('webhook_event_id', eventId);
+      await this.sb.schema('cin7_mirror').from('stock_movements').delete().eq('webhook_event_id', eventId);
 
       // Store movements
       if (movements.length > 0) {
@@ -230,9 +236,12 @@ class MovementProcessor {
         const sku = line.SKU || line.ProductCode || '';
         const productName = line.Name || line.ProductName || '';
         const qty = parseFloat(line.Quantity) || 0;
-        // In Cin7 pick lines, "Location" IS the bin; the warehouse is at sale level
-        const bin = line.Location || line.Bin || line.BinLocation || '';
-        const location = orderWarehouse;
+        // Cin7 pick "Location" is "Warehouse: BIN" (e.g. "Main Warehouse: MA-F-04-L1")
+        // or just a warehouse name for branch picks. Split into warehouse + bin code.
+        const rawLoc = line.Location || line.Bin || line.BinLocation || '';
+        const binCode = rawLoc.includes(':') ? rawLoc.split(':').slice(1).join(':').trim() : '';
+        const bin = binCode;
+        const location = (rawLoc.includes(':') ? rawLoc.split(':')[0].trim() : rawLoc) || orderWarehouse;
         const batch = line.BatchSN || line.Batch || '';
 
         if (!sku || qty === 0) continue;
@@ -249,11 +258,12 @@ class MovementProcessor {
           if (prod) { stockLocator = prod.stock_locator || ''; category = prod.category || ''; }
         } catch {}
 
-        // Determine if pick is from non-pickbay (anomaly)
-        const normBin = (bin || '').replace(/\s+/g, '').toUpperCase();
+        // Anomaly = picked from a real BIN CODE that isn't the product's pickface.
+        // Branch/warehouse-level picks carry no bin code → NOT flagged (legit branch ship).
+        const normBin = binCode.replace(/\s+/g, '').toUpperCase();
         const normPickface = (stockLocator || '').replace(/\s+/g, '').toUpperCase();
         const isFromPickface = normPickface && normBin === normPickface;
-        const isAnomaly = normBin && normPickface && !isFromPickface;
+        const isAnomaly = !!normBin && !!normPickface && !isFromPickface;
 
         // Determine movement type. Real Cin7 fulfilments expose FulFilmentStatus
         // (+ Ship.Status), not a top-level Status; a shipment date means shipped.
@@ -574,6 +584,7 @@ class MovementProcessor {
       for (const rule of rules) {
         const alert = this._evaluateRule(rule, movement);
         if (alert) {
+          alert.webhook_event_id = movement.webhook_event_id || null; // link for idempotent reprocess
           const { error: insertErr } = await this.sb.schema('cin7_mirror')
             .from('movement_alerts')
             .insert(alert);
