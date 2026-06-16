@@ -78,7 +78,7 @@ async function main() {
       continue;
     }
     // Cin7 disabled it → reactivate
-    const put = await cin7('PUT', '/webhooks', { Webhooks: [{ ID: h.ID, IsActive: true }] });
+    const put = await cin7('PUT', '/webhooks', { ID: h.ID, IsActive: true });
     const ok = put.status === 200;
     reactivated += ok ? 1 : 0;
     console.log(`  ${ok ? '✓ reactivated' : '✗ failed to reactivate'} ${h.Type} (${h.ID})`);

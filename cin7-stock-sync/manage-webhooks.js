@@ -101,13 +101,11 @@ async function register(url, activate) {
   for (const type of OUR_EVENTS) {
     if (have.has(type)) { console.log(`  ↷ ${type} already exists — skipped (won't duplicate)`); continue; }
     const { status, body } = await req('POST', '/webhooks', {
-      Webhooks: [{
-        Type: type,
-        IsActive: !!activate,
-        ExternalURL: url,
-        ExternalAuthorizationType: 'bearerauth',
-        ExternalBearerToken: TOKEN,
-      }],
+      Type: type,
+      IsActive: !!activate,
+      ExternalURL: url,
+      ExternalAuthorizationType: 'bearerauth',
+      ExternalBearerToken: TOKEN,
     });
     console.log(`  ${status === 200 ? '✓' : '✗ ' + status} ${type}` +
       (status !== 200 ? `  ${JSON.stringify(body).slice(0, 160)}` : ''));
@@ -117,7 +115,7 @@ async function register(url, activate) {
 
 async function setActive(id, active) {
   if (!id) { console.error('--id <guid> required'); process.exit(1); }
-  const { status, body } = await req('PUT', '/webhooks', { Webhooks: [{ ID: id, IsActive: active }] });
+  const { status, body } = await req('PUT', '/webhooks', { ID: id, IsActive: active });
   console.log(`PUT (IsActive=${active}) ${id} → ${status}`, status !== 200 ? body : 'OK');
 }
 
