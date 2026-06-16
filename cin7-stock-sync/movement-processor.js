@@ -101,15 +101,17 @@ class MovementProcessor {
       const t = (topic || '').toLowerCase();
 
       if (t.startsWith('sale/')) {
-        // Skip purely financial/admin sale events that carry no stock movement
-        if (t.includes('payment') || t.includes('attachment') ||
-            t.includes('additionalattributes') || t.includes('trackingnumber') ||
-            t.includes('quoteauthorised')) {
-          console.log(`ℹ️  Sale event ${topic} — no stock movement`);
-        } else {
-          // Created / OrderAuthorised / Pick / Pack / ShipmentAuthorised /
-          // InvoiceAuthorised / Voided / Undo / Backordered → inspect the sale
+        if (t.includes('shipmentauthorised')) {
+          // ONLY ship ENRICHES (needs the pick lines to detect anomalies + the
+          // real stock-out). Every other sale event is recorded RAW only.
           movements = await this._processSaleOrder(payload);
+        } else {
+          // Pick/Pack/Invoice/Voided/Undo/Created/Order/Backordered/payment… are
+          // recorded RAW in webhook_events — NO Cin7 call. Keeps the full sale
+          // lifecycle cheap + rate-limit-safe; the raw payload (SaleID/OrderNumber/
+          // timestamp) IS the lifecycle/timeline record. Acting on them (mark
+          // cancelled, mark invoiced, build timeline) is done by readers/wiring.
+          console.log(`ℹ️  Sale event ${topic} — recorded raw (no enrichment)`);
         }
       } else if (t.includes('stock/transfer') || t.includes('stocktransfer')) {
         movements = await this._processStockTransfer(payload);
