@@ -92,22 +92,36 @@ class MovementProcessor {
 
       let movements = [];
 
-      // Route by topic type
-      const topicLower = (topic || '').toLowerCase();
+      // Route by REAL Cin7 Core event type (e.g. Sale/ShipmentAuthorised,
+      // Sale/Voided, Purchase/StockReceivedAuthorised, Stock/AvailableStockLevelChanged).
+      const t = (topic || '').toLowerCase();
 
-      if (topicLower.includes('sale/order') || topicLower.includes('saleorder')) {
-        movements = await this._processSaleOrder(payload);
-      } else if (topicLower.includes('stock/transfer') || topicLower.includes('stocktransfer')) {
+      if (t.startsWith('sale/')) {
+        // Skip purely financial/admin sale events that carry no stock movement
+        if (t.includes('payment') || t.includes('attachment') ||
+            t.includes('additionalattributes') || t.includes('trackingnumber') ||
+            t.includes('quoteauthorised')) {
+          console.log(`ℹ️  Sale event ${topic} — no stock movement`);
+        } else {
+          // Created / OrderAuthorised / Pick / Pack / ShipmentAuthorised /
+          // InvoiceAuthorised / Voided / Undo / Backordered → inspect the sale
+          movements = await this._processSaleOrder(payload);
+        }
+      } else if (t.includes('stock/transfer') || t.includes('stocktransfer')) {
         movements = await this._processStockTransfer(payload);
-      } else if (topicLower.includes('stock/adjustment') || topicLower.includes('stockadjustment')) {
+      } else if (t.includes('stock/adjustment') || t.includes('stockadjustment')) {
         movements = await this._processStockAdjustment(payload);
-      } else if (topicLower.includes('purchase/order') || topicLower.includes('purchaseorder')) {
+      } else if (t.includes('availablestocklevel')) {
+        // Stock/AvailableStockLevelChanged — Cin7's only stock webhook; a
+        // catch-all on-hand change with no task detail to expand. The raw
+        // event is recorded; line-level detail still comes from polling.
+        console.log(`ℹ️  Stock level changed — recorded (no line detail)`);
+      } else if (t.startsWith('purchase/')) {
         movements = await this._processPurchaseOrder(payload);
-      } else if (topicLower.includes('product/')) {
-        // Product updates don't create stock movements, just log
-        console.log(`ℹ️  Product update event — no stock movement to log`);
+      } else if (t.startsWith('product/')) {
+        console.log(`ℹ️  Product update — no stock movement`);
       } else {
-        console.warn(`⚠️  Unknown webhook topic: ${topic}`);
+        console.warn(`⚠️  Unhandled webhook topic: ${topic}`);
       }
 
       // Store movements
@@ -168,9 +182,11 @@ class MovementProcessor {
   // SALES ORDER processing
   // ══════════════════════════════════════════════
   async _processSaleOrder(payload) {
-    const soId = payload.ID || payload.id;
-    const soNumber = payload.OrderNumber || payload.Number || '';
-    if (!soId) { console.warn('⚠️ SO webhook missing ID'); return []; }
+    // Real Cin7 payloads: Sale/Created → SaleID; Sale/ShipmentAuthorised →
+    // SaleTaskID. Try the sale GUID first; fall back to OrderNumber search.
+    const soId = payload.SaleID || payload.SaleTaskID || payload.ID || payload.id;
+    const soNumber = payload.OrderNumber || payload.SaleOrderNumber || payload.Number || '';
+    if (!soId && !soNumber) { console.warn('⚠️ SO webhook missing SaleID/OrderNumber'); return []; }
 
     let soData;
     try {

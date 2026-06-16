@@ -1,0 +1,36 @@
+# ============================================================
+# Cin7 Webhook Drain — BACKSTOP (every 2h at :15)
+# ============================================================
+# Real-time processing happens via the Supabase DB webhook → /api/cin7/process.
+# This cron is the safety net: it drains anything the real-time path missed
+# (e.g. while the receiver was briefly down). Safe no-op on an empty queue.
+# ============================================================
+
+name: Cin7 Webhook Drain (backstop)
+
+on:
+  schedule:
+    - cron: '15 */2 * * *'   # every 2 hours at :15 (offset from other syncs)
+  workflow_dispatch: {}
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Drain webhook queue
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+        run: node cin7-stock-sync/process-webhook-queue.js

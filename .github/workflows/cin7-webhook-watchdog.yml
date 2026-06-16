@@ -1,0 +1,37 @@
+# ============================================================
+# Cin7 Webhook Watchdog — daily health check
+# ============================================================
+# Cin7 auto-deactivates a webhook after 6 failed deliveries. This job
+# checks OUR webhooks and reactivates any Cin7 disabled, logging to
+# cin7_mirror.webhook_health_log. Only ever touches our own webhooks.
+# ============================================================
+
+name: Cin7 Webhook Watchdog
+
+on:
+  schedule:
+    - cron: '20 6 * * *'   # daily ~06:20 UTC (~16:20 AEST)
+  workflow_dispatch: {}
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Check & reactivate our webhooks
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          CIN7_WEBHOOK_URL: ${{ secrets.CIN7_WEBHOOK_URL }}
+        run: node cin7-stock-sync/webhook-watchdog.js
