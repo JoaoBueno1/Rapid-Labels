@@ -32,7 +32,7 @@ class MovementProcessor {
   }
 
   // ── Cin7 API call with throttle ──
-  async _cin7Request(endpoint, params = {}) {
+  async _cin7Request(endpoint, params = {}, _retry = 0) {
     // Throttle: 1.2s between calls
     const now = Date.now();
     const wait = Math.max(0, 1200 - (now - this.lastApiCall));
@@ -60,10 +60,13 @@ class MovementProcessor {
       clearTimeout(timeoutId);
       this.lastApiCall = Date.now();
 
-      if (response.status === 429) {
-        console.warn('⚠️ Rate limited, waiting 5s...');
-        await new Promise(r => setTimeout(r, 5000));
-        return this._cin7Request(endpoint, params); // retry
+      // Cin7 throttles bursts with 429 AND sometimes 403 (transient) — back off
+      // and retry both, up to 3 times, before giving up.
+      if ((response.status === 429 || response.status === 403) && _retry < 4) {
+        const backoff = 3000 * Math.pow(2, _retry) + Math.floor(Math.random() * 1500); // +jitter
+        console.warn(`⚠️ Cin7 ${response.status} (throttle) — retry ${_retry + 1}/4 in ${Math.round(backoff / 1000)}s`);
+        await new Promise(r => setTimeout(r, backoff));
+        return this._cin7Request(endpoint, params, _retry + 1);
       }
 
       if (!response.ok) {
@@ -216,16 +219,20 @@ class MovementProcessor {
     // Process fulfillment lines — these show WHAT was picked and FROM WHERE
     const fulfillments = order.Fulfilments || order.Fulfillments || [];
 
+    const orderWarehouse = order.Location || 'Main Warehouse';
     for (const fulfilment of fulfillments) {
-      const shipDate = fulfilment.ShipDate || fulfilment.FulFilmentDate || fulfilment.Date || null;
-      const fulfilLines = fulfilment.Lines || fulfilment.Pick || [];
+      // Real Cin7 fulfilment shape: { Pick:{Status,Lines:[]}, Pack:{...}, Ship:{Status,Lines:[]} }
+      const shipDate = (fulfilment.Ship && fulfilment.Ship.Lines && fulfilment.Ship.Lines[0]
+        && fulfilment.Ship.Lines[0].ShipmentDate) || null;
+      const fulfilLines = (fulfilment.Pick && fulfilment.Pick.Lines) || fulfilment.Lines || [];
 
       for (const line of fulfilLines) {
         const sku = line.SKU || line.ProductCode || '';
         const productName = line.Name || line.ProductName || '';
         const qty = parseFloat(line.Quantity) || 0;
-        const location = line.Location || line.Warehouse || 'Main Warehouse';
-        const bin = line.Bin || line.BinLocation || '';
+        // In Cin7 pick lines, "Location" IS the bin; the warehouse is at sale level
+        const bin = line.Location || line.Bin || line.BinLocation || '';
+        const location = orderWarehouse;
         const batch = line.BatchSN || line.Batch || '';
 
         if (!sku || qty === 0) continue;
@@ -248,9 +255,10 @@ class MovementProcessor {
         const isFromPickface = normPickface && normBin === normPickface;
         const isAnomaly = normBin && normPickface && !isFromPickface;
 
-        // Determine movement type
-        const status = (fulfilment.Status || '').toLowerCase();
-        const isShipped = status.includes('ship') || status.includes('sent');
+        // Determine movement type. Real Cin7 fulfilments expose FulFilmentStatus
+        // (+ Ship.Status), not a top-level Status; a shipment date means shipped.
+        const status = (fulfilment.FulFilmentStatus || (fulfilment.Ship && fulfilment.Ship.Status) || '').toLowerCase();
+        const isShipped = !!shipDate || status.includes('ship') || status.includes('fulfil');
         const movementType = isShipped ? 'sales_ship' : 'sales_pick';
 
         movements.push({

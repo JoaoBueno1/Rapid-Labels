@@ -21,6 +21,7 @@ module.exports = {
     'Sale/ShipmentAuthorised',          // ⭐ stock leaves the system — pick anomalies
     'Sale/Voided',                      // ⭐ cancellation → correction-conflict check
     'Sale/Undo',                        // ⭐ fulfilment reversed
+    'Sale/InvoiceAuthorised',           // ⭐ invoiced → clears the non-invoiced monitor
     'Sale/PickAuthorised',              //    pick committed (richer trail)
     'Purchase/StockReceivedAuthorised', //    stock comes in (replenishment)
     'Stock/AvailableStockLevelChanged', //    catch-all on-hand change
