@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
   <link rel="stylesheet" href="pick-anomalies.css?v=20260410a" />
+  <link rel="stylesheet" href="pa-analytics.css?v=20260611a" />
 </head>
 <body>
 
@@ -101,52 +102,8 @@
         <span class="pa-progress-text" id="paProgressText">Syncing...</span>
       </div>
 
-      <!-- ═══ Analytics Dashboard (hidden by default) ═══ -->
-      <div id="paAnalytics" style="display:none">
-        <div class="pa-analytics-loading" id="paAnalyticsLoading">⏳ Loading analytics...</div>
-
-        <!-- Summary Cards -->
-        <div class="pa-analytics-summary" id="paAnalyticsSummary"></div>
-
-        <!-- Charts Grid -->
-        <div class="pa-analytics-grid">
-          <!-- Weekly Trend -->
-          <div class="pa-chart-card pa-chart-wide">
-            <div class="pa-chart-title">📈 Weekly Anomaly Rate Trend</div>
-            <div class="pa-chart-body" id="paChartTrend"></div>
-          </div>
-
-          <!-- Error Types -->
-          <div class="pa-chart-card">
-            <div class="pa-chart-title">🎯 Error Type Distribution</div>
-            <div class="pa-chart-body" id="paChartErrorTypes"></div>
-          </div>
-
-          <!-- Section Heatmap -->
-          <div class="pa-chart-card">
-            <div class="pa-chart-title">🗺️ Warehouse Section Heatmap</div>
-            <div class="pa-chart-body" id="paChartSections"></div>
-          </div>
-
-          <!-- Top Problem SKUs -->
-          <div class="pa-chart-card">
-            <div class="pa-chart-title">🔄 Repeat Offender SKUs</div>
-            <div class="pa-chart-body pa-chart-scrollable" id="paChartSkus"></div>
-          </div>
-
-          <!-- Top Problem Bins -->
-          <div class="pa-chart-card">
-            <div class="pa-chart-title">📍 Problem Bins (Wrong Pick Source)</div>
-            <div class="pa-chart-body pa-chart-scrollable" id="paChartBins"></div>
-          </div>
-
-          <!-- Repeat Routes -->
-          <div class="pa-chart-card pa-chart-wide">
-            <div class="pa-chart-title">🔁 Repeat Routes (Same Mistake Pattern) <span class="pa-chart-subtitle">— Possible stock_locator errors</span></div>
-            <div class="pa-chart-body pa-chart-scrollable" id="paChartRoutes"></div>
-          </div>
-        </div>
-      </div>
+      <!-- ═══ Analytics Dashboard v2 (hidden by default; built by pa-analytics.js) ═══ -->
+      <div id="paAnalytics" style="display:none"></div>
 
       <!-- ─── Orders Table ─── -->
       <div class="log-card" id="paTableCard" style="display:none">
@@ -264,6 +221,11 @@
     </div>
   </div>
 
-  <script src="pick-anomalies.js?v=20260422a"></script>
+  <script src="pick-anomalies.js?v=20260611a"></script>
+  <!-- Analytics v2 deps: Chart.js (charts) + html2canvas & jsPDF (PNG/PDF export) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="pa-analytics.js?v=20260611a"></script>
 </body>
 </html>

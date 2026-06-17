@@ -1622,17 +1622,24 @@
     document.querySelectorAll('.pa-view-toggle .chip').forEach(c => c.classList.remove('active'));
     if (btn) btn.classList.add('active');
 
-    const ordersEls = ['paTableCard', 'paPagination', 'paFooter'];
+    // Hide the legacy (Orders-view) KPI strip + table when in Analytics —
+    // the v2 tab has its own compact single-line KPI strip.
+    const ordersEls = ['paKpis', 'paTableCard', 'paPagination', 'paFooter'];
     const analyticsEl = document.getElementById('paAnalytics');
     const statusChips = document.getElementById('paStatusChips');
     const searchGroup = document.querySelector('.pa-search-group');
+
+    // CSS class wins over any async re-show (e.g. loadStats→updateKpis re-showing #paKpis)
+    document.body.classList.toggle('pa-mode-analytics', view === 'analytics');
 
     if (view === 'analytics') {
       ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
       analyticsEl.style.display = '';
       if (statusChips) statusChips.style.display = 'none';
       if (searchGroup) searchGroup.style.display = 'none';
-      loadAnalytics();
+      // Redesigned analytics tab is owned by pa-analytics.js (window.PAAnalytics).
+      if (window.PAAnalytics) window.PAAnalytics.open();
+      else loadAnalytics(); // fallback if module failed to load
     } else {
       ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
       analyticsEl.style.display = 'none';
@@ -1646,6 +1653,21 @@
      ═══════════════════════════════════════════════ */
   let _analyticsCache = null;
   let _repeatSkus = new Set(); // SKUs with 3+ anomalies across all orders
+
+  // Lightweight pre-load used on page init purely to populate repeat-offender
+  // badges in the Orders detail view. The Analytics TAB itself is rendered by
+  // pa-analytics.js (window.PAAnalytics) — this does no DOM rendering.
+  async function preloadRepeatOffenders() {
+    try {
+      const res = await fetch('/api/pick-anomalies/analytics');
+      const data = await res.json();
+      if (data && data.success) {
+        for (const s of (data.analytics.topSkus || [])) {
+          if (s.count >= 3) _repeatSkus.add(s.sku);
+        }
+      }
+    } catch (_) { /* badges are non-critical */ }
+  }
 
   async function loadAnalytics() {
     if (_analyticsCache) {
@@ -2238,8 +2260,8 @@
     // 2. Fetch sync status (shows "Xh Ym ago" + "+N orders" — no Cin7 API calls)
     await fetchSyncStatus();
 
-    // 3. Pre-load analytics in background (for repeat offender badges)
-    loadAnalytics().catch(() => {});
+    // 3. Pre-load repeat-offender badges in background (analytics tab itself is lazy)
+    preloadRepeatOffenders().catch(() => {});
 
     // Note: No auto-sync on page open.
     // Backend scheduler syncs every 2h at :30. User can manually sync via button.
