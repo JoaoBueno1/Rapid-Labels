@@ -240,6 +240,15 @@ class MovementProcessor {
       console.warn(`  ⚠️ Pick-anomalies realtime failed: ${e.message}`);
     }
 
+    // ── Mirror the full sale into sales_orders + sale_lines (LIVE), reusing the
+    // detail we already fetched. Keeps the sales mirror up to date going forward.
+    try {
+      const { upsertSalesMirror } = require('./sales-mirror');
+      await upsertSalesMirror(this.sb, order, order.OrderNumber || soNumber, order.ID || soId, 'webhook');
+    } catch (e) {
+      console.warn(`  ⚠️ sales_orders mirror failed: ${e.message}`);
+    }
+
     // Extract customer and sales rep info
     const customer = order.Customer || order.CustomerName || '';
     const salesRep = order.SalesRepresentative || order.SalesPerson || '';

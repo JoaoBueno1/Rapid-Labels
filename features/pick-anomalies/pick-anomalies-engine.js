@@ -507,7 +507,9 @@ async function getOrderLogs(orderNumber) {
 // ═══════════════════════════════════════════════════
 
 async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
-  let query = `select=*&order=order_date.desc,order_number.desc&limit=${limit}&offset=${offset}`;
+  // Order by SHIP date (fulfilled_date), not order_date: an old order shipped today
+  // must surface at the top for review (analyzed_at would mislead for backfilled rows).
+  let query = `select=*&order=fulfilled_date.desc.nullslast,order_number.desc&limit=${limit}&offset=${offset}`;
 
   if (filter === 'anomaly') {
     query += '&anomaly_picks=gt.0';
