@@ -27,9 +27,20 @@ if (!url || !key) { console.error('ENV faltando'); process.exit(1); }
 const ri = createClient(url, key, { auth: { persistSession: false } }).schema('rapid_inv');
 
 (async () => {
-  const rows = JSON.parse(fs.readFileSync(SRC, 'utf8'));
+  const allRows = JSON.parse(fs.readFileSync(SRC, 'utf8'));
+  // date_opened é NOT NULL. No bulk-insert o PostgREST usa a união das chaves,
+  // então omitir não basta -> preenche com a data de hoje (= comportamento do DEFAULT).
+  const today = new Date().toISOString().slice(0, 10);
+  allRows.forEach(r => { if (!r.date_opened) r.date_opened = today; });
+
+  // suporte a fatia (--offset N --count M) p/ reimportar só parte sem duplicar
+  const argN = (flag) => { const i = process.argv.indexOf(flag); return i >= 0 ? Number(process.argv[i+1]) : null; };
+  const offset = argN('--offset') || 0;
+  const sliceCount = argN('--count');
+  const rows = (offset || sliceCount != null) ? allRows.slice(offset, sliceCount != null ? offset + sliceCount : undefined) : allRows;
+
   console.log(`Fonte: ${SRC}`);
-  console.log(`Linhas a importar: ${rows.length}`);
+  console.log(`Total no arquivo: ${allRows.length} | Importando: ${rows.length}` + (offset||sliceCount!=null ? ` (fatia offset=${offset} count=${sliceCount})` : ''));
 
   // Guarda anti-duplicação: se já houver dados, não importa sem --force
   const { count, error: cErr } = await ri.from('project_lines').select('id', { count: 'exact', head: true });
