@@ -511,6 +511,15 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   // must surface at the top for review (analyzed_at would mislead for backfilled rows).
   let query = `select=*&order=fulfilled_date.desc.nullslast,order_number.desc&limit=${limit}&offset=${offset}`;
 
+  // Cancelled orders appear ONLY in the dedicated 'cancelled' filter — hidden
+  // everywhere else (no point reviewing/correcting a cancelled order).
+  const hideCancelled = filter !== 'cancelled' ? '&is_cancelled=is.false' : '';
+  // The "pending" (actionable) queue is scoped to RECENT shipments: old orders
+  // surfaced by the backfill stay in the record/analytics but don't clutter the
+  // operator's action list (a 2-week-old pick error isn't worth correcting now).
+  const PENDING_SHIP_DAYS = 10;
+  const sinceShip = new Date(Date.now() - PENDING_SHIP_DAYS * 86400000).toISOString().split('T')[0];
+
   if (filter === 'anomaly') {
     query += '&anomaly_picks=gt.0';
   } else if (filter === 'correct') {
@@ -518,15 +527,14 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   } else if (filter === 'fg') {
     query += '&fg_count=gt.0';
   } else if (filter === 'pending') {
-    // Anomaly orders NOT yet reviewed
-    query += '&anomaly_picks=gt.0&reviewed=is.false';
+    // Actionable queue: unreviewed anomalies, recent ship only
+    query += `&anomaly_picks=gt.0&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
   } else if (filter === 'corrected') {
-    // We'll join corrections on the frontend side
     query += '&anomaly_picks=gt.0';
   } else if (filter === 'cancelled') {
-    // Orders that were cancelled after being processed
     query += '&is_cancelled=eq.true';
   }
+  query += hideCancelled;
 
   if (search) {
     // Search in order_number OR customer (case-insensitive)
@@ -559,7 +567,9 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   if (filter === 'anomaly') totalQuery += '&anomaly_picks=gt.0';
   else if (filter === 'correct') totalQuery += '&anomaly_picks=eq.0&total_picks=gt.0';
   else if (filter === 'fg') totalQuery += '&fg_count=gt.0';
-  else if (filter === 'pending') totalQuery += '&anomaly_picks=gt.0&reviewed=is.false';
+  else if (filter === 'pending') totalQuery += `&anomaly_picks=gt.0&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
+  else if (filter === 'cancelled') totalQuery += '&is_cancelled=eq.true';
+  totalQuery += hideCancelled;
   if (search) totalQuery += `&or=(order_number.ilike.*${search}*,customer.ilike.*${search}*)`;
 
   let totalCount = orders.length;
