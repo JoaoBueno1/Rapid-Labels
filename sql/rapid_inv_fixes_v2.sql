@@ -62,17 +62,18 @@ GRANT SELECT ON rapid_inv.v_wk_avg_v2 TO anon, authenticated;
 --  SOH: prioridade snapshot local > v_soh_main (Cin7 vivo) > 0
 -- =================================================================
 CREATE OR REPLACE VIEW rapid_inv.v_analysis_v2 AS
-WITH soh AS (
+WITH snap AS (   -- override manual de SOH (paste); vazio no caminho vivo
+  SELECT DISTINCT ON (sku) sku, available
+  FROM rapid_inv.soh_snapshot
+  ORDER BY sku, snapshot_date DESC
+),
+soh AS (         -- JOIN (rápido) em vez de subquery correlacionada; snapshot > Cin7 vivo
   SELECT
-    s.sku,
-    COALESCE(
-      (SELECT available FROM rapid_inv.soh_snapshot
-        WHERE sku = s.sku ORDER BY snapshot_date DESC LIMIT 1),
-      (SELECT available FROM rapid_inv.v_soh_main WHERE sku = s.sku),
-      0
-    ) AS available,
-    COALESCE((SELECT on_order FROM rapid_inv.v_soh_main WHERE sku = s.sku), 0) AS on_order
-  FROM rapid_inv.v_skus_live s
+    m.sku,
+    COALESCE(sn.available, m.available, 0) AS available,
+    COALESCE(m.on_order, 0)                AS on_order
+  FROM rapid_inv.v_soh_main m
+  LEFT JOIN snap sn ON sn.sku = m.sku
 ),
 open_proj AS (   -- definição CANÔNICA de demanda de projeto aberta (== forecast_v2)
   SELECT sku, SUM(qty_to_pick) AS open_demand
@@ -170,14 +171,13 @@ sales_by_week AS (
   FROM rapid_inv.weekly_sales
   GROUP BY sku, (week_start - EXTRACT(DOW FROM week_start)::int)::date
 ),
-current_soh AS (
-  SELECT s.sku,
-    COALESCE(
-      (SELECT available FROM rapid_inv.soh_snapshot
-        WHERE sku = s.sku ORDER BY snapshot_date DESC LIMIT 1),
-      (SELECT available FROM rapid_inv.v_soh_main WHERE sku = s.sku),
-      0) AS available
-  FROM rapid_inv.v_skus_live s
+current_soh AS (   -- JOIN (rápido); snapshot manual > Cin7 vivo
+  SELECT m.sku, COALESCE(sn.available, m.available, 0) AS available
+  FROM rapid_inv.v_soh_main m
+  LEFT JOIN (
+    SELECT DISTINCT ON (sku) sku, available
+    FROM rapid_inv.soh_snapshot ORDER BY sku, snapshot_date DESC
+  ) sn ON sn.sku = m.sku
 ),
 base AS (
   SELECT
@@ -312,14 +312,14 @@ AS $$
     WHERE ws.sku IN (SELECT sku FROM filtered_skus)
     GROUP BY ws.sku, (ws.week_start - EXTRACT(DOW FROM ws.week_start)::int)::date
   ),
-  soh_now AS (
-    SELECT fs.sku,
-      COALESCE(
-        (SELECT available FROM rapid_inv.soh_snapshot
-          WHERE sku = fs.sku ORDER BY snapshot_date DESC LIMIT 1),
-        (SELECT available FROM rapid_inv.v_soh_main WHERE sku = fs.sku),
-        0) AS available
-    FROM filtered_skus fs
+  soh_now AS (   -- JOIN filtrado (rápido); snapshot manual > Cin7 vivo
+    SELECT m.sku, COALESCE(sn.available, m.available, 0) AS available
+    FROM rapid_inv.v_soh_main m
+    LEFT JOIN (
+      SELECT DISTINCT ON (sku) sku, available
+      FROM rapid_inv.soh_snapshot ORDER BY sku, snapshot_date DESC
+    ) sn ON sn.sku = m.sku
+    WHERE m.sku IN (SELECT sku FROM filtered_skus)
   ),
   base AS (
     SELECT
@@ -381,7 +381,7 @@ GRANT EXECUTE ON FUNCTION rapid_inv.get_forecast_v2(TEXT, TEXT, INT) TO anon, au
 -- =================================================================
 CREATE OR REPLACE VIEW rapid_inv.v_dashboard_kpis_v2 AS
 SELECT
-  (SELECT COUNT(*) FROM rapid_inv.project_lines WHERE finish_date IS NULL)         AS open_so_lines,
+  (SELECT COUNT(*) FROM rapid_inv.v_open_sos)                                      AS open_so_lines,
   (SELECT COUNT(*) FROM rapid_inv.po_lines      WHERE is_received = false)         AS open_po_lines,
   (SELECT COALESCE(SUM(qty_held),0) FROM rapid_inv.project_lines
      WHERE finish_date IS NULL AND qty_held > 0)                                   AS qty_pack_and_hold,
