@@ -116,8 +116,18 @@ class MovementProcessor {
               console.log(`  🚫 Cancellation (realtime) ${on}: ${JSON.stringify(r)}`);
             }
           } catch (e) { console.warn(`  ⚠️ Cancellation realtime failed: ${e.message}`); }
+          // Reflect VOIDED in the sales mirror too (Undo reverts to an unknown
+          // status → leave it for the 2h header sync to reconcile honestly).
+          if (t.includes('voided')) {
+            try { await this._reflectSaleStatus(payload, 'voided'); } catch (e) { console.warn(`  ⚠️ sales_orders void reflect failed: ${e.message}`); }
+          }
+        } else if (t.includes('invoiceauthorised') || t.includes('invoice/')) {
+          // Invoice authorised → reflect invoice status in the sales mirror in
+          // real time (no Cin7 call). The 2h header sync later reconciles the
+          // exact CombinedInvoiceStatus (partial/full) from Cin7.
+          try { await this._reflectSaleStatus(payload, 'invoice'); } catch (e) { console.warn(`  ⚠️ sales_orders invoice reflect failed: ${e.message}`); }
         } else {
-          // Pick/Pack/Invoice/Created/Order/Backordered/payment… recorded RAW in
+          // Pick/Pack/Created/Order/Backordered/payment… recorded RAW in
           // webhook_events — NO Cin7 call. Keeps the full lifecycle cheap; the
           // raw payload IS the timeline record (readers/wiring act on it later).
           console.log(`ℹ️  Sale event ${topic} — recorded raw (no enrichment)`);
@@ -196,6 +206,26 @@ class MovementProcessor {
         })
         .eq('id', eventId);
     }
+  }
+
+  // Reflect a non-ship sale event into sales_orders WITHOUT a Cin7 call. Updates
+  // only the affected status columns by order_number; if the order isn't mirrored
+  // yet it's a no-op (the 2h header sync adds it). Never touches detail columns
+  // (rep/lines/ship_date), so it enriches without wiping anything.
+  async _reflectSaleStatus(payload, kind) {
+    const on = payload.OrderNumber || payload.SaleOrderNumber || payload.Number;
+    if (!on) return;
+    let patch;
+    if (kind === 'invoice') {
+      patch = { invoice_status: 'INVOICED', header_synced_at: new Date().toISOString() };
+      if (payload.InvoiceNumber) patch.invoice_number = payload.InvoiceNumber;
+    } else if (kind === 'voided') {
+      patch = { status: 'VOIDED', order_status: 'VOIDED', header_synced_at: new Date().toISOString() };
+    } else return;
+    const { data, error } = await this.sb.schema('cin7_mirror')
+      .from('sales_orders').update(patch).eq('order_number', on).select('order_number');
+    if (error) { console.warn(`  ⚠️ sales_orders ${kind} reflect: ${error.message}`); return; }
+    console.log(`  📝 sales_orders ${kind} → ${on}${(data && data.length) ? '' : ' (not mirrored yet — sync will add)'}`);
   }
 
   // ══════════════════════════════════════════════

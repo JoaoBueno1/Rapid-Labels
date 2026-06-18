@@ -1,0 +1,41 @@
+# ============================================================
+# Cin7 Sales Header Sync — poll (every 2h at :15)
+# ============================================================
+# The ship webhook keeps sales_orders live for SHIPPED orders, but Cin7 has no
+# "order created" webhook we act on — so a new/un-shipped order (or an invoice/
+# status change on an existing one) wouldn't land until it ships. This poll
+# closes that gap: it upserts HEADER fields for every order MODIFIED in the last
+# SYNC_HOURS (default 3 → 1h overlap with the 2h cadence = no gap). Cheap
+# (~1 call / 1000 orders). Header-only → detail (rep/lines/ship_date) set by the
+# webhook/detail pass is preserved. Offset from the other syncs (:15).
+# ============================================================
+
+name: Cin7 Sales Sync
+
+on:
+  schedule:
+    - cron: '15 */2 * * *'   # every 2 hours at :15 (offset from transfers :45)
+  workflow_dispatch: {}
+
+jobs:
+  sales-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Sync sales headers (modified ≤ 3h)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          SYNC_HOURS: '3'
+        run: node cin7-stock-sync/backfill-sales.js sync

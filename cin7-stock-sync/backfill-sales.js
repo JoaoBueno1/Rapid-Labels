@@ -168,10 +168,33 @@ async function runDetail() {
   console.log(`✅ Detail done — ${enriched} orders enriched this run (${processed} total attempts).`);
 }
 
+// Recurring header sync: upsert headers for orders MODIFIED in the last few
+// hours (new orders + invoice/status changes). Keeps sales_orders current for
+// un-shipped orders too. Only header columns are written → detail (rep/lines/
+// ship_date) set by the webhook/detail pass is preserved. Run on a 2h cron.
+async function runSync() {
+  const hours = parseInt(process.env.SYNC_HOURS || '3', 10);
+  const since = new Date(Date.now() - hours * 3600000).toISOString();
+  console.log(`🔄 Header sync — orders modified since ${since}`);
+  let page = 1, total = 0;
+  while (page <= 30) {
+    const data = await cin7(`saleList?UpdatedSince=${encodeURIComponent(since)}&Page=${page}&Limit=1000`);
+    const sales = data.SaleList || [];
+    if (!sales.length) break;
+    const rows = sales.map(mapHeader).filter(r => r.order_number).map(r => ({ ...r, source: 'sync' }));
+    await upsertChunked('sales_orders', rows, 'order_number');
+    total += sales.length;
+    if (sales.length < 1000) break;
+    page++;
+  }
+  console.log(`✅ Header sync done — ${total} orders upserted (modified ≤ ${hours}h ago).`);
+}
+
 const mode = process.argv[2];
 (async () => {
   if (mode === 'headers') await runHeaders();
   else if (mode === 'detail') await runDetail();
-  else { console.log('Usage: node cin7-stock-sync/backfill-sales.js headers|detail'); process.exit(1); }
+  else if (mode === 'sync') await runSync();
+  else { console.log('Usage: node cin7-stock-sync/backfill-sales.js headers|detail|sync'); process.exit(1); }
   process.exit(0);
 })().catch(e => { console.error('❌ Backfill error:', e.message); process.exit(1); });
