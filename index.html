@@ -256,6 +256,26 @@
         .orders-table tr:hover { background:#f8fafc; }
         .orders-table .order-num { font-weight:700; color:#1e40af; }
         .orders-table .order-tr { font-weight:700; color:#059669; }
+        /* Expandable order rows */
+        .orders-table tbody tr:not(.order-detail-row) { cursor:pointer; }
+        .orders-table tbody tr.expanded { background:#eff6ff; }
+        .order-expand { display:inline-block; width:12px; color:#94a3b8; transition:transform .15s; font-size:.75rem; }
+        tr.expanded .order-expand { transform:rotate(90deg); color:#1e40af; }
+        .order-detail-row > td { background:#f8fafc; padding:0 16px 14px 38px; border-bottom:2px solid #e2e8f0; }
+        .od-wrap { padding:12px 0; }
+        .od-meta { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:.8rem; color:#475569; margin-bottom:10px; }
+        .od-meta b { color:#0f172a; }
+        .od-status { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+        .od-chip { font-size:.68rem; font-weight:700; padding:3px 9px; border-radius:999px; background:#e2e8f0; color:#475569; }
+        .od-chip.ok { background:#dcfce7; color:#166534; }
+        .od-chip.mid { background:#fef9c3; color:#854d0e; }
+        .od-chip.no { background:#f1f5f9; color:#94a3b8; }
+        .od-section-label { font-size:.7rem; text-transform:uppercase; color:#64748b; font-weight:700; margin-bottom:5px; }
+        .od-lines { width:100%; border-collapse:collapse; font-size:.82rem; background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+        .od-lines th { text-align:left; padding:6px 10px; background:#f1f5f9; font-size:.68rem; text-transform:uppercase; color:#64748b; }
+        .od-lines td { padding:6px 10px; border-top:1px solid #f1f5f9; }
+        .od-lines td.num, .od-lines th.num { text-align:right; font-variant-numeric:tabular-nums; }
+        .od-empty, .od-loading { font-size:.82rem; color:#94a3b8; padding:8px 0; }
         .orders-badge { display:inline-block; padding:3px 10px; border-radius:6px; font-size:.73rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
         .orders-badge.ordering { background:#dbeafe; color:#1e40af; }
         .orders-badge.picking { background:#fef3c7; color:#92400e; }
@@ -1578,20 +1598,87 @@
                 return `${dd}/${mm} <span style="color:#94a3b8;font-size:.7rem">${timeStr}</span>`;
             };
 
+            window.__ordersById = {};
             tbody.innerHTML = rows.map(r => {
+                window.__ordersById[r.id] = r;
                 const numClass = r.type === 'TR' ? 'order-tr' : 'order-num';
                 const fNum = r.fulfilment_number || 1;
                 const numDisplay = fNum > 1 ? `${r.number} <span style="color:#94a3b8;font-weight:600;font-size:.78rem">#${fNum}</span>` : (r.number || '—');
                 const custOrLoc = r.type === 'TR' ? `→ ${r.to_location || '?'}` : (r.customer || '—');
                 const dateCell = isCompleted ? fmtCompletedDate(r.completed_at) : fmtDate(r.order_date);
-                return `<tr>
-                    <td class="${numClass}">${numDisplay}</td>
+                return `<tr onclick="toggleOrderDetail('${r.id}', this)">
+                    <td class="${numClass}"><span class="order-expand">▸</span> ${numDisplay}</td>
                     <td>${custOrLoc}</td>
                     <td><span class="orders-badge ${statusClass(r.status)}">${r.status || '—'}</span></td>
                     <td class="order-date">${dateCell}</td>
                 </tr>`;
             }).join('');
 
+        }
+
+        // ── Expandable order detail (line items + status breakdown, lazy-loaded) ──
+        function _odChip(label, val) {
+            const v = val || '—';
+            const u = String(v).toUpperCase();
+            const cls = /NOT|^—|N\/A/.test(u) ? 'no'
+                      : (/PARTIAL|PICKING|PACKING|TRANSIT|PENDING|AUTHORISED/.test(u) ? 'mid'
+                      : (/PICKED|PACKED|SHIPPED|INVOICED/.test(u) ? 'ok' : 'mid'));
+            return `<span class="od-chip ${cls}">${label}: ${v}</span>`;
+        }
+        function _odRender(r, lines) {
+            const totalQty = lines.reduce((a, l) => a + (Number(l.quantity) || 0), 0);
+            const meta = [
+                r.reference ? `Ref: <b>${r.reference}</b>` : '',
+                r.type === 'TR' ? `<b>${r.from_location || '?'}</b> → <b>${r.to_location || '?'}</b>`
+                                 : `From <b>${r.from_location || '?'}</b>`,
+                r.order_date ? `Ordered: <b>${r.order_date}</b>` : '',
+                (r.fulfilment_number > 1) ? `Fulfilment <b>#${r.fulfilment_number}</b>` : ''
+            ].filter(Boolean).join(' · ');
+            const linesHtml = lines.length ? `
+                <table class="od-lines"><thead><tr>
+                    <th>SKU</th><th>Product</th><th class="num">Qty</th><th class="num">B/O</th>
+                </tr></thead><tbody>
+                ${lines.map(l => `<tr>
+                    <td style="font-weight:600">${l.sku || '—'}</td>
+                    <td>${l.product_name || ''}</td>
+                    <td class="num">${l.quantity ?? ''}</td>
+                    <td class="num">${l.backorder_quantity || ''}</td>
+                </tr>`).join('')}
+                </tbody><tfoot><tr>
+                    <td colspan="2" style="text-align:right;font-weight:700">Total</td>
+                    <td class="num" style="font-weight:700">${totalQty}</td><td></td>
+                </tr></tfoot></table>`
+                : (/ORDERED|PICKING|PICKED|PACKING|BACKORDERED/.test(String(r.status || '').toUpperCase())
+                    ? `<div class="od-empty">As linhas deste pedido ainda não estão no espelho — o Cin7 só envia os itens quando o pedido é faturado/completado. (Dá pra ligar uma busca ao vivo no Cin7 se quiser ver itens de pedidos ativos.)</div>`
+                    : `<div class="od-empty">Sem linhas de produto encontradas para este pedido.</div>`);
+            return `
+                <div class="od-meta">${meta}</div>
+                <div class="od-status">${_odChip('Pick', r.pick_status)}${_odChip('Pack', r.pack_status)}${_odChip('Ship', r.ship_status)}${_odChip('Invoice', r.invoice_status)}</div>
+                <div class="od-section-label">${lines.length} line${lines.length !== 1 ? 's' : ''}</div>
+                ${linesHtml}`;
+        }
+        async function toggleOrderDetail(id, tr) {
+            const next = tr.nextElementSibling;
+            if (next && next.classList.contains('order-detail-row')) { next.remove(); tr.classList.remove('expanded'); return; }
+            tr.classList.add('expanded');
+            const r = (window.__ordersById || {})[id] || {};
+            const detail = document.createElement('tr');
+            detail.className = 'order-detail-row';
+            detail.innerHTML = `<td colspan="4"><div class="od-wrap"><div class="od-loading">Carregando itens…</div></div></td>`;
+            tr.after(detail);
+            let lines = [];
+            try {
+                const sb = window.supabase;
+                const sel = 'line_no, sku, product_name, quantity, backorder_quantity';
+                let q = await sb.schema('cin7_mirror').from('sale_lines').select(sel).eq('sale_id', id).order('line_no', { ascending: true });
+                if (!q.error && q.data) lines = q.data;
+                if (!lines.length && r.number) {
+                    const q2 = await sb.schema('cin7_mirror').from('sale_lines').select(sel).eq('order_number', r.number).order('line_no', { ascending: true });
+                    if (!q2.error && q2.data) lines = q2.data;
+                }
+            } catch (e) {}
+            const wrap = detail.querySelector('.od-wrap');
+            if (wrap) wrap.innerHTML = _odRender(r, lines);
         }
 
         // Close modal with Escape key
