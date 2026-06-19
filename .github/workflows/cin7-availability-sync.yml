@@ -1,0 +1,36 @@
+# ============================================================
+# Cin7 Availability + Locations Sync — poll (every 4h at :30)
+# ============================================================
+# Feeds the chase list's "Have stock" + backorder detection:
+#   • locations        — id → warehouse name (cheap; rarely changes)
+#   • stock_availability — per SKU + warehouse OnHand/Allocated/Available
+#     (full snapshot from /ref/productavailability, ~15 calls for ~14k rows).
+# Stock doesn't need second-by-second freshness for a daily chase, so 4h keeps
+# it gentle on the shared 60/min cap. Offset from the other syncs (:30).
+# ============================================================
+
+name: Cin7 Availability Sync
+
+on:
+  schedule:
+    - cron: '30 */4 * * *'   # every 4 hours at :30
+  workflow_dispatch: {}
+
+jobs:
+  availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --production
+      - name: Sync stock availability (snapshot)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+        run: node cin7-stock-sync/sync-availability.js

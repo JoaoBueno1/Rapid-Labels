@@ -48,6 +48,7 @@
           <div class="pa-view-toggle">
             <button class="chip active" data-view="orders" onclick="PA.setView('orders', this)" title="Order list view">📋 Orders</button>
             <button class="chip" data-view="analytics" onclick="PA.setView('analytics', this)" title="Analytics dashboard">📊 Analytics</button>
+            <button class="chip" data-view="movements" onclick="PA.setView('movements', this)" title="All stock movements (transfers, adjustments, purchases)">📦 Movements</button>
           </div>
           <div class="pa-spacer"></div>
           <div class="pa-status-chips" id="paStatusChips">
@@ -104,6 +105,9 @@
 
       <!-- ═══ Analytics Dashboard v2 (hidden by default; built by pa-analytics.js) ═══ -->
       <div id="paAnalytics" style="display:none"></div>
+
+      <!-- ═══ Movements audit tab (hidden by default; built by pa-movements.js) ═══ -->
+      <div id="paMovements" style="display:none"></div>
 
       <!-- ─── Orders Table ─── -->
       <div class="log-card" id="paTableCard" style="display:none">
@@ -227,5 +231,6 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="pa-analytics.js?v=20260611a"></script>
+  <script src="pa-movements.js?v=20260619a"></script>
 </body>
 </html>

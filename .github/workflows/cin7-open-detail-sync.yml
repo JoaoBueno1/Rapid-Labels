@@ -1,0 +1,38 @@
+# ============================================================
+# Cin7 Open-Order Detail Sync — poll (every 2h at :05)
+# ============================================================
+# Fills sales_rep / location_name / sale_lines (incl. backorder_quantity) for
+# OPEN stuck orders (awaiting fulfilment/invoicing) so the chase view can show
+# who/where and cross-ref availability per line. The shipped-order detail comes
+# from the webhook; this covers the not-yet-shipped set the chase cares about.
+# Capped (DETAIL_OPEN_CAP, 150/run) + throttled — does ~nothing once caught up.
+# Offset from the other syncs (:05).
+# ============================================================
+
+name: Cin7 Open Detail Sync
+
+on:
+  schedule:
+    - cron: '5 */2 * * *'   # every 2 hours at :05
+  workflow_dispatch: {}
+
+jobs:
+  open-detail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --production
+      - name: Sync detail for open stuck orders
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          BACKFILL_THROTTLE_MS: '4000'
+          DETAIL_OPEN_CAP: '150'
+        run: node cin7-stock-sync/backfill-sales.js detail-open

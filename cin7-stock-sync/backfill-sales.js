@@ -101,6 +101,15 @@ function mapDetail(det) {
   };
 }
 
+function mapLines(det, o) {
+  return (det.Order?.Lines || []).map((ln, i) => ({
+    order_number: o.order_number, sale_id: o.sale_id, line_no: i,
+    sku: ln.SKU, product_id: ln.ProductID, product_name: ln.Name,
+    quantity: num(ln.Quantity), price: num(ln.Price), discount: num(ln.Discount), tax: num(ln.Tax), total: num(ln.Total),
+    backorder_quantity: num(ln.BackorderQuantity),
+  })).filter(l => l.sku);
+}
+
 async function upsertChunked(table, rows, conflict) {
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await cm.from(table).upsert(rows.slice(i, i + 500), { onConflict: conflict });
@@ -153,11 +162,7 @@ async function runDetail() {
         processed++; continue;
       }
       await cm.from('sales_orders').update(mapDetail(det)).eq('order_number', o.order_number);
-      const lines = (det.Order?.Lines || []).map((ln, i) => ({
-        order_number: o.order_number, sale_id: o.sale_id, line_no: i,
-        sku: ln.SKU, product_id: ln.ProductID, product_name: ln.Name,
-        quantity: num(ln.Quantity), price: num(ln.Price), discount: num(ln.Discount), tax: num(ln.Tax), total: num(ln.Total),
-      })).filter(l => l.sku);
+      const lines = mapLines(det, o);
       if (lines.length) await upsertChunked('sale_lines', lines, 'order_number,line_no');
       if (pa) { try { await pa.analyzeOrderRealtime(o.sale_id, o.order_number, det, 'backfill'); } catch (e) { /* best-effort */ } }
       processed++; enriched++;
@@ -166,6 +171,46 @@ async function runDetail() {
   }
   await saveCp(job, { processed, done: true });
   console.log(`✅ Detail done — ${enriched} orders enriched this run (${processed} total attempts).`);
+}
+
+// Detail for OPEN stuck orders (awaiting fulfilment/invoicing) — fills
+// sales_rep / location_name / sale_lines (incl. backorder_quantity) so the
+// chase view can show who/where + cross-ref availability per line. Picks the
+// active (AUTHORISED, not voided), not-yet-SHIPPED orders whose detail is
+// missing or stale, OLDEST first (the chase prioritises aged orders). Capped
+// per run so it stays inside the cron window; re-runs catch up. No pick-anomaly
+// (those only matter at ship).
+async function runDetailOpen() {
+  const cap = parseInt(process.env.DETAIL_OPEN_CAP || '150', 10);
+  let enriched = 0, attempts = 0;
+  console.log(`📂 Detail (open) — up to ${cap} stuck orders missing/stale detail`);
+  while (attempts < cap) {
+    const { data: orders, error } = await cm.from('sales_orders')
+      .select('order_number, sale_id, detail_synced_at')
+      .neq('shipping_status', 'SHIPPED').eq('order_status', 'AUTHORISED')
+      .not('status', 'in', '(VOIDED,CANCELLED,CREDITED,DRAFT)')
+      .is('detail_synced_at', null)
+      .order('order_date', { ascending: true }).limit(40);
+    if (error) throw new Error('query: ' + error.message);
+    if (!orders || !orders.length) break;
+    for (const o of orders) {
+      if (attempts >= cap) break;
+      attempts++;
+      let det;
+      try { det = await cin7(`sale?ID=${o.sale_id}`); }
+      catch (e) {
+        console.warn(`  ✗ ${o.order_number}: ${e.message} — marking attempted`);
+        await cm.from('sales_orders').update({ detail_synced_at: new Date().toISOString() }).eq('order_number', o.order_number);
+        continue;
+      }
+      await cm.from('sales_orders').update(mapDetail(det)).eq('order_number', o.order_number);
+      const lines = mapLines(det, o);
+      if (lines.length) await upsertChunked('sale_lines', lines, 'order_number,line_no');
+      enriched++;
+      if (enriched % 25 === 0) console.log(`  … ${enriched} enriched`);
+    }
+  }
+  console.log(`✅ Detail (open) done — ${enriched} orders enriched (${attempts} attempts).`);
 }
 
 // Recurring header sync: upsert headers for orders MODIFIED in the last few
@@ -194,7 +239,8 @@ const mode = process.argv[2];
 (async () => {
   if (mode === 'headers') await runHeaders();
   else if (mode === 'detail') await runDetail();
+  else if (mode === 'detail-open') await runDetailOpen();
   else if (mode === 'sync') await runSync();
-  else { console.log('Usage: node cin7-stock-sync/backfill-sales.js headers|detail|sync'); process.exit(1); }
+  else { console.log('Usage: node cin7-stock-sync/backfill-sales.js headers|detail|detail-open|sync'); process.exit(1); }
   process.exit(0);
 })().catch(e => { console.error('❌ Backfill error:', e.message); process.exit(1); });

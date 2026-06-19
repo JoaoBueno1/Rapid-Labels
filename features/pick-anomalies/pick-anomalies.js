@@ -1622,29 +1622,31 @@
     document.querySelectorAll('.pa-view-toggle .chip').forEach(c => c.classList.remove('active'));
     if (btn) btn.classList.add('active');
 
-    // Hide the legacy (Orders-view) KPI strip + table when in Analytics —
-    // the v2 tab has its own compact single-line KPI strip.
+    // Three views: Orders (legacy table+KPIs), Analytics (pa-analytics.js),
+    // Movements (pa-movements.js). Only Orders shows the status filter chips +
+    // search; the other two own their own toolbars.
     const ordersEls = ['paKpis', 'paTableCard', 'paPagination', 'paFooter'];
     const analyticsEl = document.getElementById('paAnalytics');
+    const movementsEl = document.getElementById('paMovements');
     const statusChips = document.getElementById('paStatusChips');
     const searchGroup = document.querySelector('.pa-search-group');
+    const isOrders = view === 'orders';
 
     // CSS class wins over any async re-show (e.g. loadStats→updateKpis re-showing #paKpis)
     document.body.classList.toggle('pa-mode-analytics', view === 'analytics');
+    document.body.classList.toggle('pa-mode-movements', view === 'movements');
+
+    ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = isOrders ? '' : 'none'; });
+    if (analyticsEl) analyticsEl.style.display = view === 'analytics' ? '' : 'none';
+    if (movementsEl) movementsEl.style.display = view === 'movements' ? '' : 'none';
+    if (statusChips) statusChips.style.display = isOrders ? '' : 'none';
+    if (searchGroup) searchGroup.style.display = isOrders ? '' : 'none';
 
     if (view === 'analytics') {
-      ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-      analyticsEl.style.display = '';
-      if (statusChips) statusChips.style.display = 'none';
-      if (searchGroup) searchGroup.style.display = 'none';
-      // Redesigned analytics tab is owned by pa-analytics.js (window.PAAnalytics).
       if (window.PAAnalytics) window.PAAnalytics.open();
       else loadAnalytics(); // fallback if module failed to load
-    } else {
-      ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
-      analyticsEl.style.display = 'none';
-      if (statusChips) statusChips.style.display = '';
-      if (searchGroup) searchGroup.style.display = '';
+    } else if (view === 'movements') {
+      if (window.PAMovements) window.PAMovements.open();
     }
   }
 

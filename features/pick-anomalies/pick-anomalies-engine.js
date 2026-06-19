@@ -1518,6 +1518,40 @@ function registerPickAnomalyRoutes(app) {
     }
   });
 
+  /**
+   * GET /api/pick-anomalies/movements
+   * The "Movements" audit tab: every NON-pick stock movement (transfers incl.
+   * to other warehouses, bin moves, adjustments, purchase receipts) from
+   * cin7_mirror.movement_log — kept separate from the quick-action sales/assembly
+   * view. Zero Cin7 calls (Supabase only). Filters: type, days, q (sku/ref).
+   */
+  app.get('/api/pick-anomalies/movements', async (req, res) => {
+    try {
+      const category = req.query.category || 'other';
+      const type = req.query.type;
+      const days = parseInt(req.query.days || '30', 10);
+      const q = (req.query.q || '').trim();
+      const limit = Math.min(parseInt(req.query.limit || '300', 10) || 300, 1000);
+
+      let qs = `select=*&category=eq.${encodeURIComponent(category)}&order=detected_at.desc&limit=${limit}`;
+      if (type && type !== 'all') qs += `&movement_type=eq.${encodeURIComponent(type)}`;
+      if (days > 0) qs += `&detected_at=gte.${encodeURIComponent(new Date(Date.now() - days * 86400000).toISOString())}`;
+      if (q) qs += `&or=(sku.ilike.*${encodeURIComponent(q)}*,reference_number.ilike.*${encodeURIComponent(q)}*,product_name.ilike.*${encodeURIComponent(q)}*)`;
+
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/movement_log?${qs}`, {
+        headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`, 'Accept-Profile': 'cin7_mirror' },
+      });
+      if (!r.ok) throw new Error(`movement_log ${r.status}`);
+      const rows = await r.json();
+      const byType = {};
+      for (const m of rows) byType[m.type_label] = (byType[m.type_label] || 0) + 1;
+      res.json({ success: true, movements: rows, total: rows.length, byType });
+    } catch (err) {
+      console.error('❌ Movements error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   console.log('✅ Pick anomaly routes registered (incl. cancellation detection)');
 
   /**
