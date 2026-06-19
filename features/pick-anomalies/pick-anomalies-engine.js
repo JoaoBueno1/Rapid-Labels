@@ -521,14 +521,15 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   const sinceShip = new Date(Date.now() - PENDING_SHIP_DAYS * 86400000).toISOString().split('T')[0];
 
   if (filter === 'anomaly') {
-    query += '&anomaly_picks=gt.0';
+    // Include FG (assembly-in-a-sale) anomalies, not just the sale's own picks.
+    query += '&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)';
   } else if (filter === 'correct') {
-    query += '&anomaly_picks=eq.0&total_picks=gt.0';
+    query += '&anomaly_picks=eq.0&fg_anomaly_picks=eq.0&total_picks=gt.0';
   } else if (filter === 'fg') {
     query += '&fg_count=gt.0';
   } else if (filter === 'pending') {
-    // Actionable queue: unreviewed anomalies, recent ship only
-    query += `&anomaly_picks=gt.0&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
+    // Actionable queue: unreviewed anomalies (sale OR FG), recent ship only
+    query += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
   } else if (filter === 'corrected') {
     query += '&anomaly_picks=gt.0';
   } else if (filter === 'cancelled') {
@@ -568,10 +569,10 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
 
   // Total count
   let totalQuery = 'select=id&order=id';
-  if (filter === 'anomaly') totalQuery += '&anomaly_picks=gt.0';
-  else if (filter === 'correct') totalQuery += '&anomaly_picks=eq.0&total_picks=gt.0';
+  if (filter === 'anomaly') totalQuery += '&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)';
+  else if (filter === 'correct') totalQuery += '&anomaly_picks=eq.0&fg_anomaly_picks=eq.0&total_picks=gt.0';
   else if (filter === 'fg') totalQuery += '&fg_count=gt.0';
-  else if (filter === 'pending') totalQuery += `&anomaly_picks=gt.0&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
+  else if (filter === 'pending') totalQuery += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
   else if (filter === 'cancelled') totalQuery += '&is_cancelled=eq.true';
   else if (filter === 'assembly') totalQuery += '&entity_type=eq.assembly';
   else if (filter === 'assembly_anomaly') totalQuery += '&entity_type=eq.assembly&anomaly_picks=gt.0';
@@ -965,6 +966,7 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
       correct_picks: correctCount,
       anomaly_picks: anomalyCount,
       fg_count: fgOrders.length,
+      fg_anomaly_picks: fgOrders.reduce((s, fg) => s + (fg.components || []).filter(c => c.status === 'anomaly').length, 0),
       picks: filteredPicks,
       fg_orders: fgOrders,
       analyzed_at: new Date().toISOString(),
@@ -2523,7 +2525,9 @@ async function analyzeOrderRealtime(saleId, orderNumber, preFetchedDetail = null
     invoice_date: invoiceDate ? invoiceDate.split('T')[0] : null,
     customer, order_status: rawOrderStatus,
     total_picks: filteredPicks.length, correct_picks: correctCount, anomaly_picks: anomalyCount,
-    fg_count: fgOrders.length, picks: filteredPicks, fg_orders: fgOrders,
+    fg_count: fgOrders.length,
+    fg_anomaly_picks: fgOrders.reduce((s, fg) => s + (fg.components || []).filter(c => c.status === 'anomaly').length, 0),
+    picks: filteredPicks, fg_orders: fgOrders,
     analyzed_at: new Date().toISOString(),
   };
 

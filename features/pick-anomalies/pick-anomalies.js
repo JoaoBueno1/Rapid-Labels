@@ -495,7 +495,10 @@
     const offset = (state.page - 1) * state.perPage;
 
     tbody.innerHTML = state.orders.map((o, idx) => {
-      const anom = o.anomaly_picks || 0;
+      // Total anomalies = the sale's own picks PLUS anomalies inside its linked
+      // assembly (FG) — so a sale whose only error is in the assembly still shows
+      // and surfaces in the Anomalies/Pending filters.
+      const anom = (o.anomaly_picks || 0) + (o.fg_anomaly_picks || 0);
       const correct = o.correct_picks || 0;
       const fg = o.fg_count || 0;
       const corrections = o.corrections || [];
@@ -588,7 +591,7 @@
       return `<tr class="${rowClass}" style="cursor:pointer">
         <td><input type="checkbox" class="pa-bulk-check" data-idx="${idx}" onclick="event.stopPropagation(); PA.toggleBulk(${idx}, this.checked)" ${state.selectedBulk.has(idx) ? 'checked' : ''} /></td>
         <td onclick="PA.openDetail(${idx})">${offset + idx + 1}</td>
-        <td onclick="PA.openDetail(${idx})"><strong>${esc(o.order_number)}</strong>${o.entity_type === 'assembly' ? ' <span class="pa-badge" style="background:#ede9fe;color:#6d28d9;font-size:10px">🔧 Assembly</span>' : ''}</td>
+        <td onclick="PA.openDetail(${idx})"><strong>${esc(o.order_number)}</strong>${o.entity_type === 'assembly' ? ' <span class="pa-badge" style="background:#ede9fe;color:#6d28d9;font-size:10px">🔧 Assembly</span>' : ((o.fg_anomaly_picks || 0) > 0 ? ' <span class="pa-badge" style="background:#fef3c7;color:#92400e;font-size:10px" title="Anomaly is in the linked assembly">🔧 FG</span>' : (fg > 0 ? ' <span class="pa-badge" style="background:#f3f4f6;color:#6b7280;font-size:10px">FG</span>' : ''))}</td>
         <td onclick="PA.openDetail(${idx})">${formatDate(o.order_date)}</td>
         <td onclick="PA.openDetail(${idx})">${formatDate(o.fulfilled_date)}</td>
         <td onclick="PA.openDetail(${idx})">${esc(o.customer)}</td>
