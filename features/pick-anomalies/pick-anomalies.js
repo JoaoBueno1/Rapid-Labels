@@ -495,7 +495,10 @@
     const offset = (state.page - 1) * state.perPage;
 
     tbody.innerHTML = state.orders.map((o, idx) => {
-      const anom = o.anomaly_picks || 0;
+      // Total anomalies = the sale's own picks PLUS anomalies inside its linked
+      // assembly (FG) — so a sale whose only error is in the assembly still shows
+      // and surfaces in the Anomalies/Pending filters.
+      const anom = (o.anomaly_picks || 0) + (o.fg_anomaly_picks || 0);
       const correct = o.correct_picks || 0;
       const fg = o.fg_count || 0;
       const corrections = o.corrections || [];
@@ -588,7 +591,7 @@
       return `<tr class="${rowClass}" style="cursor:pointer">
         <td><input type="checkbox" class="pa-bulk-check" data-idx="${idx}" onclick="event.stopPropagation(); PA.toggleBulk(${idx}, this.checked)" ${state.selectedBulk.has(idx) ? 'checked' : ''} /></td>
         <td onclick="PA.openDetail(${idx})">${offset + idx + 1}</td>
-        <td onclick="PA.openDetail(${idx})"><strong>${esc(o.order_number)}</strong></td>
+        <td onclick="PA.openDetail(${idx})"><strong>${esc(o.order_number)}</strong>${o.entity_type === 'assembly' ? ' <span class="pa-badge" style="background:#ede9fe;color:#6d28d9;font-size:10px">🔧 Assembly</span>' : ((o.fg_anomaly_picks || 0) > 0 ? ' <span class="pa-badge" style="background:#fef3c7;color:#92400e;font-size:10px" title="Anomaly is in the linked assembly">🔧 FG</span>' : (fg > 0 ? ' <span class="pa-badge" style="background:#f3f4f6;color:#6b7280;font-size:10px">FG</span>' : ''))}</td>
         <td onclick="PA.openDetail(${idx})">${formatDate(o.order_date)}</td>
         <td onclick="PA.openDetail(${idx})">${formatDate(o.fulfilled_date)}</td>
         <td onclick="PA.openDetail(${idx})">${esc(o.customer)}</td>
@@ -1364,8 +1367,8 @@
         const params = new URLSearchParams({ sku: t.sku, fromBin: t.expectedBin, toBin: t.pickedBin });
         const res = await fetch(`/api/pick-anomalies/recent-transfers?${params}`);
         const data = await res.json();
-        if (data.success && data.recentTransfers && data.recentTransfers.length > 0) {
-          return { item: t, transfers: data.recentTransfers };
+        if (data.success && data.recent && data.recent.length > 0) {
+          return { item: t, transfers: data.recent };
         }
         return null;
       }));
@@ -1433,7 +1436,7 @@
     return `${Math.floor(hrs / 24)}d ago`;
   }
 
-  async function confirmFix() {
+  async function confirmFix(force = false) {
     const ids = [...state.selectedFixes];
     if (ids.length === 0) return;
 
@@ -1450,8 +1453,20 @@
         pickedBin: pick.bin,
         orderNumber: order.order_number,
         pickId: id,
+        anomalyConfidence: pick.anomalyConfidence,
+        // M4: ONLY a real overflow pick (the bin legitimately held the stock) risks
+        // a double-move — not every 'suspect' (pallet/column/dock staging).
+        isOverflow: (pick.anomalyNote || '').startsWith('Overflow:'),
       };
     }).filter(Boolean);
+
+    // M4: warn ONLY for overflow picks (+ unknown confidence, treated cautiously).
+    const riskyCount = items.filter(i => i.isOverflow || i.anomalyConfidence == null).length;
+    if (riskyCount > 0 && !force) {
+      const msg = `${riskyCount} of these ${items.length} are OVERFLOW picks (the bin already held this stock) — a correction may DOUBLE-MOVE it. Apply anyway?`;
+      if (!confirm(msg)) return;
+      force = true;
+    }
 
     if (items.length === 0) {
       alert('No valid picks to fix.');
@@ -1466,7 +1481,7 @@
       const res = await fetch('/api/pick-anomalies/batch-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({ items, force }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Batch transfer failed');
@@ -1622,22 +1637,31 @@
     document.querySelectorAll('.pa-view-toggle .chip').forEach(c => c.classList.remove('active'));
     if (btn) btn.classList.add('active');
 
-    const ordersEls = ['paTableCard', 'paPagination', 'paFooter'];
+    // Three views: Orders (legacy table+KPIs), Analytics (pa-analytics.js),
+    // Movements (pa-movements.js). Only Orders shows the status filter chips +
+    // search; the other two own their own toolbars.
+    const ordersEls = ['paKpis', 'paTableCard', 'paPagination', 'paFooter'];
     const analyticsEl = document.getElementById('paAnalytics');
+    const movementsEl = document.getElementById('paMovements');
     const statusChips = document.getElementById('paStatusChips');
     const searchGroup = document.querySelector('.pa-search-group');
+    const isOrders = view === 'orders';
+
+    // CSS class wins over any async re-show (e.g. loadStats→updateKpis re-showing #paKpis)
+    document.body.classList.toggle('pa-mode-analytics', view === 'analytics');
+    document.body.classList.toggle('pa-mode-movements', view === 'movements');
+
+    ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = isOrders ? '' : 'none'; });
+    if (analyticsEl) analyticsEl.style.display = view === 'analytics' ? '' : 'none';
+    if (movementsEl) movementsEl.style.display = view === 'movements' ? '' : 'none';
+    if (statusChips) statusChips.style.display = isOrders ? '' : 'none';
+    if (searchGroup) searchGroup.style.display = isOrders ? '' : 'none';
 
     if (view === 'analytics') {
-      ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-      analyticsEl.style.display = '';
-      if (statusChips) statusChips.style.display = 'none';
-      if (searchGroup) searchGroup.style.display = 'none';
-      loadAnalytics();
-    } else {
-      ordersEls.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
-      analyticsEl.style.display = 'none';
-      if (statusChips) statusChips.style.display = '';
-      if (searchGroup) searchGroup.style.display = '';
+      if (window.PAAnalytics) window.PAAnalytics.open();
+      else loadAnalytics(); // fallback if module failed to load
+    } else if (view === 'movements') {
+      if (window.PAMovements) window.PAMovements.open();
     }
   }
 
@@ -1646,6 +1670,21 @@
      ═══════════════════════════════════════════════ */
   let _analyticsCache = null;
   let _repeatSkus = new Set(); // SKUs with 3+ anomalies across all orders
+
+  // Lightweight pre-load used on page init purely to populate repeat-offender
+  // badges in the Orders detail view. The Analytics TAB itself is rendered by
+  // pa-analytics.js (window.PAAnalytics) — this does no DOM rendering.
+  async function preloadRepeatOffenders() {
+    try {
+      const res = await fetch('/api/pick-anomalies/analytics');
+      const data = await res.json();
+      if (data && data.success) {
+        for (const s of (data.analytics.topSkus || [])) {
+          if (s.count >= 3) _repeatSkus.add(s.sku);
+        }
+      }
+    } catch (_) { /* badges are non-critical */ }
+  }
 
   async function loadAnalytics() {
     if (_analyticsCache) {
@@ -2118,9 +2157,10 @@
     const corrections = order.corrections || [];
     if (!corrections.length) return alert('No corrections to reverse');
 
-    // Filter out already-reversed corrections
-    const toReverse = corrections.filter(c => !c.is_reversed);
-    if (!toReverse.length) return alert('All corrections already reversed');
+    // M7: only reverse corrections that actually MOVED stock (COMPLETED). A DRAFT
+    // original moved nothing — reversing it would post a phantom inverse transfer.
+    const toReverse = corrections.filter(c => !c.is_reversed && c.transfer_status === 'COMPLETED');
+    if (!toReverse.length) return alert('No completed corrections to reverse (DRAFT/already-reversed moved no stock)');
 
     if (!confirm(`Reverse ${toReverse.length} correction(s) for ${orderNumber}?\n\nThis will create INVERSE stock transfers (undo the corrections because the order was cancelled).`)) {
       return;
@@ -2238,8 +2278,8 @@
     // 2. Fetch sync status (shows "Xh Ym ago" + "+N orders" — no Cin7 API calls)
     await fetchSyncStatus();
 
-    // 3. Pre-load analytics in background (for repeat offender badges)
-    loadAnalytics().catch(() => {});
+    // 3. Pre-load repeat-offender badges in background (analytics tab itself is lazy)
+    preloadRepeatOffenders().catch(() => {});
 
     // Note: No auto-sync on page open.
     // Backend scheduler syncs every 2h at :30. User can manually sync via button.

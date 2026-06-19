@@ -19,7 +19,17 @@
  *   product/update          — Product details changed
  */
 
-const MovementProcessor = require('./movement-processor');
+const crypto = require('crypto');
+
+// ── Normalize the many Cin7 Core webhook payload shapes into our fields ──
+// Real payloads vary by event: Sale/Created uses SaleID+SaleOrderNumber,
+// Sale/ShipmentAuthorised uses SaleTaskID+OrderNumber, etc.
+function normalizeWebhook(payload) {
+  const eventType = payload.EventType || payload.Type || payload.type || payload.Topic || payload.topic || 'unknown';
+  const saleId = payload.SaleID || payload.SaleTaskID || payload.ID || payload.id || null;
+  const orderNumber = payload.OrderNumber || payload.SaleOrderNumber || payload.Number || payload.Reference || null;
+  return { eventType, saleId, orderNumber };
+}
 
 module.exports = function registerWebhookRoutes(app, supabaseBackend) {
   if (!supabaseBackend) {
@@ -27,62 +37,101 @@ module.exports = function registerWebhookRoutes(app, supabaseBackend) {
     return;
   }
 
-  const processor = new MovementProcessor(supabaseBackend);
+  const WEBHOOK_TOKEN = process.env.CIN7_WEBHOOK_TOKEN || '';
+  if (!WEBHOOK_TOKEN) {
+    console.warn('⚠️  CIN7_WEBHOOK_TOKEN not set — webhook receiver runs UNAUTHENTICATED (dev mode). Set it before registering live webhooks.');
+  }
 
   // ────────────────────────────────────────────────────────
   // POST /api/cin7/webhook — Receive Cin7 Core webhooks
+  // Design: verify → persist (idempotent) → ACK fast. NO inline
+  // processing (serverless-safe); the queue drainer enriches later.
   // ────────────────────────────────────────────────────────
   app.post('/api/cin7/webhook', async (req, res) => {
+    // 1) Auth — Cin7 sends the bearer token we configured on the webhook
+    if (WEBHOOK_TOKEN) {
+      const auth = req.get('Authorization') || '';
+      if (auth !== `Bearer ${WEBHOOK_TOKEN}`) {
+        console.warn('🚫 Webhook rejected: bad/missing bearer token');
+        return res.status(401).json({ success: false, error: 'unauthorized' });
+      }
+    }
+
     const receivedAt = new Date().toISOString();
     const payload = req.body || {};
 
     try {
-      // Extract key fields from Cin7 webhook payload
-      const topic = payload.Type || payload.type || payload.Topic || payload.topic || 'unknown';
-      const eventId = payload.ID || payload.id || payload.EventID || null;
-      const orderNumber = payload.OrderNumber || payload.Number || payload.Reference || null;
+      const { eventType, saleId, orderNumber } = normalizeWebhook(payload);
+      // 2) Idempotency: identical Cin7 retries → identical payload → same key
+      const dedupKey = crypto.createHash('md5')
+        .update(`${eventType}|${JSON.stringify(payload)}`)
+        .digest('hex');
 
-      console.log(`📩 Webhook received: ${topic} | ID: ${eventId || 'N/A'} | Ref: ${orderNumber || 'N/A'}`);
+      console.log(`📩 Webhook: ${eventType} | sale=${saleId || 'N/A'} | ref=${orderNumber || 'N/A'}`);
 
-      // Store in webhook_events table
+      // 3) Persist (insert; unique dedup_key drops duplicate retries)
       const { data: event, error: insertError } = await supabaseBackend
         .schema('cin7_mirror')
         .from('webhook_events')
         .insert({
           received_at: receivedAt,
-          topic: topic,
-          event_id: eventId,
+          topic: eventType,            // keep legacy column populated
+          event_type: eventType,
+          sale_id: saleId,
+          order_number: orderNumber,
+          event_id: saleId,
+          dedup_key: dedupKey,
           payload: payload,
           status: 'pending',
+          source: 'webhook',
+          next_attempt_at: receivedAt,
           metadata: {
             ip: req.ip,
             user_agent: req.get('User-Agent'),
-            order_number: orderNumber,
           },
         })
         .select('id')
         .single();
 
       if (insertError) {
+        // 23505 = unique violation → we already received this exact event
+        if (insertError.code === '23505') {
+          return res.status(200).json({ success: true, duplicate: true });
+        }
         console.error('❌ Failed to store webhook event:', insertError.message);
         return res.status(500).json({ success: false, error: 'Failed to store event' });
       }
 
-      // Acknowledge immediately (Cin7 expects fast response)
-      res.status(200).json({ success: true, event_id: event.id });
-
-      // Process asynchronously (don't block the response)
-      setImmediate(async () => {
-        try {
-          await processor.processWebhookEvent(event.id, topic, payload);
-        } catch (e) {
-          console.error(`❌ Async processing failed for event ${event.id}:`, e.message);
-        }
-      });
+      // 4) ACK immediately — Cin7 expects a fast 200; processing is decoupled
+      return res.status(200).json({ success: true, event_id: event.id });
 
     } catch (e) {
       console.error('❌ Webhook handler error:', e);
-      res.status(500).json({ success: false, error: e.message });
+      return res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────
+  // POST /api/cin7/process — Drain the queue (real-time trigger)
+  // Fired by a Supabase DB webhook on webhook_events INSERT, or manually.
+  // Token-protected; processes a small batch (serverless-duration-safe).
+  // ────────────────────────────────────────────────────────
+  app.post('/api/cin7/process', async (req, res) => {
+    if (WEBHOOK_TOKEN) {
+      const auth = req.get('Authorization') || '';
+      const headerTok = req.get('x-process-token') || '';
+      if (auth !== `Bearer ${WEBHOOK_TOKEN}` && headerTok !== WEBHOOK_TOKEN) {
+        return res.status(401).json({ success: false, error: 'unauthorized' });
+      }
+    }
+    try {
+      const { drainQueue } = require('./process-webhook-queue');
+      const batch = parseInt(process.env.WEBHOOK_PROCESS_BATCH || '10', 10);
+      const result = await drainQueue(supabaseBackend, { batch });
+      return res.status(200).json({ success: true, ...result });
+    } catch (e) {
+      console.error('❌ Queue process error:', e.message);
+      return res.status(500).json({ success: false, error: e.message });
     }
   });
 

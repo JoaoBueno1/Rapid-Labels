@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pick Anomalies Monitor — Rapid Led</title>
+  <title>Anomalies Monitor — Rapid Led</title>
   <link rel="icon" href="/logo/rapidled_icon_500_v2.png" type="image/png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
   <link rel="stylesheet" href="pick-anomalies.css?v=20260410a" />
+  <link rel="stylesheet" href="pa-analytics.css?v=20260611a" />
 </head>
 <body>
 
@@ -28,7 +29,7 @@
 
       <!-- ─── Title + Sync Status ─── -->
       <div class="pa-title-row">
-        <h1 class="log-page-title">📦 Pick Anomalies Monitor</h1>
+        <h1 class="log-page-title">📦 Anomalies Monitor</h1>
         <div class="pa-sync-status" id="paSyncStatus">
           <span class="pa-sync-dot" id="paSyncDot"></span>
           <span id="paSyncText">Loading...</span>
@@ -47,6 +48,7 @@
           <div class="pa-view-toggle">
             <button class="chip active" data-view="orders" onclick="PA.setView('orders', this)" title="Order list view">📋 Orders</button>
             <button class="chip" data-view="analytics" onclick="PA.setView('analytics', this)" title="Analytics dashboard">📊 Analytics</button>
+            <button class="chip" data-view="movements" onclick="PA.setView('movements', this)" title="All stock movements (transfers, adjustments, purchases)">📦 Movements</button>
           </div>
           <div class="pa-spacer"></div>
           <div class="pa-status-chips" id="paStatusChips">
@@ -54,6 +56,7 @@
             <button class="chip" data-filter="anomaly" onclick="PA.setFilter('anomaly', this)">⚠️ Anomalies</button>
             <button class="chip" data-filter="pending" onclick="PA.setFilter('pending', this)">⏳ Pending Review</button>
             <button class="chip" data-filter="fg" onclick="PA.setFilter('fg', this)">🔧 FG</button>
+            <button class="chip" data-filter="assembly" onclick="PA.setFilter('assembly', this)">🔧 Assembly</button>
             <button class="chip" data-filter="correct" onclick="PA.setFilter('correct', this)">✅ Correct</button>
             <button class="chip" data-filter="cancelled" onclick="PA.setFilter('cancelled', this)">❌ Cancelled</button>
           </div>
@@ -101,52 +104,11 @@
         <span class="pa-progress-text" id="paProgressText">Syncing...</span>
       </div>
 
-      <!-- ═══ Analytics Dashboard (hidden by default) ═══ -->
-      <div id="paAnalytics" style="display:none">
-        <div class="pa-analytics-loading" id="paAnalyticsLoading">⏳ Loading analytics...</div>
+      <!-- ═══ Analytics Dashboard v2 (hidden by default; built by pa-analytics.js) ═══ -->
+      <div id="paAnalytics" style="display:none"></div>
 
-        <!-- Summary Cards -->
-        <div class="pa-analytics-summary" id="paAnalyticsSummary"></div>
-
-        <!-- Charts Grid -->
-        <div class="pa-analytics-grid">
-          <!-- Weekly Trend -->
-          <div class="pa-chart-card pa-chart-wide">
-            <div class="pa-chart-title">📈 Weekly Anomaly Rate Trend</div>
-            <div class="pa-chart-body" id="paChartTrend"></div>
-          </div>
-
-          <!-- Error Types -->
-          <div class="pa-chart-card">
-            <div class="pa-chart-title">🎯 Error Type Distribution</div>
-            <div class="pa-chart-body" id="paChartErrorTypes"></div>
-          </div>
-
-          <!-- Section Heatmap -->
-          <div class="pa-chart-card">
-            <div class="pa-chart-title">🗺️ Warehouse Section Heatmap</div>
-            <div class="pa-chart-body" id="paChartSections"></div>
-          </div>
-
-          <!-- Top Problem SKUs -->
-          <div class="pa-chart-card">
-            <div class="pa-chart-title">🔄 Repeat Offender SKUs</div>
-            <div class="pa-chart-body pa-chart-scrollable" id="paChartSkus"></div>
-          </div>
-
-          <!-- Top Problem Bins -->
-          <div class="pa-chart-card">
-            <div class="pa-chart-title">📍 Problem Bins (Wrong Pick Source)</div>
-            <div class="pa-chart-body pa-chart-scrollable" id="paChartBins"></div>
-          </div>
-
-          <!-- Repeat Routes -->
-          <div class="pa-chart-card pa-chart-wide">
-            <div class="pa-chart-title">🔁 Repeat Routes (Same Mistake Pattern) <span class="pa-chart-subtitle">— Possible stock_locator errors</span></div>
-            <div class="pa-chart-body pa-chart-scrollable" id="paChartRoutes"></div>
-          </div>
-        </div>
-      </div>
+      <!-- ═══ Movements audit tab (hidden by default; built by pa-movements.js) ═══ -->
+      <div id="paMovements" style="display:none"></div>
 
       <!-- ─── Orders Table ─── -->
       <div class="log-card" id="paTableCard" style="display:none">
@@ -156,7 +118,7 @@
               <tr>
                 <th style="width:30px"><input type="checkbox" title="Select All" onchange="PA.toggleBulkAll(this.checked)" /></th>
                 <th>#</th>
-                <th>Order</th>
+                <th title="Sales order (SO-) or assembly build (FG-)">Order / Assembly</th>
                 <th>Date</th>
                 <th title="Cin7 'Ship' stage date — when picks were finalised and stock left the bins. Includes dispatched orders and customer collections.">Ship Stage</th>
                 <th>Customer</th>
@@ -264,6 +226,12 @@
     </div>
   </div>
 
-  <script src="pick-anomalies.js?v=20260422a"></script>
+  <script src="pick-anomalies.js?v=20260611a"></script>
+  <!-- Analytics v2 deps: Chart.js (charts) + html2canvas & jsPDF (PNG/PDF export) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="pa-analytics.js?v=20260611a"></script>
+  <script src="pa-movements.js?v=20260619a"></script>
 </body>
 </html>

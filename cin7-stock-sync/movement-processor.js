@@ -32,10 +32,11 @@ class MovementProcessor {
   }
 
   // ── Cin7 API call with throttle ──
-  async _cin7Request(endpoint, params = {}) {
-    // Throttle: 1.2s between calls
+  async _cin7Request(endpoint, params = {}, _retry = 0) {
+    // Throttle: 2.5s between calls — gentle enough to coexist with the other
+    // Cin7 sync jobs (stock/pick-anomalies/order-pipeline) under the 60/min cap.
     const now = Date.now();
-    const wait = Math.max(0, 1200 - (now - this.lastApiCall));
+    const wait = Math.max(0, 2500 - (now - this.lastApiCall));
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
 
     const url = new URL(`${CIN7_CONFIG.baseUrl}/${endpoint}`);
@@ -60,10 +61,13 @@ class MovementProcessor {
       clearTimeout(timeoutId);
       this.lastApiCall = Date.now();
 
-      if (response.status === 429) {
-        console.warn('⚠️ Rate limited, waiting 5s...');
-        await new Promise(r => setTimeout(r, 5000));
-        return this._cin7Request(endpoint, params); // retry
+      // Cin7 throttles bursts with 429 AND sometimes 403 (transient) — back off
+      // and retry both, up to 3 times, before giving up.
+      if ((response.status === 429 || response.status === 403) && _retry < 4) {
+        const backoff = 3000 * Math.pow(2, _retry) + Math.floor(Math.random() * 1500); // +jitter
+        console.warn(`⚠️ Cin7 ${response.status} (throttle) — retry ${_retry + 1}/4 in ${Math.round(backoff / 1000)}s`);
+        await new Promise(r => setTimeout(r, backoff));
+        return this._cin7Request(endpoint, params, _retry + 1);
       }
 
       if (!response.ok) {
@@ -92,22 +96,72 @@ class MovementProcessor {
 
       let movements = [];
 
-      // Route by topic type
-      const topicLower = (topic || '').toLowerCase();
+      // Route by REAL Cin7 Core event type (e.g. Sale/ShipmentAuthorised,
+      // Sale/Voided, Purchase/StockReceivedAuthorised, Stock/AvailableStockLevelChanged).
+      const t = (topic || '').toLowerCase();
 
-      if (topicLower.includes('sale/order') || topicLower.includes('saleorder')) {
-        movements = await this._processSaleOrder(payload);
-      } else if (topicLower.includes('stock/transfer') || topicLower.includes('stocktransfer')) {
+      if (t.startsWith('sale/')) {
+        if (t.includes('shipmentauthorised')) {
+          // ONLY ship ENRICHES (needs the pick lines to detect anomalies + the
+          // real stock-out). Every other sale event is recorded RAW only.
+          movements = await this._processSaleOrder(payload);
+        } else if (t.includes('voided') || t.includes('undo')) {
+          // Cancellation → mark the order cancelled in pick_anomaly_orders in
+          // real time (no Cin7 call). Best-effort.
+          try {
+            const pa = require('../features/pick-anomalies/pick-anomalies-engine');
+            const on = payload.OrderNumber || payload.SaleOrderNumber || payload.Number;
+            if (on) {
+              const r = await pa.markOrderCancelledRealtime(on, t.includes('undo') ? 'UNDO' : 'VOIDED');
+              console.log(`  🚫 Cancellation (realtime) ${on}: ${JSON.stringify(r)}`);
+            }
+          } catch (e) { console.warn(`  ⚠️ Cancellation realtime failed: ${e.message}`); }
+          // Reflect VOIDED in the sales mirror too (Undo reverts to an unknown
+          // status → leave it for the 2h header sync to reconcile honestly).
+          if (t.includes('voided')) {
+            try { await this._reflectSaleStatus(payload, 'voided'); } catch (e) { console.warn(`  ⚠️ sales_orders void reflect failed: ${e.message}`); }
+          }
+        } else if (t.includes('invoiceauthorised') || t.includes('invoice/')) {
+          // Invoice authorised → reflect invoice status in the sales mirror in
+          // real time (no Cin7 call). The 2h header sync later reconciles the
+          // exact CombinedInvoiceStatus (partial/full) from Cin7.
+          try { await this._reflectSaleStatus(payload, 'invoice'); } catch (e) { console.warn(`  ⚠️ sales_orders invoice reflect failed: ${e.message}`); }
+        } else {
+          // Pick/Pack/Created/Order/Backordered/payment… recorded RAW in
+          // webhook_events — NO Cin7 call. Keeps the full lifecycle cheap; the
+          // raw payload IS the timeline record (readers/wiring act on it later).
+          console.log(`ℹ️  Sale event ${topic} — recorded raw (no enrichment)`);
+        }
+      } else if (t.includes('stock/transfer') || t.includes('stocktransfer')) {
         movements = await this._processStockTransfer(payload);
-      } else if (topicLower.includes('stock/adjustment') || topicLower.includes('stockadjustment')) {
+      } else if (t.includes('stock/adjustment') || t.includes('stockadjustment')) {
         movements = await this._processStockAdjustment(payload);
-      } else if (topicLower.includes('purchase/order') || topicLower.includes('purchaseorder')) {
+      } else if (t.includes('availablestocklevel')) {
+        // Stock/AvailableStockLevelChanged — Cin7's only stock webhook; a
+        // catch-all on-hand change with no task detail to expand. The raw
+        // event is recorded; line-level detail still comes from polling.
+        console.log(`ℹ️  Stock level changed — recorded (no line detail)`);
+      } else if (t.startsWith('purchase/')) {
         movements = await this._processPurchaseOrder(payload);
-      } else if (topicLower.includes('product/')) {
-        // Product updates don't create stock movements, just log
-        console.log(`ℹ️  Product update event — no stock movement to log`);
+      } else if (t.startsWith('product/')) {
+        console.log(`ℹ️  Product update — no stock movement`);
       } else {
-        console.warn(`⚠️  Unknown webhook topic: ${topic}`);
+        console.warn(`⚠️  Unhandled webhook topic: ${topic}`);
+      }
+
+      // Idempotent reprocess. Cin7 sends MULTIPLE distinct ShipmentAuthorised
+      // events per SaleID (each a new event id), so deleting only by
+      // webhook_event_id lets re-sends ACCUMULATE duplicate movements. Key the
+      // dedup on the TASK (cin7_task_id + source), exactly like the polling syncs
+      // (sync-movements/sync-assembly) — a re-sent webhook REPLACES, never appends.
+      await this.sb.schema('cin7_mirror').from('movement_alerts').delete().eq('webhook_event_id', eventId);
+      const _taskIds = [...new Set(movements.map(m => m.cin7_task_id).filter(Boolean))];
+      if (_taskIds.length) {
+        for (const tid of _taskIds) {
+          await this.sb.schema('cin7_mirror').from('stock_movements').delete().eq('cin7_task_id', tid).eq('source', 'webhook');
+        }
+      } else {
+        await this.sb.schema('cin7_mirror').from('stock_movements').delete().eq('webhook_event_id', eventId);
       }
 
       // Store movements
@@ -164,13 +218,35 @@ class MovementProcessor {
     }
   }
 
+  // Reflect a non-ship sale event into sales_orders WITHOUT a Cin7 call. Updates
+  // only the affected status columns by order_number; if the order isn't mirrored
+  // yet it's a no-op (the 2h header sync adds it). Never touches detail columns
+  // (rep/lines/ship_date), so it enriches without wiping anything.
+  async _reflectSaleStatus(payload, kind) {
+    const on = payload.OrderNumber || payload.SaleOrderNumber || payload.Number;
+    if (!on) return;
+    let patch;
+    if (kind === 'invoice') {
+      patch = { invoice_status: 'INVOICED', header_synced_at: new Date().toISOString() };
+      if (payload.InvoiceNumber) patch.invoice_number = payload.InvoiceNumber;
+    } else if (kind === 'voided') {
+      patch = { status: 'VOIDED', order_status: 'VOIDED', header_synced_at: new Date().toISOString() };
+    } else return;
+    const { data, error } = await this.sb.schema('cin7_mirror')
+      .from('sales_orders').update(patch).eq('order_number', on).select('order_number');
+    if (error) { console.warn(`  ⚠️ sales_orders ${kind} reflect: ${error.message}`); return; }
+    console.log(`  📝 sales_orders ${kind} → ${on}${(data && data.length) ? '' : ' (not mirrored yet — sync will add)'}`);
+  }
+
   // ══════════════════════════════════════════════
   // SALES ORDER processing
   // ══════════════════════════════════════════════
   async _processSaleOrder(payload) {
-    const soId = payload.ID || payload.id;
-    const soNumber = payload.OrderNumber || payload.Number || '';
-    if (!soId) { console.warn('⚠️ SO webhook missing ID'); return []; }
+    // Real Cin7 payloads: Sale/Created → SaleID; Sale/ShipmentAuthorised →
+    // SaleTaskID. Try the sale GUID first; fall back to OrderNumber search.
+    const soId = payload.SaleID || payload.SaleTaskID || payload.ID || payload.id;
+    const soNumber = payload.OrderNumber || payload.SaleOrderNumber || payload.Number || '';
+    if (!soId && !soNumber) { console.warn('⚠️ SO webhook missing SaleID/OrderNumber'); return []; }
 
     let soData;
     try {
@@ -191,6 +267,28 @@ class MovementProcessor {
     const movements = [];
     const order = soData;
 
+    // ── Feed the Pick-Anomalies engine in REAL TIME, reusing the detail we
+    // already fetched (no extra sale call). This catches OLD orders shipped
+    // today that the 2h date-based sync misses. Best-effort — a failure here
+    // never blocks the stock-movement ledger.
+    try {
+      const pa = require('../features/pick-anomalies/pick-anomalies-engine');
+      const r = await pa.analyzeOrderRealtime(order.ID || soId, order.OrderNumber || soNumber, order, 'webhook');
+      if (r && r.ok) console.log(`  🧷 Pick-anomalies (realtime): ${r.orderNumber} → ${r.anomalies} anomalies, ${r.correct} correct`);
+      else if (r && r.skipped) console.log(`  🧷 Pick-anomalies (realtime): ${order.OrderNumber} skipped (${r.skipped})`);
+    } catch (e) {
+      console.warn(`  ⚠️ Pick-anomalies realtime failed: ${e.message}`);
+    }
+
+    // ── Mirror the full sale into sales_orders + sale_lines (LIVE), reusing the
+    // detail we already fetched. Keeps the sales mirror up to date going forward.
+    try {
+      const { upsertSalesMirror } = require('./sales-mirror');
+      await upsertSalesMirror(this.sb, order, order.OrderNumber || soNumber, order.ID || soId, 'webhook');
+    } catch (e) {
+      console.warn(`  ⚠️ sales_orders mirror failed: ${e.message}`);
+    }
+
     // Extract customer and sales rep info
     const customer = order.Customer || order.CustomerName || '';
     const salesRep = order.SalesRepresentative || order.SalesPerson || '';
@@ -200,16 +298,23 @@ class MovementProcessor {
     // Process fulfillment lines — these show WHAT was picked and FROM WHERE
     const fulfillments = order.Fulfilments || order.Fulfillments || [];
 
+    const orderWarehouse = order.Location || 'Main Warehouse';
     for (const fulfilment of fulfillments) {
-      const shipDate = fulfilment.ShipDate || fulfilment.FulFilmentDate || fulfilment.Date || null;
-      const fulfilLines = fulfilment.Lines || fulfilment.Pick || [];
+      // Real Cin7 fulfilment shape: { Pick:{Status,Lines:[]}, Pack:{...}, Ship:{Status,Lines:[]} }
+      const shipDate = (fulfilment.Ship && fulfilment.Ship.Lines && fulfilment.Ship.Lines[0]
+        && fulfilment.Ship.Lines[0].ShipmentDate) || null;
+      const fulfilLines = (fulfilment.Pick && fulfilment.Pick.Lines) || fulfilment.Lines || [];
 
       for (const line of fulfilLines) {
         const sku = line.SKU || line.ProductCode || '';
         const productName = line.Name || line.ProductName || '';
         const qty = parseFloat(line.Quantity) || 0;
-        const location = line.Location || line.Warehouse || 'Main Warehouse';
-        const bin = line.Bin || line.BinLocation || '';
+        // Cin7 pick "Location" is "Warehouse: BIN" (e.g. "Main Warehouse: MA-F-04-L1")
+        // or just a warehouse name for branch picks. Split into warehouse + bin code.
+        const rawLoc = line.Location || line.Bin || line.BinLocation || '';
+        const binCode = rawLoc.includes(':') ? rawLoc.split(':').slice(1).join(':').trim() : '';
+        const bin = binCode;
+        const location = (rawLoc.includes(':') ? rawLoc.split(':')[0].trim() : rawLoc) || orderWarehouse;
         const batch = line.BatchSN || line.Batch || '';
 
         if (!sku || qty === 0) continue;
@@ -226,15 +331,17 @@ class MovementProcessor {
           if (prod) { stockLocator = prod.stock_locator || ''; category = prod.category || ''; }
         } catch {}
 
-        // Determine if pick is from non-pickbay (anomaly)
-        const normBin = (bin || '').replace(/\s+/g, '').toUpperCase();
+        // Anomaly = picked from a real BIN CODE that isn't the product's pickface.
+        // Branch/warehouse-level picks carry no bin code → NOT flagged (legit branch ship).
+        const normBin = binCode.replace(/\s+/g, '').toUpperCase();
         const normPickface = (stockLocator || '').replace(/\s+/g, '').toUpperCase();
         const isFromPickface = normPickface && normBin === normPickface;
-        const isAnomaly = normBin && normPickface && !isFromPickface;
+        const isAnomaly = !!normBin && !!normPickface && !isFromPickface;
 
-        // Determine movement type
-        const status = (fulfilment.Status || '').toLowerCase();
-        const isShipped = status.includes('ship') || status.includes('sent');
+        // Determine movement type. Real Cin7 fulfilments expose FulFilmentStatus
+        // (+ Ship.Status), not a top-level Status; a shipment date means shipped.
+        const status = (fulfilment.FulFilmentStatus || (fulfilment.Ship && fulfilment.Ship.Status) || '').toLowerCase();
+        const isShipped = !!shipDate || status.includes('ship') || status.includes('fulfil');
         const movementType = isShipped ? 'sales_ship' : 'sales_pick';
 
         movements.push({
@@ -459,16 +566,30 @@ class MovementProcessor {
   // PURCHASE ORDER processing
   // ══════════════════════════════════════════════
   async _processPurchaseOrder(payload) {
-    const poId = payload.ID || payload.id;
-    if (!poId) { console.warn('⚠️ PO webhook missing ID'); return []; }
+    // Real Purchase/StockReceivedAuthorised payloads carry TaskID + a PO number,
+    // NOT ID — reading only payload.ID silently dropped every purchase receipt.
+    const poId = payload.ID || payload.id || payload.TaskID;
+    const poNumber = payload.PurchaseOrderNumber || payload.OrderNumber || payload.Number || '';
+    if (!poId && !poNumber) { console.warn('⚠️ PO webhook missing ID/Number'); return []; }
 
     let poData;
     try {
-      poData = await this._cin7Request('purchase', { ID: poId });
+      if (poId) poData = await this._cin7Request('purchase', { ID: poId });
     } catch (e) {
-      console.warn(`⚠️ Could not fetch PO ${poId}: ${e.message}`);
-      return [];
+      console.warn(`⚠️ Could not fetch PO by ID ${poId}: ${e.message}`);
     }
+    // The webhook's TaskID is the StockReceived task, NOT the purchase ID, so
+    // purchase?ID=<TaskID> may 200 with the wrong/empty object. Fall back to a
+    // PurchaseOrderNumber search whenever the receipt lines are missing.
+    const hasLines = d => d && d.StockReceived && (Array.isArray(d.StockReceived) ? d.StockReceived.length : d.StockReceived.Lines);
+    if (!hasLines(poData) && poNumber) {
+      try {
+        const list = await this._cin7Request('purchaseList', { Search: poNumber });
+        const match = (list.PurchaseList || []).find(p => p.OrderNumber === poNumber);
+        if (match) poData = await this._cin7Request('purchase', { ID: match.ID });
+      } catch (e2) { console.warn(`⚠️ PO fallback search failed: ${e2.message}`); }
+    }
+    if (!poData) { console.warn(`⚠️ Could not fetch PO ${poId || poNumber}`); return []; }
 
     const movements = [];
     const po = poData;
@@ -477,11 +598,13 @@ class MovementProcessor {
     const memberEmail = po.MemberEmail || po.CreatedBy || '';
     const supplier = po.SupplierName || po.Supplier || '';
 
-    // Process stock receive lines
-    const receipts = po.StockReceived || po.Receipts || po.ReceiveLines || [];
+    // Process stock receive lines. StockReceived is a single object
+    // { Status, Lines:[...] } (NOT an array) — normalise to an array of receipts.
+    const _sr = po.StockReceived || po.Receipts || po.ReceiveLines;
+    const receipts = Array.isArray(_sr) ? _sr : (_sr ? [_sr] : []);
 
     for (const receipt of receipts) {
-      const receiveLines = receipt.Lines || receipt.ReceiveLines || [receipt];
+      const receiveLines = receipt.Lines || receipt.ReceiveLines || [];
 
       for (const line of receiveLines) {
         const sku = line.SKU || line.ProductCode || '';
@@ -550,6 +673,7 @@ class MovementProcessor {
       for (const rule of rules) {
         const alert = this._evaluateRule(rule, movement);
         if (alert) {
+          alert.webhook_event_id = movement.webhook_event_id || null; // link for idempotent reprocess
           const { error: insertErr } = await this.sb.schema('cin7_mirror')
             .from('movement_alerts')
             .insert(alert);

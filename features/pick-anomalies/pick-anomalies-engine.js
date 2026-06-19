@@ -262,7 +262,7 @@ async function fetchLocators(skus) {
     if (!res.ok) { console.warn(`Supabase locator fetch failed: ${res.status}`); continue; }
     const rows = await res.json();
     for (const r of rows) {
-      if (r.sku) result.set(r.sku, { locator: r.stock_locator, name: r.name, category: r.category });
+      if (r.sku) result.set(r.sku, { locator: normBin(r.stock_locator), name: r.name, category: r.category });
     }
   }
   return result;
@@ -319,16 +319,26 @@ function classifyAnomalyConfidence(pick, stockMap) {
     return { confidence: 'suspect', note: 'Adjacent pallet — same slot, different pallet number' };
   }
 
-  // Special location: always suspect — DOCK, RETURNS, SAMPLES, etc.
-  if (et === 'special_loc') {
-    return { confidence: 'suspect', note: `Special location — "${pick.bin}" is not a standard MA- bin` };
+  // Picking saleable units from un-QA'd RETURNS / SAMPLES / DAMAGED / FAULTY /
+  // QUARANTINE stock into a customer order is the HIGHEST quality risk → confirmed
+  // (regardless of stock), not a likely-false-positive.
+  if (et === 'special_loc' && /RETURN|SAMPLE|DAMAGE|FAULT|QUARANTINE|REJECT/i.test(pick.bin || '')) {
+    return { confidence: 'confirmed', note: `Picked from "${pick.bin}" — un-QA'd / returns / samples stock in a customer order` };
   }
 
-  // Check if the picked bin has stock for this SKU (overflow evidence)
+  // Overflow evidence: the picked bin actually holds stock of this SKU. Runs for
+  // ALL remaining types INCLUDING special_loc — M4: a DOCK/PRODUCTION pick that
+  // holds stock IS a real double-move risk and must carry the 'Overflow:' tag so
+  // the correction gate blocks it.
   const key = `${pick.sku}|${pick.bin}`;
   const stock = stockMap ? stockMap.get(key) : null;
   if (stock && stock.on_hand > 0) {
     return { confidence: 'suspect', note: `Overflow: bin "${pick.bin}" has ${stock.on_hand} units of this SKU in stock` };
+  }
+
+  // Special location with NO stock → staging only, suspect (no double-move risk).
+  if (et === 'special_loc') {
+    return { confidence: 'suspect', note: `Special location — "${pick.bin}" is not a standard MA- bin` };
   }
 
   // Same column without overflow evidence → still likely vertical overflow
@@ -348,7 +358,7 @@ function classifyAnomalyConfidence(pick, stockMap) {
  * Add anomaly confidence classification to all anomaly picks in an order.
  * Modifies the picks array in place.
  */
-async function addAnomalyConfidence(picks, fgOrders) {
+async function addAnomalyConfidence(picks, fgOrders, fulfilledDate = null) {
   // Collect all anomaly sku+bin pairs
   const skuBinPairs = [];
   for (const p of picks) {
@@ -361,13 +371,27 @@ async function addAnomalyConfidence(picks, fgOrders) {
   }
   if (!skuBinPairs.length) return;
 
-  const stockMap = await fetchStockForBins(skuBinPairs);
+  // H2: the overflow heuristic reads LIVE stock. For an order analysed long after
+  // the pick (backfill), today's stock is unrelated to what was in the bin then —
+  // claiming overflow would be a false suspect, and missing it a false confirmed.
+  // When stale, use an EMPTY stock map → fall back to the structural (timing-
+  // independent) verdict and flag that point-in-time stock was unavailable.
+  const FRESH_DAYS = 3;
+  let fresh = true;
+  if (fulfilledDate) {
+    const ageDays = (Date.now() - new Date(fulfilledDate).getTime()) / 86400000;
+    fresh = !(ageDays > FRESH_DAYS);
+  }
+  const stockMap = fresh ? await fetchStockForBins(skuBinPairs) : new Map();
+  const staleSuffix = fresh ? '' : ' (no point-in-time stock — analysed after the pick)';
+  const stamp = (obj) => { if (staleSuffix && obj.anomalyNote && !obj.anomalyNote.startsWith('Overflow:')) obj.anomalyNote += staleSuffix; };
 
   for (const p of picks) {
     if (p.status === 'anomaly') {
       const { confidence, note } = classifyAnomalyConfidence(p, stockMap);
       p.anomalyConfidence = confidence;
       p.anomalyNote = note;
+      stamp(p);
     } else {
       delete p.anomalyConfidence;
       delete p.anomalyNote;
@@ -379,6 +403,7 @@ async function addAnomalyConfidence(picks, fgOrders) {
         const { confidence, note } = classifyAnomalyConfidence(c, stockMap);
         c.anomalyConfidence = confidence;
         c.anomalyNote = note;
+        stamp(c);
       } else {
         delete c.anomalyConfidence;
         delete c.anomalyNote;
@@ -409,10 +434,22 @@ async function getBinCache() {
   return binCache;
 }
 
+// Canonicalise a bin/locator for comparison. Cin7 picks + the products.stock_locator
+// data mix case, whitespace and "Warehouse: " prefixes (e.g. 'MA-H-11-l2',
+// ' MA-OFFICE-AREA', 'Main Warehouse: MA-F-17-L1'). Strip any prefix, trim, and
+// uppercase MA- bins — but leave BOM/Production/0/non-MA values untouched so their
+// special-case checks still match.
+function normBin(v) {
+  if (!v) return v;
+  let s = String(v).trim();
+  if (s.includes(':')) s = s.split(':').slice(1).join(':').trim();
+  return /^ma-/i.test(s) ? s.toUpperCase() : s;
+}
+
 function extractBin(location) {
   if (!location) return null;
   if (!location.includes(': ')) return null;
-  return location.split(': ')[1].trim();
+  return normBin(location.split(': ')[1]);
 }
 
 function classifyError(pickedBin, expectedBin) {
@@ -507,24 +544,42 @@ async function getOrderLogs(orderNumber) {
 // ═══════════════════════════════════════════════════
 
 async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
-  let query = `select=*&order=order_date.desc,order_number.desc&limit=${limit}&offset=${offset}`;
+  // Order by SHIP date (fulfilled_date), not order_date: an old order shipped today
+  // must surface at the top for review (analyzed_at would mislead for backfilled rows).
+  let query = `select=*&order=fulfilled_date.desc.nullslast,order_number.desc&limit=${limit}&offset=${offset}`;
+
+  // Cancelled orders appear ONLY in the dedicated 'cancelled' filter — hidden
+  // everywhere else (no point reviewing/correcting a cancelled order).
+  const hideCancelled = filter !== 'cancelled' ? '&is_cancelled=is.false' : '';
+  // The "pending" (actionable) queue is scoped to RECENT shipments: old orders
+  // surfaced by the backfill stay in the record/analytics but don't clutter the
+  // operator's action list (a 2-week-old pick error isn't worth correcting now).
+  const PENDING_SHIP_DAYS = 10;
+  const sinceShip = new Date(Date.now() - PENDING_SHIP_DAYS * 86400000).toISOString().split('T')[0];
 
   if (filter === 'anomaly') {
-    query += '&anomaly_picks=gt.0';
+    // Include FG (assembly-in-a-sale) anomalies, not just the sale's own picks.
+    query += '&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)';
   } else if (filter === 'correct') {
-    query += '&anomaly_picks=eq.0&total_picks=gt.0';
+    query += '&anomaly_picks=eq.0&fg_anomaly_picks=eq.0&total_picks=gt.0';
   } else if (filter === 'fg') {
     query += '&fg_count=gt.0';
   } else if (filter === 'pending') {
-    // Anomaly orders NOT yet reviewed
-    query += '&anomaly_picks=gt.0&reviewed=is.false';
+    // Everything that still needs review: ANY unreviewed anomaly (sale pick OR
+    // FG/assembly component), no ship-date window — so the Pending queue matches
+    // the "Reviewed X/Y" KPI and the operator can clear it to 100%. Ordered by
+    // ship date (recent first) so the freshest are on top.
+    query += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false`;
   } else if (filter === 'corrected') {
-    // We'll join corrections on the frontend side
     query += '&anomaly_picks=gt.0';
   } else if (filter === 'cancelled') {
-    // Orders that were cancelled after being processed
     query += '&is_cancelled=eq.true';
+  } else if (filter === 'assembly') {
+    query += '&entity_type=eq.assembly';
+  } else if (filter === 'assembly_anomaly') {
+    query += '&entity_type=eq.assembly&anomaly_picks=gt.0';
   }
+  query += hideCancelled;
 
   if (search) {
     // Search in order_number OR customer (case-insensitive)
@@ -554,10 +609,14 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
 
   // Total count
   let totalQuery = 'select=id&order=id';
-  if (filter === 'anomaly') totalQuery += '&anomaly_picks=gt.0';
-  else if (filter === 'correct') totalQuery += '&anomaly_picks=eq.0&total_picks=gt.0';
+  if (filter === 'anomaly') totalQuery += '&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)';
+  else if (filter === 'correct') totalQuery += '&anomaly_picks=eq.0&fg_anomaly_picks=eq.0&total_picks=gt.0';
   else if (filter === 'fg') totalQuery += '&fg_count=gt.0';
-  else if (filter === 'pending') totalQuery += '&anomaly_picks=gt.0&reviewed=is.false';
+  else if (filter === 'pending') totalQuery += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false`;
+  else if (filter === 'cancelled') totalQuery += '&is_cancelled=eq.true';
+  else if (filter === 'assembly') totalQuery += '&entity_type=eq.assembly';
+  else if (filter === 'assembly_anomaly') totalQuery += '&entity_type=eq.assembly&anomaly_picks=gt.0';
+  totalQuery += hideCancelled;
   if (search) totalQuery += `&or=(order_number.ilike.*${search}*,customer.ilike.*${search}*)`;
 
   let totalCount = orders.length;
@@ -846,7 +905,7 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
           const components = (fgDetail.PickLines || []).map(pl => {
             const compInfo = compLocators.get(pl.ProductCode);
             const compExpected = compInfo?.locator || null;
-            const compBin = pl.Bin || null;
+            const compBin = normBin(pl.Bin) || null;
             const isCorrect = !compBin || !compExpected || !compExpected.startsWith('MA-') || compBin === compExpected;
             return {
               sku: pl.ProductCode, productId: pl.ProductID, qty: pl.Quantity,
@@ -884,9 +943,6 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
     // Skip orders with 0 meaningful picks
     if (!filteredPicks.length) continue;
 
-    // ── Anomaly confidence classification ──
-    await addAnomalyConfidence(filteredPicks, fgOrders);
-
     const correctCount = filteredPicks.filter(p => p.status === 'correct').length;
     const anomalyCount = filteredPicks.filter(p => p.status === 'anomaly').length;
 
@@ -912,6 +968,10 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
 
     // fulfilled_date = shipment date (when goods left the warehouse)
     fulfilledDate = shipmentDate || invoiceDate || null;
+
+    // ── Anomaly confidence classification (H2: with the ship date, so a
+    // backfilled order skips the live-stock overflow heuristic) ──
+    await addAnomalyConfidence(filteredPicks, fgOrders, fulfilledDate);
 
     // ── HARD GATE: fulfilled_date must be after scanner cutoff ──
     // This is the DEFINITIVE check. Unlike the OrderDate soft pre-filter,
@@ -947,6 +1007,7 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
       correct_picks: correctCount,
       anomaly_picks: anomalyCount,
       fg_count: fgOrders.length,
+      fg_anomaly_picks: fgOrders.reduce((s, fg) => s + (fg.components || []).filter(c => c.status === 'anomaly').length, 0),
       picks: filteredPicks,
       fg_orders: fgOrders,
       analyzed_at: new Date().toISOString(),
@@ -994,9 +1055,10 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
         for (const mo of matchedOrders) {
           if (mo.is_cancelled) continue; // Already flagged
 
-          // Check if this order has corrections
+          // M7: a conflict only if a correction actually MOVED stock (COMPLETED)
+          // and isn't already reversed — else reversing it creates phantom stock.
           const corrections = await sbGet('pick_anomaly_corrections',
-            `select=id,transfer_status&order_number=eq.${mo.order_number}&limit=1`
+            `select=id,transfer_status&order_number=eq.${mo.order_number}&is_reversed=eq.false&transfer_status=eq.COMPLETED&limit=1`
           );
 
           const cin7Order = cancelledFromCin7.find(o => o.OrderNumber === mo.order_number);
@@ -1073,6 +1135,9 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
 // ═══════════════════════════════════════════════════
 
 async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pickedBin, orderNumber, pickId }) {
+  // A Cin7 transfer line with no ProductID moves no stock — refuse rather than
+  // create an empty/erroring transfer (mirrors the reversal guard).
+  if (!productId) throw new Error(`Correction blocked: no ProductID for SKU ${sku} — a transfer line with no product cannot move stock.`);
   const bins = await getBinCache();
   const fromBinId = bins.get(expectedBin);
   const toBinId = bins.get(pickedBin);
@@ -1152,6 +1217,7 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
         order_number: orderNumber,
         pick_id: pickId,
         sku,
+        product_id: productId || null,   // H1: needed to build the reversal transfer line
         from_bin: expectedBin,
         to_bin: pickedBin,
         qty,
@@ -1209,6 +1275,29 @@ async function reverseCorrection({ correctionId, productId, sku, qty, fromBin, t
   // Reverse = swap from/to
   // Original correction: expectedBin → pickedBin (moving stock to where it was actually picked from)
   // Reversal: pickedBin → expectedBin (moving it back because the order was cancelled)
+  // H1: the frontend sends productId=null (the column didn't exist) — resolve it
+  // from the stored correction row. M7: also verify the ORIGINAL correction
+  // actually COMPLETED — a DRAFT original moved no stock, so reversing it would
+  // post a phantom inverse transfer. Refuse both cases rather than move stock.
+  if (correctionId) {
+    let row;
+    try {
+      const rows = await sbGet('pick_anomaly_corrections', `select=product_id,transfer_status&id=eq.${correctionId}&limit=1`);
+      row = rows[0];
+    } catch (e) {
+      // Fail CLOSED: if we cannot verify the original's status, do not move stock.
+      throw new Error(`Reversal blocked: could not verify correction ${correctionId} status (${e.message}).`);
+    }
+    if (row) {
+      if (!productId && row.product_id) productId = row.product_id;
+      if (row.transfer_status && row.transfer_status !== 'COMPLETED') {
+        throw new Error(`Reversal blocked: original correction ${correctionId} is ${row.transfer_status} (not COMPLETED) — it moved no stock, nothing to reverse.`);
+      }
+    }
+  }
+  if (!productId) {
+    throw new Error(`Reversal blocked: no ProductID for SKU ${sku} (correction ${correctionId}). A transfer line with no product cannot move stock.`);
+  }
   const bins = await getBinCache();
   const fromBinId = bins.get(toBin);   // Original "to" becomes "from"
   const toBinId = bins.get(fromBin);   // Original "from" becomes "to"
@@ -1274,18 +1363,23 @@ async function reverseCorrection({ correctionId, productId, sku, qty, fromBin, t
     }
   }
 
-  // Mark the original correction as reversed
+  // Mark the original correction as reversed — but ONLY if the reversal transfer
+  // actually COMPLETED. A stuck DRAFT means book stock was NOT moved back; marking
+  // is_reversed=true there would falsely "resolve" the conflict and lock out a retry. (M6)
   if (correctionId) {
     try {
-      await sbPatch('pick_anomaly_corrections', `id=eq.${correctionId}`, {
-        is_reversed: true,
-        reversed_at: now.toISOString(),
+      const patch = {
         reversal_transfer_id: transferId ? String(transferId) : null,
         reversal_transfer_ref: transferRef,
-      });
+      };
+      if (transferStatus === 'COMPLETED') { patch.is_reversed = true; patch.reversed_at = now.toISOString(); }
+      await sbPatch('pick_anomaly_corrections', `id=eq.${correctionId}`, patch);
     } catch (err) {
       console.warn(`⚠️ Failed to mark correction as reversed:`, err.message);
     }
+  }
+  if (transferStatus !== 'COMPLETED') {
+    console.warn(`⚠️ Reversal transfer ${transferId} stuck DRAFT — correction NOT marked reversed (retry needed).`);
   }
 
   await logAction({
@@ -1404,11 +1498,21 @@ function registerPickAnomalyRoutes(app) {
    */
   app.post('/api/pick-anomalies/create-transfer', async (req, res) => {
     try {
-      const { productId, sku, qty, expectedBin, pickedBin, fromBin, toBin, orderNumber, pickId } = req.body;
+      const { productId, sku, qty, expectedBin, pickedBin, fromBin, toBin, orderNumber, pickId, anomalyConfidence, isOverflow, force } = req.body;
       const from = expectedBin || fromBin;
       const to = pickedBin || toBin;
       if (!sku || !qty || !from || !to) {
         return res.status(400).json({ success: false, error: 'Missing required fields' });
+      }
+      // M4: only an OVERFLOW pick (the picked bin legitimately held stock) risks a
+      // double-move from an expected→picked correction. NOT every 'suspect'
+      // (pallet/column/dock). Block overflow + unknown-confidence; let confirmed
+      // structural and non-overflow suspects through.
+      if ((isOverflow || anomalyConfidence == null) && !force) {
+        return res.status(409).json({
+          success: false, requiresConfirmation: true,
+          error: `"${sku}" is an OVERFLOW pick — the bin already held this stock, so a correction may double-move it. Confirm to proceed (force).`,
+        });
       }
       const result = await createCorrectionTransfer({
         productId, sku, qty,
@@ -1427,13 +1531,19 @@ function registerPickAnomalyRoutes(app) {
    */
   app.post('/api/pick-anomalies/batch-transfer', async (req, res) => {
     try {
-      const { transfers, items } = req.body;
+      const { transfers, items, force } = req.body;
       const list = transfers || items;
       if (!Array.isArray(list) || !list.length) {
         return res.status(400).json({ success: false, error: 'transfers/items array required' });
       }
       const results = [];
       for (const t of list) {
+        // M4 backstop: only block real OVERFLOW picks (+ unknown confidence) — they
+        // risk a double-move. Confirmed structural / non-overflow suspects pass.
+        if ((t.isOverflow || t.anomalyConfidence == null) && !force) {
+          results.push({ sku: t.sku, pickId: t.pickId, success: false, requiresConfirmation: true, error: 'Overflow pick — correction may double-move stock; confirm to force.' });
+          continue;
+        }
         try {
           const result = await createCorrectionTransfer(t);
           results.push({ sku: t.sku, pickId: t.pickId, success: true, transfer: result });
@@ -1506,6 +1616,40 @@ function registerPickAnomalyRoutes(app) {
     }
   });
 
+  /**
+   * GET /api/pick-anomalies/movements
+   * The "Movements" audit tab: every NON-pick stock movement (transfers incl.
+   * to other warehouses, bin moves, adjustments, purchase receipts) from
+   * cin7_mirror.movement_log — kept separate from the quick-action sales/assembly
+   * view. Zero Cin7 calls (Supabase only). Filters: type, days, q (sku/ref).
+   */
+  app.get('/api/pick-anomalies/movements', async (req, res) => {
+    try {
+      const category = req.query.category || 'other';
+      const type = req.query.type;
+      const days = parseInt(req.query.days || '30', 10);
+      const q = (req.query.q || '').trim();
+      const limit = Math.min(parseInt(req.query.limit || '300', 10) || 300, 1000);
+
+      let qs = `select=*&category=eq.${encodeURIComponent(category)}&order=detected_at.desc&limit=${limit}`;
+      if (type && type !== 'all') qs += `&movement_type=eq.${encodeURIComponent(type)}`;
+      if (days > 0) qs += `&detected_at=gte.${encodeURIComponent(new Date(Date.now() - days * 86400000).toISOString())}`;
+      if (q) qs += `&or=(sku.ilike.*${encodeURIComponent(q)}*,reference_number.ilike.*${encodeURIComponent(q)}*,product_name.ilike.*${encodeURIComponent(q)}*)`;
+
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/movement_log?${qs}`, {
+        headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`, 'Accept-Profile': 'cin7_mirror' },
+      });
+      if (!r.ok) throw new Error(`movement_log ${r.status}`);
+      const rows = await r.json();
+      const byType = {};
+      for (const m of rows) byType[m.type_label] = (byType[m.type_label] || 0) + 1;
+      res.json({ success: true, movements: rows, total: rows.length, byType });
+    } catch (err) {
+      console.error('❌ Movements error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   console.log('✅ Pick anomaly routes registered (incl. cancellation detection)');
 
   /**
@@ -1517,7 +1661,7 @@ function registerPickAnomalyRoutes(app) {
     try {
       // sbGetAll paginates automatically (Supabase default limit = 1000 rows)
       const allOrders = await sbGetAll('pick_anomaly_orders',
-        'select=order_number,order_date,total_picks,correct_picks,anomaly_picks,fg_count,reviewed,picks,fg_orders'
+        'select=order_number,order_date,total_picks,correct_picks,anomaly_picks,fg_anomaly_picks,fg_count,reviewed,picks,fg_orders'
       );
 
       // ── Weekly trend ──
@@ -1537,7 +1681,7 @@ function registerPickAnomalyRoutes(app) {
 
       for (const o of allOrders) {
         totalPicks += o.total_picks || 0;
-        totalAnomalies += o.anomaly_picks || 0;
+        totalAnomalies += (o.anomaly_picks || 0) + (o.fg_anomaly_picks || 0);
         totalCorrect += o.correct_picks || 0;
 
         // Week bucket (ISO week)
@@ -1618,6 +1762,208 @@ function registerPickAnomalyRoutes(app) {
   });
 
   /**
+   * GET /api/pick-anomalies/analytics-v2
+   * Filter-aware analytics for the redesigned dashboard tab.
+   * Query params:
+   *   from, to       — YYYY-MM-DD (inclusive). Floored to SCANNER_CUTOFF_DATE.
+   *   granularity    — day | week | month (default: auto from range width)
+   *   onlyFixed      — '1' to restrict to orders that received a correction
+   * Returns time-series (chosen granularity), error breakdowns, repeat offenders,
+   * a full Corrections/Fixes section (who/when/from→to/qty/status/reversed),
+   * review funnel + SLA, by-customer, and cancellation-conflict metrics.
+   * Zero Cin7 API calls — Supabase only. Leaves /analytics (v1) untouched.
+   */
+  app.get('/api/pick-anomalies/analytics-v2', async (req, res) => {
+    try {
+      // ── Resolve date window (hard floor at scanner cutoff) ──
+      const floor = SCANNER_CUTOFF_DATE;
+      let from = (req.query.from || '').slice(0, 10) || floor;
+      if (from < floor) from = floor;
+      const today = new Date().toISOString().slice(0, 10);
+      let to = (req.query.to || '').slice(0, 10) || today;
+      const onlyFixed = ['1', 'true', 'yes'].includes(String(req.query.onlyFixed || '').toLowerCase());
+
+      // Auto granularity if not supplied
+      const spanDays = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000));
+      let granularity = String(req.query.granularity || '').toLowerCase();
+      if (!['day', 'week', 'month'].includes(granularity)) {
+        granularity = spanDays <= 31 ? 'day' : spanDays <= 120 ? 'week' : 'month';
+      }
+
+      const bucketKey = (dateStr) => {
+        if (!dateStr) return 'unknown';
+        const d = new Date(dateStr.slice(0, 10) + 'T00:00:00');
+        if (granularity === 'day') return dateStr.slice(0, 10);
+        if (granularity === 'month') return dateStr.slice(0, 7);
+        // ISO-ish week bucket
+        const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000);
+        const weekNum = Math.ceil((dayOfYear + 1) / 7);
+        return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+      };
+
+      // ── Fetch orders (date-filtered) and corrections (date-filtered) in parallel ──
+      const orderQ =
+        `select=order_number,order_date,customer,total_picks,correct_picks,anomaly_picks,fg_anomaly_picks,fg_count,` +
+        `reviewed,reviewed_at,analyzed_at,is_cancelled,has_correction_conflict,picks,fg_orders` +
+        `&order_date=gte.${from}&order_date=lte.${to}`;
+      const corrQ =
+        `select=order_number,sku,from_bin,to_bin,qty,transfer_ref,transfer_status,corrected_at,` +
+        `is_reversed,reversed_at,reversal_transfer_ref` +
+        `&corrected_at=gte.${from}T00:00:00&corrected_at=lte.${to}T23:59:59` +
+        `&order=corrected_at.desc`;
+
+      const [allOrdersRaw, allCorrections] = await Promise.all([
+        sbGetAll('pick_anomaly_orders', orderQ),
+        sbGetAll('pick_anomaly_corrections', corrQ),
+      ]);
+
+      // Set of order_numbers that received a correction (for onlyFixed + fix-rate)
+      const fixedOrderSet = new Set(allCorrections.map(c => c.order_number));
+      const allOrders = onlyFixed
+        ? allOrdersRaw.filter(o => fixedOrderSet.has(o.order_number))
+        : allOrdersRaw;
+
+      // ── Aggregators ──
+      const tsMap = {};            // bucket → {orders,picks,anomalies,correct}
+      const etypeTrendMap = {};    // bucket → {errorType: count}
+      const errorTypes = {};
+      const skuCounts = {};
+      const binCounts = {};
+      const routeMap = {};
+      const sectionAnomalies = {};
+      const customerAnoms = {};    // customer → anomaly count
+
+      let totalPicks = 0, totalAnomalies = 0, totalCorrect = 0;
+      let anomalyOrders = 0, anomalyOrdersReviewed = 0, fixedAnomalyOrders = 0;
+      let cancelledCount = 0, conflictCount = 0;
+      let reviewLagSum = 0, reviewLagN = 0;
+
+      const addType = (et, bucket) => {
+        errorTypes[et] = (errorTypes[et] || 0) + 1;
+        if (!etypeTrendMap[bucket]) etypeTrendMap[bucket] = {};
+        etypeTrendMap[bucket][et] = (etypeTrendMap[bucket][et] || 0) + 1;
+      };
+
+      for (const o of allOrders) {
+        totalPicks += o.total_picks || 0;
+        totalAnomalies += (o.anomaly_picks || 0) + (o.fg_anomaly_picks || 0);
+        totalCorrect += o.correct_picks || 0;
+        if ((o.anomaly_picks || 0) > 0 || (o.fg_anomaly_picks || 0) > 0) {
+          anomalyOrders++;
+          if (o.reviewed) anomalyOrdersReviewed++;
+          if (fixedOrderSet.has(o.order_number)) fixedAnomalyOrders++;
+          if (o.customer) customerAnoms[o.customer] = (customerAnoms[o.customer] || 0) + (o.anomaly_picks || 0);
+        }
+        if (o.is_cancelled) cancelledCount++;
+        if (o.has_correction_conflict) conflictCount++;
+
+        // Review SLA: order_date → reviewed_at (days)
+        if (o.reviewed_at && o.order_date) {
+          const lag = (new Date(o.reviewed_at) - new Date(o.order_date + 'T00:00:00')) / 86400000;
+          if (lag >= 0 && lag < 365) { reviewLagSum += lag; reviewLagN++; }
+        }
+
+        const bucket = bucketKey(o.order_date);
+        if (!tsMap[bucket]) tsMap[bucket] = { bucket, orders: 0, picks: 0, anomalies: 0, correct: 0 };
+        tsMap[bucket].orders++;
+        tsMap[bucket].picks += o.total_picks || 0;
+        tsMap[bucket].anomalies += o.anomaly_picks || 0;
+        tsMap[bucket].correct += o.correct_picks || 0;
+
+        for (const p of (o.picks || [])) {
+          if (p.status !== 'anomaly') continue;
+          addType(p.errorType || 'unknown', bucket);
+          if (p.sku) skuCounts[p.sku] = (skuCounts[p.sku] || 0) + 1;
+          if (p.bin) binCounts[p.bin] = (binCounts[p.bin] || 0) + 1;
+          if (p.expectedBin && p.bin) {
+            const k = `${p.expectedBin}→${p.bin}`;
+            if (!routeMap[k]) routeMap[k] = { from: p.expectedBin, to: p.bin, count: 0, skus: [] };
+            routeMap[k].count++;
+            if (!routeMap[k].skus.includes(p.sku)) routeMap[k].skus.push(p.sku);
+          }
+          if (p.bin) {
+            const m = p.bin.match(/^MA-([A-Z])/i);
+            if (m) { const a = m[1].toUpperCase(); sectionAnomalies[a] = (sectionAnomalies[a] || 0) + 1; }
+          }
+        }
+        for (const fg of (o.fg_orders || [])) {
+          for (const c of (fg.components || [])) {
+            if (c.status !== 'anomaly') continue;
+            addType(c.errorType || 'unknown', bucket);
+            if (c.sku) skuCounts[c.sku] = (skuCounts[c.sku] || 0) + 1;
+            if (c.bin) binCounts[c.bin] = (binCounts[c.bin] || 0) + 1;
+          }
+        }
+      }
+
+      // ── Corrections summary (the "what/how we adjusted" story) ──
+      const fixesReversed = allCorrections.filter(c => c.is_reversed).length;
+      const fixesApplied = allCorrections.length;
+      const fixesNet = fixesApplied - fixesReversed;
+      // Fix rate = anomaly orders (in view) that received a correction / anomaly orders.
+      // Bounded to ≤100% by construction (fixedAnomalyOrders ⊆ anomalyOrders).
+      const fixRate = anomalyOrders > 0 ? (fixedAnomalyOrders / anomalyOrders) * 100 : 0;
+
+      // Corrections time-series (applied vs reversed per bucket)
+      const corrTsMap = {};
+      for (const c of allCorrections) {
+        const b = bucketKey((c.corrected_at || '').slice(0, 10));
+        if (!corrTsMap[b]) corrTsMap[b] = { bucket: b, applied: 0, reversed: 0 };
+        corrTsMap[b].applied++;
+        if (c.is_reversed) corrTsMap[b].reversed++;
+      }
+
+      // Recent corrections list for the table (cap 300 rows; full count in summary)
+      const correctionsList = allCorrections.slice(0, 300).map(c => ({
+        order_number: c.order_number, sku: c.sku, from: c.from_bin, to: c.to_bin,
+        qty: c.qty, ref: c.transfer_ref, status: c.transfer_status,
+        corrected_at: c.corrected_at, is_reversed: !!c.is_reversed, reversed_at: c.reversed_at,
+      }));
+
+      // ── Build sorted outputs ──
+      const sortBucket = (a, b) => a.bucket.localeCompare(b.bucket);
+      const timeSeries = Object.values(tsMap).sort(sortBucket).map(t => ({
+        ...t, rate: t.picks > 0 ? Math.round((t.anomalies / t.picks) * 1000) / 10 : 0,
+      }));
+      const allEtypes = Object.keys(errorTypes);
+      const errorTypeTrend = Object.keys(etypeTrendMap).sort().map(b => ({
+        bucket: b, ...Object.fromEntries(allEtypes.map(t => [t, etypeTrendMap[b][t] || 0])),
+      }));
+      const correctionsTrend = Object.values(corrTsMap).sort(sortBucket);
+      const anomalyRate = totalPicks > 0 ? Math.round((totalAnomalies / totalPicks) * 1000) / 10 : 0;
+
+      res.json({
+        success: true,
+        meta: { from, to, granularity, onlyFixed, spanDays },
+        analytics: {
+          summary: {
+            totalOrders: allOrders.length, totalPicks, totalAnomalies, totalCorrect, anomalyRate,
+            anomalyOrders, anomalyOrdersReviewed,
+            reviewRate: anomalyOrders > 0 ? Math.round((anomalyOrdersReviewed / anomalyOrders) * 1000) / 10 : 0,
+            fixedOrders: fixedAnomalyOrders, fixesApplied, fixesReversed, fixesNet,
+            fixRate: Math.round(fixRate * 10) / 10,
+            cancelledCount, conflictCount,
+            avgReviewLagDays: reviewLagN > 0 ? Math.round((reviewLagSum / reviewLagN) * 10) / 10 : null,
+          },
+          timeSeries,
+          errorTypes: Object.entries(errorTypes).sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
+          errorTypeTrend, errorTypeKeys: allEtypes,
+          topSkus: Object.entries(skuCounts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([sku, count]) => ({ sku, count })),
+          topBins: Object.entries(binCounts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([bin, count]) => ({ bin, count })),
+          repeatRoutes: Object.values(routeMap).filter(r => r.count >= 2).sort((a, b) => b.count - a.count).slice(0, 15),
+          sectionHeatmap: Object.entries(sectionAnomalies).sort((a, b) => b[1] - a[1]).map(([section, count]) => ({ section, count })),
+          byCustomer: Object.entries(customerAnoms).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([customer, count]) => ({ customer, count })),
+          corrections: { trend: correctionsTrend, list: correctionsList },
+          reviewFunnel: { anomalyOrders, reviewed: anomalyOrdersReviewed, fixed: fixedAnomalyOrders, reversed: fixesReversed },
+        },
+      });
+    } catch (err) {
+      console.error('Analytics-v2 error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
    * GET /api/pick-anomalies/stats
    * Aggregated KPI stats across ALL orders (not paginated).
    * Zero Cin7 API calls — Supabase only.
@@ -1628,7 +1974,7 @@ function registerPickAnomalyRoutes(app) {
       // sbGetAll paginates automatically (Supabase default limit = 1000 rows)
       const [allOrders, allCorrections] = await Promise.all([
         sbGetAll('pick_anomaly_orders',
-          'select=total_picks,correct_picks,anomaly_picks,fg_count,reviewed'
+          'select=total_picks,correct_picks,anomaly_picks,fg_anomaly_picks,fg_count,reviewed,is_cancelled'
         ),
         sbGetAll('pick_anomaly_corrections', 'select=id'),
       ]);
@@ -1637,14 +1983,15 @@ function registerPickAnomalyRoutes(app) {
       let anomalyOrders = 0; // Orders that have anomalies (for reviewed KPI)
       let anomalyOrdersReviewed = 0; // Anomaly orders that have been reviewed
       for (const o of allOrders) {
+        if (o.is_cancelled) continue; // cancelled orders don't count toward KPIs
         totalOrders++;
         totalPicks    += o.total_picks    || 0;
         totalCorrect  += o.correct_picks  || 0;
-        totalAnomalies += o.anomaly_picks || 0;
+        totalAnomalies += (o.anomaly_picks || 0) + (o.fg_anomaly_picks || 0); // M5: include FG anomalies
         totalFg       += o.fg_count       || 0;
         if (o.reviewed) totalReviewed++;
         // Reviewed KPI: only count orders WITH anomalies
-        if ((o.anomaly_picks || 0) > 0) {
+        if ((o.anomaly_picks || 0) > 0 || (o.fg_anomaly_picks || 0) > 0) {
           anomalyOrders++;
           if (o.reviewed) anomalyOrdersReviewed++;
         }
@@ -1917,7 +2264,7 @@ function registerPickAnomalyRoutes(app) {
       const { orderNumbers } = req.body || {};
 
       // Fetch orders to refresh
-      let query = 'select=order_number,picks,fg_orders,total_picks,correct_picks,anomaly_picks,fg_count';
+      let query = 'select=order_number,picks,fg_orders,total_picks,correct_picks,anomaly_picks,fg_count,fulfilled_date';
       if (orderNumbers && orderNumbers.length) {
         const nums = orderNumbers.map(n => `"${n}"`).join(',');
         query += `&order_number=in.(${encodeURIComponent(nums)})`;
@@ -2074,17 +2421,25 @@ function registerPickAnomalyRoutes(app) {
           const picks = typeof order.picks === 'string' ? JSON.parse(order.picks) : (order.picks || []);
           const fgOrders = typeof order.fg_orders === 'string' ? JSON.parse(order.fg_orders) : (order.fg_orders || []);
           let needsSave = false;
+          // H2: for a backfilled/dateless order today's stock is unrelated to the
+          // pick — classify against an EMPTY map → structural verdict, no false
+          // overflow (same staleness rule as addAnomalyConfidence).
+          const _ageDays = order.fulfilled_date ? (Date.now() - new Date(order.fulfilled_date).getTime()) / 86400000 : 999;
+          const oStockMap = _ageDays > 3 ? new Map() : stockMap;
 
+          // ONLY classify anomalies that have no verdict yet — NEVER overwrite a
+          // verdict recorded at analyze-time (re-judging an old pick against today's
+          // snapshot produces false suspect/confirmed).
           for (const p of picks) {
             if (p.status === 'anomaly') {
-              const { confidence, note } = classifyAnomalyConfidence(p, stockMap);
-              if (p.anomalyConfidence !== confidence || p.anomalyNote !== note) {
+              if (!p.anomalyConfidence) {
+                const { confidence, note } = classifyAnomalyConfidence(p, oStockMap);
                 p.anomalyConfidence = confidence;
                 p.anomalyNote = note;
                 needsSave = true;
               }
               classifiedCount++;
-              if (confidence === 'suspect') suspectCount++;
+              if (p.anomalyConfidence === 'suspect') suspectCount++;
               else confirmedCount++;
             } else {
               if (p.anomalyConfidence) { delete p.anomalyConfidence; delete p.anomalyNote; needsSave = true; }
@@ -2093,14 +2448,14 @@ function registerPickAnomalyRoutes(app) {
           for (const fg of fgOrders) {
             for (const c of (fg.components || [])) {
               if (c.status === 'anomaly') {
-                const { confidence, note } = classifyAnomalyConfidence(c, stockMap);
-                if (c.anomalyConfidence !== confidence || c.anomalyNote !== note) {
+                if (!c.anomalyConfidence) {
+                  const { confidence, note } = classifyAnomalyConfidence(c, oStockMap);
                   c.anomalyConfidence = confidence;
                   c.anomalyNote = note;
                   needsSave = true;
                 }
                 classifiedCount++;
-                if (confidence === 'suspect') suspectCount++;
+                if (c.anomalyConfidence === 'suspect') suspectCount++;
                 else confirmedCount++;
               } else {
                 if (c.anomalyConfidence) { delete c.anomalyConfidence; delete c.anomalyNote; needsSave = true; }
@@ -2146,4 +2501,244 @@ function registerPickAnomalyRoutes(app) {
   });
 }
 
-module.exports = { registerPickAnomalyRoutes, syncNewOrders, loadHistory, createCorrectionTransfer, markOrderReviewed, getOrderLogs, logAction };
+// ═══════════════════════════════════════════════════════════════════
+// REAL-TIME (webhook) path — analyze ONE shipped order.
+// Reuses the SAME helpers/logic as the 2h batch sync, but for a single
+// order and WITHOUT the OrderDate floor — so an OLD order shipped today
+// (which the date-based batch sync misses) IS analyzed. Same gates as the
+// batch (ShipmentDate ≥ SCANNER_CUTOFF, ≤ 45 days) and the SAME dedup
+// (sbInsertIfNew/ignore-duplicates) so it's safe to run alongside the batch:
+// whichever path sees the order first wins; the other is a no-op.
+// The 2h batch (_analyzeAndSave) is left completely untouched as the backstop.
+// ═══════════════════════════════════════════════════════════════════
+async function analyzeOrderRealtime(saleId, orderNumber, preFetchedDetail = null, source = 'webhook') {
+  let saleDetail = preFetchedDetail;
+  if (!saleDetail) {
+    try {
+      saleDetail = await cin7Get(`sale?ID=${saleId}`);
+    } catch (err) {
+      return { ok: false, skipped: 'fetch_failed', error: err.message };
+    }
+  }
+
+  const ordNum = orderNumber || saleDetail.OrderNumber;
+  const ordId = saleId || saleDetail.ID;
+  const orderDate = saleDetail.SaleOrderDate || saleDetail.OrderDate || null;
+  const customer = saleDetail.Customer || null;
+
+  // ── Extract picks (Fulfilments → Pick → Lines) ──
+  const picks = [];
+  const noBinSkus = [];
+  let pickIdx = 0;
+  for (const ful of (saleDetail.Fulfilments || saleDetail.Fulfillments || [])) {
+    let lines = [];
+    if (ful.Pick && ful.Pick.Lines) lines = ful.Pick.Lines;
+    else if (Array.isArray(ful.Pick)) lines = ful.Pick;
+    else if (Array.isArray(ful.Lines)) lines = ful.Lines;
+    for (const line of lines) {
+      if (!line || !line.SKU) continue;
+      const bin = extractBin(line.Location);
+      picks.push({
+        id: `${ordNum}-${pickIdx++}`,
+        sku: line.SKU || line.ProductCode, productId: line.ProductID,
+        name: line.Name || line.ProductName, qty: line.Quantity,
+        location: line.Location, locationId: line.LocationID, bin, hasBin: !!bin,
+      });
+      if (!bin) noBinSkus.push(line.SKU || line.ProductCode);
+    }
+  }
+  if (!picks.length) return { ok: false, skipped: 'no_picks' };
+
+  const rawOrderStatus = saleDetail.FulFilmentStatus || saleDetail.OrderStatus || saleDetail.Status || 'Unknown';
+
+  // ── Classify each pick vs its pickface (identical to batch) ──
+  const allSkus = [...new Set(picks.map(p => p.sku))];
+  const locators = await fetchLocators(allSkus);
+  for (const pick of picks) {
+    const info = locators.get(pick.sku);
+    const expected = info?.locator || null;
+    if (!pick.hasBin) {
+      if (expected === 'BOM' || expected === 'Production') { pick.status = 'no_bin_assembly'; pick.reason = expected.toLowerCase(); }
+      else if (expected && expected.startsWith('MA-')) { pick.status = 'no_bin_suspect'; pick.expectedBin = expected; }
+      else { pick.status = 'no_bin_ok'; }
+    } else if (!expected || expected === '0' || expected === 'BOM' || expected === 'Production' || !expected.startsWith('MA-')) {
+      pick.status = 'correct'; pick.expectedBin = expected;
+    } else if (pick.bin === expected) {
+      pick.status = 'correct'; pick.expectedBin = expected;
+    } else {
+      pick.status = 'anomaly'; pick.expectedBin = expected; pick.errorType = classifyError(pick.bin, expected);
+    }
+  }
+
+  // ── Finished-goods (assembly) search, only if needed (identical to batch) ──
+  const fgOrders = [];
+  const hasAssemblyPicks = noBinSkus.length > 0 || picks.some(p => p.status === 'no_bin_assembly');
+  if (hasAssemblyPicks) {
+    try {
+      const fgSearch = await cin7Get(`finishedGoodsList?Search=${ordNum}&Limit=20`);
+      const fgList = (fgSearch.FinishedGoodsList || fgSearch.FinishedGoods || []);
+      for (const fg of fgList) {
+        if (fg.Status === 'VOIDED') continue;
+        if (fg.Notes && !fg.Notes.includes(ordNum)) continue;
+        let fgDetail;
+        try { fgDetail = await cin7Get(`finishedGoods?TaskID=${fg.TaskID}`); }
+        catch (err) { continue; }
+        const compSkus = (fgDetail.PickLines || []).map(pl => pl.ProductCode).filter(Boolean);
+        const compLocators = await fetchLocators([...new Set(compSkus)]);
+        const components = (fgDetail.PickLines || []).map(pl => {
+          const compInfo = compLocators.get(pl.ProductCode);
+          const compExpected = compInfo?.locator || null;
+          const compBin = normBin(pl.Bin) || null;
+          const isCorrect = !compBin || !compExpected || !compExpected.startsWith('MA-') || compBin === compExpected;
+          return { sku: pl.ProductCode, productId: pl.ProductID, qty: pl.Quantity, cost: pl.Cost, bin: compBin, binId: pl.BinID, expectedBin: compExpected, status: isCorrect ? 'correct' : 'anomaly', errorType: isCorrect ? null : classifyError(compBin, compExpected) };
+        });
+        let createdBy = null;
+        if (fgDetail.Notes) { const m = fgDetail.Notes.match(/by\s+(\S+@\S+)/i); if (m) createdBy = m[1]; }
+        fgOrders.push({ taskId: fg.TaskID, assemblyNumber: fgDetail.AssemblyNumber || fg.AssemblyNumber, productCode: fgDetail.ProductCode || fg.ProductCode, status: fgDetail.Status || fg.Status, completionDate: fgDetail.CompletionDate, quantity: fgDetail.Quantity, createdBy, components });
+      }
+    } catch (err) { /* FG search best-effort */ }
+  }
+
+  const filteredPicks = picks.filter(p => p.status === 'correct' || p.status === 'anomaly');
+  if (!filteredPicks.length) return { ok: false, skipped: 'no_picks' };
+  const correctCount = filteredPicks.filter(p => p.status === 'correct').length;
+  const anomalyCount = filteredPicks.filter(p => p.status === 'anomaly').length;
+
+  // ── Real dates + the SAME hard ship-date gates as the batch ──
+  let shipmentDate = null, invoiceDate = null;
+  for (const ful of (saleDetail.Fulfilments || saleDetail.Fulfillments || [])) {
+    if (ful.Ship && ful.Ship.Lines && ful.Ship.Lines[0] && ful.Ship.Lines[0].ShipmentDate) { shipmentDate = ful.Ship.Lines[0].ShipmentDate; break; }
+  }
+  if (saleDetail.Invoices && saleDetail.Invoices[0] && saleDetail.Invoices[0].InvoiceDate) invoiceDate = saleDetail.Invoices[0].InvoiceDate;
+  const fulfilledDate = shipmentDate || invoiceDate || null;
+  const fulfilledDateStr = fulfilledDate ? fulfilledDate.split('T')[0] : null;
+  if (fulfilledDateStr && fulfilledDateStr < SCANNER_CUTOFF_DATE) return { ok: false, skipped: 'pre_cutoff' };
+  const maxAge = new Date(); maxAge.setDate(maxAge.getDate() - 45);
+  if (fulfilledDateStr && fulfilledDateStr < maxAge.toISOString().split('T')[0]) return { ok: false, skipped: 'stale_ship' };
+
+  // Classify confidence now that the ship date is known (H2: when analysed long
+  // after the pick, skip the live-stock overflow heuristic → structural verdict).
+  await addAnomalyConfidence(filteredPicks, fgOrders, fulfilledDate);
+
+  const orderResult = {
+    sale_id: ordId, order_number: ordNum,
+    order_date: orderDate ? orderDate.split('T')[0] : null,
+    fulfilled_date: fulfilledDateStr,
+    invoice_date: invoiceDate ? invoiceDate.split('T')[0] : null,
+    customer, order_status: rawOrderStatus,
+    total_picks: filteredPicks.length, correct_picks: correctCount, anomaly_picks: anomalyCount,
+    fg_count: fgOrders.length,
+    fg_anomaly_picks: fgOrders.reduce((s, fg) => s + (fg.components || []).filter(c => c.status === 'anomaly').length, 0),
+    picks: filteredPicks, fg_orders: fgOrders,
+    analyzed_at: new Date().toISOString(),
+  };
+
+  // INSERT-if-new (ignore-duplicates) → never overwrites a batch-analyzed order.
+  const inserted = await sbInsertIfNew('pick_anomaly_orders', orderResult, 'order_number');
+  await logAction({
+    order_number: ordNum, action: 'synced',
+    details: `[realtime] ${correctCount} correct, ${anomalyCount} anomalies, ${fgOrders.length} FG`,
+    user_email: source === 'webhook' ? 'system@webhook' : 'system@auto-sync',
+  });
+  return { ok: true, anomalies: anomalyCount, correct: correctCount, orderNumber: ordNum };
+}
+
+// Analyze a STANDALONE assembly (finished-goods build not tied to a sale) for
+// pick anomalies, exactly like a sales order: its PickLines are component picks
+// from bins → compare each to the component's pickface, classify, store as a
+// pick_anomaly_order with entity_type='assembly'. Reuses the same locators /
+// classifyError / confidence logic so assemblies are verified, corrected and
+// counted in the SAME flow. Reuses a pre-fetched detail (no extra Cin7 call).
+async function analyzeAssemblyRealtime(fgTaskId, fgDetail = null, source = 'assembly-sync') {
+  let det = fgDetail;
+  if (!det) {
+    try { det = await cin7Get(`finishedGoods?TaskID=${fgTaskId}`); }
+    catch (err) { return { ok: false, skipped: 'fetch_failed', error: err.message }; }
+  }
+  if ((det.Status || '').toUpperCase() !== 'COMPLETED') return { ok: false, skipped: 'not_completed' };
+  // M10: skip SO-linked builds (auto-assembly on a sale) — the sale's fg_orders
+  // already analyses them; storing standalone too double-counts + enables a
+  // duplicate correction. Deterministic check: is this build's TaskID already
+  // embedded in some sale's fg_orders? (free-text Notes was unreliable both ways.)
+  try {
+    const linked = await sbGet('pick_anomaly_orders',
+      `select=order_number&fg_orders=cs.${encodeURIComponent(JSON.stringify([{ taskId: det.TaskID }]))}&limit=1`);
+    if (linked.length) return { ok: false, skipped: 'so_linked', linkedTo: linked[0].order_number };
+  } catch (e) { /* best-effort dedup; fall through */ }
+  const asmNum = det.AssemblyNumber || `FG-${fgTaskId}`;
+  const pickLines = det.PickLines || [];
+  if (!pickLines.length) return { ok: false, skipped: 'no_picks' };
+
+  const compSkus = [...new Set(pickLines.map(pl => pl.ProductCode).filter(Boolean))];
+  const locators = await fetchLocators(compSkus);
+  let idx = 0;
+  const picks = pickLines.filter(pl => pl.ProductCode).map(pl => {
+    const info = locators.get(pl.ProductCode);
+    const expected = info?.locator || null;
+    const bin = normBin(pl.Bin) || null;
+    let status, errorType = null;
+    if (!bin) status = 'no_bin_ok'; // component issued without a bin (branch/BOM) — not flaggable
+    else if (!expected || expected === '0' || expected === 'BOM' || expected === 'Production' || !expected.startsWith('MA-')) status = 'correct';
+    else if (bin === expected) status = 'correct';
+    else { status = 'anomaly'; errorType = classifyError(bin, expected); }
+    return {
+      id: `${asmNum}-${idx++}`, sku: pl.ProductCode, productId: pl.ProductID,
+      name: pl.Name || pl.ProductName, qty: pl.Quantity, bin, hasBin: !!bin,
+      location: bin ? `${det.Location || 'Main Warehouse'}: ${bin}` : null,
+      expectedBin: expected, status, errorType,
+    };
+  });
+
+  const filtered = picks.filter(p => p.status === 'correct' || p.status === 'anomaly');
+  if (!filtered.length) return { ok: false, skipped: 'no_actionable_picks' };
+  const correct = filtered.filter(p => p.status === 'correct').length;
+  const anomaly = filtered.filter(p => p.status === 'anomaly').length;
+
+  const completion = det.CompletionDate ? det.CompletionDate.split('T')[0] : null;
+  if (completion && completion < SCANNER_CUTOFF_DATE) return { ok: false, skipped: 'pre_cutoff' };
+  await addAnomalyConfidence(filtered, [], completion);  // H2: stale build → structural verdict
+
+  const orderResult = {
+    sale_id: det.TaskID, order_number: asmNum, entity_type: 'assembly',
+    order_date: completion, fulfilled_date: completion, invoice_date: null,
+    customer: det.ProductName ? `🔧 Build: ${det.ProductName}` : 'Assembly build',
+    order_status: det.Status,
+    total_picks: filtered.length, correct_picks: correct, anomaly_picks: anomaly,
+    fg_count: 0, picks: filtered, fg_orders: [],
+    analyzed_at: new Date().toISOString(),
+  };
+  await sbInsertIfNew('pick_anomaly_orders', orderResult, 'order_number');
+  await logAction({
+    order_number: asmNum, action: 'synced',
+    details: `[assembly] ${det.ProductCode} ×${det.Quantity}: ${correct} correct, ${anomaly} anomalies`,
+    user_email: source === 'webhook' ? 'system@webhook' : 'system@assembly-sync',
+  });
+  return { ok: true, anomalies: anomaly, correct, orderNumber: asmNum };
+}
+
+// Mark an order cancelled in real time (Sale/Voided or Sale/Undo webhook).
+// Mirrors the batch cancellation logic for a single order — no Cin7 call.
+async function markOrderCancelledRealtime(orderNumber, status = 'VOIDED') {
+  const matched = await sbGet('pick_anomaly_orders', `select=order_number,is_cancelled&order_number=eq.${orderNumber}&limit=1`);
+  if (!matched.length) return { ok: false, skipped: 'not_in_history' };
+  if (matched[0].is_cancelled) return { ok: true, alreadyCancelled: true };
+  // M7: a conflict only exists if a correction actually MOVED stock (COMPLETED)
+  // and hasn't already been reversed. A DRAFT/failed or already-reversed
+  // correction moved nothing → reversing it would create phantom stock.
+  const corrections = await sbGet('pick_anomaly_corrections', `select=id&order_number=eq.${orderNumber}&is_reversed=eq.false&transfer_status=eq.COMPLETED&limit=1`);
+  const hasConflict = corrections.length > 0;
+  await sbPatch('pick_anomaly_orders', `order_number=eq.${orderNumber}`, {
+    is_cancelled: true, cancelled_at: new Date().toISOString(),
+    order_status: String(status).toUpperCase(), has_correction_conflict: hasConflict,
+  });
+  await logAction({
+    order_number: orderNumber, action: 'cancellation_detected',
+    details: hasConflict
+      ? `[realtime] Order cancelled (${status}) AFTER a correction — stock transfer may need reversal.`
+      : `[realtime] Order cancelled (${status}). No corrections — no action needed.`,
+    user_email: 'system@webhook',
+  });
+  return { ok: true, hasConflict };
+}
+
+module.exports = { registerPickAnomalyRoutes, syncNewOrders, loadHistory, createCorrectionTransfer, markOrderReviewed, getOrderLogs, logAction, analyzeOrderRealtime, analyzeAssemblyRealtime, markOrderCancelledRealtime };

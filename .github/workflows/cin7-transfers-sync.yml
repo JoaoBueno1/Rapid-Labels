@@ -1,0 +1,36 @@
+# ============================================================
+# Cin7 Stock Transfers Sync — poll (every 2h at :45)
+# ============================================================
+# Cin7 has no transfer webhook, so we poll: captures OPEN transfers
+# (IN TRANSIT + DRAFT) + the most-recently-modified ones, upserting into
+# cin7_mirror.stock_transfers. Cheap (~4 list calls). Offset from other syncs.
+# ============================================================
+
+name: Cin7 Transfers Sync
+
+on:
+  schedule:
+    - cron: '45 */2 * * *'   # every 2 hours at :45 (offset from other jobs)
+  workflow_dispatch: {}
+
+jobs:
+  transfers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Sync stock transfers
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+        run: node cin7-stock-sync/sync-transfers.js

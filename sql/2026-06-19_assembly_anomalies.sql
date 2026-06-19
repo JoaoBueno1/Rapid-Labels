@@ -1,0 +1,14 @@
+-- ═══════════════════════════════════════════════════════════════════
+-- ASSEMBLY ANOMALIES — bring standalone assembly (finished-goods) builds into
+-- the Anomalies monitor alongside sales orders.
+-- Date: 2026-06-19
+--
+-- A standalone assembly's component PickLines are picks from bins → they get the
+-- SAME pickface anomaly check / review / correction / KPI counting as sales
+-- picks. Stored in pick_anomaly_orders with entity_type='assembly' (existing
+-- rows default to 'sale'). SO-linked assemblies were already analysed inside the
+-- sale; this adds the many standalone builds.
+--
+-- Idempotent — safe to paste into the Supabase SQL editor and re-run.
+-- ═══════════════════════════════════════════════════════════════════
+ALTER TABLE public.pick_anomaly_orders ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT 'sale';

@@ -1,0 +1,48 @@
+# ============================================================
+# Cin7 Movement Ledger Sync — assembly + transfer/adjustment/purchase
+# ============================================================
+# Captures every NON-sales stock movement into cin7_mirror.stock_movements so
+# the "Movements" audit tab + reconciliation see the full picture (sales ships
+# already arrive via the webhook). Two gentle, idempotent, throttled jobs:
+#   • assembly  — finishedGoodsList → component consume + FG produce
+#   • movements — stockTransfer (bin + to-warehouse) / adjustment / purchase
+# Recent window only (MOVE/ASSEMBLY_SINCE_DAYS); re-runs replace each task's
+# rows. Offset from the other syncs (:50).
+# ============================================================
+
+name: Cin7 Movements Sync
+
+on:
+  schedule:
+    - cron: '50 */6 * * *'   # every 6 hours at :50 (gentle on the shared cap)
+  workflow_dispatch: {}
+
+jobs:
+  movements:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --production
+      - name: Sync assembly (finished goods)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          ASSEMBLY_SINCE_DAYS: '1'
+          ASSEMBLY_THROTTLE_MS: '4500'
+        run: node cin7-stock-sync/sync-assembly.js
+      - name: Sync transfers / adjustments / purchases
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          MOVE_SINCE_DAYS: '1'
+          MOVE_THROTTLE_MS: '4500'
+        run: node cin7-stock-sync/sync-movements.js --type=all

@@ -1,0 +1,137 @@
+/* ════════════════════════════════════════════════════════════════════
+   pa-analytics.css — Redesigned Pick Anomalies Analytics tab (v2)
+   Design language standardised on the TMS management-reports look:
+   navy #1B2A3F uppercase letter-spaced headers, flat white cards,
+   accent orange #FF9100, Inter font, compact single-line KPI strip.
+   Scoped under .pav2-* so it can't collide with the production Orders view.
+   ════════════════════════════════════════════════════════════════════ */
+
+#paAnalytics { font-family: 'Inter', 'Segoe UI', sans-serif; }
+
+/* In Analytics mode, keep the legacy Orders KPI strip + table hidden even if an
+   async render (loadStats→updateKpis / loadHistory) tries to re-show them. */
+body.pa-mode-analytics #paKpis,
+body.pa-mode-analytics #paTableCard,
+body.pa-mode-analytics #paPagination,
+body.pa-mode-analytics #paFooter { display: none !important; }
+
+/* ── Toolbar ── */
+.pav2-toolbar {
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  padding: 10px 14px; margin: 14px 0;
+}
+.pav2-presets, .pav2-gran { display: inline-flex; gap: 4px; }
+.pav2-chip, .pav2-seg {
+  border: 1px solid #e5e7eb; background: #f8fafc; color: #475569;
+  font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  transition: all .15s;
+}
+.pav2-chip:hover, .pav2-seg:hover { background: #eef2f7; }
+.pav2-chip.active { background: #1B2A3F; color: #fff; border-color: #1B2A3F; }
+.pav2-seg.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.pav2-dates { display: inline-flex; gap: 10px; }
+.pav2-dates label, .pav2-toggle {
+  font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase;
+  letter-spacing: .3px; display: inline-flex; align-items: center; gap: 5px;
+}
+.pav2-dates input[type=date] {
+  border: 1px solid #e5e7eb; border-radius: 7px; padding: 5px 8px; font-size: 12px; color: #1B2A3F;
+}
+.pav2-toggle { text-transform: none; cursor: pointer; }
+.pav2-grow { flex: 1 1 auto; }
+.pav2-btn {
+  border: 1px solid #e5e7eb; background: #fff; color: #1B2A3F;
+  font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+}
+.pav2-btn:hover { background: #f8fafc; }
+.pav2-btn-accent { background: #FF9100; color: #fff; border-color: #FF9100; }
+.pav2-btn-accent:hover { background: #e67700; }
+.pav2-cards-menu {
+  position: absolute; top: 100%; right: 14px; margin-top: 6px; z-index: 30;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.12); display: grid; gap: 6px; min-width: 220px;
+}
+.pav2-cards-menu label { font-size: 12px; color: #334155; display: flex; gap: 7px; align-items: center; cursor: pointer; }
+
+.pav2-loading { text-align: center; padding: 36px; color: #64748b; font-weight: 600; }
+
+/* ── KPI strip (single line) ── */
+.pav2-kpis { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 16px; align-items: stretch; }
+.pav2-kpi {
+  flex: 1 1 120px; min-width: 110px; background: #fff; border: 1px solid #e5e7eb;
+  border-left: 4px solid #cbd5e1; border-radius: 10px; padding: 9px 12px;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.pav2-kpi-v { font-size: 20px; font-weight: 800; line-height: 1.1; }
+.pav2-kpi-l { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+.pav2-range-note { flex-basis: 100%; font-size: 11px; color: #94a3b8; padding-top: 2px; }
+
+/* ── Charts grid ── */
+.pav2-capture { background: #f8fafc; }
+.pav2-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pav2-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.pav2-wide { grid-column: 1 / -1; }
+.pav2-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 14px; border-bottom: 1px solid #f1f5f9;
+}
+.pav2-card-title { font-size: 12px; font-weight: 700; color: #1B2A3F; text-transform: uppercase; letter-spacing: .4px; }
+.pav2-eye {
+  border: none; background: transparent; color: #cbd5e1; cursor: pointer; font-size: 13px;
+  line-height: 1; padding: 2px 5px; border-radius: 6px;
+}
+.pav2-eye:hover { background: #fef2f2; color: #ef4444; }
+.pav2-card-body { padding: 12px 14px; position: relative; }
+/* canvas cards get a fixed height so Chart.js can size */
+.pav2-card-body > canvas { width: 100% !important; height: 230px !important; }
+.pav2-wide .pav2-card-body > canvas { height: 280px !important; }
+
+/* ── Funnel ── */
+.pav2-funnel-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.pav2-funnel-l { font-size: 12px; font-weight: 600; color: #475569; min-width: 160px; }
+.pav2-funnel-bar { flex: 1; height: 18px; background: #f1f5f9; border-radius: 9px; overflow: hidden; }
+.pav2-funnel-bar > div { height: 100%; border-radius: 9px; transition: width .4s; }
+.pav2-funnel-v { font-size: 12px; font-weight: 700; color: #1B2A3F; min-width: 86px; text-align: right; }
+.pav2-funnel-v em { color: #94a3b8; font-style: normal; font-weight: 500; }
+
+/* ── Heatmap ── */
+.pav2-heat { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+.pav2-heat-cell {
+  aspect-ratio: 1; border-radius: 10px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.pav2-heat-cell b { font-size: 18px; font-weight: 800; }
+.pav2-heat-cell span { font-size: 11px; font-weight: 700; }
+
+/* ── Tables ── */
+.pav2-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pav2-table th {
+  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .3px;
+  color: #64748b; padding: 6px 8px; border-bottom: 2px solid #f1f5f9; position: sticky; top: 0; background: #fff;
+}
+.pav2-table td { padding: 6px 8px; border-bottom: 1px solid #f8fafc; color: #334155; }
+.pav2-table code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 11px; color: #1B2A3F; }
+.pav2-table tr.pav2-crit td { background: #fef2f2; }
+.pav2-table tr.pav2-crit b { color: #dc2626; }
+.pav2-table tr.pav2-reversed td { opacity: .55; text-decoration: line-through; }
+#pav2html-routes, #pav2html-fixes { max-height: 360px; overflow: auto; }
+
+.pav2-pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.pav2-pill-ok { background: #dcfce7; color: #166534; }
+.pav2-pill-draft { background: #fef9c3; color: #854d0e; }
+.pav2-pill-rev { background: #fee2e2; color: #b91c1c; }
+
+.pav2-fixes-summary { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 2px 12px; font-size: 12px; color: #475569; }
+.pav2-fixes-summary b { color: #1B2A3F; font-size: 14px; }
+
+.pav2-empty { text-align: center; color: #94a3b8; padding: 24px; font-size: 13px; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .pav2-grid { grid-template-columns: 1fr; }
+  .pav2-toolbar { gap: 8px; }
+}
