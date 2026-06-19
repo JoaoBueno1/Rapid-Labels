@@ -150,6 +150,13 @@
         .wh-hero-val { font-size:1.25rem; font-weight:800; line-height:1; color:var(--text); }
         .wh-hero-accuracy .wh-hero-val { color:#16a34a; }
         .wh-hero-pickup .wh-hero-val { color:#d97706; }
+        .wh-hero-aging::before { background:#94a3b8; }
+        .wh-hero-aging.aging-ok::before { background:#22c55e; }
+        .wh-hero-aging.aging-warn::before { background:#f59e0b; }
+        .wh-hero-aging.aging-bad::before { background:#ef4444; }
+        .wh-hero-aging.aging-ok .wh-hero-val { color:#16a34a; }
+        .wh-hero-aging.aging-warn .wh-hero-val { color:#d97706; }
+        .wh-hero-aging.aging-bad .wh-hero-val { color:#dc2626; }
         .wh-hero-val.loading { color:#cbd5e1; }
         .wh-hero-label { font-size:.64rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
         .wh-hero-sub { font-size:.58rem; color:var(--muted); padding-left:6px; opacity:.65; }
@@ -455,6 +462,11 @@
                             <div class="wh-hero-val loading" id="kpiCollVal">—</div>
                             <div class="wh-hero-label">Awaiting Pickup</div>
                             <div class="wh-hero-sub" id="kpiCollSub">awaiting pickup</div>
+                        </div>
+                        <div class="wh-hero wh-hero-aging" id="whHeroAging">
+                            <div class="wh-hero-val loading" id="flowAgingVal">—</div>
+                            <div class="wh-hero-label">Longest Stalled</div>
+                            <div class="wh-hero-sub" id="flowAgingSub">…</div>
                         </div>
                     </div>
 
@@ -1352,6 +1364,24 @@
                         setKpi('flowCompleted', completedToday, 'today');
                         setKpi('whTransfers', outInTransit + outOrdered, `${outInTransit} in transit · ${outOrdered} ordered`);
                         setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
+
+                        // Stalled — longest WIP order with NO MOVEMENT (now - updated_at).
+                        // updated_at = last real status change (synced_at is just the sync touch).
+                        // Excludes ORDERED (back-orders waiting on stock). Alert by exception.
+                        const AGING_H = 24;
+                        const nowMs = Date.now();
+                        const fmtDur = ms => { const h = ms/3600000; if (h < 1) return Math.max(0, Math.round(ms/60000)) + 'm'; if (h < 24) return Math.round(h) + 'h'; return Math.floor(h/24) + 'd'; };
+                        const wip = active.filter(r => r.status !== 'ORDERED');
+                        const ages = wip.map(r => r.updated_at ? (nowMs - new Date(r.updated_at).getTime()) : 0).filter(a => a > 0);
+                        const oldestMs = ages.length ? Math.max.apply(null, ages) : 0;
+                        const agingCount = ages.filter(a => a > AGING_H * 3600000).length;
+                        setKpi('flowAging', oldestMs ? fmtDur(oldestMs) : '—', agingCount ? `${agingCount} stalled >${AGING_H}h` : 'all moving');
+                        const agingChip = document.getElementById('whHeroAging');
+                        if (agingChip) {
+                            agingChip.classList.remove('aging-ok', 'aging-warn', 'aging-bad');
+                            const days = oldestMs / 86400000;
+                            agingChip.classList.add(agingCount === 0 ? 'aging-ok' : days >= 3 ? 'aging-bad' : 'aging-warn');
+                        }
 
                         // Sync freshness
                         const syncTimes = pipeline.map(r => r.synced_at).filter(Boolean).sort();
