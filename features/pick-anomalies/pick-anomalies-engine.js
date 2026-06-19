@@ -1032,9 +1032,10 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
         for (const mo of matchedOrders) {
           if (mo.is_cancelled) continue; // Already flagged
 
-          // Check if this order has corrections
+          // M7: a conflict only if a correction actually MOVED stock (COMPLETED)
+          // and isn't already reversed — else reversing it creates phantom stock.
           const corrections = await sbGet('pick_anomaly_corrections',
-            `select=id,transfer_status&order_number=eq.${mo.order_number}&limit=1`
+            `select=id,transfer_status&order_number=eq.${mo.order_number}&is_reversed=eq.false&transfer_status=eq.COMPLETED&limit=1`
           );
 
           const cin7Order = cancelledFromCin7.find(o => o.OrderNumber === mo.order_number);
@@ -1190,6 +1191,7 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
         order_number: orderNumber,
         pick_id: pickId,
         sku,
+        product_id: productId || null,   // H1: needed to build the reversal transfer line
         from_bin: expectedBin,
         to_bin: pickedBin,
         qty,
@@ -1247,6 +1249,17 @@ async function reverseCorrection({ correctionId, productId, sku, qty, fromBin, t
   // Reverse = swap from/to
   // Original correction: expectedBin → pickedBin (moving stock to where it was actually picked from)
   // Reversal: pickedBin → expectedBin (moving it back because the order was cancelled)
+  // H1: the frontend sends productId=null (the column didn't exist) — resolve it
+  // from the stored correction row, and REFUSE rather than POST a null product line.
+  if (!productId && correctionId) {
+    try {
+      const rows = await sbGet('pick_anomaly_corrections', `select=product_id&id=eq.${correctionId}&limit=1`);
+      if (rows[0] && rows[0].product_id) productId = rows[0].product_id;
+    } catch (e) { /* fall through to the guard */ }
+  }
+  if (!productId) {
+    throw new Error(`Reversal blocked: no ProductID for SKU ${sku} (correction ${correctionId}). A transfer line with no product cannot move stock.`);
+  }
   const bins = await getBinCache();
   const fromBinId = bins.get(toBin);   // Original "to" becomes "from"
   const toBinId = bins.get(fromBin);   // Original "from" becomes "to"
@@ -1312,18 +1325,23 @@ async function reverseCorrection({ correctionId, productId, sku, qty, fromBin, t
     }
   }
 
-  // Mark the original correction as reversed
+  // Mark the original correction as reversed — but ONLY if the reversal transfer
+  // actually COMPLETED. A stuck DRAFT means book stock was NOT moved back; marking
+  // is_reversed=true there would falsely "resolve" the conflict and lock out a retry. (M6)
   if (correctionId) {
     try {
-      await sbPatch('pick_anomaly_corrections', `id=eq.${correctionId}`, {
-        is_reversed: true,
-        reversed_at: now.toISOString(),
+      const patch = {
         reversal_transfer_id: transferId ? String(transferId) : null,
         reversal_transfer_ref: transferRef,
-      });
+      };
+      if (transferStatus === 'COMPLETED') { patch.is_reversed = true; patch.reversed_at = now.toISOString(); }
+      await sbPatch('pick_anomaly_corrections', `id=eq.${correctionId}`, patch);
     } catch (err) {
       console.warn(`⚠️ Failed to mark correction as reversed:`, err.message);
     }
+  }
+  if (transferStatus !== 'COMPLETED') {
+    console.warn(`⚠️ Reversal transfer ${transferId} stuck DRAFT — correction NOT marked reversed (retry needed).`);
   }
 
   await logAction({
@@ -1442,11 +1460,20 @@ function registerPickAnomalyRoutes(app) {
    */
   app.post('/api/pick-anomalies/create-transfer', async (req, res) => {
     try {
-      const { productId, sku, qty, expectedBin, pickedBin, fromBin, toBin, orderNumber, pickId } = req.body;
+      const { productId, sku, qty, expectedBin, pickedBin, fromBin, toBin, orderNumber, pickId, anomalyConfidence, force } = req.body;
       const from = expectedBin || fromBin;
       const to = pickedBin || toBin;
       if (!sku || !qty || !from || !to) {
         return res.status(400).json({ success: false, error: 'Missing required fields' });
+      }
+      // M4: a 'suspect' anomaly is an OVERFLOW pick — the picked bin legitimately
+      // held stock, so the Cin7 decrement from it was correct. An expected→picked
+      // correction transfer would DOUBLE-MOVE stock. Require explicit confirmation.
+      if (anomalyConfidence === 'suspect' && !force) {
+        return res.status(409).json({
+          success: false, requiresConfirmation: true,
+          error: `"${sku}" is a SUSPECT (overflow) anomaly — the pick bin already held this stock, so a correction may double-move it. Confirm to proceed (force).`,
+        });
       }
       const result = await createCorrectionTransfer({
         productId, sku, qty,
@@ -1465,13 +1492,18 @@ function registerPickAnomalyRoutes(app) {
    */
   app.post('/api/pick-anomalies/batch-transfer', async (req, res) => {
     try {
-      const { transfers, items } = req.body;
+      const { transfers, items, force } = req.body;
       const list = transfers || items;
       if (!Array.isArray(list) || !list.length) {
         return res.status(400).json({ success: false, error: 'transfers/items array required' });
       }
       const results = [];
       for (const t of list) {
+        // M4 backstop: never auto-correct an overflow (suspect) pick without force.
+        if (t.anomalyConfidence === 'suspect' && !force) {
+          results.push({ sku: t.sku, pickId: t.pickId, success: false, requiresConfirmation: true, error: 'Suspect (overflow) anomaly — correction may double-move stock; confirm to force.' });
+          continue;
+        }
         try {
           const result = await createCorrectionTransfer(t);
           results.push({ sku: t.sku, pickId: t.pickId, success: true, transfer: result });
@@ -2633,7 +2665,10 @@ async function markOrderCancelledRealtime(orderNumber, status = 'VOIDED') {
   const matched = await sbGet('pick_anomaly_orders', `select=order_number,is_cancelled&order_number=eq.${orderNumber}&limit=1`);
   if (!matched.length) return { ok: false, skipped: 'not_in_history' };
   if (matched[0].is_cancelled) return { ok: true, alreadyCancelled: true };
-  const corrections = await sbGet('pick_anomaly_corrections', `select=id&order_number=eq.${orderNumber}&limit=1`);
+  // M7: a conflict only exists if a correction actually MOVED stock (COMPLETED)
+  // and hasn't already been reversed. A DRAFT/failed or already-reversed
+  // correction moved nothing → reversing it would create phantom stock.
+  const corrections = await sbGet('pick_anomaly_corrections', `select=id&order_number=eq.${orderNumber}&is_reversed=eq.false&transfer_status=eq.COMPLETED&limit=1`);
   const hasConflict = corrections.length > 0;
   await sbPatch('pick_anomaly_orders', `order_number=eq.${orderNumber}`, {
     is_cancelled: true, cancelled_at: new Date().toISOString(),

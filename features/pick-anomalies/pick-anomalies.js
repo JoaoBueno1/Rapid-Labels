@@ -1436,7 +1436,7 @@
     return `${Math.floor(hrs / 24)}d ago`;
   }
 
-  async function confirmFix() {
+  async function confirmFix(force = false) {
     const ids = [...state.selectedFixes];
     if (ids.length === 0) return;
 
@@ -1453,8 +1453,18 @@
         pickedBin: pick.bin,
         orderNumber: order.order_number,
         pickId: id,
+        anomalyConfidence: pick.anomalyConfidence,  // M4: overflow picks need confirmation
       };
     }).filter(Boolean);
+
+    // M4: warn before "correcting" overflow (suspect) picks — the bin decrement
+    // was legitimate, so a correction transfer can double-move stock.
+    const suspectCount = items.filter(i => i.anomalyConfidence === 'suspect').length;
+    if (suspectCount > 0 && !force) {
+      const msg = `${suspectCount} of these ${items.length} are SUSPECT (overflow) anomalies — the pick bin already held the stock, so a correction transfer may DOUBLE-MOVE it. Apply anyway?`;
+      if (!confirm(msg)) return;
+      force = true;
+    }
 
     if (items.length === 0) {
       alert('No valid picks to fix.');
@@ -1469,7 +1479,7 @@
       const res = await fetch('/api/pick-anomalies/batch-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({ items, force }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Batch transfer failed');
