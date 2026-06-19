@@ -301,6 +301,22 @@
       color: #991b1b;
       border-color: #fecaca;
     }
+    .btn.danger:hover { background: #fee2e2; }
+
+    /* ── Project CRUD: toolbar + modal ───────────────────────── */
+    .proj-toolbar { display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+    .row-actions { display:flex; gap:4px; }
+    .row-actions button { padding:2px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px; background:#fff; cursor:pointer; }
+    .row-actions button:hover { background:#f1f5f9; }
+    .pm-overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px; }
+    .pm-card { background:#fff; border-radius:12px; padding:20px; max-width:680px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 20px 50px rgba(0,0,0,.3); }
+    .pm-card h3 { margin:0 0 14px; }
+    .pm-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .pm-grid label { display:flex; flex-direction:column; font-size:11px; color:#64748b; gap:3px; }
+    .pm-grid label.pm-wide { grid-column:1 / -1; }
+    .pm-grid input { padding:7px 9px; border:1px solid var(--border); border-radius:6px; font-size:13px; color:#0f172a; }
+    .pm-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+    .pm-err { color:#dc2626; font-size:12px; margin-top:10px; min-height:14px; }
 
     /* ── Status banner ───────────────────────────────────────── */
     .banner {
@@ -466,6 +482,12 @@
         <div class="section">
           <h2>📋 Project Lines</h2>
           <div class="desc">Sales Order lines com pack-and-hold, pick_date e qty_held customizados. Substitui o Project sheet do Excel.</div>
+          <div class="proj-toolbar">
+            <input id="projSearch" type="text" placeholder="Buscar SKU, cliente, SO, rep…" style="flex:1;min-width:220px;padding:7px 10px;border-radius:7px;border:1px solid var(--border);font-size:13px">
+            <label style="font-size:12px;display:flex;gap:4px;align-items:center;color:#64748b"><input type="checkbox" id="projOnlyPending" checked> só pendentes (a separar)</label>
+            <span id="projCount" style="font-size:12px;color:#64748b"></span>
+            <button class="btn primary" type="button" id="projAddBtn">➕ Novo projeto</button>
+          </div>
           <div id="projectTable" class="xtable-wrap">
             <div class="empty"><div class="big">⏳</div>Loading…</div>
           </div>
@@ -480,7 +502,39 @@
               </div>
               <p style="margin-top:16px;font-size:11px;color:#94a3b8">
                 Alternativa rápida: a aba <strong>Open SOs</strong> mostra os 496 SOs abertos do Cin7 ao vivo (só headers, sem pack-and-hold).
+                Ou clique <strong>➕ Novo projeto</strong> acima para adicionar manualmente.
               </p>
+            </div>
+          </div>
+
+          <!-- Modal CRUD de projeto (add/editar) -->
+          <div id="projModal" class="pm-overlay" style="display:none">
+            <div class="pm-card">
+              <h3 id="pmTitle">Novo projeto</h3>
+              <div class="pm-grid">
+                <label>SKU *<input id="pm_sku" autocomplete="off"></label>
+                <label>Qty *<input id="pm_qty" type="number" min="1" step="1"></label>
+                <label>Customer<input id="pm_customer"></label>
+                <label>Sales Order<input id="pm_sales_order"></label>
+                <label>Reference<input id="pm_reference"></label>
+                <label>Rep<input id="pm_rep"></label>
+                <label>Type<input id="pm_type"></label>
+                <label>Unit Price<input id="pm_unit_price" type="number" step="0.01"></label>
+                <label>PO Ref<input id="pm_po_ref"></label>
+                <label>Pick Date<input id="pm_pick_date" type="date"></label>
+                <label>Qty Held<input id="pm_qty_held" type="number" step="1"></label>
+                <label>Qty Invoiced<input id="pm_qty_inv" type="number" step="1"></label>
+                <label>Date Packed<input id="pm_date_packed" type="date"></label>
+                <label>Warehouse<input id="pm_warehouse"></label>
+                <label>Finish Date (fecha o projeto)<input id="pm_finish_date" type="date"></label>
+                <label class="pm-wide">Required / nota<input id="pm_required_text"></label>
+              </div>
+              <div id="pmErr" class="pm-err"></div>
+              <div class="pm-actions">
+                <button class="btn danger" type="button" id="pmDelete" style="display:none">🗑️ Excluir</button>
+                <button class="btn" type="button" id="pmCancel">Cancelar</button>
+                <button class="btn primary" type="button" id="pmSave">Salvar</button>
+              </div>
             </div>
           </div>
         </div>
@@ -731,6 +785,22 @@
       el.innerHTML = html;
     }
 
+    // ── Paginated fetch (contorna o teto de 1000 do PostgREST) ─
+    //  buildQuery() deve retornar uma query NOVA a cada chamada
+    //  (sem .range), p/ ex.: () => db().from('x').select('*').order('y')
+    async function fetchAll(buildQuery, { pageSize = 1000, max = 100000 } = {}) {
+      let from = 0; const out = [];
+      while (from < max) {
+        const { data, error } = await buildQuery().range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        out.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return out;
+    }
+
     // ── Load: KPIs ───────────────────────────────────────────
     async function loadKPIs() {
       try {
@@ -841,38 +911,12 @@
     const viewLoaders = {
       async project() {
         try {
-          const { data, error } = await db()
+          projectAll = await fetchAll(() => db()
             .from('project_lines')
-            .select('id, date_opened, customer, reference, rep, sku, qty, type, qty_to_pick, po_ref, pick_date, qty_held, qty_inv, warehouse, status')
+            .select('id, date_opened, sales_order, customer, reference, rep, sku, qty, type, unit_price, qty_to_pick, po_ref, pick_date, qty_held, qty_inv, date_packed, warehouse, required_text, status, finish_date')
             .is('finish_date', null)
-            .order('pick_date', { ascending: true, nullsFirst: false })
-            .limit(500);
-          if (error) throw error;
-          // Vazio → mostra placeholder, não a tabela
-          if (!data || data.length === 0) {
-            $('#projectTable').style.display = 'none';
-            $('#projectEmpty').style.display = 'block';
-            return;
-          }
-          $('#projectTable').style.display = '';
-          $('#projectEmpty').style.display = 'none';
-          renderTable('#projectTable', data, [
-            { label: 'Date',     key: 'date_opened', fmt: fmtDate },
-            { label: 'Customer', key: 'customer' },
-            { label: 'Ref',      key: 'reference' },
-            { label: 'Rep',      key: 'rep' },
-            { label: 'SKU',      key: 'sku' },
-            { label: 'Qty',      key: 'qty',         num: true, fmt: fmtNum },
-            { label: 'Type',     key: 'type' },
-            { label: 'To Pick',  key: 'qty_to_pick', num: true, fmt: fmtNum,
-              cellClass: r => Number(r.qty_to_pick) > 0 ? 'num cell-yellow' : 'num cell-green' },
-            { label: 'PO',       key: 'po_ref' },
-            { label: 'Pick',     key: 'pick_date',   fmt: fmtDate },
-            { label: 'Held',     key: 'qty_held',    num: true, fmt: fmtNum },
-            { label: 'Inv',      key: 'qty_inv',     num: true, fmt: fmtNum },
-            { label: 'Wh',       key: 'warehouse' },
-            { label: 'Status',   key: 'status' },
-          ]);
+            .order('pick_date', { ascending: true, nullsFirst: false }));
+          renderProjects();
         } catch (e) {
           $('#projectTable').innerHTML = '<div class="empty">⚠️ ' + (e.message || e) + '</div>';
         }
@@ -880,13 +924,11 @@
 
       async pos() {
         try {
-          const { data, error } = await db()
+          const data = await fetchAll(() => db()
             .from('po_lines')
             .select('id, po_number, po_date, supplier_code, sku, qty, due_date, value_usd, value_aud, require_status, is_received')
             .eq('is_received', false)
-            .order('due_date', { ascending: true, nullsFirst: false })
-            .limit(500);
-          if (error) throw error;
+            .order('due_date', { ascending: true, nullsFirst: false }));
           renderTable('#poTable', data, [
             { label: 'PO #',      key: 'po_number' },
             { label: 'Date',      key: 'po_date',  fmt: fmtDate },
@@ -905,12 +947,10 @@
 
       async analysis() {
         try {
-          const { data, error } = await db()
+          const data = await fetchAll(() => db()
             .from('v_analysis')
             .select('*')
-            .order('mths_stock', { ascending: true, nullsFirst: false })
-            .limit(500);
-          if (error) throw error;
+            .order('mths_stock', { ascending: true, nullsFirst: false }));
           renderTable('#analysisTable', data, [
             { label: 'SKU',           key: 'sku' },
             { label: 'Wk/Avg',        key: 'wk_avg',          num: true, fmt: fmtNum },
@@ -932,13 +972,11 @@
 
       async skus() {
         try {
-          const { data, error } = await db()
+          const data = await fetchAll(() => db()
             .from('v_skus_live')                       // ao vivo do cin7_mirror.products
             .select('sku, description, barcode, category, supplier_hint, uom, average_cost, is_active, synced_at')
             .eq('is_active', true)
-            .order('sku', { ascending: true })
-            .limit(2000);
-          if (error) throw error;
+            .order('sku', { ascending: true }));
           renderTable('#skusTable', data, [
             { label: 'SKU',          key: 'sku' },
             { label: 'Description',  key: 'description' },
@@ -957,12 +995,10 @@
 
       async stock() {
         try {
-          const { data, error } = await db()
+          const data = await fetchAll(() => db()
             .from('v_soh_live')                        // ao vivo do cin7_mirror.stock_snapshot
             .select('sku, warehouse, qty_on_hand, allocated, available, on_order, in_transit, next_delivery_date, synced_at')
-            .order('available', { ascending: true })
-            .limit(2000);
-          if (error) throw error;
+            .order('available', { ascending: true }));
           $('#cntStock').textContent = fmtNum(data.length);
           renderTable('#stockTable', data, [
             { label: 'SKU',       key: 'sku' },
@@ -985,12 +1021,10 @@
 
       async opensos() {
         try {
-          const { data, error } = await db()
+          const data = await fetchAll(() => db()
             .from('v_open_sos')                        // ao vivo do cin7_mirror.order_pipeline
             .select('sales_order, customer, reference, status, pick_status, pack_status, ship_status, invoice_status, order_date, line_count, total_qty, synced_at')
-            .order('order_date', { ascending: false })
-            .limit(500);
-          if (error) throw error;
+            .order('order_date', { ascending: false }));
           $('#cntOpenSOs').textContent = fmtNum(data.length);
           renderTable('#openSosTable', data, [
             { label: 'SO #',        key: 'sales_order' },
@@ -1218,10 +1252,124 @@
       }
     }
 
+    // ── Project CRUD (add / editar / remover) ────────────────
+    let projectAll = [];
+
+    function renderProjects() {
+      const q = ($('#projSearch') ? $('#projSearch').value : '').trim().toLowerCase();
+      const onlyPending = $('#projOnlyPending') ? $('#projOnlyPending').checked : true;
+      let rows = projectAll;
+      if (onlyPending) rows = rows.filter(r => Number(r.qty_to_pick) > 0);
+      if (q) rows = rows.filter(r =>
+        [r.sku, r.customer, r.sales_order, r.reference, r.rep, r.po_ref]
+          .some(v => v && String(v).toLowerCase().includes(q)));
+      if ($('#projCount')) $('#projCount').textContent = `${fmtNum(rows.length)} de ${fmtNum(projectAll.length)} linhas`;
+
+      if (projectAll.length === 0) {
+        $('#projectTable').style.display = 'none';
+        $('#projectEmpty').style.display = 'block';
+        return;
+      }
+      $('#projectTable').style.display = '';
+      $('#projectEmpty').style.display = 'none';
+      renderTable('#projectTable', rows, [
+        { label: 'Date',     key: 'date_opened', fmt: fmtDate },
+        { label: 'Customer', key: 'customer' },
+        { label: 'SO',       key: 'sales_order' },
+        { label: 'Ref',      key: 'reference' },
+        { label: 'Rep',      key: 'rep' },
+        { label: 'SKU',      key: 'sku' },
+        { label: 'Qty',      key: 'qty',         num: true, fmt: fmtNum },
+        { label: 'Type',     key: 'type' },
+        { label: 'To Pick',  key: 'qty_to_pick', num: true, fmt: fmtNum,
+          cellClass: r => Number(r.qty_to_pick) > 0 ? 'num cell-yellow' : 'num cell-green' },
+        { label: 'PO',       key: 'po_ref' },
+        { label: 'Pick',     key: 'pick_date',   fmt: fmtDate },
+        { label: 'Held',     key: 'qty_held',    num: true, fmt: fmtNum },
+        { label: 'Inv',      key: 'qty_inv',     num: true, fmt: fmtNum },
+        { label: 'Wh',       key: 'warehouse' },
+        { label: 'Status',   key: 'status' },
+        { label: '', get: r => r.id,
+          fmt: (id) => `<div class="row-actions"><button type="button" onclick="pmOpenById(${id})" title="Editar/excluir">✏️</button></div>` },
+      ]);
+    }
+
+    const PM_FIELDS = ['sku','qty','customer','sales_order','reference','rep','type','unit_price','po_ref','pick_date','qty_held','qty_inv','date_packed','warehouse','finish_date','required_text'];
+    let pmEditId = null;
+
+    function pmOpen(row) {
+      pmEditId = (row && row.id) || null;
+      $('#pmTitle').textContent = pmEditId ? `Editar projeto #${pmEditId}` : 'Novo projeto';
+      PM_FIELDS.forEach(f => { const el = $('#pm_' + f); if (el) el.value = (row && row[f] != null) ? row[f] : ''; });
+      $('#pmDelete').style.display = pmEditId ? '' : 'none';
+      $('#pmErr').textContent = '';
+      $('#projModal').style.display = 'flex';
+      $('#pm_sku').focus();
+    }
+    function pmOpenById(id) { const r = projectAll.find(x => x.id === id); if (r) pmOpen(r); }
+    function pmClose() { $('#projModal').style.display = 'none'; pmEditId = null; }
+
+    function pmCollect() {
+      const v = id => { const el = $('#pm_' + id); const s = el ? el.value.trim() : ''; return s === '' ? null : s; };
+      const n = id => { const s = v(id); return s == null ? null : Number(s); };
+      return {
+        sku: v('sku'), qty: n('qty'), customer: v('customer'), sales_order: v('sales_order'),
+        reference: v('reference'), rep: v('rep'), type: v('type'), unit_price: n('unit_price'),
+        po_ref: v('po_ref'), pick_date: v('pick_date'), qty_held: n('qty_held') || 0,
+        qty_inv: n('qty_inv') || 0, date_packed: v('date_packed'), warehouse: v('warehouse'),
+        finish_date: v('finish_date'), required_text: v('required_text'),
+      };
+    }
+    async function setAuditUser() {
+      try { await db().rpc('set_audit_user', { p_email: 'dashboard', p_pin: '4209' }); } catch (e) {}
+    }
+    async function pmSave() {
+      const rec = pmCollect();
+      if (!rec.sku) { $('#pmErr').textContent = 'SKU é obrigatório.'; return; }
+      if (!rec.qty || rec.qty <= 0) { $('#pmErr').textContent = 'Qty deve ser maior que 0.'; return; }
+      $('#pmSave').disabled = true;
+      try {
+        await setAuditUser();
+        const res = pmEditId
+          ? await db().from('project_lines').update(rec).eq('id', pmEditId)
+          : await db().from('project_lines').insert(rec);
+        if (res.error) throw res.error;
+        pmClose();
+        await viewLoaders.project();
+      } catch (e) {
+        $('#pmErr').textContent = 'Erro ao salvar: ' + (e.message || e);
+      } finally { $('#pmSave').disabled = false; }
+    }
+    async function pmDeleteRow() {
+      if (!pmEditId) return;
+      if (!confirm('Excluir esta linha de projeto? Esta ação fica registrada no audit log.')) return;
+      $('#pmDelete').disabled = true;
+      try {
+        await setAuditUser();
+        const { error } = await db().from('project_lines').delete().eq('id', pmEditId);
+        if (error) throw error;
+        pmClose();
+        await viewLoaders.project();
+      } catch (e) {
+        $('#pmErr').textContent = 'Erro ao excluir: ' + (e.message || e);
+      } finally { $('#pmDelete').disabled = false; }
+    }
+
+    function initProjectCrud() {
+      const add = $('#projAddBtn');      if (add) add.addEventListener('click', () => pmOpen(null));
+      const s   = $('#projSearch');      if (s)   s.addEventListener('input', renderProjects);
+      const op  = $('#projOnlyPending'); if (op)  op.addEventListener('change', renderProjects);
+      const c   = $('#pmCancel');        if (c)   c.addEventListener('click', pmClose);
+      const sv  = $('#pmSave');          if (sv)  sv.addEventListener('click', pmSave);
+      const d   = $('#pmDelete');        if (d)   d.addEventListener('click', pmDeleteRow);
+      const ov  = $('#projModal');       if (ov)  ov.addEventListener('click', e => { if (e.target === ov) pmClose(); });
+    }
+
     // ── Boot ─────────────────────────────────────────────────
     (async function boot() {
       try {
         await getSb();
+        initProjectCrud();
         await loadKPIs();
         await loadTopCritical();
         await loadNextPicks();
