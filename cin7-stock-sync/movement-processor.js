@@ -149,10 +149,20 @@ class MovementProcessor {
         console.warn(`⚠️  Unhandled webhook topic: ${topic}`);
       }
 
-      // Idempotent reprocess: clear this event's prior movements + alerts so a
-      // re-run (retry/backfill) never duplicates or leaves stale rows.
+      // Idempotent reprocess. Cin7 sends MULTIPLE distinct ShipmentAuthorised
+      // events per SaleID (each a new event id), so deleting only by
+      // webhook_event_id lets re-sends ACCUMULATE duplicate movements. Key the
+      // dedup on the TASK (cin7_task_id + source), exactly like the polling syncs
+      // (sync-movements/sync-assembly) — a re-sent webhook REPLACES, never appends.
       await this.sb.schema('cin7_mirror').from('movement_alerts').delete().eq('webhook_event_id', eventId);
-      await this.sb.schema('cin7_mirror').from('stock_movements').delete().eq('webhook_event_id', eventId);
+      const _taskIds = [...new Set(movements.map(m => m.cin7_task_id).filter(Boolean))];
+      if (_taskIds.length) {
+        for (const tid of _taskIds) {
+          await this.sb.schema('cin7_mirror').from('stock_movements').delete().eq('cin7_task_id', tid).eq('source', 'webhook');
+        }
+      } else {
+        await this.sb.schema('cin7_mirror').from('stock_movements').delete().eq('webhook_event_id', eventId);
+      }
 
       // Store movements
       if (movements.length > 0) {
@@ -556,16 +566,26 @@ class MovementProcessor {
   // PURCHASE ORDER processing
   // ══════════════════════════════════════════════
   async _processPurchaseOrder(payload) {
-    const poId = payload.ID || payload.id;
-    if (!poId) { console.warn('⚠️ PO webhook missing ID'); return []; }
+    // Real Purchase/StockReceivedAuthorised payloads carry TaskID + a PO number,
+    // NOT ID — reading only payload.ID silently dropped every purchase receipt.
+    const poId = payload.ID || payload.id || payload.TaskID;
+    const poNumber = payload.PurchaseOrderNumber || payload.OrderNumber || payload.Number || '';
+    if (!poId && !poNumber) { console.warn('⚠️ PO webhook missing ID/Number'); return []; }
 
     let poData;
     try {
-      poData = await this._cin7Request('purchase', { ID: poId });
+      if (poId) poData = await this._cin7Request('purchase', { ID: poId });
     } catch (e) {
-      console.warn(`⚠️ Could not fetch PO ${poId}: ${e.message}`);
-      return [];
+      console.warn(`⚠️ Could not fetch PO by ID ${poId}: ${e.message}`);
     }
+    if (!poData && poNumber) {
+      try {
+        const list = await this._cin7Request('purchaseList', { Search: poNumber });
+        const match = (list.PurchaseList || []).find(p => p.OrderNumber === poNumber);
+        if (match) poData = await this._cin7Request('purchase', { ID: match.ID });
+      } catch (e2) { console.warn(`⚠️ PO fallback search failed: ${e2.message}`); }
+    }
+    if (!poData) { console.warn(`⚠️ Could not fetch PO ${poId || poNumber}`); return []; }
 
     const movements = [];
     const po = poData;
@@ -574,11 +594,13 @@ class MovementProcessor {
     const memberEmail = po.MemberEmail || po.CreatedBy || '';
     const supplier = po.SupplierName || po.Supplier || '';
 
-    // Process stock receive lines
-    const receipts = po.StockReceived || po.Receipts || po.ReceiveLines || [];
+    // Process stock receive lines. StockReceived is a single object
+    // { Status, Lines:[...] } (NOT an array) — normalise to an array of receipts.
+    const _sr = po.StockReceived || po.Receipts || po.ReceiveLines;
+    const receipts = Array.isArray(_sr) ? _sr : (_sr ? [_sr] : []);
 
     for (const receipt of receipts) {
-      const receiveLines = receipt.Lines || receipt.ReceiveLines || [receipt];
+      const receiveLines = receipt.Lines || receipt.ReceiveLines || [];
 
       for (const line of receiveLines) {
         const sku = line.SKU || line.ProductCode || '';

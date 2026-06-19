@@ -262,7 +262,7 @@ async function fetchLocators(skus) {
     if (!res.ok) { console.warn(`Supabase locator fetch failed: ${res.status}`); continue; }
     const rows = await res.json();
     for (const r of rows) {
-      if (r.sku) result.set(r.sku, { locator: r.stock_locator, name: r.name, category: r.category });
+      if (r.sku) result.set(r.sku, { locator: normBin(r.stock_locator), name: r.name, category: r.category });
     }
   }
   return result;
@@ -319,8 +319,14 @@ function classifyAnomalyConfidence(pick, stockMap) {
     return { confidence: 'suspect', note: 'Adjacent pallet — same slot, different pallet number' };
   }
 
-  // Special location: always suspect — DOCK, RETURNS, SAMPLES, etc.
+  // Special location. Picking saleable units from un-QA'd RETURNS / SAMPLES /
+  // DAMAGED / FAULTY / QUARANTINE stock into a customer order is the HIGHEST
+  // quality risk — surface it as confirmed, not a likely-false-positive. Pure
+  // staging (DOCK / PRODUCTION) stays suspect.
   if (et === 'special_loc') {
+    if (/RETURN|SAMPLE|DAMAGE|FAULT|QUARANTINE|REJECT/i.test(pick.bin || '')) {
+      return { confidence: 'confirmed', note: `Picked from "${pick.bin}" — un-QA'd / returns / samples stock in a customer order` };
+    }
     return { confidence: 'suspect', note: `Special location — "${pick.bin}" is not a standard MA- bin` };
   }
 
@@ -409,10 +415,22 @@ async function getBinCache() {
   return binCache;
 }
 
+// Canonicalise a bin/locator for comparison. Cin7 picks + the products.stock_locator
+// data mix case, whitespace and "Warehouse: " prefixes (e.g. 'MA-H-11-l2',
+// ' MA-OFFICE-AREA', 'Main Warehouse: MA-F-17-L1'). Strip any prefix, trim, and
+// uppercase MA- bins — but leave BOM/Production/0/non-MA values untouched so their
+// special-case checks still match.
+function normBin(v) {
+  if (!v) return v;
+  let s = String(v).trim();
+  if (s.includes(':')) s = s.split(':').slice(1).join(':').trim();
+  return /^ma-/i.test(s) ? s.toUpperCase() : s;
+}
+
 function extractBin(location) {
   if (!location) return null;
   if (!location.includes(': ')) return null;
-  return location.split(': ')[1].trim();
+  return normBin(location.split(': ')[1]);
 }
 
 function classifyError(pickedBin, expectedBin) {
@@ -865,7 +883,7 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
           const components = (fgDetail.PickLines || []).map(pl => {
             const compInfo = compLocators.get(pl.ProductCode);
             const compExpected = compInfo?.locator || null;
-            const compBin = pl.Bin || null;
+            const compBin = normBin(pl.Bin) || null;
             const isCorrect = !compBin || !compExpected || !compExpected.startsWith('MA-') || compBin === compExpected;
             return {
               sku: pl.ProductCode, productId: pl.ProductID, qty: pl.Quantity,
@@ -2331,16 +2349,20 @@ function registerPickAnomalyRoutes(app) {
           const fgOrders = typeof order.fg_orders === 'string' ? JSON.parse(order.fg_orders) : (order.fg_orders || []);
           let needsSave = false;
 
+          // H2 fix: ONLY classify anomalies that have no verdict yet. NEVER
+          // overwrite a verdict — it was recorded at analyze-time (snapshot near
+          // the pick); re-judging an old pick against today's snapshot produces
+          // false suspect/confirmed (a bin emptied/restocked since the pick).
           for (const p of picks) {
             if (p.status === 'anomaly') {
-              const { confidence, note } = classifyAnomalyConfidence(p, stockMap);
-              if (p.anomalyConfidence !== confidence || p.anomalyNote !== note) {
+              if (!p.anomalyConfidence) {
+                const { confidence, note } = classifyAnomalyConfidence(p, stockMap);
                 p.anomalyConfidence = confidence;
                 p.anomalyNote = note;
                 needsSave = true;
               }
               classifiedCount++;
-              if (confidence === 'suspect') suspectCount++;
+              if (p.anomalyConfidence === 'suspect') suspectCount++;
               else confirmedCount++;
             } else {
               if (p.anomalyConfidence) { delete p.anomalyConfidence; delete p.anomalyNote; needsSave = true; }
@@ -2349,14 +2371,14 @@ function registerPickAnomalyRoutes(app) {
           for (const fg of fgOrders) {
             for (const c of (fg.components || [])) {
               if (c.status === 'anomaly') {
-                const { confidence, note } = classifyAnomalyConfidence(c, stockMap);
-                if (c.anomalyConfidence !== confidence || c.anomalyNote !== note) {
+                if (!c.anomalyConfidence) {
+                  const { confidence, note } = classifyAnomalyConfidence(c, stockMap);
                   c.anomalyConfidence = confidence;
                   c.anomalyNote = note;
                   needsSave = true;
                 }
                 classifiedCount++;
-                if (confidence === 'suspect') suspectCount++;
+                if (c.anomalyConfidence === 'suspect') suspectCount++;
                 else confirmedCount++;
               } else {
                 if (c.anomalyConfidence) { delete c.anomalyConfidence; delete c.anomalyNote; needsSave = true; }
@@ -2489,7 +2511,7 @@ async function analyzeOrderRealtime(saleId, orderNumber, preFetchedDetail = null
         const components = (fgDetail.PickLines || []).map(pl => {
           const compInfo = compLocators.get(pl.ProductCode);
           const compExpected = compInfo?.locator || null;
-          const compBin = pl.Bin || null;
+          const compBin = normBin(pl.Bin) || null;
           const isCorrect = !compBin || !compExpected || !compExpected.startsWith('MA-') || compBin === compExpected;
           return { sku: pl.ProductCode, productId: pl.ProductID, qty: pl.Quantity, cost: pl.Cost, bin: compBin, binId: pl.BinID, expectedBin: compExpected, status: isCorrect ? 'correct' : 'anomaly', errorType: isCorrect ? null : classifyError(compBin, compExpected) };
         });
@@ -2564,7 +2586,7 @@ async function analyzeAssemblyRealtime(fgTaskId, fgDetail = null, source = 'asse
   const picks = pickLines.filter(pl => pl.ProductCode).map(pl => {
     const info = locators.get(pl.ProductCode);
     const expected = info?.locator || null;
-    const bin = pl.Bin || null;
+    const bin = normBin(pl.Bin) || null;
     let status, errorType = null;
     if (!bin) status = 'no_bin_ok'; // component issued without a bin (branch/BOM) — not flaggable
     else if (!expected || expected === '0' || expected === 'BOM' || expected === 'Production' || !expected.startsWith('MA-')) status = 'correct';
