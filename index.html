@@ -138,6 +138,60 @@
         .wh-sync-btn:hover { background:#e0f2fe; color:#0284c7; border-color:#93c5fd; }
         .wh-sync-btn.syncing { animation:spin 1s linear infinite; pointer-events:none; opacity:.6; }
         @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+        /* ─── Warehouse Pipeline: wall-display flow board ─── */
+        .wh-fs-btn { margin-left:auto; background:none; border:1px solid var(--border); border-radius:7px; cursor:pointer; font-size:1rem; color:var(--muted); padding:3px 9px; transition:all .2s; line-height:1; }
+        .wh-fs-btn:hover { background:#0f172a; color:#fff; border-color:#0f172a; }
+        .wh-hero-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+        .wh-hero { background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+        .wh-hero::before { content:''; position:absolute; top:0; left:0; right:0; height:4px; }
+        .wh-hero-accuracy::before { background:linear-gradient(90deg,#22c55e,#4ade80); }
+        .wh-hero-pickup::before { background:linear-gradient(90deg,#f59e0b,#fbbf24); }
+        .wh-hero-val { font-size:2.6rem; font-weight:800; line-height:1; color:var(--text); }
+        .wh-hero-accuracy .wh-hero-val { color:#16a34a; }
+        .wh-hero-pickup .wh-hero-val { color:#d97706; }
+        .wh-hero-val.loading { color:#cbd5e1; }
+        .wh-hero-label { font-size:.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-top:6px; }
+        .wh-hero-sub { font-size:.66rem; color:var(--muted); margin-top:3px; opacity:.8; }
+        .wh-flow { display:flex; align-items:stretch; gap:6px; }
+        .wh-flow-stage { flex:1; background:#fff; border:1px solid var(--border); border-radius:12px; padding:16px 8px; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all .2s; border-top:4px solid #cbd5e1; }
+        .wh-flow-stage.clickable { cursor:pointer; }
+        .wh-flow-stage.clickable:hover { box-shadow:0 4px 14px rgba(0,0,0,.08); transform:translateY(-2px); }
+        .wh-flow-val { font-size:2.4rem; font-weight:800; line-height:1; color:var(--text); }
+        .wh-flow-val.loading { color:#cbd5e1; }
+        .wh-flow-label { font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-top:6px; color:var(--text); }
+        .wh-flow-sub { font-size:.62rem; color:var(--muted); margin-top:3px; opacity:.8; }
+        .wh-flow-arrow { display:flex; align-items:center; color:#cbd5e1; font-size:1.4rem; font-weight:700; flex:0 0 auto; }
+        .stage-ordered { border-top-color:#3b82f6; } .stage-ordered .wh-flow-val { color:#1e40af; }
+        .stage-picking { border-top-color:#f59e0b; } .stage-picking .wh-flow-val { color:#b45309; }
+        .stage-topack { border-top-color:#8b5cf6; } .stage-topack .wh-flow-val { color:#6d28d9; }
+        .stage-completed { border-top-color:#22c55e; } .stage-completed .wh-flow-val { color:#15803d; }
+        .wh-flow-foot { display:flex; align-items:center; justify-content:center; gap:12px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); flex-wrap:wrap; }
+        .wh-foot-item { display:flex; align-items:baseline; gap:6px; font-size:.78rem; color:var(--muted); }
+        .wh-foot-item.clickable { cursor:pointer; }
+        .wh-foot-item.clickable:hover .wh-foot-label { color:#7c3aed; }
+        .wh-foot-val { font-size:1.3rem; font-weight:800; color:#7c3aed; }
+        .wh-foot-label { font-weight:600; color:var(--text); }
+        .wh-foot-sub { font-size:.66rem; opacity:.75; }
+        .wh-foot-sep { width:1px; height:22px; background:var(--border); }
+        /* Fullscreen (wall display / TV) */
+        .wh-pipeline.pipeline-fs { background:#0b1220; color:#fff; display:flex; flex-direction:column; justify-content:center; padding:4vh 4vw; }
+        .wh-pipeline.pipeline-fs .wh-pipeline-title { font-size:1.6rem; color:#fff; margin-bottom:3vh; }
+        .wh-pipeline.pipeline-fs .wh-sync-info { color:#94a3b8; }
+        .wh-pipeline.pipeline-fs .wh-fs-btn { color:#94a3b8; border-color:#334155; }
+        .wh-pipeline.pipeline-fs .wh-hero, .wh-pipeline.pipeline-fs .wh-flow-stage { background:#111c30; border-color:#1e293b; }
+        .wh-pipeline.pipeline-fs .wh-hero-row { margin-bottom:3vh; }
+        .wh-pipeline.pipeline-fs .wh-hero-val { font-size:5.5vw; }
+        .wh-pipeline.pipeline-fs .wh-hero-accuracy .wh-hero-val { color:#4ade80; }
+        .wh-pipeline.pipeline-fs .wh-hero-pickup .wh-hero-val { color:#fbbf24; }
+        .wh-pipeline.pipeline-fs .wh-flow-stage { padding:4vh 1vw; }
+        .wh-pipeline.pipeline-fs .wh-flow-val { font-size:6.5vw; color:#fff; }
+        .wh-pipeline.pipeline-fs .wh-flow-label, .wh-pipeline.pipeline-fs .wh-hero-label { font-size:1.15rem; color:#cbd5e1; }
+        .wh-pipeline.pipeline-fs .wh-flow-sub, .wh-pipeline.pipeline-fs .wh-hero-sub { font-size:.95rem; color:#94a3b8; }
+        .wh-pipeline.pipeline-fs .wh-flow-arrow { color:#475569; font-size:3vw; }
+        .wh-pipeline.pipeline-fs .wh-flow-foot { font-size:1.2rem; border-top-color:#1e293b; margin-top:3vh; }
+        .wh-pipeline.pipeline-fs .wh-foot-val { font-size:2.2rem; }
+        .wh-pipeline.pipeline-fs .wh-foot-label { color:#e2e8f0; }
         .wh-kpi-row { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; }
         .wh-kpi { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 10px; text-align:center; transition:all .2s; position:relative; }
         .wh-kpi:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,.06); }
@@ -169,7 +223,7 @@
         /* ─── Orders Modal ─── */
         .orders-modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.5); z-index:1000; justify-content:center; align-items:center; padding:20px; }
         .orders-modal-overlay.active { display:flex; }
-        .orders-modal { background:#fff; border-radius:16px; max-width:1100px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.15); }
+        .orders-modal { background:#fff; border-radius:16px; max-width:1320px; width:100%; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.22); }
         .orders-modal-header { padding:18px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
         .orders-modal-header h2 { font-size:1.1rem; font-weight:800; margin:0; flex:1; }
         .orders-modal-close { background:none; border:none; font-size:1.3rem; cursor:pointer; padding:4px 8px; border-radius:6px; color:var(--muted); }
@@ -187,9 +241,9 @@
         .orders-table th.sortable:hover { color:#1e40af; }
         .orders-table th:not(.sortable) { cursor:default; }
         .orders-modal-body { flex:1; overflow-y:auto; padding:0; }
-        .orders-table { width:100%; border-collapse:collapse; font-size:.88rem; }
-        .orders-table th { position:sticky; top:0; background:#f8fafc; padding:10px 14px; text-align:left; font-weight:700; color:var(--text); border-bottom:2px solid var(--border); font-size:.78rem; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; user-select:none; }
-        .orders-table td { padding:9px 14px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+        .orders-table { width:100%; border-collapse:collapse; font-size:.95rem; }
+        .orders-table th { position:sticky; top:0; background:#f8fafc; padding:12px 16px; text-align:left; font-weight:700; color:var(--text); border-bottom:2px solid var(--border); font-size:.82rem; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; user-select:none; }
+        .orders-table td { padding:11px 16px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
         .orders-table tr:hover { background:#f8fafc; }
         .orders-table .order-num { font-weight:700; color:#1e40af; }
         .orders-table .order-tr { font-weight:700; color:#059669; }
@@ -376,102 +430,73 @@
             <!-- ═══ LEFT: Dashboard Panel ═══ -->
             <div class="dash-panel">
 
-                <!-- KPI Cards -->
-                <div class="kpi-row">
-                    <div class="kpi-card kpi-blue" id="kpiSkus">
-                        <div class="kpi-value loading" id="kpiSkusVal">—</div>
-                        <div class="kpi-label">Total SKUs</div>
-                        <div class="kpi-sub" id="kpiSkusSub">Main Warehouse</div>
-                    </div>
-                    <div class="kpi-card kpi-amber" id="kpiLow">
-                        <div class="kpi-value loading" id="kpiLowVal">—</div>
-                        <div class="kpi-label">Low Stock</div>
-                        <div class="kpi-sub" id="kpiLowSub">items below min</div>
-                    </div>
-                    <div class="kpi-card kpi-green" id="kpiAccuracy">
-                        <div class="kpi-value loading" id="kpiAccuracyVal">—</div>
-                        <div class="kpi-label">Pick Accuracy</div>
-                        <div class="kpi-sub" id="kpiAccuracySub">loading...</div>
-                    </div>
-                    <div class="kpi-card kpi-red" id="kpiCollections">
-                        <div class="kpi-value loading" id="kpiCollVal">—</div>
-                        <div class="kpi-label">Pending Coll.</div>
-                        <div class="kpi-sub" id="kpiCollSub">awaiting pickup</div>
-                    </div>
-                </div>
+                <!-- KPI row, Today's Activity and System Health removed —
+                     space reclaimed for the wall-display Warehouse Pipeline.
+                     Pick Accuracy + Awaiting Pickup moved into the pipeline. -->
 
-                <!-- Today's Activity / Quick Stats -->
-                <div class="dash-section">
-                    <div class="dash-section-title"><span class="icon">⚡</span> Today's Activity</div>
-                    <div class="activity-feed" id="activityFeed">
-                        <div class="activity-empty">Loading activity...</div>
-                    </div>
-                </div>
-
-                <!-- System Health (inline) -->
-                <div class="health-inline" id="healthInline">
-                    <span style="font-weight:700;color:var(--text);font-size:.72rem">🔗 Health</span>
-                    <div class="health-inline-item">
-                        <span class="health-dot gray" id="healthStockDot"></span>
-                        <span class="health-inline-label">Sync</span>
-                        <span class="health-inline-detail" id="healthStockDetail">...</span>
-                    </div>
-                    <span class="health-inline-sep">·</span>
-                    <div class="health-inline-item">
-                        <span class="health-dot gray" id="healthPickDot"></span>
-                        <span class="health-inline-label">Picks</span>
-                        <span class="health-inline-detail" id="healthPickDetail">...</span>
-                    </div>
-                    <span class="health-inline-sep">·</span>
-                    <div class="health-inline-item">
-                        <span class="health-dot gray" id="healthGatewayDot"></span>
-                        <span class="health-inline-label">Gateway</span>
-                        <span class="health-inline-detail" id="healthGatewayDetail">...</span>
-                    </div>
-                    <span class="health-inline-sep">·</span>
-                    <div class="health-inline-item">
-                        <span class="health-dot gray" id="healthReplDot"></span>
-                        <span class="health-inline-label">Repl.</span>
-                        <span class="health-inline-detail" id="healthReplDetail">...</span>
-                    </div>
-                </div>
-
-                <!-- Warehouse Pipeline -->
+                <!-- Warehouse Pipeline (wall-display flow board) -->
                 <div class="wh-pipeline wh-locked" id="whPipelineCard">
-                    <div class="wh-pipeline-title"><span class="icon">📦</span> Warehouse Pipeline <span class="wh-sync-info" id="whSyncInfo">loading...</span> <button class="wh-sync-btn" id="whSyncBtn" title="Refresh pipeline from Cin7" onclick="triggerPipelineSync()">⟳</button></div>
-                    <div class="wh-kpi-row">
-                        <div class="wh-kpi wh-orders clickable" id="whOrders" onclick="openOrdersModal()">
-                            <div class="wh-kpi-val loading" id="whOrdersVal">—</div>
-                            <div class="wh-kpi-label">Orders</div>
-                            <div class="wh-kpi-sub" id="whOrdersSub">open pipeline</div>
+                    <div class="wh-pipeline-title">
+                        <span class="icon">📦</span> Warehouse Pipeline
+                        <span class="wh-sync-info" id="whSyncInfo">loading…</span>
+                        <button class="wh-fs-btn" id="whFsBtn" title="Fullscreen — wall display" onclick="togglePipelineFullscreen()">⛶</button>
+                    </div>
+
+                    <!-- Headline stats: Pick Accuracy + Awaiting Pickup -->
+                    <div class="wh-hero-row">
+                        <div class="wh-hero wh-hero-accuracy">
+                            <div class="wh-hero-val loading" id="kpiAccuracyVal">—</div>
+                            <div class="wh-hero-label">Pick Accuracy</div>
+                            <div class="wh-hero-sub" id="kpiAccuracySub">loading…</div>
                         </div>
-                        <div class="wh-kpi wh-transfers clickable" id="whTransfers" onclick="openTransfersModal('outbound')">
-                            <div class="wh-kpi-val loading" id="whTransfersVal">—</div>
-                            <div class="wh-kpi-label">Transfers Out</div>
-                            <div class="wh-kpi-sub" id="whTransfersSub">to branches</div>
-                        </div>
-                        <div class="wh-kpi wh-incoming clickable" id="whIncoming" onclick="openTransfersModal('inbound')">
-                            <div class="wh-kpi-val loading" id="whIncomingVal">—</div>
-                            <div class="wh-kpi-label">Incoming</div>
-                            <div class="wh-kpi-sub" id="whIncomingSub">from branches</div>
-                        </div>
-                        <div class="wh-kpi wh-picking">
-                            <div class="wh-kpi-val loading" id="whPickingVal">—</div>
-                            <div class="wh-kpi-label">Picking</div>
-                            <div class="wh-kpi-sub" id="whPickingSub">in progress</div>
-                        </div>
-                        <div class="wh-kpi wh-topack">
-                            <div class="wh-kpi-val loading" id="whToPackVal">—</div>
-                            <div class="wh-kpi-label">To Pack</div>
-                            <div class="wh-kpi-sub" id="whToPackSub">awaiting</div>
-                        </div>
-                        <div class="wh-kpi wh-completed">
-                            <div class="wh-kpi-val loading" id="whCompletedVal">—</div>
-                            <div class="wh-kpi-label">Completed</div>
-                            <div class="wh-kpi-sub" id="whCompletedSub">today</div>
+                        <div class="wh-hero wh-hero-pickup">
+                            <div class="wh-hero-val loading" id="kpiCollVal">—</div>
+                            <div class="wh-hero-label">Awaiting Pickup</div>
+                            <div class="wh-hero-sub" id="kpiCollSub">awaiting pickup</div>
                         </div>
                     </div>
 
+                    <!-- Order flow board (left → right) -->
+                    <div class="wh-flow">
+                        <div class="wh-flow-stage stage-ordered clickable" onclick="openOrdersModal()">
+                            <div class="wh-flow-val loading" id="flowOrderedVal">—</div>
+                            <div class="wh-flow-label">Ordered</div>
+                            <div class="wh-flow-sub">awaiting pick</div>
+                        </div>
+                        <div class="wh-flow-arrow">→</div>
+                        <div class="wh-flow-stage stage-picking clickable" onclick="openOrdersModal()">
+                            <div class="wh-flow-val loading" id="flowPickingVal">—</div>
+                            <div class="wh-flow-label">Picking</div>
+                            <div class="wh-flow-sub">in progress</div>
+                        </div>
+                        <div class="wh-flow-arrow">→</div>
+                        <div class="wh-flow-stage stage-topack clickable" onclick="openOrdersModal()">
+                            <div class="wh-flow-val loading" id="flowToPackVal">—</div>
+                            <div class="wh-flow-label">To Pack</div>
+                            <div class="wh-flow-sub">picked · awaiting pack</div>
+                        </div>
+                        <div class="wh-flow-arrow">→</div>
+                        <div class="wh-flow-stage stage-completed">
+                            <div class="wh-flow-val loading" id="flowCompletedVal">—</div>
+                            <div class="wh-flow-label">Completed</div>
+                            <div class="wh-flow-sub">today</div>
+                        </div>
+                    </div>
+
+                    <!-- Transfers / logistics footer -->
+                    <div class="wh-flow-foot">
+                        <div class="wh-foot-item clickable" onclick="openTransfersModal('outbound')">
+                            <span class="wh-foot-val" id="whTransfersVal">—</span>
+                            <span class="wh-foot-label">Transfers Out</span>
+                            <span class="wh-foot-sub" id="whTransfersSub"></span>
+                        </div>
+                        <div class="wh-foot-sep"></div>
+                        <div class="wh-foot-item clickable" onclick="openTransfersModal('inbound')">
+                            <span class="wh-foot-val" id="whIncomingVal">—</span>
+                            <span class="wh-foot-label">Incoming</span>
+                            <span class="wh-foot-sub" id="whIncomingSub"></span>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -1272,139 +1297,124 @@
                     }
                 } catch(e) {}
 
-                // ─── 10. Warehouse Pipeline (cin7_mirror.order_pipeline) ───
-                try {
-                    const { data: pipeline, error: plErr } = await sb
-                        .schema('cin7_mirror')
-                        .from('order_pipeline')
-                        .select('*');
-                    if (!plErr && pipeline) {
-                        // Only show Main Warehouse data (strict — null location excluded)
+                // ─── 10. Warehouse Pipeline (cin7_mirror.order_pipeline) — flow board, auto-refresh ───
+                async function loadWarehouseBoard() {
+                    try {
+                        // Paginate past the PostgREST 1000-row cap (was .select('*') unbounded)
+                        let pipeline = [], from = 0;
+                        for (;;) {
+                            const { data, error } = await sb.schema('cin7_mirror')
+                                .from('order_pipeline').select('*').range(from, from + 999);
+                            if (error) throw error;
+                            if (!data || !data.length) break;
+                            pipeline.push(...data);
+                            if (data.length < 1000) break;
+                            from += 1000;
+                        }
                         const MAIN_WH = 'Main Warehouse';
                         const mainPipeline = pipeline.filter(r => r.from_location === MAIN_WH);
                         window.__pipelineData = mainPipeline;
-                        // Store ALL transfers (not just Main Warehouse) for the Transfers modal
                         window.__transferData = pipeline.filter(r => r.type === 'TR');
                         const _completedStatuses = ['COMPLETED','VOIDED','CLOSED','INVOICED'];
-                        // For KPIs: only active statuses visible to warehouse team
                         const _visibleStatuses = ['PICKING','PICKED','PACKING','ORDERED'];
                         const active = mainPipeline.filter(r => _visibleStatuses.includes(r.status));
-                        const completed = mainPipeline.filter(r => _completedStatuses.includes(r.status));
-                        const total = active.length;
-                        const soCount = active.filter(r => r.type === 'SO').length;
-                        const trCount = active.filter(r => r.type === 'TR').length;
+                        const ordered = active.filter(r => r.status === 'ORDERED').length;
                         const picking = active.filter(r => r.status === 'PICKING' || r.pick_status === 'PICKING').length;
-                        const picked = active.filter(r => r.status === 'PICKED' || r.pick_status === 'PICKED').length;
-                        const toPack = picked;
+                        const picked  = active.filter(r => r.status === 'PICKED'  || r.pick_status === 'PICKED').length;
+                        const packing = active.filter(r => r.status === 'PACKING').length;
+                        const toPack  = picked + packing;
 
-                        // Completed — ALL warehouses (not just Main WH)
+                        // Completed today — ALL warehouses (completed_at|updated_at fallback)
                         const allCompleted = pipeline.filter(r => _completedStatuses.includes(r.status));
-                        const todayAestStr = aestToday();
-                        const todayStart = new Date(aestDayStart(todayAestStr));
-                        const todayEnd = new Date(aestDayEnd(todayAestStr));
-                        const getCompletedDate = r => r.completed_at || r.updated_at || null;
+                        const todayStart = new Date(aestDayStart(aestToday()));
+                        const todayEnd = new Date(aestDayEnd(aestToday()));
                         const completedToday = allCompleted.filter(r => {
-                            const ts = getCompletedDate(r);
+                            const ts = r.completed_at || r.updated_at || null;
                             if (!ts) return false;
                             const t = new Date(ts);
                             return t >= todayStart && t <= todayEnd;
                         }).length;
 
-                        setKpi('whOrders', total, `${soCount} SO · ${trCount} TR`);
-
-                        // Transfers Out KPI — outbound from Main Warehouse only
+                        // Transfers (logistics footer)
                         const outboundTR = pipeline.filter(r => r.type === 'TR' && r.from_location === MAIN_WH);
                         const outInTransit = outboundTR.filter(r => r.status === 'IN TRANSIT').length;
                         const outOrdered = outboundTR.filter(r => r.status === 'ORDERED').length;
-                        const outActive = outInTransit + outOrdered;
-                        setKpi('whTransfers', outActive, `${outInTransit} in transit · ${outOrdered} ordered`);
-
-                        // Incoming KPI — inbound to Main Warehouse from branches
                         const inboundTR = pipeline.filter(r => r.type === 'TR' && r.to_location === MAIN_WH && r.from_location !== MAIN_WH);
                         const inInTransit = inboundTR.filter(r => r.status === 'IN TRANSIT').length;
                         const inOrdered = inboundTR.filter(r => r.status === 'ORDERED').length;
-                        const inActive = inInTransit + inOrdered;
-                        setKpi('whIncoming', inActive, `${inInTransit} in transit · ${inOrdered} ordered`);
 
-                        setKpi('whPicking', picking, 'in progress');
-                        setKpi('whToPack', toPack, 'awaiting pack');
-                        setKpi('whCompleted', completedToday, 'today');
+                        // Paint the flow board
+                        setKpi('flowOrdered', ordered, 'awaiting pick');
+                        setKpi('flowPicking', picking, 'in progress');
+                        setKpi('flowToPack', toPack, 'picked · awaiting pack');
+                        setKpi('flowCompleted', completedToday, 'today');
+                        setKpi('whTransfers', outInTransit + outOrdered, `${outInTransit} in transit · ${outOrdered} ordered`);
+                        setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
 
-
-
-                        // Last sync info
+                        // Sync freshness
                         const syncTimes = pipeline.map(r => r.synced_at).filter(Boolean).sort();
-                        if (syncTimes.length) {
-                            const lastSync = new Date(syncTimes[syncTimes.length - 1]);
-                            const syncAgo = fmtAgo(lastSync);
-                            const syncEl = document.getElementById('whSyncInfo');
-                            if (syncEl) {
-                                if (syncAgo.min > 120) {
-                                    syncEl.innerHTML = `<span style="color:#ef4444;font-weight:600">⚠ synced ${syncAgo.str}</span>`;
-                                } else {
-                                    syncEl.textContent = `synced ${syncAgo.str}`;
-                                }
-                            }
-                        }
-
-                        if (total > 0) addActivity('📦', `Pipeline: ${total} active (${picking} picking, ${toPack} to pack) · ${completedToday} completed today`, '');
-                    } else {
-                        setKpi('whOrders', '—', 'table not ready');
-                        setKpi('whPicking', '—', '');
-                        setKpi('whToPack', '—', '');
-                        setKpi('whCompleted', '—', '');
                         const syncEl = document.getElementById('whSyncInfo');
-                        if (syncEl) syncEl.textContent = 'not synced yet';
+                        if (syncEl && syncTimes.length) {
+                            const ago = fmtAgo(new Date(syncTimes[syncTimes.length - 1]));
+                            syncEl.innerHTML = ago.min > 120
+                                ? `<span style="color:#ef4444;font-weight:600">⚠ synced ${ago.str}</span>`
+                                : `synced ${ago.str}`;
+                        }
+                    } catch (e) {
+                        console.warn('Pipeline board error:', e);
+                        const syncEl = document.getElementById('whSyncInfo');
+                        if (syncEl) syncEl.textContent = 'sync error';
                     }
-                } catch(e) {
-                    console.warn('Pipeline load error:', e);
-                    setKpi('whOrders', '—', 'error');
-                }
 
-                // ─── Render Activity Feed ───
-                const feed = document.getElementById('activityFeed');
-                if (feed) {
-                    if (activities.length === 0) {
-                        feed.innerHTML = '<div class="activity-empty">No activity yet today — all quiet! 🎉</div>';
-                    } else {
-                        feed.innerHTML = activities.map(a =>
-                            `<div class="activity-item"><span class="activity-icon">${a.icon}</span><span class="activity-text">${a.text}${a.time ? ' <span class="time">' + a.time + '</span>' : ''}</span></div>`
-                        ).join('');
-                    }
+                    // Hero — Awaiting Pickup (collections_active)
+                    try {
+                        const { count } = await sb.from('collections_active').select('id', { count: 'exact', head: true });
+                        if (typeof count === 'number') setKpi('kpiColl', count, count === 0 ? 'none pending' : 'awaiting pickup');
+                    } catch (e) {}
+
+                    // Hero — Pick Accuracy (server endpoint, paginated past 1000)
+                    try {
+                        const r = await fetch('/api/pick-anomalies/stats');
+                        const j = await r.json();
+                        if (j.success && j.stats && j.stats.picks > 0) {
+                            const s = j.stats;
+                            setKpi('kpiAccuracy', ((s.correct / s.picks) * 100).toFixed(1) + '%', `${s.orders} orders · ${s.anomalyOrders} with issues`);
+                        }
+                    } catch (e) {}
                 }
+                await loadWarehouseBoard();
+                // Auto-refresh the board every 60s (wall display, no manual refresh button)
+                if (!window.__whBoardTimer) window.__whBoardTimer = setInterval(loadWarehouseBoard, 60000);
 
             } catch(e) { console.warn('Dashboard load error:', e); }
         })();
+
+        // ══════════════════════════════════════════════════════
+        // PIPELINE FULLSCREEN (wall display / TV)
+        // ══════════════════════════════════════════════════════
+        function togglePipelineFullscreen() {
+            const card = document.getElementById('whPipelineCard');
+            if (!card) return;
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (!fsEl) {
+                (card.requestFullscreen || card.webkitRequestFullscreen || function(){}).call(card);
+            } else {
+                (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+            }
+        }
+        function _onFsChange() {
+            const card = document.getElementById('whPipelineCard');
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (card) card.classList.toggle('pipeline-fs', fsEl === card);
+        }
+        document.addEventListener('fullscreenchange', _onFsChange);
+        document.addEventListener('webkitfullscreenchange', _onFsChange);
 
         // ══════════════════════════════════════════════════════
         // ORDERS MODAL LOGIC
         // ══════════════════════════════════════════════════════
         let _ordersTypeFilter = 'all';
         let _ordersViewFilter = 'active'; // 'active' or 'completed'
-        // ── Pipeline Sync trigger ──
-        async function triggerPipelineSync() {
-            const btn = document.getElementById('whSyncBtn');
-            const info = document.getElementById('whSyncInfo');
-            if (!btn || btn.classList.contains('syncing')) return;
-            btn.classList.add('syncing');
-            if (info) info.textContent = 'syncing...';
-            try {
-                const res = await fetch('/api/pipeline-sync', { method: 'POST' });
-                const data = await res.json();
-                if (data.success) {
-                    if (info) info.textContent = 'synced just now';
-                    // Reload dashboard data after sync
-                    setTimeout(() => location.reload(), 800);
-                } else {
-                    if (info) info.textContent = data.error || 'sync failed';
-                }
-            } catch (err) {
-                if (info) info.textContent = 'sync error';
-            } finally {
-                btn.classList.remove('syncing');
-            }
-        }
-
         let _ordersStatusFilter = 'all'; // 'all' or specific status
         let _ordersDateSort = 'desc'; // 'desc' = newest first, 'asc' = oldest first
         const _activeStatuses = ['PICKING', 'PICKED', 'PACKING', 'ORDERED'];
