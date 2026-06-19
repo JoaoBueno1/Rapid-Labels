@@ -319,22 +319,26 @@ function classifyAnomalyConfidence(pick, stockMap) {
     return { confidence: 'suspect', note: 'Adjacent pallet — same slot, different pallet number' };
   }
 
-  // Special location. Picking saleable units from un-QA'd RETURNS / SAMPLES /
-  // DAMAGED / FAULTY / QUARANTINE stock into a customer order is the HIGHEST
-  // quality risk — surface it as confirmed, not a likely-false-positive. Pure
-  // staging (DOCK / PRODUCTION) stays suspect.
-  if (et === 'special_loc') {
-    if (/RETURN|SAMPLE|DAMAGE|FAULT|QUARANTINE|REJECT/i.test(pick.bin || '')) {
-      return { confidence: 'confirmed', note: `Picked from "${pick.bin}" — un-QA'd / returns / samples stock in a customer order` };
-    }
-    return { confidence: 'suspect', note: `Special location — "${pick.bin}" is not a standard MA- bin` };
+  // Picking saleable units from un-QA'd RETURNS / SAMPLES / DAMAGED / FAULTY /
+  // QUARANTINE stock into a customer order is the HIGHEST quality risk → confirmed
+  // (regardless of stock), not a likely-false-positive.
+  if (et === 'special_loc' && /RETURN|SAMPLE|DAMAGE|FAULT|QUARANTINE|REJECT/i.test(pick.bin || '')) {
+    return { confidence: 'confirmed', note: `Picked from "${pick.bin}" — un-QA'd / returns / samples stock in a customer order` };
   }
 
-  // Check if the picked bin has stock for this SKU (overflow evidence)
+  // Overflow evidence: the picked bin actually holds stock of this SKU. Runs for
+  // ALL remaining types INCLUDING special_loc — M4: a DOCK/PRODUCTION pick that
+  // holds stock IS a real double-move risk and must carry the 'Overflow:' tag so
+  // the correction gate blocks it.
   const key = `${pick.sku}|${pick.bin}`;
   const stock = stockMap ? stockMap.get(key) : null;
   if (stock && stock.on_hand > 0) {
     return { confidence: 'suspect', note: `Overflow: bin "${pick.bin}" has ${stock.on_hand} units of this SKU in stock` };
+  }
+
+  // Special location with NO stock → staging only, suspect (no double-move risk).
+  if (et === 'special_loc') {
+    return { confidence: 'suspect', note: `Special location — "${pick.bin}" is not a standard MA- bin` };
   }
 
   // Same column without overflow evidence → still likely vertical overflow
@@ -1276,17 +1280,19 @@ async function reverseCorrection({ correctionId, productId, sku, qty, fromBin, t
   // actually COMPLETED — a DRAFT original moved no stock, so reversing it would
   // post a phantom inverse transfer. Refuse both cases rather than move stock.
   if (correctionId) {
+    let row;
     try {
       const rows = await sbGet('pick_anomaly_corrections', `select=product_id,transfer_status&id=eq.${correctionId}&limit=1`);
-      if (rows[0]) {
-        if (!productId && rows[0].product_id) productId = rows[0].product_id;
-        if (rows[0].transfer_status && rows[0].transfer_status !== 'COMPLETED') {
-          throw new Error(`Reversal blocked: original correction ${correctionId} is ${rows[0].transfer_status} (not COMPLETED) — it moved no stock, nothing to reverse.`);
-        }
-      }
+      row = rows[0];
     } catch (e) {
-      if (/Reversal blocked/.test(e.message)) throw e; // re-throw our explicit guard
-      /* otherwise fall through to the productId guard below */
+      // Fail CLOSED: if we cannot verify the original's status, do not move stock.
+      throw new Error(`Reversal blocked: could not verify correction ${correctionId} status (${e.message}).`);
+    }
+    if (row) {
+      if (!productId && row.product_id) productId = row.product_id;
+      if (row.transfer_status && row.transfer_status !== 'COMPLETED') {
+        throw new Error(`Reversal blocked: original correction ${correctionId} is ${row.transfer_status} (not COMPLETED) — it moved no stock, nothing to reverse.`);
+      }
     }
   }
   if (!productId) {
@@ -2258,7 +2264,7 @@ function registerPickAnomalyRoutes(app) {
       const { orderNumbers } = req.body || {};
 
       // Fetch orders to refresh
-      let query = 'select=order_number,picks,fg_orders,total_picks,correct_picks,anomaly_picks,fg_count';
+      let query = 'select=order_number,picks,fg_orders,total_picks,correct_picks,anomaly_picks,fg_count,fulfilled_date';
       if (orderNumbers && orderNumbers.length) {
         const nums = orderNumbers.map(n => `"${n}"`).join(',');
         query += `&order_number=in.(${encodeURIComponent(nums)})`;
@@ -2415,15 +2421,19 @@ function registerPickAnomalyRoutes(app) {
           const picks = typeof order.picks === 'string' ? JSON.parse(order.picks) : (order.picks || []);
           const fgOrders = typeof order.fg_orders === 'string' ? JSON.parse(order.fg_orders) : (order.fg_orders || []);
           let needsSave = false;
+          // H2: for a backfilled/dateless order today's stock is unrelated to the
+          // pick — classify against an EMPTY map → structural verdict, no false
+          // overflow (same staleness rule as addAnomalyConfidence).
+          const _ageDays = order.fulfilled_date ? (Date.now() - new Date(order.fulfilled_date).getTime()) / 86400000 : 999;
+          const oStockMap = _ageDays > 3 ? new Map() : stockMap;
 
-          // H2 fix: ONLY classify anomalies that have no verdict yet. NEVER
-          // overwrite a verdict — it was recorded at analyze-time (snapshot near
-          // the pick); re-judging an old pick against today's snapshot produces
-          // false suspect/confirmed (a bin emptied/restocked since the pick).
+          // ONLY classify anomalies that have no verdict yet — NEVER overwrite a
+          // verdict recorded at analyze-time (re-judging an old pick against today's
+          // snapshot produces false suspect/confirmed).
           for (const p of picks) {
             if (p.status === 'anomaly') {
               if (!p.anomalyConfidence) {
-                const { confidence, note } = classifyAnomalyConfidence(p, stockMap);
+                const { confidence, note } = classifyAnomalyConfidence(p, oStockMap);
                 p.anomalyConfidence = confidence;
                 p.anomalyNote = note;
                 needsSave = true;
@@ -2439,7 +2449,7 @@ function registerPickAnomalyRoutes(app) {
             for (const c of (fg.components || [])) {
               if (c.status === 'anomaly') {
                 if (!c.anomalyConfidence) {
-                  const { confidence, note } = classifyAnomalyConfidence(c, stockMap);
+                  const { confidence, note } = classifyAnomalyConfidence(c, oStockMap);
                   c.anomalyConfidence = confidence;
                   c.anomalyNote = note;
                   needsSave = true;
