@@ -1329,25 +1329,26 @@
                         const mainPipeline = pipeline.filter(r => r.from_location === MAIN_WH);
                         window.__pipelineData = mainPipeline;
                         window.__transferData = pipeline.filter(r => r.type === 'TR');
-                        const _completedStatuses = ['COMPLETED','VOIDED','CLOSED','INVOICED'];
-                        const _visibleStatuses = ['PICKING','PICKED','PACKING','ORDERED'];
-                        const active = mainPipeline.filter(r => _visibleStatuses.includes(r.status));
-                        const ordered = active.filter(r => r.status === 'ORDERED').length;
-                        const picking = active.filter(r => r.status === 'PICKING' || r.pick_status === 'PICKING').length;
-                        const picked  = active.filter(r => r.status === 'PICKED'  || r.pick_status === 'PICKED').length;
-                        const packing = active.filter(r => r.status === 'PACKING').length;
-                        const toPack  = picked + packing;
 
-                        // Completed today — ALL warehouses (completed_at|updated_at fallback)
-                        const allCompleted = pipeline.filter(r => _completedStatuses.includes(r.status));
+                        // ── Flow stages: SALES ORDERS @ Main Warehouse ONLY, one stage per order ──
+                        // Cin7 keeps status='ORDERED' even after pick/pack, so we drive the stages off
+                        // pick_status/pack_status (not status) to avoid the same order landing in two
+                        // tiles. Transfers (TR) are NOT in the SO flow — they live in the footer.
+                        const _completedStatuses = ['COMPLETED','VOIDED','CLOSED','INVOICED'];
+                        const soMain  = mainPipeline.filter(r => r.type === 'SO');
+                        const openSO  = soMain.filter(r => !_completedStatuses.includes(r.status));
+                        const isPicking = r => r.pick_status === 'PICKING';
+                        const isPicked  = r => r.pick_status === 'PICKED';
+                        const isPacked  = r => r.pack_status === 'PACKED';
+                        const ordered = openSO.filter(r => r.status === 'ORDERED' && !isPicking(r) && !isPicked(r)).length; // awaiting pick (backorders excluded)
+                        const picking = openSO.filter(r => isPicking(r)).length;
+                        const toPack  = openSO.filter(r => isPicked(r) && !isPacked(r)).length;                            // picked, awaiting pack
+
+                        // Completed today — SO @ Main ONLY, by real completion time (completed_at; updated_at fallback)
                         const todayStart = new Date(aestDayStart(aestToday()));
                         const todayEnd = new Date(aestDayEnd(aestToday()));
-                        const completedToday = allCompleted.filter(r => {
-                            const ts = r.completed_at || r.updated_at || null;
-                            if (!ts) return false;
-                            const t = new Date(ts);
-                            return t >= todayStart && t <= todayEnd;
-                        }).length;
+                        const inToday = ts => { if (!ts) return false; const t = new Date(ts); return t >= todayStart && t <= todayEnd; };
+                        const completedToday = soMain.filter(r => r.status === 'COMPLETED' && inToday(r.completed_at || r.updated_at)).length;
 
                         // Transfers (logistics footer)
                         const outboundTR = pipeline.filter(r => r.type === 'TR' && r.from_location === MAIN_WH);
@@ -1365,13 +1366,13 @@
                         setKpi('whTransfers', outInTransit + outOrdered, `${outInTransit} in transit · ${outOrdered} ordered`);
                         setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
 
-                        // Stalled — longest WIP order with NO MOVEMENT (now - updated_at).
+                        // Stalled — longest WIP order (picking/to-pack) with NO MOVEMENT (now - updated_at).
                         // updated_at = last real status change (synced_at is just the sync touch).
-                        // Excludes ORDERED (back-orders waiting on stock). Alert by exception.
+                        // Alert by exception. SO @ Main only.
                         const AGING_H = 24;
                         const nowMs = Date.now();
                         const fmtDur = ms => { const h = ms/3600000; if (h < 1) return Math.max(0, Math.round(ms/60000)) + 'm'; if (h < 24) return Math.round(h) + 'h'; return Math.floor(h/24) + 'd'; };
-                        const wip = active.filter(r => r.status !== 'ORDERED');
+                        const wip = openSO.filter(r => isPicking(r) || (isPicked(r) && !isPacked(r)));
                         const ages = wip.map(r => r.updated_at ? (nowMs - new Date(r.updated_at).getTime()) : 0).filter(a => a > 0);
                         const oldestMs = ages.length ? Math.max.apply(null, ages) : 0;
                         const agingCount = ages.filter(a => a > AGING_H * 3600000).length;
