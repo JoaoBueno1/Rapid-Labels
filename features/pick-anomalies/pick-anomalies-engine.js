@@ -533,6 +533,10 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
     query += '&anomaly_picks=gt.0';
   } else if (filter === 'cancelled') {
     query += '&is_cancelled=eq.true';
+  } else if (filter === 'assembly') {
+    query += '&entity_type=eq.assembly';
+  } else if (filter === 'assembly_anomaly') {
+    query += '&entity_type=eq.assembly&anomaly_picks=gt.0';
   }
   query += hideCancelled;
 
@@ -569,6 +573,8 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   else if (filter === 'fg') totalQuery += '&fg_count=gt.0';
   else if (filter === 'pending') totalQuery += `&anomaly_picks=gt.0&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
   else if (filter === 'cancelled') totalQuery += '&is_cancelled=eq.true';
+  else if (filter === 'assembly') totalQuery += '&entity_type=eq.assembly';
+  else if (filter === 'assembly_anomaly') totalQuery += '&entity_type=eq.assembly&anomaly_picks=gt.0';
   totalQuery += hideCancelled;
   if (search) totalQuery += `&or=(order_number.ilike.*${search}*,customer.ilike.*${search}*)`;
 
