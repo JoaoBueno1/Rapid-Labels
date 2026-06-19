@@ -1367,8 +1367,8 @@
         const params = new URLSearchParams({ sku: t.sku, fromBin: t.expectedBin, toBin: t.pickedBin });
         const res = await fetch(`/api/pick-anomalies/recent-transfers?${params}`);
         const data = await res.json();
-        if (data.success && data.recentTransfers && data.recentTransfers.length > 0) {
-          return { item: t, transfers: data.recentTransfers };
+        if (data.success && data.recent && data.recent.length > 0) {
+          return { item: t, transfers: data.recent };
         }
         return null;
       }));

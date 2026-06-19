@@ -1763,7 +1763,7 @@ function registerPickAnomalyRoutes(app) {
 
       // ── Fetch orders (date-filtered) and corrections (date-filtered) in parallel ──
       const orderQ =
-        `select=order_number,order_date,customer,total_picks,correct_picks,anomaly_picks,fg_count,` +
+        `select=order_number,order_date,customer,total_picks,correct_picks,anomaly_picks,fg_anomaly_picks,fg_count,` +
         `reviewed,reviewed_at,analyzed_at,is_cancelled,has_correction_conflict,picks,fg_orders` +
         `&order_date=gte.${from}&order_date=lte.${to}`;
       const corrQ =
@@ -1808,7 +1808,7 @@ function registerPickAnomalyRoutes(app) {
         totalPicks += o.total_picks || 0;
         totalAnomalies += o.anomaly_picks || 0;
         totalCorrect += o.correct_picks || 0;
-        if ((o.anomaly_picks || 0) > 0) {
+        if ((o.anomaly_picks || 0) > 0 || (o.fg_anomaly_picks || 0) > 0) {
           anomalyOrders++;
           if (o.reviewed) anomalyOrdersReviewed++;
           if (fixedOrderSet.has(o.order_number)) fixedAnomalyOrders++;
@@ -1934,7 +1934,7 @@ function registerPickAnomalyRoutes(app) {
       // sbGetAll paginates automatically (Supabase default limit = 1000 rows)
       const [allOrders, allCorrections] = await Promise.all([
         sbGetAll('pick_anomaly_orders',
-          'select=total_picks,correct_picks,anomaly_picks,fg_count,reviewed'
+          'select=total_picks,correct_picks,anomaly_picks,fg_anomaly_picks,fg_count,reviewed'
         ),
         sbGetAll('pick_anomaly_corrections', 'select=id'),
       ]);
@@ -1950,7 +1950,7 @@ function registerPickAnomalyRoutes(app) {
         totalFg       += o.fg_count       || 0;
         if (o.reviewed) totalReviewed++;
         // Reviewed KPI: only count orders WITH anomalies
-        if ((o.anomaly_picks || 0) > 0) {
+        if ((o.anomaly_picks || 0) > 0 || (o.fg_anomaly_picks || 0) > 0) {
           anomalyOrders++;
           if (o.reviewed) anomalyOrdersReviewed++;
         }
@@ -2608,6 +2608,11 @@ async function analyzeAssemblyRealtime(fgTaskId, fgDetail = null, source = 'asse
     catch (err) { return { ok: false, skipped: 'fetch_failed', error: err.message }; }
   }
   if ((det.Status || '').toUpperCase() !== 'COMPLETED') return { ok: false, skipped: 'not_completed' };
+  // M10: skip SO-linked builds (auto-assembly on a sale) — the sale's fg_orders
+  // already analyses them; storing standalone too would double-count + allow a
+  // duplicate correction. Detect the linked order number in the build's Notes.
+  const _soLink = (det.Notes || '').match(/\bSO-\d+\b/);
+  if (_soLink) return { ok: false, skipped: 'so_linked', linkedTo: _soLink[0] };
   const asmNum = det.AssemblyNumber || `FG-${fgTaskId}`;
   const pickLines = det.PickLines || [];
   if (!pickLines.length) return { ok: false, skipped: 'no_picks' };
