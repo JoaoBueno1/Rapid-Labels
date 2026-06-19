@@ -2531,6 +2531,70 @@ async function analyzeOrderRealtime(saleId, orderNumber, preFetchedDetail = null
   return { ok: true, anomalies: anomalyCount, correct: correctCount, orderNumber: ordNum };
 }
 
+// Analyze a STANDALONE assembly (finished-goods build not tied to a sale) for
+// pick anomalies, exactly like a sales order: its PickLines are component picks
+// from bins → compare each to the component's pickface, classify, store as a
+// pick_anomaly_order with entity_type='assembly'. Reuses the same locators /
+// classifyError / confidence logic so assemblies are verified, corrected and
+// counted in the SAME flow. Reuses a pre-fetched detail (no extra Cin7 call).
+async function analyzeAssemblyRealtime(fgTaskId, fgDetail = null, source = 'assembly-sync') {
+  let det = fgDetail;
+  if (!det) {
+    try { det = await cin7Get(`finishedGoods?TaskID=${fgTaskId}`); }
+    catch (err) { return { ok: false, skipped: 'fetch_failed', error: err.message }; }
+  }
+  if ((det.Status || '').toUpperCase() !== 'COMPLETED') return { ok: false, skipped: 'not_completed' };
+  const asmNum = det.AssemblyNumber || `FG-${fgTaskId}`;
+  const pickLines = det.PickLines || [];
+  if (!pickLines.length) return { ok: false, skipped: 'no_picks' };
+
+  const compSkus = [...new Set(pickLines.map(pl => pl.ProductCode).filter(Boolean))];
+  const locators = await fetchLocators(compSkus);
+  let idx = 0;
+  const picks = pickLines.filter(pl => pl.ProductCode).map(pl => {
+    const info = locators.get(pl.ProductCode);
+    const expected = info?.locator || null;
+    const bin = pl.Bin || null;
+    let status, errorType = null;
+    if (!bin) status = 'no_bin_ok'; // component issued without a bin (branch/BOM) — not flaggable
+    else if (!expected || expected === '0' || expected === 'BOM' || expected === 'Production' || !expected.startsWith('MA-')) status = 'correct';
+    else if (bin === expected) status = 'correct';
+    else { status = 'anomaly'; errorType = classifyError(bin, expected); }
+    return {
+      id: `${asmNum}-${idx++}`, sku: pl.ProductCode, productId: pl.ProductID,
+      name: pl.Name || pl.ProductName, qty: pl.Quantity, bin, hasBin: !!bin,
+      location: bin ? `${det.Location || 'Main Warehouse'}: ${bin}` : null,
+      expectedBin: expected, status, errorType,
+    };
+  });
+
+  const filtered = picks.filter(p => p.status === 'correct' || p.status === 'anomaly');
+  if (!filtered.length) return { ok: false, skipped: 'no_actionable_picks' };
+  await addAnomalyConfidence(filtered, []);
+  const correct = filtered.filter(p => p.status === 'correct').length;
+  const anomaly = filtered.filter(p => p.status === 'anomaly').length;
+
+  const completion = det.CompletionDate ? det.CompletionDate.split('T')[0] : null;
+  if (completion && completion < SCANNER_CUTOFF_DATE) return { ok: false, skipped: 'pre_cutoff' };
+
+  const orderResult = {
+    sale_id: det.TaskID, order_number: asmNum, entity_type: 'assembly',
+    order_date: completion, fulfilled_date: completion, invoice_date: null,
+    customer: det.ProductName ? `🔧 Build: ${det.ProductName}` : 'Assembly build',
+    order_status: det.Status,
+    total_picks: filtered.length, correct_picks: correct, anomaly_picks: anomaly,
+    fg_count: 0, picks: filtered, fg_orders: [],
+    analyzed_at: new Date().toISOString(),
+  };
+  await sbInsertIfNew('pick_anomaly_orders', orderResult, 'order_number');
+  await logAction({
+    order_number: asmNum, action: 'synced',
+    details: `[assembly] ${det.ProductCode} ×${det.Quantity}: ${correct} correct, ${anomaly} anomalies`,
+    user_email: source === 'webhook' ? 'system@webhook' : 'system@assembly-sync',
+  });
+  return { ok: true, anomalies: anomaly, correct, orderNumber: asmNum };
+}
+
 // Mark an order cancelled in real time (Sale/Voided or Sale/Undo webhook).
 // Mirrors the batch cancellation logic for a single order — no Cin7 call.
 async function markOrderCancelledRealtime(orderNumber, status = 'VOIDED') {
@@ -2553,4 +2617,4 @@ async function markOrderCancelledRealtime(orderNumber, status = 'VOIDED') {
   return { ok: true, hasConflict };
 }
 
-module.exports = { registerPickAnomalyRoutes, syncNewOrders, loadHistory, createCorrectionTransfer, markOrderReviewed, getOrderLogs, logAction, analyzeOrderRealtime, markOrderCancelledRealtime };
+module.exports = { registerPickAnomalyRoutes, syncNewOrders, loadHistory, createCorrectionTransfer, markOrderReviewed, getOrderLogs, logAction, analyzeOrderRealtime, analyzeAssemblyRealtime, markOrderCancelledRealtime };

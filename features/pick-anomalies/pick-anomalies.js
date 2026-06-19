@@ -588,7 +588,7 @@
       return `<tr class="${rowClass}" style="cursor:pointer">
         <td><input type="checkbox" class="pa-bulk-check" data-idx="${idx}" onclick="event.stopPropagation(); PA.toggleBulk(${idx}, this.checked)" ${state.selectedBulk.has(idx) ? 'checked' : ''} /></td>
         <td onclick="PA.openDetail(${idx})">${offset + idx + 1}</td>
-        <td onclick="PA.openDetail(${idx})"><strong>${esc(o.order_number)}</strong></td>
+        <td onclick="PA.openDetail(${idx})"><strong>${esc(o.order_number)}</strong>${o.entity_type === 'assembly' ? ' <span class="pa-badge" style="background:#ede9fe;color:#6d28d9;font-size:10px">🔧 Assembly</span>' : ''}</td>
         <td onclick="PA.openDetail(${idx})">${formatDate(o.order_date)}</td>
         <td onclick="PA.openDetail(${idx})">${formatDate(o.fulfilled_date)}</td>
         <td onclick="PA.openDetail(${idx})">${esc(o.customer)}</td>

@@ -29,6 +29,9 @@ const CAP = parseInt((process.argv.find(a => a.startsWith('--limit=')) || '').sp
 if (!ACC || !CK || (!DRY && !process.env.SUPABASE_SERVICE_KEY)) { console.error('Missing creds'); process.exit(1); }
 const cm = (DRY && !process.env.SUPABASE_SERVICE_KEY) ? null
   : createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY).schema('cin7_mirror');
+// Feed the Anomalies monitor too: standalone assembly component picks get the
+// same pickface anomaly check as sales picks (reuses the already-fetched detail).
+const PA = (!DRY && !TASK) ? require('../features/pick-anomalies/pick-anomalies-engine') : null;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const num = v => (v == null || v === '') ? 0 : Number(v);
 const d = v => (v ? String(v).split('T')[0] : null);
@@ -122,6 +125,9 @@ async function fetchDetail(taskId) { return cin7(`finishedGoods?TaskID=${taskId}
     await cm.from('stock_movements').delete().eq('cin7_task_id', det.TaskID).eq('source', 'assembly-sync');
     if (mv.length) { const { error } = await cm.from('stock_movements').insert(mv); if (error) throw new Error('insert: ' + error.message); }
     written += mv.length;
+    // analyze component picks for anomalies (Anomalies monitor), best-effort
+    try { if (PA) await PA.analyzeAssemblyRealtime(det.TaskID, det, 'assembly-sync'); }
+    catch (e) { console.warn(`  ⚠️ anomaly analysis ${det.AssemblyNumber}: ${e.message}`); }
   }
   if (DRY || TASK) { console.log('\nDRY/verify — nada gravado.'); process.exit(0); }
   console.log(`✅ ${written} assembly movements ledgered (${headers.length} builds).`);
