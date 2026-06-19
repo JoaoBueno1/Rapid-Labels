@@ -578,7 +578,11 @@ class MovementProcessor {
     } catch (e) {
       console.warn(`⚠️ Could not fetch PO by ID ${poId}: ${e.message}`);
     }
-    if (!poData && poNumber) {
+    // The webhook's TaskID is the StockReceived task, NOT the purchase ID, so
+    // purchase?ID=<TaskID> may 200 with the wrong/empty object. Fall back to a
+    // PurchaseOrderNumber search whenever the receipt lines are missing.
+    const hasLines = d => d && d.StockReceived && (Array.isArray(d.StockReceived) ? d.StockReceived.length : d.StockReceived.Lines);
+    if (!hasLines(poData) && poNumber) {
       try {
         const list = await this._cin7Request('purchaseList', { Search: poNumber });
         const match = (list.PurchaseList || []).find(p => p.OrderNumber === poNumber);

@@ -1453,15 +1453,17 @@
         pickedBin: pick.bin,
         orderNumber: order.order_number,
         pickId: id,
-        anomalyConfidence: pick.anomalyConfidence,  // M4: overflow picks need confirmation
+        anomalyConfidence: pick.anomalyConfidence,
+        // M4: ONLY a real overflow pick (the bin legitimately held the stock) risks
+        // a double-move — not every 'suspect' (pallet/column/dock staging).
+        isOverflow: (pick.anomalyNote || '').startsWith('Overflow:'),
       };
     }).filter(Boolean);
 
-    // M4: warn before "correcting" overflow (suspect) picks — the bin decrement
-    // was legitimate, so a correction transfer can double-move stock.
-    const suspectCount = items.filter(i => i.anomalyConfidence === 'suspect').length;
-    if (suspectCount > 0 && !force) {
-      const msg = `${suspectCount} of these ${items.length} are SUSPECT (overflow) anomalies — the pick bin already held the stock, so a correction transfer may DOUBLE-MOVE it. Apply anyway?`;
+    // M4: warn ONLY for overflow picks (+ unknown confidence, treated cautiously).
+    const riskyCount = items.filter(i => i.isOverflow || i.anomalyConfidence == null).length;
+    if (riskyCount > 0 && !force) {
+      const msg = `${riskyCount} of these ${items.length} are OVERFLOW picks (the bin already held this stock) — a correction may DOUBLE-MOVE it. Apply anyway?`;
       if (!confirm(msg)) return;
       force = true;
     }
@@ -2155,9 +2157,10 @@
     const corrections = order.corrections || [];
     if (!corrections.length) return alert('No corrections to reverse');
 
-    // Filter out already-reversed corrections
-    const toReverse = corrections.filter(c => !c.is_reversed);
-    if (!toReverse.length) return alert('All corrections already reversed');
+    // M7: only reverse corrections that actually MOVED stock (COMPLETED). A DRAFT
+    // original moved nothing — reversing it would post a phantom inverse transfer.
+    const toReverse = corrections.filter(c => !c.is_reversed && c.transfer_status === 'COMPLETED');
+    if (!toReverse.length) return alert('No completed corrections to reverse (DRAFT/already-reversed moved no stock)');
 
     if (!confirm(`Reverse ${toReverse.length} correction(s) for ${orderNumber}?\n\nThis will create INVERSE stock transfers (undo the corrections because the order was cancelled).`)) {
       return;
