@@ -561,8 +561,11 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   } else if (filter === 'fg') {
     query += '&fg_count=gt.0';
   } else if (filter === 'pending') {
-    // Actionable queue: unreviewed anomalies (sale OR FG), recent ship only
-    query += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
+    // Everything that still needs review: ANY unreviewed anomaly (sale pick OR
+    // FG/assembly component), no ship-date window — so the Pending queue matches
+    // the "Reviewed X/Y" KPI and the operator can clear it to 100%. Ordered by
+    // ship date (recent first) so the freshest are on top.
+    query += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false`;
   } else if (filter === 'corrected') {
     query += '&anomaly_picks=gt.0';
   } else if (filter === 'cancelled') {
@@ -605,7 +608,7 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   if (filter === 'anomaly') totalQuery += '&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)';
   else if (filter === 'correct') totalQuery += '&anomaly_picks=eq.0&fg_anomaly_picks=eq.0&total_picks=gt.0';
   else if (filter === 'fg') totalQuery += '&fg_count=gt.0';
-  else if (filter === 'pending') totalQuery += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false&fulfilled_date=gte.${sinceShip}`;
+  else if (filter === 'pending') totalQuery += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false`;
   else if (filter === 'cancelled') totalQuery += '&is_cancelled=eq.true';
   else if (filter === 'assembly') totalQuery += '&entity_type=eq.assembly';
   else if (filter === 'assembly_anomaly') totalQuery += '&entity_type=eq.assembly&anomaly_picks=gt.0';
