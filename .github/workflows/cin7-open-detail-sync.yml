@@ -13,7 +13,7 @@ name: Cin7 Open Detail Sync
 
 on:
   schedule:
-    - cron: '5 */2 * * *'   # every 2 hours at :05
+    - cron: '5 */6 * * *'   # every 6 hours at :05 (gentle on the shared cap)
   workflow_dispatch: {}
 
 jobs:
@@ -33,6 +33,6 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
           CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
-          BACKFILL_THROTTLE_MS: '4000'
-          DETAIL_OPEN_CAP: '150'
+          BACKFILL_THROTTLE_MS: '4500'
+          DETAIL_OPEN_CAP: '60'
         run: node cin7-stock-sync/backfill-sales.js detail-open
