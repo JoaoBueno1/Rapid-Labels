@@ -524,7 +524,7 @@
 
                     <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
                     <div class="wh-chart-wrap">
-                        <div class="wh-chart-title">📈 Daily Orders Completed &amp; Picks <span id="whChartNote" class="wh-chart-note"></span></div>
+                        <div class="wh-chart-title">📈 Daily Orders &amp; Picks <span id="whChartNote" class="wh-chart-note"></span></div>
                         <div class="wh-chart-canvas"><canvas id="pipelineChart"></canvas></div>
                     </div>
                 </div>
@@ -1440,52 +1440,34 @@
         document.addEventListener('fullscreenchange', _onFsChange);
         document.addEventListener('webkitfullscreenchange', _onFsChange);
 
-        // ── Pipeline trend chart: orders shipped/day (bars) + picks/day (line) ──
-        //  Bucketed by fulfilled_date (ship date = work actually done), so weekends
-        //  (no shipping) don't show. order_date would wrongly include online orders
-        //  placed on weekends.
+        // ── Pipeline trend chart: orders/day (bars) + picks/day (line) ──
+        //  Source: pick_anomaly_orders via analytics-v2 — ALREADY Main Warehouse only
+        //  (the scanner fetches saleList?Location=Main Warehouse). Bucketed by
+        //  order_date, so weekends show too (online orders created Sat/Sun count).
         async function loadPipelineChart(_retry) {
             try {
                 if (!window.Chart) {                       // Chart.js not parsed yet — retry briefly
                     if ((_retry || 0) < 12) setTimeout(() => loadPipelineChart((_retry || 0) + 1), 400);
                     return;
                 }
-                const sb = window.supabase;
-                if (!sb) return;
-                const since = new Date(Date.now() + 10 * 3600000 - 24 * 86400000).toISOString().slice(0, 10); // ~24d → ~17 working days
-                let rows = [], from = 0;
-                for (;;) {
-                    const r = await sb.from('pick_anomaly_orders')
-                        .select('fulfilled_date, total_picks')
-                        .gte('fulfilled_date', since)
-                        .range(from, from + 999);
-                    if (r.error) break;
-                    rows.push(...(r.data || []));
-                    if (!r.data || r.data.length < 1000) break;
-                    from += 1000;
-                }
-                const byDay = {};
-                rows.forEach(o => {
-                    if (!o.fulfilled_date) return;
-                    (byDay[o.fulfilled_date] || (byDay[o.fulfilled_date] = { orders: 0, picks: 0 }));
-                    byDay[o.fulfilled_date].orders++;
-                    byDay[o.fulfilled_date].picks += (o.total_picks || 0);
-                });
-                let days = Object.keys(byDay).sort();
-                if (!days.length) return;
-                days = days.slice(-15);                     // last ~15 working days
-                const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                const labels = days.map(d => { const dt = new Date(d + 'T00:00:00'); return `${dow[dt.getDay()]} ${dt.getDate()}`; });
-                const orders = days.map(d => byDay[d].orders);
-                const picks  = days.map(d => byDay[d].picks);
+                const today = new Date(Date.now() + 10 * 3600000).toISOString().slice(0, 10);          // AEST
+                const from  = new Date(Date.now() + 10 * 3600000 - 17 * 86400000).toISOString().slice(0, 10); // ~18 days
+                const res = await fetch(`/api/pick-anomalies/analytics-v2?from=${from}&to=${today}&granularity=day`);
+                const data = await res.json();
+                if (!data || !data.success) return;
+                const ts = (data.analytics && data.analytics.timeSeries) || [];
                 const cv = document.getElementById('pipelineChart');
-                if (!cv) return;
+                if (!cv || !ts.length) return;
+                const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const labels = ts.map(t => { const d = new Date(t.bucket + 'T00:00:00'); return isNaN(d) ? t.bucket : `${dow[d.getDay()]} ${d.getDate()}`; });
+                const orders = ts.map(t => t.orders || 0);
+                const picks  = ts.map(t => t.picks || 0);
                 if (window.__pipelineChart) window.__pipelineChart.destroy();
                 window.__pipelineChart = new Chart(cv.getContext('2d'), {
                     data: {
                         labels,
                         datasets: [
-                            { type: 'bar', label: 'Orders completed', data: orders, yAxisID: 'y', order: 1,
+                            { type: 'bar', label: 'Orders', data: orders, yAxisID: 'y', order: 1,
                               backgroundColor: 'rgba(34,197,94,.55)', borderRadius: 4, categoryPercentage: .8, barPercentage: .9 },
                             { type: 'line', label: 'Picks', data: picks, yAxisID: 'y1', order: 0,
                               borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.10)', fill: true,
@@ -1504,7 +1486,7 @@
                     },
                 });
                 const note = document.getElementById('whChartNote');
-                if (note) note.textContent = `· by ship date · ${days.length} working days`;
+                if (note) note.textContent = `· Main Warehouse · last ${ts.length} days`;
             } catch (e) { console.warn('pipeline chart error', e); }
         }
 
