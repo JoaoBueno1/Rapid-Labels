@@ -174,6 +174,10 @@
         .wh-foot-label { font-weight:600; color:var(--text); }
         .wh-foot-sub { font-size:.66rem; opacity:.75; }
         .wh-foot-sep { width:1px; height:22px; background:var(--border); }
+        .wh-chart-wrap { margin-top:16px; padding-top:14px; border-top:1px dashed var(--border); }
+        .wh-chart-title { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+        .wh-chart-note { font-weight:500; text-transform:none; letter-spacing:0; font-size:.66rem; color:#94a3b8; }
+        .wh-chart-canvas { position:relative; height:175px; }
         /* Fullscreen (wall display / TV) */
         .wh-pipeline.pipeline-fs { background:#0b1220; color:#fff; display:flex; flex-direction:column; justify-content:center; padding:4vh 4vw; }
         .wh-pipeline.pipeline-fs .wh-pipeline-title { font-size:1.6rem; color:#fff; margin-bottom:3vh; }
@@ -194,6 +198,9 @@
         .wh-pipeline.pipeline-fs .wh-flow-foot { font-size:1.2rem; border-top-color:#1e293b; margin-top:3vh; }
         .wh-pipeline.pipeline-fs .wh-foot-val { font-size:2.2rem; }
         .wh-pipeline.pipeline-fs .wh-foot-label { color:#e2e8f0; }
+        .wh-pipeline.pipeline-fs .wh-chart-wrap { border-top-color:#1e293b; margin-top:3vh; }
+        .wh-pipeline.pipeline-fs .wh-chart-title { color:#cbd5e1; }
+        .wh-pipeline.pipeline-fs .wh-chart-canvas { height:26vh; }
         .wh-kpi-row { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; }
         .wh-kpi { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 10px; text-align:center; transition:all .2s; position:relative; }
         .wh-kpi:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,.06); }
@@ -464,17 +471,12 @@
                         <button class="wh-fs-btn" id="whFsBtn" title="Fullscreen — wall display" onclick="togglePipelineFullscreen()">⛶</button>
                     </div>
 
-                    <!-- Headline stats: Pick Accuracy + Awaiting Pickup -->
+                    <!-- Headline stat: Pick Accuracy -->
                     <div class="wh-hero-row">
                         <div class="wh-hero wh-hero-accuracy">
                             <div class="wh-hero-val loading" id="kpiAccuracyVal">—</div>
                             <div class="wh-hero-label">Pick Accuracy</div>
                             <div class="wh-hero-sub" id="kpiAccuracySub">loading…</div>
-                        </div>
-                        <div class="wh-hero wh-hero-pickup">
-                            <div class="wh-hero-val loading" id="kpiCollVal">—</div>
-                            <div class="wh-hero-label">Awaiting Pickup</div>
-                            <div class="wh-hero-sub" id="kpiCollSub">awaiting pickup</div>
                         </div>
                     </div>
 
@@ -518,6 +520,12 @@
                             <span class="wh-foot-label">Incoming</span>
                             <span class="wh-foot-sub" id="whIncomingSub"></span>
                         </div>
+                    </div>
+
+                    <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
+                    <div class="wh-chart-wrap">
+                        <div class="wh-chart-title">📈 Weekly Picks &amp; Accuracy <span id="whChartNote" class="wh-chart-note"></span></div>
+                        <div class="wh-chart-canvas"><canvas id="pipelineChart"></canvas></div>
                     </div>
                 </div>
 
@@ -1055,6 +1063,7 @@
     <script src="scanner.js"></script>
     <script src="multi-label.js?v=20260302c"></script>
     <script src="app.js?v=20260302k"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         // Service worker disabled for production stability
         
@@ -1389,12 +1398,6 @@
                         if (syncEl) syncEl.textContent = 'sync error';
                     }
 
-                    // Hero — Awaiting Pickup (collections_active)
-                    try {
-                        const { count } = await sb.from('collections_active').select('id', { count: 'exact', head: true });
-                        if (typeof count === 'number') setKpi('kpiColl', count, count === 0 ? 'none pending' : 'awaiting pickup');
-                    } catch (e) {}
-
                     // Hero — Pick Accuracy (server endpoint, paginated past 1000)
                     try {
                         const r = await fetch('/api/pick-anomalies/stats');
@@ -1408,6 +1411,10 @@
                 await loadWarehouseBoard();
                 // Auto-refresh the board every 60s (wall display, no manual refresh button)
                 if (!window.__whBoardTimer) window.__whBoardTimer = setInterval(loadWarehouseBoard, 60000);
+
+                // Weekly trend chart (refresh every 5 min — it moves slowly)
+                loadPipelineChart();
+                if (!window.__whChartTimer) window.__whChartTimer = setInterval(loadPipelineChart, 300000);
 
             } catch(e) { console.warn('Dashboard load error:', e); }
         })();
@@ -1432,6 +1439,51 @@
         }
         document.addEventListener('fullscreenchange', _onFsChange);
         document.addEventListener('webkitfullscreenchange', _onFsChange);
+
+        // ── Weekly trend chart: picks (bars) + pick accuracy % (line) ──
+        async function loadPipelineChart() {
+            try {
+                if (!window.Chart) return;
+                const today = new Date(Date.now() + 10 * 3600000).toISOString().slice(0, 10);          // AEST
+                const from  = new Date(Date.now() + 10 * 3600000 - 84 * 86400000).toISOString().slice(0, 10); // ~12 weeks
+                const res = await fetch(`/api/pick-anomalies/analytics-v2?from=${from}&to=${today}&granularity=week`);
+                const data = await res.json();
+                if (!data || !data.success) return;
+                const ts = (data.analytics && data.analytics.timeSeries) || [];
+                const cv = document.getElementById('pipelineChart');
+                if (!cv || !ts.length) return;
+                const labels   = ts.map(t => (t.bucket || '').replace(/^\d{4}-/, ''));
+                const picks    = ts.map(t => t.picks || 0);
+                const accuracy = ts.map(t => t.picks ? Math.round((t.correct / t.picks) * 1000) / 10 : null);
+                const accVals  = accuracy.filter(v => v != null);
+                const yMin = accVals.length ? Math.max(0, Math.floor(Math.min.apply(null, accVals) - 3)) : 80;
+                if (window.__pipelineChart) window.__pipelineChart.destroy();
+                window.__pipelineChart = new Chart(cv.getContext('2d'), {
+                    data: {
+                        labels,
+                        datasets: [
+                            { type: 'bar', label: 'Picks', data: picks, yAxisID: 'y1', order: 1,
+                              backgroundColor: 'rgba(59,130,246,.30)', borderRadius: 4, barPercentage: .85, categoryPercentage: .8 },
+                            { type: 'line', label: 'Pick accuracy %', data: accuracy, yAxisID: 'y', order: 0,
+                              borderColor: '#16a34a', backgroundColor: 'rgba(34,197,94,.10)', fill: true,
+                              tension: .3, borderWidth: 2, pointRadius: 2, spanGaps: true },
+                        ],
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+                            y:  { position: 'left',  min: yMin, max: 100, grid: { color: '#eef2f7' }, ticks: { callback: v => v + '%' } },
+                            y1: { position: 'right', beginAtZero: true, grid: { display: false } },
+                        },
+                    },
+                });
+                const note = document.getElementById('whChartNote');
+                if (note) note.textContent = `· last ${ts.length} weeks`;
+            } catch (e) { console.warn('pipeline chart error', e); }
+        }
 
         // ══════════════════════════════════════════════════════
         // ORDERS MODAL LOGIC
