@@ -279,6 +279,91 @@ try {
   console.log('✅ Pending TR lines endpoint registered');
 })();
 
+// ── Order detail: live Cin7 fetch for the pipeline modal expansion ──
+//    GET /api/sale/:number → normalized { header, lines } straight from Cin7,
+//    so active orders (whose lines aren't mirrored yet) can show their items.
+(function registerSaleDetailRoute() {
+  const https = require('https');
+  const ACC = process.env.CIN7_ACCOUNT_ID || '';
+  const CK  = process.env.CIN7_API_KEY || '';
+  const num = v => (v == null || v === '') ? null : Number(v);
+
+  function cin7Req(apiPath) {
+    return new Promise((resolve, reject) => {
+      const opts = {
+        hostname: 'inventory.dearsystems.com',
+        path: `/ExternalApi/v2/${apiPath}`,
+        headers: { 'api-auth-accountid': ACC, 'api-auth-applicationkey': CK, 'Accept': 'application/json' },
+        timeout: 30000,
+      };
+      const r = https.get(opts, res => {
+        let body = '';
+        res.on('data', c => body += c);
+        res.on('end', () => {
+          if (res.statusCode >= 400) return reject(new Error(`Cin7 HTTP ${res.statusCode}`));
+          try { resolve(JSON.parse(body)); } catch (e) { reject(new Error('Bad JSON from Cin7')); }
+        });
+      });
+      r.on('error', reject);
+      r.on('timeout', () => { r.destroy(); reject(new Error('Timeout')); });
+    });
+  }
+
+  // Cin7 needs two steps: saleList?Search → SaleID → sale?ID=full detail
+  async function cin7GetSale(orderNumber) {
+    const orig  = String(orderNumber || '').trim().toUpperCase();
+    const clean = orig.replace(/^SO-/, '');
+    const list = await cin7Req(`saleList?Search=${encodeURIComponent(clean)}&Page=1&Limit=10`);
+    const sales = list.SaleList || [];
+    if (!sales.length) return null;
+    let saleId = sales[0].SaleID;
+    for (const s of sales) {
+      const on = String(s.OrderNumber || '').toUpperCase();
+      if (on === orig || on === clean) { saleId = s.SaleID; break; }
+    }
+    if (!saleId) return null;
+    return await cin7Req(`sale?ID=${encodeURIComponent(saleId)}`);
+  }
+
+  app.get('/api/sale/:number', async (req, res) => {
+    try {
+      if (!ACC || !CK) return res.status(500).json({ success: false, error: 'Cin7 not configured' });
+      const det = await cin7GetSale(req.params.number);
+      if (!det || !det.ID) return res.status(404).json({ success: false, error: 'Order not found' });
+      const order = det.Order || {};
+      const addr = det.ShippingAddress || {};
+      const lines = (order.Lines || det.Lines || []).map((ln, i) => ({
+        line_no: i, sku: ln.SKU || '', product_name: ln.Name || '',
+        quantity: num(ln.Quantity), price: num(ln.Price), total: num(ln.Total),
+        backorder_quantity: num(ln.BackorderQuantity),
+      })).filter(l => l.sku);
+      res.json({
+        success: true, source: 'cin7-live',
+        header: {
+          order_number: det.OrderNumber || null,
+          customer: det.Customer || null,
+          sales_rep: det.SalesRepresentative || null,
+          contact: det.Contact || null, phone: det.Phone || null,
+          location: det.Location || null,
+          pick_status: det.CombinedPickingStatus || null,
+          pack_status: det.CombinedPackingStatus || null,
+          ship_status: det.CombinedShippingStatus || null,
+          invoice_status: det.CombinedInvoiceStatus || null,
+          carrier: det.Carrier || null,
+          order_total: num(order.Total), order_tax: num(order.Tax),
+          ship_to: [addr.City, addr.State, addr.Postcode].filter(Boolean).join(', ') || null,
+        },
+        lines,
+      });
+    } catch (err) {
+      console.error('Sale detail error:', err.message);
+      res.status(502).json({ success: false, error: err.message });
+    }
+  });
+
+  console.log('✅ Sale detail endpoint registered (/api/sale/:number)');
+})();
+
 // Only listen on port when running locally (not on Vercel serverless)
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {

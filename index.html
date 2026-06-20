@@ -1625,36 +1625,49 @@
                       : (/PICKED|PACKED|SHIPPED|INVOICED/.test(u) ? 'ok' : 'mid'));
             return `<span class="od-chip ${cls}">${label}: ${v}</span>`;
         }
-        function _odRender(r, lines) {
+        function _odRender(r, lines, live) {
+            live = live || {};
             const totalQty = lines.reduce((a, l) => a + (Number(l.quantity) || 0), 0);
+            const money = v => '$' + Number(v).toLocaleString('en-AU', { maximumFractionDigits: 0 });
+            const hasVal = lines.some(l => l.total != null);
+            const pick = live.pick_status || r.pick_status;
+            const pack = live.pack_status || r.pack_status;
+            const ship = live.ship_status || r.ship_status;
+            const inv  = live.invoice_status || r.invoice_status;
             const meta = [
+                `<b>${r.customer || live.customer || (r.type === 'TR' ? 'Transfer' : '—')}</b>`,
+                live.sales_rep ? `Rep: <b>${live.sales_rep}</b>` : '',
                 r.reference ? `Ref: <b>${r.reference}</b>` : '',
                 r.type === 'TR' ? `<b>${r.from_location || '?'}</b> → <b>${r.to_location || '?'}</b>`
                                  : `From <b>${r.from_location || '?'}</b>`,
+                live.ship_to ? `Ship to: <b>${live.ship_to}</b>` : '',
+                live.carrier ? `Carrier: <b>${live.carrier}</b>` : '',
                 r.order_date ? `Ordered: <b>${r.order_date}</b>` : '',
+                (live.order_total != null) ? `Order total: <b>${money(live.order_total)}</b>` : '',
                 (r.fulfilment_number > 1) ? `Fulfilment <b>#${r.fulfilment_number}</b>` : ''
             ].filter(Boolean).join(' · ');
             const linesHtml = lines.length ? `
                 <table class="od-lines"><thead><tr>
-                    <th>SKU</th><th>Product</th><th class="num">Qty</th><th class="num">B/O</th>
+                    <th>SKU</th><th>Product</th><th class="num">Qty</th><th class="num">B/O</th>${hasVal ? '<th class="num">Value</th>' : ''}
                 </tr></thead><tbody>
                 ${lines.map(l => `<tr>
                     <td style="font-weight:600">${l.sku || '—'}</td>
                     <td>${l.product_name || ''}</td>
                     <td class="num">${l.quantity ?? ''}</td>
                     <td class="num">${l.backorder_quantity || ''}</td>
+                    ${hasVal ? `<td class="num">${l.total != null ? money(l.total) : ''}</td>` : ''}
                 </tr>`).join('')}
                 </tbody><tfoot><tr>
                     <td colspan="2" style="text-align:right;font-weight:700">Total</td>
-                    <td class="num" style="font-weight:700">${totalQty}</td><td></td>
+                    <td class="num" style="font-weight:700">${totalQty}</td><td></td>${hasVal ? '<td></td>' : ''}
                 </tr></tfoot></table>`
-                : (/ORDERED|PICKING|PICKED|PACKING|BACKORDERED/.test(String(r.status || '').toUpperCase())
-                    ? `<div class="od-empty">As linhas deste pedido ainda não estão no espelho — o Cin7 só envia os itens quando o pedido é faturado/completado. (Dá pra ligar uma busca ao vivo no Cin7 se quiser ver itens de pedidos ativos.)</div>`
-                    : `<div class="od-empty">Sem linhas de produto encontradas para este pedido.</div>`);
+                : `<div class="od-empty">Sem linhas de produto encontradas para este pedido.</div>`;
+            const srcBadge = live.source === 'cin7-live'
+                ? ' <span style="font-size:.58rem;font-weight:700;color:#0369a1;background:#e0f2fe;padding:2px 7px;border-radius:999px">via Cin7 ao vivo</span>' : '';
             return `
                 <div class="od-meta">${meta}</div>
-                <div class="od-status">${_odChip('Pick', r.pick_status)}${_odChip('Pack', r.pack_status)}${_odChip('Ship', r.ship_status)}${_odChip('Invoice', r.invoice_status)}</div>
-                <div class="od-section-label">${lines.length} line${lines.length !== 1 ? 's' : ''}</div>
+                <div class="od-status">${_odChip('Pick', pick)}${_odChip('Pack', pack)}${_odChip('Ship', ship)}${_odChip('Invoice', inv)}</div>
+                <div class="od-section-label">${lines.length} line${lines.length !== 1 ? 's' : ''}${srcBadge}</div>
                 ${linesHtml}`;
         }
         async function toggleOrderDetail(id, tr) {
@@ -1666,19 +1679,29 @@
             detail.className = 'order-detail-row';
             detail.innerHTML = `<td colspan="4"><div class="od-wrap"><div class="od-loading">Carregando itens…</div></div></td>`;
             tr.after(detail);
-            let lines = [];
+            let lines = [], live = null;
             try {
                 const sb = window.supabase;
-                const sel = 'line_no, sku, product_name, quantity, backorder_quantity';
+                const sel = 'line_no, sku, product_name, quantity, backorder_quantity, total';
                 let q = await sb.schema('cin7_mirror').from('sale_lines').select(sel).eq('sale_id', id).order('line_no', { ascending: true });
                 if (!q.error && q.data) lines = q.data;
                 if (!lines.length && r.number) {
                     const q2 = await sb.schema('cin7_mirror').from('sale_lines').select(sel).eq('order_number', r.number).order('line_no', { ascending: true });
                     if (!q2.error && q2.data) lines = q2.data;
                 }
+                // Live Cin7 fallback for active orders not yet mirrored (SOs only)
+                if (!lines.length && r.number && r.type !== 'TR') {
+                    const w0 = detail.querySelector('.od-wrap');
+                    if (w0) w0.innerHTML = '<div class="od-loading">Buscando itens no Cin7 ao vivo…</div>';
+                    try {
+                        const resp = await fetch('/api/sale/' + encodeURIComponent(r.number));
+                        const j = await resp.json();
+                        if (j && j.success) { lines = j.lines || []; live = { ...(j.header || {}), source: j.source }; }
+                    } catch (e) {}
+                }
             } catch (e) {}
             const wrap = detail.querySelector('.od-wrap');
-            if (wrap) wrap.innerHTML = _odRender(r, lines);
+            if (wrap) wrap.innerHTML = _odRender(r, lines, live);
         }
 
         // Close modal with Escape key
