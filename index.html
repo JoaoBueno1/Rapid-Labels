@@ -1662,8 +1662,8 @@
                     <td class="num" style="font-weight:700">${totalQty}</td><td></td>${hasVal ? '<td></td>' : ''}
                 </tr></tfoot></table>`
                 : `<div class="od-empty">Sem linhas de produto encontradas para este pedido.</div>`;
-            const srcBadge = live.source === 'cin7-live'
-                ? ' <span style="font-size:.58rem;font-weight:700;color:#0369a1;background:#e0f2fe;padding:2px 7px;border-radius:999px">via Cin7 ao vivo</span>' : '';
+            const srcBadge = live.source
+                ? ` <span style="font-size:.58rem;font-weight:700;color:#0369a1;background:#e0f2fe;padding:2px 7px;border-radius:999px">via Cin7${live.source === 'cache' ? ' (cache)' : ' ao vivo'}</span>` : '';
             return `
                 <div class="od-meta">${meta}</div>
                 <div class="od-status">${_odChip('Pick', pick)}${_odChip('Pack', pack)}${_odChip('Ship', ship)}${_odChip('Invoice', inv)}</div>
@@ -1689,12 +1689,15 @@
                     const q2 = await sb.schema('cin7_mirror').from('sale_lines').select(sel).eq('order_number', r.number).order('line_no', { ascending: true });
                     if (!q2.error && q2.data) lines = q2.data;
                 }
-                // Live Cin7 fallback for active orders not yet mirrored (SOs only)
-                if (!lines.length && r.number && r.type !== 'TR') {
+                // Live Cin7 fallback for orders not yet mirrored (SOs by SaleID, TRs by TaskID)
+                if (!lines.length && r.id) {
                     const w0 = detail.querySelector('.od-wrap');
                     if (w0) w0.innerHTML = '<div class="od-loading">Buscando itens no Cin7 ao vivo…</div>';
                     try {
-                        const resp = await fetch('/api/sale/' + encodeURIComponent(r.number));
+                        const ep = r.type === 'TR'
+                            ? '/api/transfer/' + encodeURIComponent(r.id)
+                            : '/api/sale/' + encodeURIComponent(r.number || r.id) + '?id=' + encodeURIComponent(r.id);
+                        const resp = await fetch(ep);
                         const j = await resp.json();
                         if (j && j.success) { lines = j.lines || []; live = { ...(j.header || {}), source: j.source }; }
                     } catch (e) {}

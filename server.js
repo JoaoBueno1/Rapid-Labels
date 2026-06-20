@@ -309,59 +309,108 @@ try {
     });
   }
 
-  // Cin7 needs two steps: saleList?Search → SaleID → sale?ID=full detail
-  async function cin7GetSale(orderNumber) {
+  // In-memory cache (TTL) so reopening an order is instant and avoids repeat Cin7 calls
+  const _cache = new Map(); // key -> { data, exp }
+  const TTL_MS = 10 * 60 * 1000;
+  function cacheGet(k) { const v = _cache.get(k); if (v && v.exp > Date.now()) return v.data; if (v) _cache.delete(k); return null; }
+  function cacheSet(k, data) {
+    _cache.set(k, { data, exp: Date.now() + TTL_MS });
+    if (_cache.size > 500) { const first = _cache.keys().next().value; _cache.delete(first); }
+  }
+
+  // Fetch a sale detail. Prefers the known SaleID (= order_pipeline.id) → ONE call.
+  async function cin7GetSale(orderNumber, saleId) {
+    if (saleId) {
+      try { const d = await cin7Req(`sale?ID=${encodeURIComponent(saleId)}`); if (d && d.ID) return d; } catch (e) {}
+    }
+    // Fallback: search by number → SaleID → detail (two calls)
     const orig  = String(orderNumber || '').trim().toUpperCase();
     const clean = orig.replace(/^SO-/, '');
     const list = await cin7Req(`saleList?Search=${encodeURIComponent(clean)}&Page=1&Limit=10`);
     const sales = list.SaleList || [];
     if (!sales.length) return null;
-    let saleId = sales[0].SaleID;
+    let sid = sales[0].SaleID;
     for (const s of sales) {
       const on = String(s.OrderNumber || '').toUpperCase();
-      if (on === orig || on === clean) { saleId = s.SaleID; break; }
+      if (on === orig || on === clean) { sid = s.SaleID; break; }
     }
-    if (!saleId) return null;
-    return await cin7Req(`sale?ID=${encodeURIComponent(saleId)}`);
+    if (!sid) return null;
+    return await cin7Req(`sale?ID=${encodeURIComponent(sid)}`);
+  }
+
+  function normalizeSale(det) {
+    const order = det.Order || {};
+    const addr = det.ShippingAddress || {};
+    const lines = (order.Lines || det.Lines || []).map((ln, i) => ({
+      line_no: i, sku: ln.SKU || '', product_name: ln.Name || '',
+      quantity: num(ln.Quantity), price: num(ln.Price), total: num(ln.Total),
+      backorder_quantity: num(ln.BackorderQuantity),
+    })).filter(l => l.sku);
+    return {
+      success: true, source: 'cin7-live',
+      header: {
+        order_number: det.OrderNumber || null, customer: det.Customer || null,
+        sales_rep: det.SalesRepresentative || null, contact: det.Contact || null, phone: det.Phone || null,
+        location: det.Location || null,
+        pick_status: det.CombinedPickingStatus || null, pack_status: det.CombinedPackingStatus || null,
+        ship_status: det.CombinedShippingStatus || null, invoice_status: det.CombinedInvoiceStatus || null,
+        carrier: det.Carrier || null, order_total: num(order.Total), order_tax: num(order.Tax),
+        ship_to: [addr.City, addr.State, addr.Postcode].filter(Boolean).join(', ') || null,
+      },
+      lines,
+    };
   }
 
   app.get('/api/sale/:number', async (req, res) => {
     try {
       if (!ACC || !CK) return res.status(500).json({ success: false, error: 'Cin7 not configured' });
-      const det = await cin7GetSale(req.params.number);
+      const saleId = (req.query.id || '').trim() || null;
+      const key = 'sale:' + (saleId || req.params.number);
+      const cached = cacheGet(key);
+      if (cached) return res.json({ ...cached, source: 'cache' });
+      const det = await cin7GetSale(req.params.number, saleId);
       if (!det || !det.ID) return res.status(404).json({ success: false, error: 'Order not found' });
-      const order = det.Order || {};
-      const addr = det.ShippingAddress || {};
-      const lines = (order.Lines || det.Lines || []).map((ln, i) => ({
-        line_no: i, sku: ln.SKU || '', product_name: ln.Name || '',
-        quantity: num(ln.Quantity), price: num(ln.Price), total: num(ln.Total),
-        backorder_quantity: num(ln.BackorderQuantity),
-      })).filter(l => l.sku);
-      res.json({
-        success: true, source: 'cin7-live',
-        header: {
-          order_number: det.OrderNumber || null,
-          customer: det.Customer || null,
-          sales_rep: det.SalesRepresentative || null,
-          contact: det.Contact || null, phone: det.Phone || null,
-          location: det.Location || null,
-          pick_status: det.CombinedPickingStatus || null,
-          pack_status: det.CombinedPackingStatus || null,
-          ship_status: det.CombinedShippingStatus || null,
-          invoice_status: det.CombinedInvoiceStatus || null,
-          carrier: det.Carrier || null,
-          order_total: num(order.Total), order_tax: num(order.Tax),
-          ship_to: [addr.City, addr.State, addr.Postcode].filter(Boolean).join(', ') || null,
-        },
-        lines,
-      });
+      const out = normalizeSale(det);
+      cacheSet(key, out);
+      res.json(out);
     } catch (err) {
       console.error('Sale detail error:', err.message);
       res.status(502).json({ success: false, error: err.message });
     }
   });
 
-  console.log('✅ Sale detail endpoint registered (/api/sale/:number)');
+  // Transfer (TR) detail — stockTransfer?TaskID=<order_pipeline.id>
+  app.get('/api/transfer/:id', async (req, res) => {
+    try {
+      if (!ACC || !CK) return res.status(500).json({ success: false, error: 'Cin7 not configured' });
+      const id = req.params.id;
+      const key = 'tr:' + id;
+      const cached = cacheGet(key);
+      if (cached) return res.json({ ...cached, source: 'cache' });
+      const det = await cin7Req(`stockTransfer?TaskID=${encodeURIComponent(id)}`);
+      const rawLines = det.Lines || det.Line || [];
+      const lines = rawLines.map((ln, i) => ({
+        line_no: i, sku: ln.SKU || ln.ProductCode || '', product_name: ln.ProductName || ln.Name || '',
+        quantity: num(ln.TransferQuantity != null ? ln.TransferQuantity : ln.Quantity),
+        backorder_quantity: null, total: null,
+      })).filter(l => l.sku);
+      const out = {
+        success: true, source: 'cin7-live',
+        header: {
+          order_number: det.TaskID || id, location: det.FromLocation || null,
+          ship_to: null, ship_status: det.Status || null, // from→to already shown from pipeline row
+        },
+        lines,
+      };
+      cacheSet(key, out);
+      res.json(out);
+    } catch (err) {
+      console.error('Transfer detail error:', err.message);
+      res.status(502).json({ success: false, error: err.message });
+    }
+  });
+
+  console.log('✅ Sale/Transfer detail endpoints registered (/api/sale/:number, /api/transfer/:id)');
 })();
 
 // Only listen on port when running locally (not on Vercel serverless)
