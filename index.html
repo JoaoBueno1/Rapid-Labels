@@ -524,7 +524,7 @@
 
                     <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
                     <div class="wh-chart-wrap">
-                        <div class="wh-chart-title">📈 Weekly Picks &amp; Accuracy <span id="whChartNote" class="wh-chart-note"></span></div>
+                        <div class="wh-chart-title">📈 Daily Orders Completed &amp; Picks <span id="whChartNote" class="wh-chart-note"></span></div>
                         <div class="wh-chart-canvas"><canvas id="pipelineChart"></canvas></div>
                     </div>
                 </div>
@@ -1063,7 +1063,7 @@
     <script src="scanner.js"></script>
     <script src="multi-label.js?v=20260302c"></script>
     <script src="app.js?v=20260302k"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="assets/vendor/chart.umd.min.js?v=441"></script>
     <script>
         // Service worker disabled for production stability
         
@@ -1440,33 +1440,35 @@
         document.addEventListener('fullscreenchange', _onFsChange);
         document.addEventListener('webkitfullscreenchange', _onFsChange);
 
-        // ── Weekly trend chart: picks (bars) + pick accuracy % (line) ──
-        async function loadPipelineChart() {
+        // ── Pipeline trend chart: orders completed / day (bars) + picks / day (line) ──
+        async function loadPipelineChart(_retry) {
             try {
-                if (!window.Chart) return;
+                if (!window.Chart) {                       // Chart.js not parsed yet — retry briefly
+                    if ((_retry || 0) < 12) setTimeout(() => loadPipelineChart((_retry || 0) + 1), 400);
+                    return;
+                }
                 const today = new Date(Date.now() + 10 * 3600000).toISOString().slice(0, 10);          // AEST
-                const from  = new Date(Date.now() + 10 * 3600000 - 84 * 86400000).toISOString().slice(0, 10); // ~12 weeks
-                const res = await fetch(`/api/pick-anomalies/analytics-v2?from=${from}&to=${today}&granularity=week`);
+                const from  = new Date(Date.now() + 10 * 3600000 - 13 * 86400000).toISOString().slice(0, 10); // 14 days
+                const res = await fetch(`/api/pick-anomalies/analytics-v2?from=${from}&to=${today}&granularity=day`);
                 const data = await res.json();
                 if (!data || !data.success) return;
                 const ts = (data.analytics && data.analytics.timeSeries) || [];
                 const cv = document.getElementById('pipelineChart');
                 if (!cv || !ts.length) return;
-                const labels   = ts.map(t => (t.bucket || '').replace(/^\d{4}-/, ''));
-                const picks    = ts.map(t => t.picks || 0);
-                const accuracy = ts.map(t => t.picks ? Math.round((t.correct / t.picks) * 1000) / 10 : null);
-                const accVals  = accuracy.filter(v => v != null);
-                const yMin = accVals.length ? Math.max(0, Math.floor(Math.min.apply(null, accVals) - 3)) : 80;
+                const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const labels = ts.map(t => { const d = new Date(t.bucket + 'T00:00:00'); return isNaN(d) ? t.bucket : `${dow[d.getDay()]} ${d.getDate()}`; });
+                const orders = ts.map(t => t.orders || 0);
+                const picks  = ts.map(t => t.picks || 0);
                 if (window.__pipelineChart) window.__pipelineChart.destroy();
                 window.__pipelineChart = new Chart(cv.getContext('2d'), {
                     data: {
                         labels,
                         datasets: [
-                            { type: 'bar', label: 'Picks', data: picks, yAxisID: 'y1', order: 1,
-                              backgroundColor: 'rgba(59,130,246,.30)', borderRadius: 4, barPercentage: .85, categoryPercentage: .8 },
-                            { type: 'line', label: 'Pick accuracy %', data: accuracy, yAxisID: 'y', order: 0,
-                              borderColor: '#16a34a', backgroundColor: 'rgba(34,197,94,.10)', fill: true,
-                              tension: .3, borderWidth: 2, pointRadius: 2, spanGaps: true },
+                            { type: 'bar', label: 'Orders completed', data: orders, yAxisID: 'y', order: 1,
+                              backgroundColor: 'rgba(34,197,94,.55)', borderRadius: 4, categoryPercentage: .8, barPercentage: .9 },
+                            { type: 'line', label: 'Picks', data: picks, yAxisID: 'y1', order: 0,
+                              borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.10)', fill: true,
+                              tension: .3, borderWidth: 2, pointRadius: 2 },
                         ],
                     },
                     options: {
@@ -1474,14 +1476,14 @@
                         interaction: { mode: 'index', intersect: false },
                         plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
                         scales: {
-                            x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
-                            y:  { position: 'left',  min: yMin, max: 100, grid: { color: '#eef2f7' }, ticks: { callback: v => v + '%' } },
-                            y1: { position: 'right', beginAtZero: true, grid: { display: false } },
+                            x:  { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+                            y:  { position: 'left',  beginAtZero: true, grid: { color: '#eef2f7' }, title: { display: true, text: 'Orders' } },
+                            y1: { position: 'right', beginAtZero: true, grid: { display: false }, title: { display: true, text: 'Picks' } },
                         },
                     },
                 });
                 const note = document.getElementById('whChartNote');
-                if (note) note.textContent = `· last ${ts.length} weeks`;
+                if (note) note.textContent = `· last ${ts.length} days`;
             } catch (e) { console.warn('pipeline chart error', e); }
         }
 
