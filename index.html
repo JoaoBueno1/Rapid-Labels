@@ -150,13 +150,6 @@
         .wh-hero-val { font-size:1.25rem; font-weight:800; line-height:1; color:var(--text); }
         .wh-hero-accuracy .wh-hero-val { color:#16a34a; }
         .wh-hero-pickup .wh-hero-val { color:#d97706; }
-        .wh-hero-aging::before { background:#94a3b8; }
-        .wh-hero-aging.aging-ok::before { background:#22c55e; }
-        .wh-hero-aging.aging-warn::before { background:#f59e0b; }
-        .wh-hero-aging.aging-bad::before { background:#ef4444; }
-        .wh-hero-aging.aging-ok .wh-hero-val { color:#16a34a; }
-        .wh-hero-aging.aging-warn .wh-hero-val { color:#d97706; }
-        .wh-hero-aging.aging-bad .wh-hero-val { color:#dc2626; }
         .wh-hero-val.loading { color:#cbd5e1; }
         .wh-hero-label { font-size:.64rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
         .wh-hero-sub { font-size:.58rem; color:var(--muted); padding-left:6px; opacity:.65; }
@@ -482,11 +475,6 @@
                             <div class="wh-hero-val loading" id="kpiCollVal">—</div>
                             <div class="wh-hero-label">Awaiting Pickup</div>
                             <div class="wh-hero-sub" id="kpiCollSub">awaiting pickup</div>
-                        </div>
-                        <div class="wh-hero wh-hero-aging" id="whHeroAging">
-                            <div class="wh-hero-val loading" id="flowAgingVal">—</div>
-                            <div class="wh-hero-label">Longest Stalled</div>
-                            <div class="wh-hero-sub" id="flowAgingSub">…</div>
                         </div>
                     </div>
 
@@ -1386,24 +1374,6 @@
                         setKpi('whTransfers', outInTransit + outOrdered, `${outInTransit} in transit · ${outOrdered} ordered`);
                         setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
 
-                        // Stalled — longest WIP order (picking/to-pack) with NO MOVEMENT (now - updated_at).
-                        // updated_at = last real status change (synced_at is just the sync touch).
-                        // Alert by exception. SO @ Main only.
-                        const AGING_H = 24;
-                        const nowMs = Date.now();
-                        const fmtDur = ms => { const h = ms/3600000; if (h < 1) return Math.max(0, Math.round(ms/60000)) + 'm'; if (h < 24) return Math.round(h) + 'h'; return Math.floor(h/24) + 'd'; };
-                        const wip = openSO.filter(r => isPicking(r) || (isPicked(r) && !isPacked(r)));
-                        const ages = wip.map(r => r.updated_at ? (nowMs - new Date(r.updated_at).getTime()) : 0).filter(a => a > 0);
-                        const oldestMs = ages.length ? Math.max.apply(null, ages) : 0;
-                        const agingCount = ages.filter(a => a > AGING_H * 3600000).length;
-                        setKpi('flowAging', oldestMs ? fmtDur(oldestMs) : '—', agingCount ? `${agingCount} stalled >${AGING_H}h` : 'all moving');
-                        const agingChip = document.getElementById('whHeroAging');
-                        if (agingChip) {
-                            agingChip.classList.remove('aging-ok', 'aging-warn', 'aging-bad');
-                            const days = oldestMs / 86400000;
-                            agingChip.classList.add(agingCount === 0 ? 'aging-ok' : days >= 3 ? 'aging-bad' : 'aging-warn');
-                        }
-
                         // Sync freshness
                         const syncTimes = pipeline.map(r => r.synced_at).filter(Boolean).sort();
                         const syncEl = document.getElementById('whSyncInfo');
@@ -1661,9 +1631,9 @@
                     <td colspan="2" style="text-align:right;font-weight:700">Total</td>
                     <td class="num" style="font-weight:700">${totalQty}</td><td></td>${hasVal ? '<td></td>' : ''}
                 </tr></tfoot></table>`
-                : `<div class="od-empty">Sem linhas de produto encontradas para este pedido.</div>`;
+                : `<div class="od-empty">No product lines found for this order.</div>`;
             const srcBadge = live.source
-                ? ` <span style="font-size:.58rem;font-weight:700;color:#0369a1;background:#e0f2fe;padding:2px 7px;border-radius:999px">via Cin7${live.source === 'cache' ? ' (cache)' : ' ao vivo'}</span>` : '';
+                ? ` <span style="font-size:.58rem;font-weight:700;color:#0369a1;background:#e0f2fe;padding:2px 7px;border-radius:999px">via Cin7${live.source === 'cache' ? ' (cached)' : ' live'}</span>` : '';
             return `
                 <div class="od-meta">${meta}</div>
                 <div class="od-status">${_odChip('Pick', pick)}${_odChip('Pack', pack)}${_odChip('Ship', ship)}${_odChip('Invoice', inv)}</div>
@@ -1677,7 +1647,7 @@
             const r = (window.__ordersById || {})[id] || {};
             const detail = document.createElement('tr');
             detail.className = 'order-detail-row';
-            detail.innerHTML = `<td colspan="4"><div class="od-wrap"><div class="od-loading">Carregando itens…</div></div></td>`;
+            detail.innerHTML = `<td colspan="4"><div class="od-wrap"><div class="od-loading">Loading items…</div></div></td>`;
             tr.after(detail);
             let lines = [], live = null;
             try {
@@ -1692,7 +1662,7 @@
                 // Live Cin7 fallback for orders not yet mirrored (SOs by SaleID, TRs by TaskID)
                 if (!lines.length && r.id) {
                     const w0 = detail.querySelector('.od-wrap');
-                    if (w0) w0.innerHTML = '<div class="od-loading">Buscando itens no Cin7 ao vivo…</div>';
+                    if (w0) w0.innerHTML = '<div class="od-loading">Fetching items live from Cin7…</div>';
                     try {
                         const ep = r.type === 'TR'
                             ? '/api/transfer/' + encodeURIComponent(r.id)
