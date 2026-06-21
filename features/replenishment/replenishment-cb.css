@@ -1,0 +1,57 @@
+/* ─────────────────────────────────────────────────────────────
+   Branch Replenishment — Container Builder design overlay.
+   Loaded AFTER the page's own <style>, so it wins the cascade. The page
+   is built on CSS variables, so re-pointing the tokens to CB values
+   restyles every component (KPIs, sync card, branch cards) at once.
+   ───────────────────────────────────────────────────────────── */
+:root, body {
+  --bg:           #FAF8F5 !important;
+  --bg-card:      #ffffff !important;
+  --bg-soft:      #f5f1ea !important;
+  --bg-subtle:    #f0ebe1 !important;
+  --bg-hover:     #f0ebe1 !important;
+  --border:       #d4cfc5 !important;
+  --border-soft:  #e5dfd2 !important;
+  --border-strong:#1a1a1a !important;
+  --text:         #1a1a1a !important;
+  --text-mute:    #5c5750 !important;
+  --text-soft:    #8a8278 !important;
+  --primary:      #1a1a1a !important;
+  --primary-h:    #E85D04 !important;
+  --primary-fg:   #FAF8F5 !important;
+  --focus:        #E85D04 !important;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace !important;
+}
+html, body { background: #FAF8F5 !important; }
+body { font-family: 'IBM Plex Sans', system-ui, sans-serif !important; color: #1a1a1a; }
+
+/* ── CB signatures: sharp corners ── */
+main .btn, main input, main select, main textarea,
+.sync-card, .kpi-item, .kpi-bar, .modal-content,
+.rules-summary, .rules-content, .rules-details,
+main .card, main [class*="branch"], main table, main th, main td { border-radius: 0 !important; }
+
+/* ── Title ── */
+.page-head .title { font-weight: 500; letter-spacing: -0.02em; }
+
+/* ── KPIs — mono values ── */
+.kpi-value { font-family: 'IBM Plex Mono', ui-monospace, monospace !important; font-weight: 500 !important; }
+.kpi-label { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; }
+
+/* ── Buttons → CB ── */
+main .btn {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace !important;
+  text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px !important;
+  border: 1px solid #1a1a1a !important; background: #1a1a1a !important; color: #FAF8F5 !important;
+  border-radius: 0 !important;
+}
+main .btn:hover { background: #E85D04 !important; border-color: #E85D04 !important; color: #fff !important; }
+
+/* ── Tables (branch view) → black header, sharp, mono numbers ── */
+main table { border-collapse: collapse; }
+main thead th {
+  background: #1a1a1a !important; color: #FAF8F5 !important;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace !important;
+  text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px !important;
+}
+main tbody td { font-variant-numeric: tabular-nums; }
