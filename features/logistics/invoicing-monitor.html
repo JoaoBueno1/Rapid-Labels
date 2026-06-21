@@ -6,6 +6,8 @@
   <title>Invoicing Monitor</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="../logistics/logistics.css" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./invoicing-monitor.css?v=20260621" />
   <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -27,75 +29,60 @@
       </nav>
     </div>
   </header>
-    <main class="main-container wide-container">
-    <div class="log-container">
-      <div class="title-row" style="display:flex; align-items:center; gap:8px; justify-content:space-between;">
-        <h1 class="log-page-title" style="margin: 0;">Invoicing Monitor</h1>
-        <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
-          <span id="invRangeBadge" class="chip" title="Range covered by reports">Range: — → —</span>
-          <span id="invLastReportBadge" class="chip" title="Last daily report date">Last report: —</span>
-          <button id="openInvReport" type="button" class="search-btn-small" onclick="openInvReportModal()">Report</button>
-        </div>
-      </div>
+    <main class="main-container wide-container cb-shell">
 
-      <div class="page-header" style="display:flex; flex-direction:column; gap:8px; align-items:flex-start; width:100%;">
-        <div class="filters-inline" role="group" aria-label="Filters" style="flex-wrap:wrap; gap:8px; justify-content:flex-start; width:100%;">
-          <select id="location" aria-label="Location" class="chip-select" title="Filter by location">
+      <!-- Topbar -->
+      <div class="cb-topbar">
+        <div class="cb-topbar-left">
+          <h1 class="cb-page-title">🧾 Invoicing Monitor</h1>
+          <span id="invRangeBadge" class="cb-status-pill" title="Range covered by reports">Range: — → —</span>
+          <span id="invLastReportBadge" class="cb-status-pill" title="Last daily report date">Last report: —</span>
+        </div>
+        <div class="cb-topbar-right">
+          <select id="location" aria-label="Location" title="Filter by location">
             <option>All</option>
             <option>Main Warehouse</option>
           </select>
+          <button id="openInvReport" type="button" class="cb-btn cb-btn-primary" onclick="openInvReportModal()">Report</button>
         </div>
       </div>
 
-    <!-- Top KPI row removed (values now inside the Uninvoiced Aging card) -->
-
-    <div class="charts-grid">
-      <div class="log-card chart-card" id="agingCard">
-        <h3>Uninvoiced Aging</h3>
-        <div id="agingKpiRow" class="kpi-row">
-          <div class="kpi yellow"><div class="label">D+1</div><div class="value" id="kpiD1Card">—</div></div>
-          <div class="kpi yellow"><div class="label">D+2</div><div class="value" id="kpiD2Card">—</div></div>
-          <div class="kpi yellow"><div class="label">D+3</div><div class="value" id="kpiD3Card">—</div></div>
-          <div class="kpi yellow"><div class="label">D+4</div><div class="value" id="kpiD4Card">—</div></div>
-          <div class="kpi yellow"><div class="label">&gt; 1 week</div><div class="value" id="kpiWeekCard" style="color:#ef4444">—</div></div>
-        </div>
+      <!-- Uninvoiced aging metrics -->
+      <div class="cb-metrics">
+        <div class="cb-metric"><div class="cb-metric-label">D+1</div><div class="cb-metric-value" id="kpiD1Card">—</div></div>
+        <div class="cb-metric"><div class="cb-metric-label">D+2</div><div class="cb-metric-value" id="kpiD2Card">—</div></div>
+        <div class="cb-metric"><div class="cb-metric-label">D+3</div><div class="cb-metric-value" id="kpiD3Card">—</div></div>
+        <div class="cb-metric"><div class="cb-metric-label">D+4</div><div class="cb-metric-value" id="kpiD4Card">—</div></div>
+        <div class="cb-metric alert"><div class="cb-metric-label">&gt; 1 week</div><div class="cb-metric-value" id="kpiWeekCard">—</div></div>
       </div>
-      <div class="log-card chart-card"><h3>Uninvoiced Orders by Sales Rep</h3><canvas id="chartByRep"></canvas></div>
-    </div>
 
-    <div class="section">
-      <div class="section-note">Click on "Uninvoiced orders" to view details of each pending order, including Order ID, Customer, Order Date, and Sales Rep.</div>
-    </div>
+      <!-- Uninvoiced orders by sales rep -->
+      <div class="cb-card">
+        <h3 class="cb-card-title">Uninvoiced Orders by Sales Rep</h3>
+        <canvas id="chartByRep" height="90"></canvas>
+      </div>
 
-    <div class="section">
-      <div class="section-title">Uninvoiced Orders Details</div>
-      <div class="log-card">
-        <div class="filters-chips" style="margin:8px 0; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-          <div style="display:flex; align-items:center; gap:10px; flex:1 1 420px; min-width:320px; flex-wrap:wrap;">
-            <input id="invSearch" type="search" placeholder="Search: order #, customer, or order date (YYYY-MM-DD)" style="flex:1 1 280px; min-width:240px; max-width:420px; padding:8px 10px; border:1px solid var(--border,#cbd5e1); border-radius:8px; font-size:14px;" />
-            <div id="invAgingChips" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <button type="button" class="chip" id="invBucketD1" title="Show only D+1">D+1</button>
-              <button type="button" class="chip" id="invBucketD2" title="Show only D+2">D+2</button>
-              <button type="button" class="chip" id="invBucketD3" title="Show only D+3">D+3</button>
-              <button type="button" class="chip" id="invBucketD4" title="Show only D+4">D+4</button>
-              <button type="button" class="chip" id="invBucketWk" title="> 1 week">&gt; 1 week</button>
-            </div>
+      <!-- Uninvoiced orders details -->
+      <div class="cb-card">
+        <h3 class="cb-card-title">Uninvoiced Orders Details</h3>
+        <div class="im-note">Use the search and aging chips to filter. Click a row's ✕ to hide an order from the view.</div>
+        <div class="im-filters">
+          <input id="invSearch" type="search" placeholder="Search: order #, customer, or date (YYYY-MM-DD)" style="flex:1 1 280px; max-width:420px;" />
+          <div id="invAgingChips" style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button type="button" class="im-chip" id="invBucketD1" title="Show only D+1">D+1</button>
+            <button type="button" class="im-chip" id="invBucketD2" title="Show only D+2">D+2</button>
+            <button type="button" class="im-chip" id="invBucketD3" title="Show only D+3">D+3</button>
+            <button type="button" class="im-chip" id="invBucketD4" title="Show only D+4">D+4</button>
+            <button type="button" class="im-chip" id="invBucketWk" title="&gt; 1 week">&gt; 1 week</button>
           </div>
-          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <select id="repTable" class="chip-select">
-                <option value="">All Reps</option>
-              </select>
-            </div>
-            <label for="invIncludeInvoiced" style="display:flex; align-items:center; gap:6px; font-size:12px; color:#475569; font-weight:700;">
-              <input type="checkbox" id="invIncludeInvoiced" />
-              Show invoiced (OK)
-            </label>
-            <button id="invResetHidden" type="button" class="chip" title="Show orders removed from view">Reset hidden</button>
-          </div>
+          <select id="repTable"><option value="">All Reps</option></select>
+          <label for="invIncludeInvoiced" style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="invIncludeInvoiced" /> Show invoiced (OK)
+          </label>
+          <button id="invResetHidden" type="button" class="cb-btn" title="Show orders removed from view">Reset hidden</button>
         </div>
-        <div class="table-wrapper">
-          <table class="app-table" id="uninvoicedTable">
+        <div class="im-table-wrap">
+          <table id="uninvoicedTable">
             <thead>
               <tr>
                 <th>Order</th>
@@ -115,11 +102,10 @@
             <tbody></tbody>
           </table>
         </div>
-        <div id="uninvoicedPagination" class="table-pagination" style="margin-top:8px; display:flex; justify-content:center; gap:6px; flex-wrap:wrap;"></div>
+        <div id="uninvoicedPagination" class="table-pagination" style="margin-top:12px; display:flex; justify-content:center; gap:6px; flex-wrap:wrap;"></div>
       </div>
-    </div>
-  </div>
-  </main>
+
+    </main>
 
   <!-- Remove confirmation modal -->
   <div id="invRemoveModal" class="modal" aria-hidden="true">

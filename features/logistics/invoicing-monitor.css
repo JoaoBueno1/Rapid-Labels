@@ -1,0 +1,101 @@
+/* ─────────────────────────────────────────────────────────────
+   Invoicing Monitor — Container Builder design language.
+   Loaded after styles.css + logistics.css; scoped to .cb-shell so it
+   doesn't affect the shared modals (which keep .modal/.app-table).
+   ───────────────────────────────────────────────────────────── */
+.cb-shell {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: #FAF8F5;
+  color: #1a1a1a;
+  padding: 20px 24px 48px;
+}
+.cb-shell *,
+.cb-shell *::before,
+.cb-shell *::after { box-sizing: border-box; }
+
+/* ── Topbar ── */
+.cb-shell .cb-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  border-bottom: 2px solid #1a1a1a; padding-bottom: 14px; margin-bottom: 18px;
+}
+.cb-shell .cb-topbar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cb-shell .cb-topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cb-shell .cb-page-title { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; margin: 0; }
+.cb-shell .cb-status-pill {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  padding: 4px 9px; border: 1px solid #d4cfc5; background: #fff; color: #475569; border-radius: 0;
+}
+
+/* ── Buttons ── */
+.cb-shell .cb-btn {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+  padding: 6px 12px; border: 1px solid #1a1a1a; cursor: pointer;
+  border-radius: 0; transition: all .15s; background: transparent; color: #1a1a1a;
+}
+.cb-shell .cb-btn:hover { background: #1a1a1a; color: #FAF8F5; }
+.cb-shell .cb-btn-primary { background: #1a1a1a; color: #FAF8F5; }
+.cb-shell .cb-btn-primary:hover { background: #E85D04; border-color: #E85D04; }
+
+/* ── Inputs / selects ── */
+.cb-shell select,
+.cb-shell input[type="search"],
+.cb-shell input[type="text"] {
+  font-family: inherit; font-size: 13px; padding: 6px 10px;
+  border: 1px solid #d4cfc5; background: #fff; border-radius: 0; outline: none; color: #1a1a1a;
+}
+.cb-shell select:focus, .cb-shell input:focus { border-color: #1a1a1a; }
+
+/* ── Metrics (aging) ── */
+.cb-shell .cb-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px; }
+.cb-shell .cb-metric { border: 2px solid #1a1a1a; background: #fff; padding: 11px 13px; }
+.cb-shell .cb-metric.alert { border-color: #DC2F02; background: #fff5f0; }
+.cb-shell .cb-metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; opacity: 0.6; }
+.cb-shell .cb-metric-value { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 23px; font-weight: 500; line-height: 1; margin-top: 6px; }
+.cb-shell .cb-metric.alert .cb-metric-value { color: #DC2F02; }
+@media (max-width: 720px) { .cb-shell .cb-metrics { grid-template-columns: repeat(2, 1fr); } }
+
+/* ── Cards ── */
+.cb-shell .cb-card { background: #fff; border: 1px solid #d4cfc5; border-radius: 0; padding: 14px 16px; margin-bottom: 16px; }
+.cb-shell .cb-card-title { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; opacity: 0.75; margin: 0 0 12px; }
+.cb-shell .im-note { font-size: 12px; opacity: 0.6; margin-bottom: 12px; }
+
+/* ── Filter row + aging chips ── */
+.cb-shell .im-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.cb-shell .im-chip {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.08em; padding: 5px 10px;
+  border: 1px solid #d4cfc5; background: transparent; color: #1a1a1a; cursor: pointer; border-radius: 0;
+}
+.cb-shell .im-chip:hover { border-color: #1a1a1a; }
+.cb-shell .im-chip.active { background: #1a1a1a; color: #FAF8F5; border-color: #1a1a1a; }
+.cb-shell label { font-size: 12px; font-weight: 600; color: #1a1a1a; }
+
+/* ── Table ── */
+.cb-shell .im-table-wrap { border: 2px solid #1a1a1a; background: #fff; overflow-x: auto; }
+.cb-shell #uninvoicedTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cb-shell #uninvoicedTable thead th {
+  background: #1a1a1a; color: #FAF8F5; padding: 8px 10px; text-align: left;
+  font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap;
+}
+.cb-shell #uninvoicedTable th.num, .cb-shell #uninvoicedTable td.num { text-align: right; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+.cb-shell #uninvoicedTable td { padding: 7px 10px; border-top: 1px solid #ece7dc; vertical-align: middle; }
+.cb-shell #uninvoicedTable tbody tr:hover { background: #faf6f0; }
+.cb-shell #uninvoicedTable tbody tr.warn td { background: #fff5f0; box-shadow: inset 3px 0 0 #DC2F02; }
+
+/* remove button (× — JS renders <button class="chip" data-remove>) */
+.cb-shell #uninvoicedTable td .chip {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; line-height: 1;
+  padding: 2px 8px; border: 1px solid #d4cfc5; background: #fff; color: #1a1a1a; cursor: pointer; border-radius: 0;
+}
+.cb-shell #uninvoicedTable td .chip:hover { border-color: #DC2F02; color: #DC2F02; }
+
+/* ── Pagination (JS renders <button class="chip [active|disabled]">) ── */
+.cb-shell .table-pagination .chip {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; padding: 4px 9px;
+  border: 1px solid #d4cfc5; background: #fff; color: #1a1a1a; cursor: pointer; border-radius: 0;
+}
+.cb-shell .table-pagination .chip.active, .cb-shell .table-pagination .chip:hover { background: #1a1a1a; color: #FAF8F5; border-color: #1a1a1a; }
+.cb-shell .table-pagination .chip.disabled { opacity: 0.4; cursor: not-allowed; }
