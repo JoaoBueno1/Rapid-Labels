@@ -367,7 +367,7 @@ async function load(){
     const rangeBadge = document.getElementById('invRangeBadge');
     const lastBadge = document.getElementById('invLastReportBadge');
     if (rangeBadge) rangeBadge.textContent = `Range: ${minDate} → ${maxDate}`;
-    if (lastBadge) lastBadge.textContent = `Last report: ${lastRep}`;
+    if (lastBadge) lastBadge.textContent = `Updated: ${lastRep}`;
   } catch (e){ /* noop */ }
 }
 
