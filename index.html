@@ -524,7 +524,7 @@
 
                     <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
                     <div class="wh-chart-wrap">
-                        <div class="wh-chart-title">📈 Daily Orders &amp; Picks <span id="whChartNote" class="wh-chart-note"></span></div>
+                        <div class="wh-chart-title">📈 Daily Orders to Pick <span id="whChartNote" class="wh-chart-note"></span></div>
                         <div class="wh-chart-canvas"><canvas id="pipelineChart"></canvas></div>
                     </div>
                 </div>
@@ -1440,8 +1440,9 @@
         document.addEventListener('fullscreenchange', _onFsChange);
         document.addEventListener('webkitfullscreenchange', _onFsChange);
 
-        // ── Pipeline trend chart: orders/day (bars) + picks/day (line) ──
-        //  Source: pick_anomaly_orders via analytics-v2 — ALREADY Main Warehouse only
+        // ── Pipeline trend chart: ORDERS to pick per day (bars) ──
+        //  (order count, not pick lines/units). Source: pick_anomaly_orders via
+        //  analytics-v2 — ALREADY Main Warehouse only
         //  (the scanner fetches saleList?Location=Main Warehouse). Bucketed by
         //  order_date, so weekends show too (online orders created Sat/Sun count).
         async function loadPipelineChart(_retry) {
@@ -1461,27 +1462,24 @@
                 const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                 const labels = ts.map(t => { const d = new Date(t.bucket + 'T00:00:00'); return isNaN(d) ? t.bucket : `${dow[d.getDay()]} ${d.getDate()}`; });
                 const orders = ts.map(t => t.orders || 0);
-                const picks  = ts.map(t => t.picks || 0);
                 if (window.__pipelineChart) window.__pipelineChart.destroy();
                 window.__pipelineChart = new Chart(cv.getContext('2d'), {
                     data: {
                         labels,
                         datasets: [
-                            { type: 'bar', label: 'Orders', data: orders, yAxisID: 'y', order: 1,
-                              backgroundColor: 'rgba(34,197,94,.55)', borderRadius: 4, categoryPercentage: .8, barPercentage: .9 },
-                            { type: 'line', label: 'Picks', data: picks, yAxisID: 'y1', order: 0,
-                              borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.10)', fill: true,
-                              tension: .3, borderWidth: 2, pointRadius: 2 },
+                            { type: 'bar', label: 'Orders to pick', data: orders, yAxisID: 'y',
+                              backgroundColor: 'rgba(34,197,94,.6)', borderRadius: 4, categoryPercentage: .75, barPercentage: .9 },
                         ],
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: c => `${c.parsed.y} orders` } },
+                        },
                         scales: {
-                            x:  { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
-                            y:  { position: 'left',  beginAtZero: true, grid: { color: '#eef2f7' }, title: { display: true, text: 'Orders' } },
-                            y1: { position: 'right', beginAtZero: true, grid: { display: false }, title: { display: true, text: 'Picks' } },
+                            x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+                            y: { beginAtZero: true, grid: { color: '#eef2f7' }, title: { display: true, text: 'Orders' } },
                         },
                     },
                 });
