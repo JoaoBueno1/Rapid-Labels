@@ -1590,14 +1590,24 @@
             const data = window.__pipelineData || [];
             const search = (document.getElementById('ordersSearch')?.value || '').toLowerCase();
             const isCompleted = _ordersViewFilter === 'completed';
-            const allowedStatuses = isCompleted ? _completedModalStatuses : _activeStatuses;
-
             // For completed view, limit to last 7 days
             const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+            const DONE = ['COMPLETED', 'VOIDED', 'CLOSED', 'INVOICED'];
+
+            // What belongs in each view. Active = genuine pipeline only — exclude
+            // packed/invoiced/completed/backordered so done-from-other-days don't
+            // clutter the daily view (the chart handles history).
+            const inView = r => {
+                if (isCompleted) return r.status === 'COMPLETED' && !(r.completed_at && r.completed_at < sevenDaysAgo);
+                if (DONE.includes(r.status)) return false;
+                if (r.pack_status === 'PACKED') return false;   // already packed → done (awaiting dispatch)
+                if (r.status === 'BACKORDERED') return false;   // awaiting stock, not pickable
+                const awaitingPick = r.status === 'ORDERED' && r.pick_status !== 'PICKING' && r.pick_status !== 'PICKED';
+                return awaitingPick || r.pick_status === 'PICKING' || (r.pick_status === 'PICKED' && r.pack_status !== 'PACKED');
+            };
 
             let rows = data.filter(r => {
-                if (!allowedStatuses.includes(r.status)) return false;
-                if (isCompleted && r.completed_at && r.completed_at < sevenDaysAgo) return false;
+                if (!inView(r)) return false;
                 if (_ordersStatusFilter !== 'all' && r.status !== _ordersStatusFilter) return false;
                 if (_ordersTypeFilter !== 'all' && r.type !== _ordersTypeFilter) return false;
                 if (search) {
@@ -1618,7 +1628,7 @@
             const tbody = document.getElementById('ordersTableBody');
             const empty = document.getElementById('ordersEmpty');
             const countEl = document.getElementById('ordersCount');
-            const totalInView = data.filter(r => allowedStatuses.includes(r.status)).length;
+            const totalInView = data.filter(inView).length;
             if (countEl) countEl.textContent = `${rows.length}` + (rows.length < totalInView ? ` of ${totalInView}` : '');
 
             if (rows.length === 0) {
