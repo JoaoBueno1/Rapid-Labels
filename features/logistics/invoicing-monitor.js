@@ -138,8 +138,9 @@ async function ensureClient(){
 
 function applyFilters(rows){
   const f = state.filters;
-  // Bring back backordered: do not exclude it anymore; keep excluding credited/closed only
-  const excludedStatuses = ['credited','closed'];
+  // Bring back backordered: do not exclude it anymore; keep excluding credited/closed/voided
+  // (voided = cancelled order — never chase it for invoicing)
+  const excludedStatuses = ['credited','closed','voided'];
   return rows.filter(r=>{
     // Client-side removed rows shouldn't appear anywhere (table/KPIs/charts)
     if (isHidden(r.order_no)) return false;
@@ -238,36 +239,47 @@ async function fetchRows(){
     return __inv_rows_cache;
   }
   const sb = await ensureClient();
-  // Fetch entire range in pages to avoid truncation
-  const fields = 'order_no, order_date, customer, invoice_no, invoice_date, invoice_status, sales_rep, status, location, total_total, report_date';
-  // Use a conservative page size to respect PostgREST/Supabase limits and avoid skipping
+  // LIVE source: cin7_mirror.sales_orders (auto-synced from Cin7), replacing the
+  // stale manual-Excel invoicing_monitor table. We chase orders that are shipped/
+  // fulfilled but not yet invoiced (invoice_status = NOT INVOICED & fulfilment done).
+  // Server-side filter keeps the result tiny (the actionable backlog) and fast —
+  // no more downloading 70k+ rows to the client.
+  const fields = 'order_number, order_date, customer, invoice_number, invoice_date, invoice_status, sales_rep, status, location_name, order_amount, invoice_amount';
+  const todayISO = fmtDate(new Date());
   const pageSize = 1000;
   let from = 0;
   const all = [];
   while (true){
-    let q = sb.from('invoicing_monitor')
+    const { data, error } = await sb
+      .schema('cin7_mirror')
+      .from('sales_orders')
       .select(fields)
-      .order('report_date', { ascending: false })
+      .eq('invoice_status', 'NOT INVOICED')
+      .in('fulfilment_status', ['FULFILLED', 'PARTIALLY FULFILLED'])
       .order('order_date', { ascending: false })
       .range(from, from + pageSize - 1);
-  // No date filter here: we fetch the entire table and compute the range locally
-    const { data, error } = await q;
-    if (error){ console.error('load invoicing data error (page):', error); break; }
+    if (error){ console.error('load invoicing data error (sales_orders):', error); break; }
     const batch = (data||[]).map(r=>({
-      ...r,
+      order_no: r.order_number,
       order_date: parseISODate(r.order_date),
+      customer: r.customer,
+      invoice_no: r.invoice_number,
       invoice_date: parseISODate(r.invoice_date),
-      report_date: parseISODate(r.report_date),
+      invoice_status: r.invoice_status,
+      sales_rep: r.sales_rep,
+      status: r.status,
+      location: r.location_name,
+      total_total: (r.order_amount != null ? r.order_amount : r.invoice_amount),
+      // Live snapshot — there is one current row per order, so "report" date = today.
+      report_date: parseISODate(todayISO),
     }));
     all.push(...batch);
-    if (!data || data.length === 0) break; // no more rows
-    // Advance by the actual number returned to avoid skipping when the server enforces a stricter cap
+    if (!data || data.length < pageSize) break; // last page
     from += data.length;
-    // Safety: prevent runaway
-    if (from > 1_000_000) break;
+    if (from > 1_000_000) break; // runaway guard
   }
   __inv_rows_cache = all;
-  try { console.debug('[INV] cache ready, rows=', __inv_rows_cache.length); } catch(_){ }
+  try { console.debug('[INV] live cache ready, rows=', __inv_rows_cache.length); } catch(_){ }
   return __inv_rows_cache;
 }
 
