@@ -1364,11 +1364,21 @@
                         const pickingAged = pickingRows.length - picking;
                         const toPack  = openSO.filter(r => isPicked(r) && !isPacked(r)).length;                            // picked, awaiting pack
 
-                        // Completed today — SO @ Main ONLY, by real completion time (completed_at; updated_at fallback)
-                        const todayStart = new Date(aestDayStart(aestToday()));
-                        const todayEnd = new Date(aestDayEnd(aestToday()));
-                        const inToday = ts => { if (!ts) return false; const t = new Date(ts); return t >= todayStart && t <= todayEnd; };
-                        const completedToday = soMain.filter(r => r.status === 'COMPLETED' && inToday(r.completed_at || r.updated_at)).length;
+                        // Completed today — orders SHIPPED from Main today. Source: the LIVE
+                        // scanner table pick_anomaly_orders (fulfilled_date = ship date) — the
+                        // SAME source the chart uses, so this tile and the chart's today bar
+                        // always agree. The old order_pipeline path read 0 while ~100 shipped:
+                        // its completed_at was the SYNC time (not the real completion time) AND
+                        // its sync lags (last run can be a day old). fulfilled_date is webhook-fed
+                        // and fresh within ~1min.
+                        const aestTodayKey = new Date(Date.now() + 10 * 3600000).toISOString().slice(0, 10);
+                        let completedToday = 0;
+                        try {
+                            const { count } = await sb.from('pick_anomaly_orders')
+                                .select('*', { count: 'exact', head: true })
+                                .eq('entity_type', 'sale').eq('fulfilled_date', aestTodayKey);
+                            completedToday = count || 0;
+                        } catch (e) { /* leave 0 on error */ }
 
                         // Transfers (logistics footer)
                         const outboundTR = pipeline.filter(r => r.type === 'TR' && r.from_location === MAIN_WH);
@@ -1462,6 +1472,7 @@
                 for (;;) {
                     const r = await sb.from('pick_anomaly_orders')
                         .select('fulfilled_date')
+                        .eq('entity_type', 'sale')   // sales orders only — matches the "Completed today" tile
                         .gte('fulfilled_date', aestDate(DAYS - 1).toISOString().slice(0, 10))
                         .lte('fulfilled_date', aestDate(0).toISOString().slice(0, 10))
                         .range(from, from + 999);

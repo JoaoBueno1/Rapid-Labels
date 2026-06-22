@@ -321,8 +321,11 @@ async function syncSalesOrders(sb) {
   const advancedSales = unique.filter(o => o.Type === 'Advanced Sale');
   log('info', `  Simple: ${simpleSales.length}, Advanced: ${advancedSales.length}`);
 
-  // Map Simple Sales (always 1 fulfilment)
-  const rows = simpleSales.map(o => ({
+  // Header-only row built straight from the LIST response (no detail fetch).
+  // Used for Simple sales, pre-pick Advanced sales, and the detail-fetch
+  // fallback. The list already carries Combined pick/pack/ship status — all the
+  // board's tiles need.
+  const headerRow = (o) => ({
     id: o.SaleID,
     type: 'SO',
     number: o.OrderNumber,
@@ -342,37 +345,27 @@ async function syncSalesOrders(sb) {
     synced_at: nowIso,
     fulfilment_number: 1,
     ...(isCompleted(o.Status) ? { completed_at: nowIso } : {}),
-  }));
+  });
+
+  // Map Simple Sales (always 1 fulfilment)
+  const rows = simpleSales.map(headerRow);
 
   // ── Advanced Sales: fetch detail and create per-fulfilment rows ──
+  // Only orders that have STARTED fulfilment (PICKING/PICKED/PACKING) need the
+  // per-fulfilment detail fetch. ORDERED/BACKORDERED advanced sales have no
+  // pick/pack activity yet, so a detail fetch each is pure waste — ~400 of them
+  // pushed the run past the 10-min CI timeout and the whole sync was killed
+  // before its final upsert (board froze for 2 days). Map those header-only.
+  const PREPICK = new Set(['ORDERED', 'BACKORDERED']);
   for (const o of advancedSales) {
+    if (PREPICK.has(o.Status)) { rows.push(headerRow(o)); continue; }
     try {
       const detail = await cin7Get('sale', { ID: o.SaleID });
       const fulfilments = detail.Fulfilments || [];
 
       if (fulfilments.length <= 1) {
         // Single fulfilment — treat like Simple Sale
-        rows.push({
-          id: o.SaleID,
-          type: 'SO',
-          number: o.OrderNumber,
-          status: o.Status,
-          order_date: o.OrderDate ? o.OrderDate.split('T')[0] : null,
-          customer: o.Customer || null,
-          pick_status: o.CombinedPickingStatus || null,
-          pack_status: o.CombinedPackingStatus || null,
-          ship_status: o.CombinedShippingStatus || null,
-          invoice_status: o.CombinedInvoiceStatus || null,
-          from_location: CONFIG.locationMap[o.OrderLocationID] || null,
-          to_location: null,
-          reference: o.CustomerReference || null,
-          line_count: null,
-          total_qty: null,
-          updated_at: o.Updated || null,
-          synced_at: nowIso,
-          fulfilment_number: 1,
-          ...(isCompleted(o.Status) ? { completed_at: nowIso } : {}),
-        });
+        rows.push(headerRow(o));
         continue;
       }
 
@@ -409,29 +402,9 @@ async function syncSalesOrders(sb) {
         });
       }
     } catch (err) {
-      // If detail fetch fails, fall back to single row from list data
+      // If detail fetch fails, fall back to a header-only row from list data
       log('warn', `Failed to fetch detail for ${o.OrderNumber}: ${err.message}`);
-      rows.push({
-        id: o.SaleID,
-        type: 'SO',
-        number: o.OrderNumber,
-        status: o.Status,
-        order_date: o.OrderDate ? o.OrderDate.split('T')[0] : null,
-        customer: o.Customer || null,
-        pick_status: o.CombinedPickingStatus || null,
-        pack_status: o.CombinedPackingStatus || null,
-        ship_status: o.CombinedShippingStatus || null,
-        invoice_status: o.CombinedInvoiceStatus || null,
-        from_location: CONFIG.locationMap[o.OrderLocationID] || null,
-        to_location: null,
-        reference: o.CustomerReference || null,
-        line_count: null,
-        total_qty: null,
-        updated_at: o.Updated || null,
-        synced_at: nowIso,
-        fulfilment_number: 1,
-        ...(isCompleted(o.Status) ? { completed_at: nowIso } : {}),
-      });
+      rows.push(headerRow(o));
     }
   }
 
