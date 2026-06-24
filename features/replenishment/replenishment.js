@@ -30,7 +30,8 @@
     avgDataMap: {},
     stockDataMap: {},
     ctnMap: {},
-    branchKPIs: {}
+    branchKPIs: {},
+    pendingByBranch: {}   // branchCode → { product → { pending_qty } } — in-transit, subtracted so cards match the branch detail page
   };
 
   // ============================================
@@ -56,10 +57,10 @@
       { title: 'Zero Sales Skip', text: 'SKUs with 0 avg for a branch are excluded from that branch\'s plan' },
       { title: 'Formula', text: 'Send = min(Need − In-transit, Main Can Send)' },
       { title: 'Smart Carton Rounding', text: `Round up only if post-send stock ≤ ${CFG.CARTON_ROUND_UP_MAX_MONTHS} months cover (also ≤ ${CFG.CARTON_ROUND_UP_MAX_RATIO}× target)` },
-      { title: 'Min Send Threshold', text: `Skip if qty < ½ carton (CTN < 50) or < ${CFG.MIN_SEND_FALLBACK_UNITS} units (CTN ≥ 50 / no CTN data)` },
+      { title: 'Min Send Threshold', text: 'Small top-ups (below ~1 week of branch demand) are flagged for review, not dropped' },
       { title: 'Proportional Allocation', text: 'Competing branches get a share of Main proportional to need' },
       { title: 'Safety Override', text: 'Oversold branches bypass Main safety — flagged in UI' },
-      { title: 'Stale Data Block', text: `Plans hidden if sync > ${CFG.SYNC_BLOCK_MINUTES} min old` }
+      { title: 'Stale Data Block', text: `Plans hidden if sync > ${Math.round(CFG.SYNC_BLOCK_MINUTES / 60)}h old` }
     ];
     grid.innerHTML = items.map(r => `
       <div class="rule-item">
@@ -257,7 +258,7 @@
         grid.innerHTML = `
           <div class="alert critical" style="grid-column:1/-1">
             <strong>Recommendations hidden.</strong> Cin7 sync has not succeeded in over
-            ${CFG.SYNC_BLOCK_MINUTES} minutes. Refresh once sync recovers to avoid
+            ${Math.round(CFG.SYNC_BLOCK_MINUTES / 60)} hours. Refresh once sync recovers to avoid
             acting on stale stock levels.
           </div>`;
         return;
@@ -283,10 +284,40 @@
       renderBranchCards(grid, planMap);
       updateKPIBar();
 
+      // Refine in the background with in-transit (pending TRs). The first paint
+      // above shows cards immediately (without subtracting stock on the way);
+      // once pending loads we recompute so the card numbers match what you see
+      // when you open a branch. Non-blocking + non-fatal — if the endpoint is
+      // unavailable the cards simply stay at the pre-transit estimate.
+      loadOverviewPending().then((loaded) => {
+        if (!loaded || isDataBlocked()) return;
+        computeBranchKPIs();
+        renderBranchCards(grid, planMap);
+        updateKPIBar();
+        console.log('📋 Overview refined with in-transit data');
+      }).catch(() => {});
+
     } catch (err) {
       console.error('Error loading branch statuses:', err);
       grid.innerHTML = '<p class="empty-state error">Error loading branches</p>';
     }
+  }
+
+  // Fetch pending TRs for all branches (server-cached) and store the per-product
+  // in-transit qty. Sequential to respect Cin7 rate limits (the all-branches
+  // page does the same); the server cache makes repeat loads instant.
+  async function loadOverviewPending() {
+    let any = false;
+    for (const b of BRANCHES) {
+      try {
+        const resp = await fetch(`/api/replenishment/pending-transfers/${b.code}`);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        state.pendingByBranch[b.code] = data.products || {};
+        any = true;
+      } catch (e) { /* non-fatal — overview falls back to pre-transit estimate */ }
+    }
+    return any;
   }
 
   // ============================================
@@ -401,8 +432,39 @@
     const products = Object.keys(state.avgDataMap);
     state.branchKPIs = {};
 
-    // ABC ranks computed once per render (top-20% A → 12wk target)
+    // ABC ranks computed once per render (top movers → longer cover target)
     state.abcRanks = CFG.computeAbcRanks(Object.values(state.avgDataMap));
+
+    // ── Pre-pass: honest cross-branch conflict map ──
+    // A "conflict" = >1 branch competing for the same SKU AND Main can't cover
+    // the combined (in-transit-adjusted) need. Same definition as the branch
+    // detail + all-branches pages — the old code flagged ANY single-branch
+    // shortfall as a "conflict", which inflated the KPI.
+    const skuConflict = {}; // product → Set(branchCodes competing)
+    for (const product of products) {
+      if (CFG.isExcludedProduct(product, state.productNames?.[product])) continue;
+      const avgRow = state.avgDataMap[product];
+      if (!avgRow) continue;
+      const mainStock = state.stockDataMap[`${product}:MAIN`];
+      const mainAvailable = mainStock?.qty_available || 0;
+      const canSendBase = Math.max(0, mainAvailable - CFG.computeMainSafety(CFG.pickMainAvg(avgRow)));
+      const tier = state.abcRanks.get(product) || 'C';
+      const targetWeeks = CFG.targetWeeksForTier(tier);
+      let totalNeed = 0; const needing = [];
+      for (const b of BRANCHES) {
+        const avgMonth = CFG.pickAvg(avgRow, BRANCH_BY_CODE[b.code]);
+        if (avgMonth <= 0) continue;
+        const branchAvailable = state.stockDataMap[`${product}:${b.code}`]?.qty_available || 0;
+        const target = CFG.computeBranchTarget(avgMonth, targetWeeks);
+        const pendingQty = state.pendingByBranch?.[b.code]?.[product]?.pending_qty || 0;
+        const eff = Math.max(0, Math.max(0, target - branchAvailable) - pendingQty);
+        if (eff > 0) { totalNeed += eff; needing.push(b.code); }
+      }
+      // conflictPool > 0 required (matches branch page) — pure no-stock isn't a "conflict".
+      if (needing.length > 1 && canSendBase > 0 && totalNeed > canSendBase) {
+        skuConflict[product] = new Set(needing);
+      }
+    }
 
     for (const b of BRANCHES) {
       const branchInfo = BRANCH_BY_CODE[b.code];
@@ -435,24 +497,37 @@
 
         const avgWeekBranch = avgMonth / WEEKS_IN_MONTH;
         const coverDays = avgWeekBranch > 0 ? Math.round((branchAvailable / avgWeekBranch) * 7) : 999;
+        const coverWeeksNow = avgWeekBranch > 0 ? branchAvailable / avgWeekBranch : 0;
 
         const targetQty = CFG.computeBranchTarget(avgMonth, targetWeeks);
         const needQty = Math.max(0, targetQty - branchAvailable);
         const mainMinQty = CFG.computeMainSafety(avgMonthMain);
         const canSendQty = Math.max(0, mainAvailable - mainMinQty);
         const soldDeficit = branchAvailable < 0 ? Math.abs(branchAvailable) : 0;
+        const pendingQty = state.pendingByBranch?.[b.code]?.[product]?.pending_qty || 0;
 
-        // Mirror safety override logic from detail pages
+        // The following mirrors the branch detail page's "is this a send?" path
+        // EXACTLY so the overview counts reconcile with what you see on open:
+        //   1) sufficient / already at target cover → not a send
+        //   2) need already covered by in-transit TRs → not a send
+        //   3) no Main stock to send (and not oversold) → not a send
+        //   4) small top-ups are KEPT (soft flag on detail page), not dropped —
+        //      previously this page hard-dropped them, so it read LOWER.
+        const alreadyAtTarget = coverWeeksNow >= targetWeeks;
+        if ((needQty <= 0 || alreadyAtTarget) && soldDeficit <= 0) continue;
+
+        const effectiveNeed = Math.max(0, needQty - pendingQty);
+        if (effectiveNeed <= 0 && soldDeficit <= 0) continue;   // on the way
+
         let pool = canSendQty;
         let override = false;
-        if (soldDeficit > 0 && canSendQty < needQty && mainAvailable > 0) {
+        if (soldDeficit > 0 && canSendQty < effectiveNeed && mainAvailable > 0) {
           pool = mainAvailable;
           override = true;
         }
+        if (pool <= 0 && soldDeficit <= 0) continue;            // no Main stock
 
-        let suggestedQty = Math.min(needQty, pool);
-        if (suggestedQty <= 0) continue;
-
+        let suggestedQty = Math.min(effectiveNeed, pool);
         const ctnQty = state.ctnMap[product] || 0;
         const rounded = CFG.smartCartonRound(suggestedQty, ctnQty, pool, targetQty, {
           avgMonthBranch: avgMonth,
@@ -460,12 +535,9 @@
           mainAbundant
         });
         suggestedQty = rounded.qty;
-
-        // Minimum threshold
-        if (branchAvailable > 0 && soldDeficit <= 0) {
-          const minThreshold = CFG.computeMinSend(ctnQty, avgMonth);
-          if (suggestedQty < minThreshold) continue;
-        }
+        if (suggestedQty <= 0) continue;
+        // NOTE: no min-send hard-drop here — kept consistent with the detail
+        // page, which flags small sends for review rather than hiding them.
 
         totalProducts++;
         totalUnits += suggestedQty;
@@ -475,7 +547,7 @@
         else if (coverDays < CFG.COVER_WARNING_DAYS) warning++;
         else ok++;
 
-        if (canSendQty < needQty) conflicts++;
+        if (skuConflict[product]?.has(b.code)) conflicts++;
       }
 
       const total = critical + warning + ok;

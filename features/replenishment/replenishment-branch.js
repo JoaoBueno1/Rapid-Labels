@@ -46,6 +46,7 @@
     pendingTRs: {},        // product → { pending_qty, transfers: ['TR-XXXXX = QTY'] } — current branch only
     pendingTRsAllBranches: {}, // branchCode → { product → { pending_qty } } — used in conflict pass
     pendingTRList: [],     // array of { number, status, lines }
+    pendingLoadFailed: false, // true when current-branch in-transit data couldn't load (double-send risk)
     cartonMode: false,     // Cartons Only mode toggle
     // Target weeks override — null means ABC tiers (default).
     // Persisted per-branch in localStorage.
@@ -88,6 +89,9 @@
     const branchCodeEl = document.getElementById('branchCode');
     if (branchNameEl) branchNameEl.textContent = state.branchInfo.name;
     if (branchCodeEl) branchCodeEl.textContent = `(${branchCode})`;
+    // Name the "This branch" column group with the actual branch.
+    const groupBranchLabel = document.getElementById('groupBranchLabel');
+    if (groupBranchLabel) groupBranchLabel.textContent = `This branch — ${state.branchInfo.name}`;
     document.title = `${state.branchInfo.name} — Transfer Plan`;
 
     console.log(`📦 Branch Replenishment: ${branchCode} - ${state.branchInfo.name}`);
@@ -105,9 +109,9 @@
   // LOAD DATA
   // ============================================
   
-  async function loadData() {
+  async function loadData(force = false) {
     showLoading(true);
-    
+
     try {
       await window.supabaseReady;
       
@@ -138,11 +142,11 @@
         const el = document.getElementById('alertContainer');
         if (el) {
           el.innerHTML += `<div class="alert critical">
-            <strong>Recommendations hidden.</strong> Cin7 stock sync is more than ${CFG.SYNC_BLOCK_MINUTES} minutes old — data is likely wrong. Wait for the next successful sync before acting.
+            <strong>Recommendations hidden.</strong> Cin7 stock sync is more than ${Math.round(CFG.SYNC_BLOCK_MINUTES / 60)} hours old — data is likely wrong. Wait for the next successful sync before acting.
           </div>`;
         }
         const tbody = document.getElementById('planTableBody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="empty-cell">Stock data is stale — refresh once sync recovers.</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="empty-cell">Stock data is stale — refresh once sync recovers.</td></tr>';
         return;
       }
 
@@ -152,7 +156,7 @@
         loadStockData(),
         loadCtnData(),
         loadExistingPlan(),
-        loadPendingTRs()
+        loadPendingTRs(force)
       ]);
       
       console.log('Data loaded, auto-generating plan...');
@@ -343,7 +347,7 @@
     }
   }
 
-  async function loadPendingTRs() {
+  async function loadPendingTRs(force = false) {
     // Load pending TRs for ALL branches so the conflict-detection pass below
     // can subtract in-transit qty from each branch's effective need.
     //
@@ -351,16 +355,24 @@
     // Other branches load in parallel in background — if they finish before
     // calculatePlan() runs they're used; if not, conflict detection falls
     // back to raw need for those branches (still correct, just less precise).
-    // A 4s timeout per call prevents a slow API from blocking the page.
+    //
+    // The server caches results, so this is normally instant; the timeout is a
+    // generous backstop for a COLD cache (Cin7 line fetch throttles 3.5s/TR).
+    // It was 4s before, which reliably aborted on branches with 2+ TRs and left
+    // the plan with NO in-transit data → double-send. 15s + the server cache
+    // fixes that; if it still fails we flag it loudly (see pendingLoadFailed).
+    const PENDING_TIMEOUT_MS = 15000;
+    const qs = force ? '?fresh=1' : '';
     state.pendingTRs = {};
     state.pendingTRList = [];
     state.pendingTRsAllBranches = {};
+    state.pendingLoadFailed = false;
 
     const fetchBranchPending = async (code) => {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 4000);
+      const timer = setTimeout(() => ctrl.abort(), PENDING_TIMEOUT_MS);
       try {
-        const resp = await fetch(`/api/replenishment/pending-transfers/${code}`, { signal: ctrl.signal });
+        const resp = await fetch(`/api/replenishment/pending-transfers/${code}${qs}`, { signal: ctrl.signal });
         clearTimeout(timer);
         if (!resp.ok) return null;
         return await resp.json();
@@ -377,7 +389,11 @@
       state.pendingTRList = currentData.transfers || [];
       state.pendingTRsAllBranches[state.branchCode] = currentData.products || {};
     } else {
-      console.warn(`Pending TRs for ${state.branchCode}: failed or timed out`);
+      // Couldn't confirm what's already on the way → the plan can't subtract it,
+      // so it may recommend re-sending in-transit stock. Surface this loudly
+      // instead of silently double-sending (updateSummary renders the banner).
+      state.pendingLoadFailed = true;
+      console.warn(`Pending TRs for ${state.branchCode}: failed or timed out — in-transit not applied`);
     }
 
     const trCount = state.pendingTRList.length;
@@ -762,18 +778,11 @@
     console.log(`Plan: ${lines.length} total (${lines.filter(l => l.send_qty > 0).length} to send)`);
   }
 
+  // Full reload from Cin7/DB (matches the button's "Reload data from Cin7"
+  // tooltip). Forces a fresh pending-TR fetch so in-transit is re-confirmed —
+  // this is the retry path when the double-send warning is showing.
   window.generatePlan = function() {
-    showLoading(true);
-    try {
-      calculatePlan();
-      renderTable();
-      updateSummary();
-    } catch (err) {
-      console.error('Error generating plan:', err);
-      showError('Error: ' + err.message);
-    } finally {
-      showLoading(false);
-    }
+    loadData(true);
   };
 
   window.toggleCartonMode = function() {
@@ -813,8 +822,13 @@
     const pageLines = lines.slice(start, start + state.pageSize);
     
     if (pageLines.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-cell">' +
-        (state.filter === 'to_send' ? 'No products to send — branch is fully stocked' : 'No products match the current filter') +
+      const transitNote = Object.keys(state.pendingTRs || {}).length > 0
+        ? ' — some stock is already on the way (see In transit)'
+        : '';
+      tbody.innerHTML = '<tr><td colspan="11" class="empty-cell">' +
+        (state.filter === 'to_send'
+          ? 'No products to send right now (stock sufficient or already on the way)' + transitNote
+          : 'No products match the current filter') +
         '</td></tr>';
       updatePagination(0, 0);
       return;
@@ -906,7 +920,7 @@
       } else if (line.send_note === 'no_avg_oversold') {
         sendDisplay = '<span class="send-blocked" title="Oversold but no AVG history — manually review. Upload AVG data or use Cartons Only mode.">review</span>';
       } else if (line.send_note === 'already_in_transit') {
-        sendDisplay = '<span class="send-dim" title="Need covered by pending TRs">in transit</span>';
+        sendDisplay = '<span class="send-transit-ok" title="Need already covered by ' + line.pending_qty + ' unit(s) on the way — don\'t re-send">✓ on the way</span>';
       } else if (line.send_note === 'no_ctn') {
         sendDisplay = '<span class="send-dim" title="No carton info (Cartons Only mode)">no ctn</span>';
       } else if (line.send_note === 'carton_over_target' || line.send_note === 'carton_over_6mth') {
@@ -929,12 +943,16 @@
         ? '<div class="prod-name">' + escapeHtml(line.product_name) + '</div>'
         : '';
       const dcLine = line.dc_code ? '<span class="prod-dc">' + escapeHtml(line.dc_code) + '</span> · ' : '';
-      
-      // AVG display in meta
-      const avgDisplay = line.avg_branch_raw > 0
-        ? 'avg ' + formatAvg(line.avg_branch_raw) + '/mth'
-        : '';
-      const metaParts = [dcLine ? dcLine.replace(' · ', '') : '', line.ctn_qty ? line.ctn_qty + '/ctn' : '', avgDisplay].filter(Boolean);
+
+      // AVG now lives in its own columns (next to Branch stock + next to Main).
+      // The carton pack-size ("25/ctn") was removed from the meta line — it
+      // confused more than it helped, and the restock_setup pack-size data is
+      // unreliable for some SKUs. The Cartons column still derives from it.
+      const metaParts = [dcLine ? dcLine.replace(' · ', '') : ''].filter(Boolean);
+
+      // AVG/mth column values (raw, formatted) — branch beside Branch stock, Main beside Main.
+      const branchAvgDisplay = line.avg_branch_raw > 0 ? formatAvg(line.avg_branch_raw) : '<span class="send-dim">—</span>';
+      const mainAvgDisplay   = line.avg_main_raw   > 0 ? formatAvg(line.avg_main_raw)   : '<span class="send-dim">—</span>';
       
       // Branch stock tooltip with AVG + committed info
       const branchTipParts = [];
@@ -1004,11 +1022,13 @@
         '<td class="check-cell"><input type="checkbox" class="row-check" ' + checked + checkDisabled + ' onchange="toggleRow(\'' + escapeHtml(line.product) + '\')"></td>' +
         '<td class="product-cell"><div class="prod-code">' + escapeHtml(line.product) + conflictIcon + '</div>' + nameLine + '<div class="prod-meta">' + metaParts.join(' · ') + '</div></td>' +
         '<td class="loc-cell">' + escapeHtml(line.location || '—') + '</td>' +
-        '<td class="cover-cell">' + coverBadge + '</td>' +
+        '<td class="cover-cell group-start" title="Days of stock left at the current sales rate (Branch stock ÷ average daily sales)">' + coverBadge + '</td>' +
         '<td class="num-cell tip-cell' + (line.sold_deficit > 0 ? ' sold-deficit-cell' : '') + '" title="' + branchTip + '">' + branchStockDisplay + '</td>' +
-        '<td class="num-cell transit-cell">' + transitDisplay + '</td>' +
-        '<td class="num-cell main-cell tip-cell" title="' + mainTip + '">' + line.main_stock + '</td>' +
-        '<td class="send-cell">' + sendDisplay + '</td>' +
+        '<td class="num-cell avg-cell" title="This branch sells ' + formatAvg(line.avg_branch_raw) + '/month on average">' + branchAvgDisplay + '</td>' +
+        '<td class="num-cell transit-cell' + (line.pending_qty > 0 ? ' has-transit' : '') + '">' + transitDisplay + '</td>' +
+        '<td class="num-cell main-cell tip-cell group-start" title="' + mainTip + '">' + line.main_stock + '</td>' +
+        '<td class="num-cell avg-cell" title="Main sells ' + formatAvg(line.avg_main_raw) + '/month on average">' + mainAvgDisplay + '</td>' +
+        '<td class="send-cell group-start">' + sendDisplay + '</td>' +
         '<td class="ctn-cell">' + cartonDisplay + '</td>' +
         '</tr>';
     }).join('');
@@ -1042,6 +1062,10 @@
         break;
       case 'oversold':
         lines = lines.filter(l => l.sold_deficit > 0);
+        break;
+      case 'in_transit':
+        // Items with stock already on the way from Main — review before re-sending.
+        lines = lines.filter(l => l.pending_qty > 0);
         break;
       case 'all':
         // Show all with avg data (excluding sufficient + no_avg for cleaner view)
@@ -1118,6 +1142,18 @@
     // (selector `[data-alert="safety-override"]`).
     const alertEl = document.getElementById('alertContainer');
     if (alertEl) {
+      // Double-send guard: if in-transit data couldn't load, the plan can't
+      // subtract stock already on the way — warn instead of silently doubling.
+      alertEl.querySelectorAll('[data-alert="pending-failed"]').forEach(n => n.remove());
+      if (state.pendingLoadFailed) {
+        const w = document.createElement('div');
+        w.setAttribute('data-alert', 'pending-failed');
+        w.className = 'alert warning';
+        w.innerHTML = `<strong>In-transit transfers not loaded.</strong> Couldn't confirm stock already on the way from Main, so the quantities below may double up on pending transfers. Click <strong>Refresh</strong> to retry.`;
+        alertEl.appendChild(w);
+      }
+    }
+    if (alertEl) {
       alertEl.querySelectorAll('[data-alert="safety-override"]').forEach(n => n.remove());
       if (safetyOverrideCount > 0) {
         const units = withAvg.filter(l => l.safety_override).reduce((s, l) => s + l.send_qty, 0);
@@ -1169,6 +1205,7 @@
       needs: withAvg.filter(l => l.need_qty > 0).length,
       conflicts: conflictCount,
       oversold: soldDeficitCount,
+      in_transit: withAvg.filter(l => l.pending_qty > 0).length,
       all: withAvg.length
     };
     
@@ -1489,17 +1526,31 @@ ${lines.map((l, i) => {
   function renderTargetModalRules() {
     const grid = document.getElementById('targetModalRules');
     if (!grid) return;
-    const r = [
-      { t: 'Branch target',            d: `Cover + ${CFG.LEAD_TIME_DAYS}d lead time. ABC default: A=${CFG.ABC_TARGET_WEEKS.A}w · B=${CFG.ABC_TARGET_WEEKS.B}w · C=${CFG.ABC_TARGET_WEEKS.C}w.` },
-      { t: 'Main safety stock',        d: `Main keeps ≥ ${CFG.MAIN_MIN_WEEKS} weeks before sending (avg_sales_main basis)` },
-      { t: 'Zero-AVG skip',            d: `SKUs with 0 avg for a branch are excluded from that branch's plan` },
-      { t: 'Smart carton rounding',    d: `Round up only if post-send stock ≤ ${CFG.CARTON_ROUND_UP_MAX_MONTHS} months cover (slow-mover + large ctn + Main abundant → 8 months)` },
-      { t: 'Min send threshold',       d: `Skip top-up if qty < 1 week of branch demand (floor ${CFG.MIN_SEND_FALLBACK_UNITS - 1} units)` },
-      { t: 'Proportional allocation',  d: 'Competing branches get a share of Main proportional to their need' },
-      { t: 'Safety override',          d: 'Oversold branches bypass Main safety — flagged with OVR badge' },
-      { t: 'Stale data block',         d: `Plans hidden if Cin7 sync > ${CFG.SYNC_BLOCK_MINUTES} min old` }
+
+    // Rules split into two plain-language groups so it's obvious what governs
+    // each BRANCH's target vs what governs what MAIN is willing to release.
+    const branchRules = [
+      { t: 'Target cover',      d: `How many weeks of stock each branch aims to hold — the ABC tiers below, or a custom value if you set one above.` },
+      { t: 'ABC demand tiers',  d: `Every SKU is graded by how fast it sells across ALL branches, then given cover to match: A = the top 20% fastest sellers → ${CFG.ABC_TARGET_WEEKS.A} weeks · B = the next 30% → ${CFG.ABC_TARGET_WEEKS.B} weeks · C = the slowest 50% → ${CFG.ABC_TARGET_WEEKS.C} weeks. Fast sellers get a bigger buffer because they run out first.` },
+      { t: 'Lead-time buffer',  d: `An extra ${CFG.LEAD_TIME_DAYS} days is added to the target so stock arrives before the branch runs out.` },
+      { t: 'No-sales skip',     d: `A SKU with no sales history at a branch is left out of that branch's plan.` },
+      { t: 'Small-send flag',   d: `Tiny top-ups (below about 1 week of demand) are flagged for review, not silently dropped.` },
+      { t: 'Carton rounding',   d: `Sends round to full cartons, as long as that doesn't push the branch past ${CFG.CARTON_ROUND_UP_MAX_MONTHS} months of cover.` }
     ];
-    grid.innerHTML = r.map(x => `<div class="rule"><b>${escapeHtml(x.t)}</b><span>${escapeHtml(x.d)}</span></div>`).join('');
+    const mainRules = [
+      { t: 'Main safety stock', d: `Main keeps at least ${CFG.MAIN_MIN_WEEKS} weeks of its own demand in reserve before releasing stock to a branch.` },
+      { t: 'In-transit aware',  d: `Stock already on the way (pending transfers) is subtracted, so the same units are never sent twice.` },
+      { t: 'Proportional split',d: `When several branches need the same SKU and Main is short, each branch gets a share of Main's stock proportional to its need.` },
+      { t: 'Safety override',   d: `A branch that already sold stock it doesn't have (oversold) may draw past Main's safety reserve — shown with an OVR badge.` },
+      { t: 'Stale-data block',  d: `If the Cin7 sync is more than ${Math.round(CFG.SYNC_BLOCK_MINUTES / 60)} hours old, recommendations are hidden until the data refreshes.` }
+    ];
+    const col = (title, items, cls) =>
+      `<div class="rules-col ${cls}"><h4>${escapeHtml(title)}</h4>` +
+      items.map(x => `<div class="rule"><b>${escapeHtml(x.t)}</b><span>${escapeHtml(x.d)}</span></div>`).join('') +
+      `</div>`;
+    grid.innerHTML =
+      col('Branch rules — how much each branch holds', branchRules, 'rules-branch') +
+      col('Main rules — what Main will release', mainRules, 'rules-main');
   }
 
   window.openTargetModal = function() {

@@ -1455,11 +1455,22 @@ function registerPickAnomalyRoutes(app) {
   app.get('/api/pick-anomalies/sync-status', async (req, res) => {
     try {
       const meta = await getLastSyncDate();
+      // The 2h BATCH sync writes last_synced_at, but the REAL-TIME webhook path
+      // analyses orders without ever touching it — so that timer ages (e.g.
+      // "4h ago") while data is actually live. Report TRUE freshness: the most
+      // recent analyzed_at across all orders (webhook OR batch), whichever is
+      // later. Read-only; never blocks the status on a slow query.
+      let lastSyncedAt = meta?.last_synced_at || null;
+      try {
+        const latest = await sbGet('pick_anomaly_orders', 'select=analyzed_at&order=analyzed_at.desc&limit=1');
+        const a = latest && latest[0] && latest[0].analyzed_at;
+        if (a && (!lastSyncedAt || a > lastSyncedAt)) lastSyncedAt = a;
+      } catch (_) { /* fall back to batch metadata */ }
       res.json({
         success: true,
         syncing: syncInProgress,
         lastSyncedDate: meta?.last_synced_date || null,
-        lastSyncedAt: meta?.last_synced_at || null,
+        lastSyncedAt,
         totalOrders: meta?.total_orders || 0,
         lastNewOrders: meta?.last_new_orders || 0,
       });

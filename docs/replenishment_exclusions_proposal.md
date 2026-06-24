@@ -1,6 +1,12 @@
 # Replenishment — proposed exclusions (Sydney audit, 2026-05-13)
 
-Lista pronta pra aplicar no `features/replenishment/replenishment-config.js` quando aprovado. Nada foi alterado ainda.
+> **STATUS (2026-06-24): APLICADO.** A maior parte desta proposta já está no
+> `replenishment-config.js` — as exclusões por-metro (`EXCLUDED_NAME_PATTERNS`),
+> o regex `-V1` legado, e a lista explícita `EXCLUDED_SKUS`. Os `-V1` saem pelo
+> regex `/[-_]v1$/i` em vez de listados um a um. Documento mantido como histórico
+> da decisão; não é mais "pendente".
+
+Lista pronta pra aplicar no `features/replenishment/replenishment-config.js` quando aprovado.
 
 ## 1. Per-metre regex (15 SKUs em Sydney + futuros)
 

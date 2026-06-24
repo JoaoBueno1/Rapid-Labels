@@ -83,7 +83,7 @@
         document.getElementById('alertContainer').innerHTML +=
           `<div class="alert critical" style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:10px">
             <strong>Recommendations hidden.</strong> Cin7 sync has not succeeded in over
-            ${CFG.SYNC_BLOCK_MINUTES} minutes — refusing to render potentially stale allocations.
+            ${Math.round(CFG.SYNC_BLOCK_MINUTES / 60)} hours — refusing to render potentially stale allocations.
            </div>`;
         showLoading(false);
         return;

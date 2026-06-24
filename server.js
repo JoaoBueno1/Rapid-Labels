@@ -163,6 +163,13 @@ try {
   console.warn('⚠️  Could not register Container Builder routes:', e.message);
 }
 
+// ── Container Check routes (QC de recebimento / inbound) ──
+try {
+  require('./features/container-check/container-check-engine')(app, supabaseBackend);
+} catch (e) {
+  console.warn('⚠️  Could not register Container Check routes:', e.message);
+}
+
 // ── Replenishment: Pending TR Lines (fetches line details from Cin7 API) ──
 (function registerPendingTRRoutes() {
   const https = require('https');
@@ -179,6 +186,17 @@ try {
     HBA: ['hobart', 'hobart warehouse'],
     SCS: ['sunshine coast', 'sunshine coast warehouse'],
   };
+
+  // In-memory cache of pending-TR results, keyed by branch code.
+  // Cin7 only exposes transfer LINE detail via a throttled live API call
+  // (3.5s between TRs), so a cold page load is slow — and the branch page used
+  // to abort after 4s and silently proceed with NO in-transit data, which made
+  // it recommend re-sending stock already on the way (double-send). Caching the
+  // result makes repeat loads — and the overview / all-branches pages that fan
+  // out across all 7 branches — instant and reliable. ?fresh=1 forces a refetch
+  // (the branch "Refresh" button uses it). TTL is well under the 1h sync cadence.
+  const PENDING_TR_CACHE = new Map(); // code -> { ts, payload }
+  const PENDING_TR_TTL_MS = 5 * 60 * 1000; // 5 min
 
   function cin7GetTR(taskId) {
     return new Promise((resolve, reject) => {
@@ -214,6 +232,15 @@ try {
       if (!branchNames) return res.status(400).json({ error: 'Invalid branch code' });
       if (!supabaseBackend) return res.status(500).json({ error: 'Supabase not configured' });
 
+      // Serve from cache when fresh (unless ?fresh=1 forces a refetch).
+      const force = req.query.fresh === '1';
+      const cachedEntry = PENDING_TR_CACHE.get(branchCode);
+      if (!force && cachedEntry && (Date.now() - cachedEntry.ts) < PENDING_TR_TTL_MS) {
+        return res.json(Object.assign({}, cachedEntry.payload, {
+          cached: true, cached_age_ms: Date.now() - cachedEntry.ts
+        }));
+      }
+
       // 1) Find active TRs from Main → this branch
       const { data: trs, error } = await supabaseBackend
         .schema('cin7_mirror')
@@ -233,7 +260,9 @@ try {
       });
 
       if (branchTRs.length === 0) {
-        return res.json({ transfers: [], products: {} });
+        const emptyPayload = { transfers: [], products: {} };
+        PENDING_TR_CACHE.set(branchCode, { ts: Date.now(), payload: emptyPayload });
+        return res.json(emptyPayload);
       }
 
       // 2) For each TR, fetch line items from Cin7 API (with 3.5s throttle)
@@ -269,7 +298,9 @@ try {
         }
       }
 
-      res.json({ transfers, products: productMap });
+      const payload = { transfers, products: productMap };
+      PENDING_TR_CACHE.set(branchCode, { ts: Date.now(), payload });
+      res.json(payload);
     } catch (err) {
       console.error('Pending TR error:', err);
       res.status(500).json({ error: err.message });

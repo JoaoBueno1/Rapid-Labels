@@ -99,8 +99,8 @@
   //   ≤ WARN: neutral
   //   WARN-BLOCK: amber warning, still usable
   //   > BLOCK: red, recommendations hidden / user prompted
-  const SYNC_WARN_MINUTES = 75;   // ~15 min past the hourly sync window
-  const SYNC_BLOCK_MINUTES = 120; // 2h — hard block, data likely wrong
+  const SYNC_WARN_MINUTES = 240;  // 4h — soft amber heads-up; recommendations still shown
+  const SYNC_BLOCK_MINUTES = 480; // 8h — hard block only; below this the data is considered fine to act on
 
   // Expected rows per successful sync — flags partial failures.
   // Set to ~60% of the live catalog so a partial sync (well below normal)

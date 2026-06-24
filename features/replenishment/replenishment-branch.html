@@ -373,7 +373,7 @@
       border-radius: 8px;
       border: 1px solid transparent;
       background: transparent;
-      font-size: 13px;
+      font-size: 13.5px;
       font-weight: 600;
       color: var(--text-mute);
       cursor: pointer;
@@ -495,13 +495,13 @@
     }
     #planTable {
       width: 100%;
-      font-size: 13.5px;
+      font-size: 14px;
       border-collapse: separate;
       border-spacing: 0;
     }
     #planTable th {
       text-align: center;
-      font-size: 10.5px;
+      font-size: 11.5px;
       font-weight: 600;
       color: var(--text-mute);
       background: var(--bg-soft);
@@ -514,6 +514,25 @@
       text-transform: uppercase;
       letter-spacing: .6px;
     }
+    /* ── Grouped header: top row = group labels, 2nd row = columns ── */
+    #planTable thead tr.group-row th { top: 0; z-index: 4; }
+    #planTable thead tr.col-row th   { top: 30px; z-index: 3; }   /* sits below the group row */
+    #planTable thead .group-hdr {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .8px;
+      padding: 7px 12px;
+      border-bottom: 2px solid var(--border-strong);
+    }
+    /* Soft, low-saturation tints so the three groups read apart at a glance */
+    #planTable thead .group-branch   { color:#3b5b86; background:#eef3fb; border-bottom-color:#cdddf0; }
+    #planTable thead .group-main     { color:#7c6433; background:#f6f1e8; border-bottom-color:#e7dac2; }
+    #planTable thead .group-transfer { color:#3f6b4e; background:#edf5ef; border-bottom-color:#cfe5d6; }
+    /* Vertical divider at each group boundary, carried down through the body */
+    #planTable thead .group-hdr,
+    #planTable .group-start { border-left: 2px solid var(--border-strong); }
+    /* Tint the body cells of each group very faintly to reinforce the grouping */
+    #planTable td.group-start { box-shadow: inset 2px 0 0 var(--border-strong); border-left: none; }
     #planTable td {
       vertical-align: middle;
       padding: 7px 12px;
@@ -522,7 +541,7 @@
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
       color: var(--text);
-      font-size: 13px;
+      font-size: 13.5px;
     }
     /* No alternating rows — cleaner. Strong hover instead. */
     #planTable tbody tr:hover td {
@@ -545,13 +564,13 @@
     }
     .prod-code {
       font-weight: 600;
-      font-size: 13px;
+      font-size: 14px;
       color: var(--text);
       font-family: var(--mono);
       letter-spacing: -.2px;
     }
     .prod-name {
-      font-size: 12px;
+      font-size: 12.5px;
       color: var(--text);
       line-height: 1.35;
       margin-top: 2px;
@@ -561,7 +580,7 @@
       max-width: 280px;
     }
     .prod-meta {
-      font-size: 11px;
+      font-size: 11.5px;
       color: var(--text-mute);
       margin-top: 3px;
     }
@@ -570,13 +589,20 @@
 
     .loc-cell {
       font-family: var(--mono);
-      font-size: 12.5px;
+      font-size: 13px;
       color: var(--text);
       text-align: left !important;
       letter-spacing: -.2px;
     }
     .num-cell { font-variant-numeric: tabular-nums; color: var(--text); }
     .main-cell { color: var(--text); }
+    /* AVG/mth columns — sit right beside Branch stock and Main stock.
+       Muted + small so they read as supporting context, not the headline number. */
+    .avg-cell {
+      color: var(--text-mute);
+      font-size: 12.5px;
+      font-variant-numeric: tabular-nums;
+    }
     .tip-cell {
       cursor: help;
       text-decoration: underline dotted var(--border-strong);
@@ -589,7 +615,7 @@
       display: inline-block;
       padding: 3px 10px;
       border-radius: 999px;
-      font-size: 12px;
+      font-size: 12.5px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       letter-spacing: -.2px;
@@ -618,9 +644,24 @@
     }
     .send-blocked { color: var(--crit-fg); font-size: 12px; cursor: help; font-weight: 600; }
     .send-dim { color: var(--text-mute); font-size: 12px; }
+    /* "on the way" — need already covered by an in-transit TR. Amber so it
+       reads as "hold, don't re-send" rather than green "ready to ship". */
+    .send-transit-ok {
+      color: var(--warn-fg);
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-bd);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+      cursor: help;
+      white-space: nowrap;
+    }
     .send-ok { color: var(--ok-fg); font-size: 14px; font-weight: 700; }
 
-    .transit-cell { background: var(--warn-bg); }
+    /* In-transit column is plain by default; it only turns amber on the rows
+       that actually have a transfer on the way (standardised — colour = alert). */
+    .transit-cell.has-transit { background: var(--warn-bg); }
     .transit-val {
       color: var(--warn-fg);
       font-weight: 700;
@@ -652,7 +693,7 @@
       font-size: 13px;
     }
 
-    .ctn-cell { color: var(--text-mute); font-size: 13px; font-weight: 600; }
+    .ctn-cell { color: var(--text-mute); font-size: 13.5px; font-weight: 600; }
 
     .dim-row td { opacity: .82; }
     .dim-row:hover td { opacity: 1 !important; }
@@ -853,28 +894,83 @@
       text-transform: uppercase;
       letter-spacing: .6px;
     }
+    /* Two soft-tinted columns: Branch rules | Main rules */
     .rules-list {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 10px;
-      font-size: 12px;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      font-size: 12.5px;
     }
-    .rules-list .rule {
-      padding: 8px 10px;
-      background: var(--bg-soft);
-      border: 1px solid var(--border-soft);
+    @media (max-width: 620px) { .rules-list { grid-template-columns: 1fr; } }
+    .rules-col {
+      border-radius: 10px;
+      padding: 12px 12px 10px;
+      border: 1px solid transparent;
+    }
+    /* Soft, low-saturation tints so the two groups read as distinct but calm */
+    .rules-col.rules-branch { background: #f3f6fb; border-color: #e3ebf5; }
+    .rules-col.rules-main   { background: #f7f5f1; border-color: #ece6dc; }
+    .rules-col h4 {
+      margin: 0 0 8px;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+    .rules-col.rules-branch h4 { color: #3b5b86; }
+    .rules-col.rules-main   h4 { color: #876a3b; }
+    .rules-col .rule {
+      padding: 7px 9px;
+      background: rgba(255,255,255,.7);
+      border: 1px solid rgba(15,23,42,.05);
       border-radius: 6px;
+      margin-bottom: 6px;
     }
-    .rules-list .rule b {
+    .rules-col .rule:last-child { margin-bottom: 0; }
+    .rules-col .rule b {
       display: block;
       color: var(--text);
       font-weight: 700;
       margin-bottom: 2px;
     }
-    .rules-list .rule span {
+    .rules-col .rule span {
       color: var(--text-mute);
-      line-height: 1.4;
+      line-height: 1.45;
     }
+    .rules-note {
+      margin-top: 12px;
+      padding: 9px 12px;
+      background: var(--bg-soft);
+      border: 1px dashed var(--border-strong);
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--text-mute);
+    }
+    .rules-note strong { color: var(--text); }
+
+    /* ABC legend inside the ABC radio option */
+    .abc-legend {
+      margin: 8px 0;
+      padding: 8px 10px;
+      background: var(--bg-soft);
+      border: 1px solid var(--border-soft);
+      border-radius: 6px;
+      line-height: 1.9;
+      color: var(--text-mute);
+    }
+    .abc-pill {
+      display: inline-block;
+      width: 18px; height: 18px;
+      line-height: 18px;
+      text-align: center;
+      border-radius: 4px;
+      font-weight: 800;
+      font-size: 11px;
+      margin-right: 6px;
+      color: #fff;
+    }
+    .abc-pill.abc-a { background: #2563eb; }
+    .abc-pill.abc-b { background: #0891b2; }
+    .abc-pill.abc-c { background: #94a3b8; }
 
     .modal-actions {
       display: flex;
@@ -1034,6 +1130,7 @@
       <button class="filter-chip" data-filter="needs" onclick="setFilter('needs')">All needs</button>
       <button class="filter-chip" data-filter="conflicts" onclick="setFilter('conflicts')">Conflicts</button>
       <button class="filter-chip" data-filter="oversold" onclick="setFilter('oversold')">Oversold</button>
+      <button class="filter-chip" data-filter="in_transit" onclick="setFilter('in_transit')" title="Items with stock already on the way from Main">In transit</button>
       <button class="filter-chip" data-filter="all" onclick="setFilter('all')">All</button>
       <div class="filter-divider"></div>
       <input type="text" id="searchInput" class="search-input"
@@ -1046,36 +1143,49 @@
     <div class="table-scroll-wrapper">
       <table id="planTable">
         <thead>
-          <tr>
-            <th class="check-cell">
+          <!-- Group row: makes it obvious which columns describe THIS branch,
+               which describe MAIN (the source), and which are the action. -->
+          <tr class="group-row">
+            <th class="check-cell" rowspan="2">
               <input type="checkbox" id="selectAllCheck" class="row-check" onchange="toggleSelectAll()">
             </th>
-            <th class="sortable" onclick="sortBy('product')" style="text-align:left">
+            <th class="sortable group-id" rowspan="2" onclick="sortBy('product')" style="text-align:left">
               Product <span class="sort-icon" id="sort-product"></span>
             </th>
-            <th class="sortable" onclick="sortBy('location')" style="text-align:left">
+            <th class="sortable group-id" rowspan="2" onclick="sortBy('location')" style="text-align:left">
               Location <span class="sort-icon" id="sort-location"></span>
             </th>
-            <th class="sortable" onclick="sortBy('cover_days')">
-              Cover <span class="sort-icon active" id="sort-cover_days">▲</span>
+            <th class="group-hdr group-branch" colspan="4" id="groupBranchLabel">This branch</th>
+            <th class="group-hdr group-main" colspan="2">Main warehouse (source)</th>
+            <th class="group-hdr group-transfer" colspan="2">Transfer</th>
+          </tr>
+          <tr class="col-row">
+            <th class="sortable group-start" onclick="sortBy('cover_days')" title="Days of stock left at the current sales rate (Branch stock ÷ average daily sales)">
+              Days cover <span class="sort-icon active" id="sort-cover_days">▲</span>
             </th>
-            <th class="sortable" onclick="sortBy('branch_stock')">
-              Branch <span class="sort-icon" id="sort-branch_stock"></span>
+            <th class="sortable" onclick="sortBy('branch_stock')" title="Current available stock at this branch">
+              Branch stock <span class="sort-icon" id="sort-branch_stock"></span>
             </th>
-            <th class="sortable" onclick="sortBy('pending_qty')">
+            <th class="sortable" onclick="sortBy('avg_branch')" title="This branch's average sales per month for this product">
+              Avg/mth <span class="sort-icon" id="sort-avg_branch"></span>
+            </th>
+            <th class="sortable" onclick="sortBy('pending_qty')" title="Units already on the way to this branch (pending transfers)">
               In transit <span class="sort-icon" id="sort-pending_qty"></span>
             </th>
-            <th class="sortable" onclick="sortBy('main_stock')">
-              Main <span class="sort-icon" id="sort-main_stock"></span>
+            <th class="sortable group-start" onclick="sortBy('main_stock')" title="Available stock at Main warehouse">
+              Main stock <span class="sort-icon" id="sort-main_stock"></span>
             </th>
-            <th class="sortable" onclick="sortBy('send_qty')">
+            <th class="sortable" onclick="sortBy('avg_main')" title="Main warehouse's average sales per month for this product">
+              Avg/mth <span class="sort-icon" id="sort-avg_main"></span>
+            </th>
+            <th class="sortable group-start" onclick="sortBy('send_qty')" title="Recommended quantity to transfer from Main to this branch now">
               Send <span class="sort-icon" id="sort-send_qty"></span>
             </th>
-            <th>CTN</th>
+            <th title="Number of cartons the Send qty equals (Send ÷ pack size)">Cartons</th>
           </tr>
         </thead>
         <tbody id="planTableBody">
-          <tr><td colspan="9" style="text-align:center;padding:48px;color:var(--text-mute)">Loading data…</td></tr>
+          <tr><td colspan="11" style="text-align:center;padding:48px;color:var(--text-mute)">Loading data…</td></tr>
         </tbody>
       </table>
     </div>
@@ -1105,8 +1215,16 @@
         <label class="target-option" id="optAbc" onclick="selectTargetMode('abc')">
           <input type="radio" name="target-mode" value="abc" id="targetModeAbc" checked>
           <div class="opt-content">
-            <div class="opt-title">ABC tiers (default)</div>
-            <div class="opt-desc">Top 20% movers → 10 weeks · Mid 30% → 8 weeks · Tail 50% → 6 weeks. Recommended — adapts cover to demand profile.</div>
+            <div class="opt-title">ABC tiers (default — recommended)</div>
+            <div class="opt-desc">
+              Each product is graded by how fast it sells across <strong>all</strong> branches, then given stock cover to match:
+              <div class="abc-legend">
+                <span class="abc-pill abc-a">A</span> top 20% — fastest sellers → <strong>10 weeks</strong> cover
+                <br><span class="abc-pill abc-b">B</span> next 30% → <strong>8 weeks</strong> cover
+                <br><span class="abc-pill abc-c">C</span> slowest 50% → <strong>6 weeks</strong> cover
+              </div>
+              Fast sellers get a bigger buffer because they run out first; slow movers don't tie up capital.
+            </div>
           </div>
         </label>
 
@@ -1127,8 +1245,11 @@
         </div>
 
         <div class="rules-block">
-          <h3>Active rules</h3>
+          <h3>How the plan is calculated</h3>
           <div class="rules-list" id="targetModalRules"></div>
+          <div class="rules-note">
+            Need to change one of these rules, or add a special rule for a specific SKU or branch? Contact <strong>John</strong>.
+          </div>
         </div>
 
         <div class="modal-actions">
@@ -1144,7 +1265,7 @@
   </footer>
 
   <script src="../../supabase-config.js"></script>
-  <script src="replenishment-config.js?v=20260515g"></script>
-  <script src="replenishment-branch.js?v=20260515g"></script>
+  <script src="replenishment-config.js?v=20260624c"></script>
+  <script src="replenishment-branch.js?v=20260624c"></script>
 </body>
 </html>

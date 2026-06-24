@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Container Check — Rapid Led</title>
+  <script>
+    // Self-heal stale cache: this app abandoned its service worker (every
+    // register() call is commented out repo-wide). If a legacy SW from an
+    // older version is still controlling this origin it serves stale pages —
+    // unregister it and drop its caches so we always load fresh from server.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+    }
+    if (window.caches && caches.keys) {
+      caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
+    }
+  </script>
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="container-check.css?v=20260624c" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="/index.html" class="nav-link">Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container wide-container cc-shell">
+
+    <!-- ═══════════ Top bar ═══════════ -->
+    <div class="cc-topbar">
+      <div class="cc-topbar-left">
+        <h1 class="cc-page-title">📥 Container Check</h1>
+        <span class="cc-user-tag" id="ccUserTag" title="Click to change name"></span>
+      </div>
+      <div class="cc-topbar-right">
+        <button class="cc-btn cc-btn-primary" id="ccBtnNew" type="button">＋ New record</button>
+      </div>
+    </div>
+
+    <div id="ccBanners"></div>
+
+    <!-- ═══════════ Tabs ═══════════ -->
+    <div class="cc-tabs">
+      <button class="cc-tab active" data-tab="records" type="button">Records</button>
+      <button class="cc-tab" data-tab="review" type="button">Need Review <span class="cc-tab-badge" id="ccReviewBadge" style="display:none">0</span></button>
+    </div>
+
+    <!-- ═══════════ TAB: Records ═══════════ -->
+    <section id="ccTabRecords" class="cc-tabpane">
+
+      <!-- Summary strip -->
+      <div class="cc-metrics" id="ccMetrics"></div>
+
+      <!-- Filters -->
+      <div class="cc-card cc-filters">
+        <div class="cc-filter">
+          <label>From</label>
+          <input type="date" id="ccFrom" />
+        </div>
+        <div class="cc-filter">
+          <label>To</label>
+          <input type="date" id="ccTo" />
+        </div>
+        <div class="cc-filter">
+          <label>Status</label>
+          <select id="ccStatusFilter">
+            <option value="">All</option>
+            <option value="green">🟢 Green</option>
+            <option value="red">🔴 Red</option>
+            <option value="orange">🟠 Orange</option>
+            <option value="pending">⬜ Pending</option>
+          </select>
+        </div>
+        <div class="cc-filter cc-filter-grow">
+          <label>Rapid Code</label>
+          <input type="text" id="ccSearch" placeholder="search SKU…" />
+        </div>
+        <button class="cc-mini-btn" id="ccBtnFilter" type="button">Filter</button>
+        <button class="cc-mini-btn" id="ccBtnClearFilter" type="button">Clear</button>
+      </div>
+
+      <!-- Table -->
+      <div class="cc-card" style="padding:0">
+        <div class="cc-table">
+          <div class="cc-thead">
+            <div>Date</div>
+            <div>Rapid Code</div>
+            <div class="r">QTY</div>
+            <div class="c">OCL</div>
+            <div class="c">ICL</div>
+            <div class="c">Bar</div>
+            <div class="c">📷</div>
+            <div class="c">Status</div>
+            <div></div>
+          </div>
+          <div class="cc-tbody" id="ccTbody"></div>
+        </div>
+      </div>
+      <div class="cc-pager" id="ccPager"></div>
+    </section>
+
+    <!-- ═══════════ TAB: Need Review ═══════════ -->
+    <section id="ccTabReview" class="cc-tabpane" style="display:none">
+      <div id="ccReviewList"></div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════ MODAL: form (new/edit record) ═══════════ -->
+  <div class="cc-modal" id="ccFormModal" style="display:none">
+    <div class="cc-modal-box cc-modal-wide">
+      <div class="cc-modal-head">
+        <h3 id="ccFormTitle">New record</h3>
+        <button class="cc-modal-close" id="ccFormClose" type="button">×</button>
+      </div>
+
+      <div class="cc-form-grid">
+        <div class="cc-field">
+          <label>Date *</label>
+          <input type="date" id="ccDate" />
+        </div>
+        <div class="cc-field cc-field-wide cc-field-ac">
+          <label>Rapid Code *</label>
+          <input type="text" id="ccRapidCode" placeholder="R1030-WH-TRI  (type to search products)" autocomplete="off" />
+          <div class="cc-ac" id="ccAcList" style="display:none"></div>
+        </div>
+        <div class="cc-field">
+          <label>5DC</label>
+          <input type="text" id="ccFiveDc" placeholder="30619" inputmode="numeric" />
+        </div>
+        <div class="cc-field">
+          <label>QTY</label>
+          <input type="number" id="ccQty" placeholder="300" inputmode="numeric" />
+        </div>
+        <div class="cc-field">
+          <label>PO</label>
+          <input type="text" id="ccPo" placeholder="11822" />
+        </div>
+      </div>
+
+      <!-- Label selectors -->
+      <div class="cc-labels">
+        <div class="cc-label-row">
+          <span class="cc-label-name">OCL <small>Outer Carton</small></span>
+          <div class="cc-seg" data-field="ocl"></div>
+        </div>
+        <div class="cc-label-row">
+          <span class="cc-label-name">ICL <small>Inner Carton</small></span>
+          <div class="cc-seg" data-field="icl"></div>
+        </div>
+        <div class="cc-label-row">
+          <span class="cc-label-name">Bar <small>Barcode Unit</small></span>
+          <div class="cc-seg" data-field="bar"></div>
+        </div>
+      </div>
+
+      <!-- Photos -->
+      <div class="cc-field cc-field-full">
+        <label>Photos <small>(up to 4)</small></label>
+        <div class="cc-photos" id="ccPhotos">
+          <label class="cc-photo-add" id="ccPhotoAddLabel">
+            <span id="ccPhotoAddIcon">📷 +</span>
+            <input type="file" id="ccPhotoInput" accept="image/*" capture="environment" multiple hidden />
+          </label>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="cc-field cc-field-full">
+        <label>Notes <small>(inventory)</small></label>
+        <textarea id="ccNotes" rows="2" placeholder="e.g. Printed and Notified to Kim"></textarea>
+      </div>
+
+      <div class="cc-form-foot">
+        <span class="cc-status-hint">New → <b>Need Review</b> · suggestion: <span id="ccStatusSuggest" class="cc-pill cc-pill-pending">pending</span></span>
+        <div class="cc-modal-actions">
+          <button class="cc-btn cc-btn-secondary" id="ccFormCancel" type="button">Cancel</button>
+          <button class="cc-btn cc-btn-primary" id="ccFormSave" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ MODAL: detalhe ═══════════ -->
+  <div class="cc-modal" id="ccDetailModal" style="display:none">
+    <div class="cc-modal-box cc-modal-wide">
+      <div class="cc-modal-head">
+        <h3 id="ccDetailTitle">Detail</h3>
+        <button class="cc-modal-close" id="ccDetailClose" type="button">×</button>
+      </div>
+      <div id="ccDetailBody"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ Lightbox (expand + download) ═══════════ -->
+  <div class="cc-lightbox" id="ccLightbox" style="display:none">
+    <div class="cc-lightbox-bar">
+      <button class="cc-lightbox-btn" id="ccLightboxDownload" type="button">⬇ Download</button>
+      <button class="cc-lightbox-btn" id="ccLightboxClose" type="button">✕ Close</button>
+    </div>
+    <img id="ccLightboxImg" src="" alt="" />
+  </div>
+
+  <div id="ccToast"></div>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <script src="container-check.js?v=20260624c"></script>
+</body>
+</html>
