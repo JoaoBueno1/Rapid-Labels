@@ -293,7 +293,7 @@
     ).join('');
     const canAdd = state.photos.length < MAX_PHOTOS;
     wrap.innerHTML = thumbs + (canAdd
-      ? `<label class="cc-photo-add" id="ccPhotoAddLabel"><span>📷 +</span><input type="file" id="ccPhotoInput" accept="image/*" capture="environment" hidden></label>`
+      ? `<label class="cc-photo-add" id="ccPhotoAddLabel"><span>📷 +</span><input type="file" id="ccPhotoInput" accept="image/*" multiple hidden></label>`
       : '');
     const input = $('ccPhotoInput');
     if (input) input.addEventListener('change', onPhotoPick);
