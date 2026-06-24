@@ -40,3 +40,11 @@ jobs:
           CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
           CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
         run: node cin7-stock-sync/sync-service.js --stock-only --verbose
+
+      # Log first-time-in-stock SKUs from the snapshot just written. ZERO Cin7
+      # calls (reads Supabase only). Skips gracefully until its table exists.
+      - name: Track first arrivals
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node cin7-stock-sync/track-first-arrivals.js
