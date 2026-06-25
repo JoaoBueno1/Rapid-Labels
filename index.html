@@ -363,6 +363,17 @@
             .brand span { font-size:.85rem; }
             h1 { font-size:1.3rem!important; }
 
+            /* Pipeline flow board — stack the 4 stages into a 2×2 grid. The base
+               is a non-wrapping horizontal flex with 3.4rem numbers + arrows that
+               overflowed on phones. Scoped to ≤640px so desktop is untouched. */
+            .wh-pipeline { padding:12px; }
+            .wh-flow { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+            .wh-flow-arrow { display:none; }              /* meaningless in a 2×2 grid */
+            .wh-flow-stage { padding:16px 6px; }
+            .wh-flow-val { font-size:2.2rem; }
+            .wh-flow-label { font-size:.72rem; }
+            .wh-hero { flex:1 1 calc(50% - 5px); }         /* two heroes side by side */
+
             /* Touch-friendly action buttons */
             .cat-btn { min-height:48px!important; }
 
