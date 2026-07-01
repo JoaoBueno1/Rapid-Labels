@@ -104,11 +104,13 @@
 .cc-filter input:focus, .cc-filter select:focus { border-color: #1a1a1a; }
 
 /* ─── Table ─── */
-.cc-table { background: white; }
+/* Date · 5DC · Rapid Code · PO · QTY · OCL · ICL · Bar · 📷 · Status · Recorded by · Reviewed by · Note */
+.cc-table { background: white; overflow-x: auto; }
 .cc-thead, .cc-row {
   display: grid;
-  grid-template-columns: 92px 1.6fr 0.6fr 52px 52px 52px 44px 78px 26px;
+  grid-template-columns: 74px 62px 1.3fr 58px 48px 46px 46px 46px 38px 74px 0.9fr 0.9fr 1.1fr;
   gap: 6px; align-items: center;
+  min-width: 900px;
 }
 .cc-thead {
   background: #1a1a1a; color: #FAF8F5; padding: 8px 12px;
@@ -123,6 +125,8 @@
 .cc-row:hover { background: #f8f6f1; }
 .cc-row-code { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-row-date { font-size: 11px; opacity: 0.8; }
+.cc-row-5dc, .cc-row-po, .cc-row-by { font-size: 11px; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-row-note { font-size: 11px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-row-del { background: transparent; border: none; cursor: pointer; opacity: 0.25; font-size: 14px; color: #1a1a1a; padding: 0; }
 .cc-row-del:hover { opacity: 1; color: #DC2F02; }
 .cc-empty { padding: 28px; text-align: center; color: #94a3b8; font-size: 13px; }
@@ -141,7 +145,7 @@
 .cc-pill-green   { background: #d1fae5; color: #065f46; }
 .cc-pill-red     { background: #fee2e2; color: #991b1b; }
 .cc-pill-orange  { background: #ffedd5; color: #9a3412; }
-.cc-pill-pending { background: #f1f5f9; color: #475569; }
+.cc-pill-pending { background: #fef3c7; color: #92400e; }   /* amber — awaiting review */
 
 /* ─── Modal ─── */
 .cc-modal { position: fixed; inset: 0; background: rgba(26,26,26,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
@@ -224,8 +228,10 @@
 .cc-review-labels { display: flex; gap: 14px; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
 .cc-review-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 .cc-review-actions textarea { flex: 1; min-width: 200px; font-family: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid #d4cfc5; outline: none; resize: vertical; }
-.cc-rv-btn { font-size: 16px; padding: 6px 12px; border: 1px solid #d4cfc5; background: white; cursor: pointer; }
-.cc-rv-btn:hover { border-color: #1a1a1a; }
+.cc-rv-name { flex: 0 0 150px; font-family: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid #d4cfc5; outline: none; }
+.cc-rv-name:focus { border-color: #1a1a1a; }
+.cc-rv-confirm { font-size: 13px; font-weight: 600; padding: 8px 16px; border: 1px solid #16a34a; background: #16a34a; color: #fff; cursor: pointer; border-radius: 6px; white-space: nowrap; }
+.cc-rv-confirm:hover { background: #15803d; border-color: #15803d; }
 
 /* ─── Autocomplete dropdown ─── */
 .cc-field-ac { position: relative; }
@@ -288,17 +294,24 @@
   .cc-field-wide { grid-column: 1 / -1; }
   .cc-thead { display: none; }
   .cc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; padding: 11px 12px; text-align: left; }
-  .cc-row-code   { order: 1; flex: 1 1 55%; font-size: 14px; }
+  .cc-row-code   { order: 1; flex: 1 1 50%; font-size: 14px; }
   .cc-row-status { order: 2; margin-left: auto; }
-  .cc-row-date   { order: 3; font-size: 11px; opacity: 0.7; flex-basis: 100%; }
-  .cc-row-qty    { order: 4; font-size: 11px; opacity: 0.75; }
+  .cc-row-date   { order: 3; font-size: 11px; opacity: 0.7; }
+  .cc-row-5dc    { order: 4; font-size: 11px; opacity: 0.8; }
+  .cc-row-5dc:not(:empty)::before { content: '5DC '; opacity: 0.5; }
+  .cc-row-po     { order: 5; font-size: 11px; opacity: 0.8; }
+  .cc-row-po:not(:empty)::before  { content: 'PO '; opacity: 0.5; }
+  .cc-row-qty    { order: 6; font-size: 11px; opacity: 0.75; }
   .cc-row-qty::before  { content: 'QTY '; opacity: 0.5; }
-  .cc-row-ocl, .cc-row-icl, .cc-row-bar { order: 5; }
+  .cc-row-ocl, .cc-row-icl, .cc-row-bar { order: 7; }
   .cc-row-ocl::before  { content: 'OCL '; opacity: 0.5; font-size: 9px; }
   .cc-row-icl::before  { content: 'ICL '; opacity: 0.5; font-size: 9px; }
   .cc-row-bar::before  { content: 'Bar '; opacity: 0.5; font-size: 9px; }
-  .cc-row-cam     { order: 6; }
-  .cc-row-delcell { order: 7; margin-left: auto; }
+  .cc-row-cam    { order: 8; }
+  .cc-row-by     { order: 9; font-size: 11px; opacity: 0.8; }
+  .cc-row-by:not(:empty)::before { content: '👤 '; opacity: 0.6; }
+  .cc-row-note   { order: 10; flex-basis: 100%; font-size: 11px; opacity: 0.75; white-space: normal; }
+  .cc-review-actions .cc-rv-name { flex: 1 1 100%; }
   .cc-label-name { min-width: 100%; }
   .cc-seg { min-width: 100%; }
 }

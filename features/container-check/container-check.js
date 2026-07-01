@@ -5,8 +5,8 @@
  * window.supabase / window.supabaseReady) só pra subir foto direto pro
  * Storage. Todo o resto vai pela API REST.
  *
- * Fluxo: New record → entra como `pending` → aba "Need Review" → a revisão
- * define green/orange/red → fica no histórico (aba Records). Tudo logado.
+ * Fluxo: New record → red (se Wrong/Missing) ou pending → aba "Need Review"
+ * → o revisor confirma "tratado" → green. Tudo logado (aba Records).
  */
 (function () {
   'use strict';
@@ -37,6 +37,7 @@
   const lvClass = (v) => (v === 'N/A' ? 'NA' : v);
   const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
   const fmtTime = (iso) => { try { return new Date(iso).toLocaleString(); } catch (_) { return iso || ''; } };
+  const fmtDate = (d) => { const s = String(d || '').slice(0, 10); const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return m ? `${m[3]}-${m[2]}-${m[1]}` : s; }; // YYYY-MM-DD → DD-MM-YYYY
 
   function toast(msg, kind) {
     const el = document.createElement('div');
@@ -49,23 +50,19 @@
     $('ccBanners').innerHTML = msg ? `<div class="cc-banner ${kind || ''}">${esc(msg)}</div>` : '';
   }
 
-  function ensureUser() {
-    if (state.user) return state.user;
-    const u = (window.prompt('Your name (shown on records):') || '').trim();
-    if (u) { state.user = u; localStorage.setItem('containerCheckUser', u); renderUserTag(); }
-    return state.user;
-  }
-  function renderUserTag() {
-    $('ccUserTag').textContent = state.user ? '👤 ' + state.user : '👤 set name';
-  }
+  // Name is captured PER ACTION (Recorded by on new, Reviewed by on review) —
+  // not page-wide. We just remember the last one to pre-fill the fields.
+  function lastUser()      { try { return localStorage.getItem('containerCheckUser') || ''; } catch (_) { return ''; } }
+  function rememberUser(u) { try { if (u) localStorage.setItem('containerCheckUser', u); } catch (_) {} }
 
   async function api(path, opts) {
     opts = opts || {};
     const headers = { 'Content-Type': 'application/json' };
     if (opts.method && opts.method !== 'GET') {
-      const u = ensureUser();
-      if (!u) throw new Error('Set your name before saving.');
+      const u = (opts.user || '').trim();
+      if (!u) throw new Error('Enter your name first.');
       headers['x-cc-user'] = u;
+      rememberUser(u);
     }
     const res = await fetch(API + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
     let json = {};
@@ -121,7 +118,7 @@
 
   function renderMetrics(s) {
     const rate = s.total ? (s.issue_rate * 100).toFixed(1) : '0.0';
-    const bs = s.by_status || { green: 0, red: 0, orange: 0, pending: 0 };
+    const bs = s.by_status || { green: 0, red: 0, pending: 0 };
     const lbl = (k) => {
       const o = (s.by_label && s.by_label[k]) || {};
       return `${k.toUpperCase()} <b>${(o.Wrong || 0) + (o.Missing || 0)}</b>`;
@@ -133,7 +130,7 @@
       <div class="cc-metric ${s.issues ? 'alert' : ''}"><div class="cc-metric-label">Issue Rate</div><div class="cc-metric-value"><span class="num">${rate}</span><span class="unit">%</span></div></div>
       <div class="cc-metric" style="grid-column:span 2">
         <div class="cc-metric-label">Status</div>
-        <div class="cc-metric-pills"><span>🟢 ${bs.green || 0}</span><span>🔴 ${bs.red || 0}</span><span>🟠 ${bs.orange || 0}</span><span>⬜ ${bs.pending || 0}</span></div>
+        <div class="cc-metric-pills"><span>🔴 ${bs.red || 0}</span><span>🟡 ${bs.pending || 0}</span><span>🟢 ${bs.green || 0}</span></div>
       </div>
       <div class="cc-metric" style="grid-column:span 2">
         <div class="cc-metric-label">Labels with issues</div>
@@ -152,15 +149,19 @@
     tb.innerHTML = items.map(r => {
       const nPhoto = Array.isArray(r.photos) ? r.photos.length : 0;
       return `<div class="cc-row" data-id="${r.id}">
-        <div class="cc-row-date">${esc(r.check_date || '')}</div>
+        <div class="cc-row-date">${esc(fmtDate(r.check_date))}</div>
+        <div class="cc-row-5dc">${esc(r.five_dc || '')}</div>
         <div class="cc-row-code">${esc(r.rapid_code || '')}</div>
+        <div class="cc-row-po">${esc(r.po || '')}</div>
         <div class="cc-row-qty r">${r.qty != null ? esc(r.qty) : ''}</div>
         ${lvCell(r.ocl, 'cc-row-ocl c')}
         ${lvCell(r.icl, 'cc-row-icl c')}
         ${lvCell(r.bar, 'cc-row-bar c')}
         <div class="cc-row-cam c cc-cam">${nPhoto ? '📷' + (nPhoto > 1 ? nPhoto : '') : ''}</div>
         <div class="cc-row-status c"><span class="cc-pill cc-pill-${r.status}">${esc(r.status)}</span></div>
-        <div class="cc-row-delcell c"><button class="cc-row-del" data-del="${r.id}" title="Delete">✕</button></div>
+        <div class="cc-row-by">${esc(r.created_by || '')}</div>
+        <div class="cc-row-by">${esc(r.reviewed_by || '')}</div>
+        <div class="cc-row-note" title="${esc(r.inventory_notes || '')}">${esc(r.inventory_notes || '')}</div>
       </div>`;
     }).join('');
   }
@@ -197,9 +198,7 @@
   }
   function suggestStatus() {
     const vals = ['ocl', 'icl', 'bar'].map(f => state.form[f]);
-    if (vals.some(v => v === 'Wrong' || v === 'Missing')) return 'red';
-    if (vals.some(v => v)) return 'green';
-    return 'pending';
+    return vals.some(v => v === 'Wrong' || v === 'Missing') ? 'red' : 'pending';
   }
   function paintSuggest() {
     const s = suggestStatus();
@@ -242,6 +241,7 @@
     $('ccQty').value       = record?.qty ?? '';
     $('ccPo').value        = record?.po || '';
     $('ccNotes').value     = record?.inventory_notes || '';
+    $('ccRecordedBy').value = record?.created_by || lastUser();
     hideAc();
     paintSegments();
     renderPhotos();
@@ -253,8 +253,9 @@
   async function saveForm() {
     const rapid_code = $('ccRapidCode').value.trim();
     if (!rapid_code) { toast('Rapid Code is required', 'err'); $('ccRapidCode').focus(); return; }
+    const recordedBy = $('ccRecordedBy').value.trim();
+    if (!recordedBy) { toast('Recorded by (your name) is required', 'err'); $('ccRecordedBy').focus(); return; }
     if (state.uploading > 0) { toast('Wait for photos to finish uploading…'); return; }
-    if (!ensureUser()) return;
 
     const body = {
       check_date:      $('ccDate').value || today(),
@@ -273,8 +274,8 @@
 
     const btn = $('ccFormSave'); btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      if (state.editingId) await api('/records/' + state.editingId, { method: 'PUT', body });
-      else                 await api('/records', { method: 'POST', body });
+      if (state.editingId) await api('/records/' + state.editingId, { method: 'PUT', body, user: recordedBy });
+      else                 await api('/records', { method: 'POST', body, user: recordedBy });
       closeForm();
       toast('Saved ✓', 'ok');
       loadRecords();
@@ -450,20 +451,20 @@
       badge.style.display = items.length ? '' : 'none';
       if (!items.length) { list.innerHTML = '<div class="cc-empty">Nothing to review 🎉</div>'; return; }
       const lv = (k, v) => `<span><b>${k}</b> ${v ? `<span class="cc-lv cc-lv-${lvClass(v)}">${esc(v)}</span>` : '<span class="cc-lv cc-lv-blank">·</span>'}</span>`;
+      const uname = esc(lastUser());
       list.innerHTML = items.map(r => `
         <div class="cc-review-card" data-id="${r.id}">
           <div class="cc-review-head">
             <span class="cc-review-code">${esc(r.rapid_code || '')}</span>
-            <span class="cc-review-meta">${esc(r.check_date || '')} · QTY ${r.qty != null ? esc(r.qty) : '—'} · PO ${esc(r.po || '—')} · by ${esc(r.created_by || '—')}</span>
+            <span class="cc-review-meta">${esc(fmtDate(r.check_date))} · <span class="cc-pill cc-pill-${r.status}">${esc(r.status)}</span> · QTY ${r.qty != null ? esc(r.qty) : '—'} · PO ${esc(r.po || '—')} · by ${esc(r.created_by || '—')}</span>
           </div>
           <div class="cc-review-labels">${lv('OCL', r.ocl)} ${lv('ICL', r.icl)} ${lv('Bar', r.bar)}</div>
           ${r.inventory_notes ? `<div class="cc-detail-note"><span class="k">Inventory notes</span>${esc(r.inventory_notes)}</div>` : ''}
           <div class="cc-detail-photos">${photoThumbs(r.photos) || '<span style="opacity:.5;font-size:12px">no photos</span>'}</div>
           <div class="cc-review-actions">
-            <textarea data-note="${r.id}" rows="1" placeholder="Review comment…">${esc(r.reviewer_notes || '')}</textarea>
-            <button class="cc-rv-btn" data-rv="green"  data-id="${r.id}" title="Green">🟢</button>
-            <button class="cc-rv-btn" data-rv="orange" data-id="${r.id}" title="Orange">🟠</button>
-            <button class="cc-rv-btn" data-rv="red"    data-id="${r.id}" title="Red">🔴</button>
+            <input type="text" class="cc-rv-name" data-name="${r.id}" placeholder="Your name" value="${uname}" autocomplete="off" />
+            <textarea data-note="${r.id}" rows="1" placeholder="Comment (optional)…">${esc(r.reviewer_notes || '')}</textarea>
+            <button class="cc-rv-confirm" data-confirm="${r.id}">✅ Confirm treated</button>
           </div>
         </div>`).join('');
     } catch (e) {
@@ -471,32 +472,26 @@
     }
   }
 
-  async function reviewItem(id, status) {
+  async function reviewItem(id) {
+    const nameEl = document.querySelector(`input[data-name="${id}"]`);
+    const reviewer = nameEl ? nameEl.value.trim() : '';
+    if (!reviewer) { toast('Enter your name first', 'err'); if (nameEl) nameEl.focus(); return; }
+    if (!window.confirm('Confirm this record is treated and ready? It moves to 🟢 Green.')) return;
     const ta = document.querySelector(`textarea[data-note="${id}"]`);
     const reviewer_notes = ta ? ta.value.trim() : '';
-    if (!ensureUser()) return;
     try {
-      await api('/records/' + id, { method: 'PUT', body: { status, reviewer_notes } });
+      await api('/records/' + id, { method: 'PUT', body: { status: 'green', reviewer_notes }, user: reviewer });
       toast('Reviewed ✓', 'ok');
       loadReview();
     } catch (e) { toast('Error: ' + e.message, 'err'); }
-  }
-
-  async function deleteRecord(id) {
-    if (!window.confirm('Delete this record?')) return;
-    if (!ensureUser()) return;
-    try { await api('/records/' + id, { method: 'DELETE' }); toast('Deleted', 'ok'); loadRecords(); }
-    catch (e) { toast('Error: ' + e.message, 'err'); }
   }
 
   // ════════════════════════════════════════════════════════════════
   // WIRING
   // ════════════════════════════════════════════════════════════════
   function init() {
-    renderUserTag();
     buildSegments();
 
-    $('ccUserTag').addEventListener('click', () => { localStorage.removeItem('containerCheckUser'); state.user = ''; ensureUser(); });
     document.querySelectorAll('.cc-tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
     $('ccBtnNew').addEventListener('click', () => openForm(null));
@@ -557,19 +552,17 @@
     $('ccLightboxDownload').addEventListener('click', downloadCurrentImage);
     $('ccLightbox').addEventListener('click', e => { if (e.target === $('ccLightbox')) closeLightbox(); });
 
-    // table interactions (delegated)
+    // table interactions (delegated) — row opens detail (delete removed from table)
     $('ccTbody').addEventListener('click', e => {
-      const del = e.target.closest('[data-del]');
-      if (del) { e.stopPropagation(); deleteRecord(del.dataset.del); return; }
       const row = e.target.closest('.cc-row'); if (!row) return;
       const r = state.records.find(x => String(x.id) === row.dataset.id);
       if (r) openDetail(r);
     });
 
-    // review interactions (delegated)
+    // review interactions (delegated) — the single Confirm button
     $('ccReviewList').addEventListener('click', e => {
-      const b = e.target.closest('[data-rv]'); if (!b) return;
-      reviewItem(b.dataset.id, b.dataset.rv);
+      const b = e.target.closest('[data-confirm]'); if (!b) return;
+      reviewItem(b.dataset.confirm);
     });
 
     // close modals on backdrop click + Esc

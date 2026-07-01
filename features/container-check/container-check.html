@@ -18,7 +18,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/styles.css" />
-  <link rel="stylesheet" href="container-check.css?v=20260624c" />
+  <link rel="stylesheet" href="container-check.css?v=20260701a" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
 </head>
 <body>
@@ -41,7 +41,6 @@
     <div class="cc-topbar">
       <div class="cc-topbar-left">
         <h1 class="cc-page-title">📥 Container Check</h1>
-        <span class="cc-user-tag" id="ccUserTag" title="Click to change name"></span>
       </div>
       <div class="cc-topbar-right">
         <button class="cc-btn cc-btn-primary" id="ccBtnNew" type="button">＋ New record</button>
@@ -76,10 +75,9 @@
           <label>Status</label>
           <select id="ccStatusFilter">
             <option value="">All</option>
-            <option value="green">🟢 Green</option>
             <option value="red">🔴 Red</option>
-            <option value="orange">🟠 Orange</option>
-            <option value="pending">⬜ Pending</option>
+            <option value="pending">🟡 Pending</option>
+            <option value="green">🟢 Green</option>
           </select>
         </div>
         <div class="cc-filter cc-filter-grow">
@@ -95,14 +93,18 @@
         <div class="cc-table">
           <div class="cc-thead">
             <div>Date</div>
+            <div>5DC</div>
             <div>Rapid Code</div>
+            <div>PO</div>
             <div class="r">QTY</div>
             <div class="c">OCL</div>
             <div class="c">ICL</div>
             <div class="c">Bar</div>
             <div class="c">📷</div>
             <div class="c">Status</div>
-            <div></div>
+            <div>Recorded by</div>
+            <div>Reviewed by</div>
+            <div>Note</div>
           </div>
           <div class="cc-tbody" id="ccTbody"></div>
         </div>
@@ -146,6 +148,10 @@
         <div class="cc-field">
           <label>PO</label>
           <input type="text" id="ccPo" placeholder="11822" />
+        </div>
+        <div class="cc-field">
+          <label>Recorded by *</label>
+          <input type="text" id="ccRecordedBy" placeholder="Your name" autocomplete="off" />
         </div>
       </div>
 
@@ -216,6 +222,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="container-check.js?v=20260624c"></script>
+  <script src="container-check.js?v=20260701a"></script>
 </body>
 </html>
