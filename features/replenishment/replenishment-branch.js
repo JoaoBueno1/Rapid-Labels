@@ -47,7 +47,11 @@
     pendingTRsAllBranches: {}, // branchCode → { product → { pending_qty } } — used in conflict pass
     pendingTRList: [],     // array of { number, status, lines }
     pendingLoadFailed: false, // true when current-branch in-transit data couldn't load (double-send risk)
+    pendingLoading: false,    // true while the (non-blocking) in-transit fetch is in flight
     cartonMode: false,     // Cartons Only mode toggle
+    // Hide rows Main can't actually send (no Main stock / all in safety reserve).
+    // Default ON so the plan only shows actionable lines. Persisted globally.
+    hideNoMainStock: true,
     // Target weeks override — null means ABC tiers (default).
     // Persisted per-branch in localStorage.
     targetOverride: null,  // number | null
@@ -84,6 +88,14 @@
         if (Number.isFinite(n) && n >= 1 && n <= 999) state.targetOverride = n;
       }
     } catch (e) { /* localStorage may be blocked — ignore */ }
+
+    // Restore "hide what Main can't send" toggle (global, default ON).
+    try {
+      const h = localStorage.getItem('replenishment.hideNoMainStock');
+      if (h !== null) state.hideNoMainStock = h === '1';
+    } catch (e) { /* ignore */ }
+    const hideChk = document.getElementById('hideNoMainStock');
+    if (hideChk) hideChk.checked = state.hideNoMainStock;
 
     const branchNameEl = document.getElementById('branchName');
     const branchCodeEl = document.getElementById('branchCode');
@@ -151,21 +163,36 @@
       }
 
       console.log('Loading data...');
+      // Block only on the data we need to draw the plan. Pending TRs (in-transit)
+      // come from a throttled live Cin7 fetch that can take 20s+ on a cold cache,
+      // so we DON'T block on it — we paint the plan immediately, then fill in the
+      // in-transit numbers and recompute when they arrive (same pattern as the
+      // overview). This avoids the page hanging + the double-send banner flashing
+      // just because the first load was slow.
       await Promise.all([
         loadAvgData(),
         loadStockData(),
         loadCtnData(),
-        loadExistingPlan(),
-        loadPendingTRs(force)
+        loadExistingPlan()
       ]);
-      
+
       console.log('Data loaded, auto-generating plan...');
       console.log(`📊 AVG: ${Object.keys(state.avgData).length} | 📦 Stock: ${Object.keys(state.stockData).length} | 🗃️ CTN: ${Object.keys(state.ctnMap).length} | 📍 Locations: ${Object.keys(state.locationMap).length} | 🏷️ Names: ${Object.keys(state.productNames).length}`);
-      
+
+      state.pendingLoading = true;
       calculatePlan();
       renderTable();
       updateSummary();
-      
+      showLoading(false);   // plan is on screen — stop blocking the UI
+
+      // Reactive pass: load in-transit, then recompute so sends subtract it.
+      loadPendingTRs(force).then(() => {
+        state.pendingLoading = false;
+        calculatePlan();
+        renderTable();
+        updateSummary();
+      }).catch(() => { state.pendingLoading = false; updateSummary(); });
+
     } catch (err) {
       console.error('Error loading data:', err);
       showError('Error loading data: ' + err.message);
@@ -361,7 +388,7 @@
     // It was 4s before, which reliably aborted on branches with 2+ TRs and left
     // the plan with NO in-transit data → double-send. 15s + the server cache
     // fixes that; if it still fails we flag it loudly (see pendingLoadFailed).
-    const PENDING_TIMEOUT_MS = 15000;
+    const PENDING_TIMEOUT_MS = 25000;
     const qs = force ? '?fresh=1' : '';
     state.pendingTRs = {};
     state.pendingTRList = [];
@@ -801,6 +828,16 @@
     updateSummary();
   };
 
+  // Toggle hiding rows Main can't send. Pure view change — no recompute needed.
+  window.toggleHideNoMainStock = function() {
+    const chk = document.getElementById('hideNoMainStock');
+    state.hideNoMainStock = chk ? chk.checked : !state.hideNoMainStock;
+    try { localStorage.setItem('replenishment.hideNoMainStock', state.hideNoMainStock ? '1' : '0'); } catch (e) {}
+    state.currentPage = 1;
+    renderTable();
+    updateSummary();
+  };
+
   // ============================================
   // RENDERING — Simplified
   // ============================================
@@ -1045,7 +1082,15 @@
     if (state.filter !== 'all_full') {
       lines = lines.filter(l => l.category !== 'no_avg' || l.sold_deficit > 0);
     }
-    
+
+    // Hide rows Main can't send (no Main stock / all in safety reserve) — they
+    // aren't actionable. Oversold lines are kept (sold_deficit > 0) because an
+    // empty Main on an oversold SKU is exactly the signal to raise a PO.
+    // The explicit "all_full" view bypasses this.
+    if (state.hideNoMainStock && state.filter !== 'all_full') {
+      lines = lines.filter(l => l.send_note !== 'no_main_stock' || l.sold_deficit > 0);
+    }
+
     // Apply filter
     switch (state.filter) {
       case 'to_send':
@@ -1117,6 +1162,13 @@
 
   function updateSummary() {
     const withAvg = state.planLines.filter(l => l.category !== 'no_avg');
+    // Count base for the filter chips mirrors what the table actually shows
+    // (respects the "hide what Main can't send" toggle). The KPI cards above
+    // stay on the full health picture so a critical-but-unsendable SKU still
+    // counts as a problem.
+    const countBase = (state.hideNoMainStock)
+      ? withAvg.filter(l => l.send_note !== 'no_main_stock' || l.sold_deficit > 0)
+      : withAvg;
     const toSend = withAvg.filter(l => l.send_qty > 0);
     const totalUnits = toSend.reduce((s, l) => s + l.send_qty, 0);
     const totalCartons = toSend.reduce((s, l) => s + l.cartons, 0);
@@ -1131,10 +1183,12 @@
     const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     setKpi('kpi-critical', criticalCount);
     setKpi('kpi-conflicts', conflictCount);
-    setKpi('kpi-pending', pendingTRCount);
-    setKpi('kpi-pending-sub', pendingTRCount > 0
-      ? `${pendingProductCount} product${pendingProductCount === 1 ? '' : 's'} in transit`
-      : 'in transit');
+    setKpi('kpi-pending', state.pendingLoading ? '…' : pendingTRCount);
+    setKpi('kpi-pending-sub', state.pendingLoading
+      ? 'checking in-transit…'
+      : (pendingTRCount > 0
+          ? `${pendingProductCount} product${pendingProductCount === 1 ? '' : 's'} in transit`
+          : 'in transit'));
     setKpi('kpi-oversold', soldDeficitCount);
 
     // Safety-override banner: make it obvious Main is being drained past its
@@ -1198,15 +1252,15 @@
       }
     }
     
-    // Update filter chip counts
+    // Update filter chip counts (mirror the table — countBase respects the toggle)
     const counts = {
-      to_send: toSend.length,
-      critical: criticalCount,
-      needs: withAvg.filter(l => l.need_qty > 0).length,
-      conflicts: conflictCount,
-      oversold: soldDeficitCount,
-      in_transit: withAvg.filter(l => l.pending_qty > 0).length,
-      all: withAvg.length
+      to_send: countBase.filter(l => l.send_qty > 0).length,
+      critical: countBase.filter(l => l.cover_days < CFG.COVER_CRITICAL_DAYS).length,
+      needs: countBase.filter(l => l.need_qty > 0).length,
+      conflicts: countBase.filter(l => l.has_conflict).length,
+      oversold: countBase.filter(l => l.sold_deficit > 0).length,
+      in_transit: countBase.filter(l => l.pending_qty > 0).length,
+      all: countBase.length
     };
     
     document.querySelectorAll('.filter-chip').forEach(chip => {
@@ -1515,7 +1569,7 @@ ${lines.map((l, i) => {
     if (!banner) return;
     if (state.targetOverride) {
       banner.style.display = 'flex';
-      if (text) text.textContent = `every SKU aims for ${state.targetOverride} week${state.targetOverride === 1 ? '' : 's'} of cover (+ ${CFG.LEAD_TIME_DAYS}d lead-time buffer)`;
+      if (text) text.textContent = `every SKU aims for ${state.targetOverride} week${state.targetOverride === 1 ? '' : 's'} of cover`;
       if (btn) btn.textContent = `Target: ${state.targetOverride} wk`;
     } else {
       banner.style.display = 'none';
@@ -1532,7 +1586,6 @@ ${lines.map((l, i) => {
     const branchRules = [
       { t: 'Target cover',      d: `How many weeks of stock each branch aims to hold — the ABC tiers below, or a custom value if you set one above.` },
       { t: 'ABC demand tiers',  d: `Every SKU is graded by how fast it sells across ALL branches, then given cover to match: A = the top 20% fastest sellers → ${CFG.ABC_TARGET_WEEKS.A} weeks · B = the next 30% → ${CFG.ABC_TARGET_WEEKS.B} weeks · C = the slowest 50% → ${CFG.ABC_TARGET_WEEKS.C} weeks. Fast sellers get a bigger buffer because they run out first.` },
-      { t: 'Lead-time buffer',  d: `An extra ${CFG.LEAD_TIME_DAYS} days is added to the target so stock arrives before the branch runs out.` },
       { t: 'No-sales skip',     d: `A SKU with no sales history at a branch is left out of that branch's plan.` },
       { t: 'Small-send flag',   d: `Tiny top-ups (below about 1 week of demand) are flagged for review, not silently dropped.` },
       { t: 'Carton rounding',   d: `Sends round to full cartons, as long as that doesn't push the branch past ${CFG.CARTON_ROUND_UP_MAX_MONTHS} months of cover.` }
@@ -1551,6 +1604,16 @@ ${lines.map((l, i) => {
     grid.innerHTML =
       col('Branch rules — how much each branch holds', branchRules, 'rules-branch') +
       col('Main rules — what Main will release', mainRules, 'rules-main');
+
+    // Keep the ABC legend (inside the radio option) in sync with config so it
+    // can never drift from the actual tier weights / percentiles.
+    const wk = CFG.ABC_TARGET_WEEKS, pc = CFG.ABC_PERCENTILES;
+    const pct = n => Math.round(n * 100);
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    set('abcWkA', `${wk.A} weeks`);  set('abcWkB', `${wk.B} weeks`);  set('abcWkC', `${wk.C} weeks`);
+    set('abcPctA', `top ${pct(pc.A_CUTOFF)}%`);
+    set('abcPctB', `next ${pct(pc.B_CUTOFF - pc.A_CUTOFF)}%`);
+    set('abcPctC', `slowest ${pct(1 - pc.B_CUTOFF)}%`);
   }
 
   window.openTargetModal = function() {
@@ -1599,17 +1662,17 @@ ${lines.map((l, i) => {
     if (isCustom) {
       const raw = parseInt(document.getElementById('targetWeeksInput').value, 10);
       const w = Number.isFinite(raw) && raw >= 1 && raw <= 999 ? raw : 6;
-      if (formulaEl) formulaEl.innerHTML = `ceil(avg × ${w}/4.345 + avg × 5/(4.345×7))`;
+      if (formulaEl) formulaEl.innerHTML = `ceil(avg × ${w} / 4.345)`;
       if (exampleEl) {
         // Example with avg=30/mth (typical mid SKU)
-        const target = Math.ceil(30 / 4.345 * w + 30 / 4.345 / 7 * CFG.LEAD_TIME_DAYS);
-        exampleEl.textContent = `Example — SKU with avg 30/mth: target ≈ ${target} units (${w}w + ${CFG.LEAD_TIME_DAYS}d lead time)`;
+        const target = Math.ceil(30 / 4.345 * w);
+        exampleEl.textContent = `Example — SKU with avg 30/mth: target ≈ ${target} units (${w} weeks of cover)`;
       }
     } else {
       if (formulaEl) formulaEl.innerHTML = `ABC tiers — A=${CFG.ABC_TARGET_WEEKS.A}w · B=${CFG.ABC_TARGET_WEEKS.B}w · C=${CFG.ABC_TARGET_WEEKS.C}w`;
       if (exampleEl) {
-        const tA = Math.ceil(30 / 4.345 * CFG.ABC_TARGET_WEEKS.A + 30 / 4.345 / 7 * CFG.LEAD_TIME_DAYS);
-        const tC = Math.ceil(30 / 4.345 * CFG.ABC_TARGET_WEEKS.C + 30 / 4.345 / 7 * CFG.LEAD_TIME_DAYS);
+        const tA = Math.ceil(30 / 4.345 * CFG.ABC_TARGET_WEEKS.A);
+        const tC = Math.ceil(30 / 4.345 * CFG.ABC_TARGET_WEEKS.C);
         exampleEl.textContent = `Example — SKU with avg 30/mth: A-tier → ${tA} units · C-tier → ${tC} units`;
       }
     }

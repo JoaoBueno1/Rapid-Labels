@@ -51,9 +51,8 @@
     const grid = document.getElementById('rulesGrid');
     if (!grid) return;
     const items = [
-      { title: 'Branch Target', text: `${CFG.BRANCH_TARGET_WEEKS} weeks cover + ${CFG.LEAD_TIME_DAYS}d lead-time buffer` },
+      { title: 'Branch Target', text: `${CFG.BRANCH_TARGET_WEEKS} weeks of cover (ABC tiers adjust this per SKU)` },
       { title: 'Main Safety Stock', text: `Keep ≥ ${CFG.MAIN_MIN_WEEKS} weeks before sending` },
-      { title: 'Lead Time', text: `+${CFG.LEAD_TIME_DAYS} days freight buffer added to target` },
       { title: 'Zero Sales Skip', text: 'SKUs with 0 avg for a branch are excluded from that branch\'s plan' },
       { title: 'Formula', text: 'Send = min(Need − In-transit, Main Can Send)' },
       { title: 'Smart Carton Rounding', text: `Round up only if post-send stock ≤ ${CFG.CARTON_ROUND_UP_MAX_MONTHS} months cover (also ≤ ${CFG.CARTON_ROUND_UP_MAX_RATIO}× target)` },

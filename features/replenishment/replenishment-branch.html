@@ -454,6 +454,18 @@
       font-size: 12px;
       font-variant-numeric: tabular-nums;
     }
+    .hide-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      color: var(--text-mute);
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .hide-toggle input { accent-color: var(--primary); cursor: pointer; }
+    .hide-toggle:hover { color: var(--text); }
 
     /* ── Pending TRs panel ───────────────────────────────────── */
     .pending-tr-panel {
@@ -1136,6 +1148,10 @@
       <input type="text" id="searchInput" class="search-input"
              placeholder="Search product, name, location…"
              oninput="applyFilters()">
+      <label class="hide-toggle" title="Hide rows where Main has no stock to send (oversold lines stay visible)">
+        <input type="checkbox" id="hideNoMainStock" checked onchange="toggleHideNoMainStock()">
+        Hide what Main can't send
+      </label>
       <span id="resultCount" class="result-count"></span>
     </div>
 
@@ -1219,9 +1235,9 @@
             <div class="opt-desc">
               Each product is graded by how fast it sells across <strong>all</strong> branches, then given stock cover to match:
               <div class="abc-legend">
-                <span class="abc-pill abc-a">A</span> top 20% — fastest sellers → <strong>10 weeks</strong> cover
-                <br><span class="abc-pill abc-b">B</span> next 30% → <strong>8 weeks</strong> cover
-                <br><span class="abc-pill abc-c">C</span> slowest 50% → <strong>6 weeks</strong> cover
+                <span class="abc-pill abc-a">A</span> <span id="abcPctA">top 20%</span> — fastest sellers → <strong id="abcWkA">10 weeks</strong> cover
+                <br><span class="abc-pill abc-b">B</span> <span id="abcPctB">next 30%</span> → <strong id="abcWkB">8 weeks</strong> cover
+                <br><span class="abc-pill abc-c">C</span> <span id="abcPctC">slowest 50%</span> → <strong id="abcWkC">6 weeks</strong> cover
               </div>
               Fast sellers get a bigger buffer because they run out first; slow movers don't tie up capital.
             </div>
@@ -1240,7 +1256,7 @@
         </label>
 
         <div class="target-preview" id="targetPreview">
-          Each SKU's target = <span class="formula" id="formulaText">round-up(avg × <em>N</em>/4.345 + avg × 5/(4.345×7))</span>
+          Each SKU's target = <span class="formula" id="formulaText">round-up(avg × <em>N</em> / 4.345)</span>
           <br><span id="examplePreview"></span>
         </div>
 
@@ -1265,7 +1281,7 @@
   </footer>
 
   <script src="../../supabase-config.js"></script>
-  <script src="replenishment-config.js?v=20260624c"></script>
-  <script src="replenishment-branch.js?v=20260624c"></script>
+  <script src="replenishment-config.js?v=20260625c"></script>
+  <script src="replenishment-branch.js?v=20260625c"></script>
 </body>
 </html>

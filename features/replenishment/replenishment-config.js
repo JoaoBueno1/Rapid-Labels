@@ -47,12 +47,6 @@
   //   Without that preference, 8 × inflated_avg blocks all top movers.
   const MAIN_MIN_WEEKS = 8;
 
-  // LEAD_TIME_DAYS: assumed in-transit time for a Main → Branch transfer.
-  //   Added to the branch target so stock arrives *before* runout.
-  //   Default covers interstate freight; override per-branch via restock_setup
-  //   later (future work).
-  const LEAD_TIME_DAYS = 5;
-
   // ──────────────────────────────────────────────────────────────────
   // CARTON ROUNDING
   // ──────────────────────────────────────────────────────────────────
@@ -315,15 +309,13 @@
     return Number(avgRow[MAIN_AVG_FIELD] || 0);
   }
 
-  // Effective target: branch cover + lead-time days.
-  // weeks param overrides BRANCH_TARGET_WEEKS (used by ABC tiers).
+  // Target: N weeks of branch cover (N from the ABC tier or a custom override).
   // Returns integer units.
   function computeBranchTarget(avgMonth, weeks) {
     if (!avgMonth || avgMonth <= 0) return 0;
     const w = weeks || BRANCH_TARGET_WEEKS;
     const avgWeek = avgMonth / WEEKS_IN_MONTH;
-    const avgDay  = avgMonth / (WEEKS_IN_MONTH * 7);
-    return Math.ceil(avgWeek * w + avgDay * LEAD_TIME_DAYS);
+    return Math.ceil(avgWeek * w);
   }
 
   // Classify SKUs into A/B/C tiers based on total network demand.
@@ -501,7 +493,6 @@
     WEEKS_IN_MONTH,
     BRANCH_TARGET_WEEKS,
     MAIN_MIN_WEEKS,
-    LEAD_TIME_DAYS,
     CARTON_ROUND_UP_MAX_RATIO,
     CARTON_ROUND_UP_MAX_MONTHS,
     CARTON_MODE_MAX_MONTHS,
