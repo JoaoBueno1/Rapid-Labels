@@ -5,8 +5,8 @@
  * window.supabase / window.supabaseReady) só pra subir foto direto pro
  * Storage. Todo o resto vai pela API REST.
  *
- * Fluxo: New record → red (se Wrong/Missing) ou pending → aba "Need Review"
- * → o revisor confirma "tratado" → green. Tudo logado (aba Records).
+ * Fluxo: New record → pending → aba "Need Review" → o revisor escreve a
+ * resolução e confirma "tratado" → green. Tudo logado (aba Records).
  */
 (function () {
   'use strict';
@@ -51,9 +51,8 @@
   }
 
   // Name is captured PER ACTION (Recorded by on new, Reviewed by on review) —
-  // not page-wide. We just remember the last one to pre-fill the fields.
-  function lastUser()      { try { return localStorage.getItem('containerCheckUser') || ''; } catch (_) { return ''; } }
-  function rememberUser(u) { try { if (u) localStorage.setItem('containerCheckUser', u); } catch (_) {} }
+  // not page-wide. Fields start empty on purpose so whoever is acting types
+  // their own name every time (no confusing pre-fill from a previous user).
 
   async function api(path, opts) {
     opts = opts || {};
@@ -62,7 +61,6 @@
       const u = (opts.user || '').trim();
       if (!u) throw new Error('Enter your name first.');
       headers['x-cc-user'] = u;
-      rememberUser(u);
     }
     const res = await fetch(API + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
     let json = {};
@@ -130,7 +128,7 @@
       <div class="cc-metric ${s.issues ? 'alert' : ''}"><div class="cc-metric-label">Issue Rate</div><div class="cc-metric-value"><span class="num">${rate}</span><span class="unit">%</span></div></div>
       <div class="cc-metric" style="grid-column:span 2">
         <div class="cc-metric-label">Status</div>
-        <div class="cc-metric-pills"><span>🔴 ${bs.red || 0}</span><span>🟡 ${bs.pending || 0}</span><span>🟢 ${bs.green || 0}</span></div>
+        <div class="cc-metric-pills"><span>🟡 ${bs.pending || 0}</span><span>🟢 ${bs.green || 0}</span></div>
       </div>
       <div class="cc-metric" style="grid-column:span 2">
         <div class="cc-metric-label">Labels with issues</div>
@@ -161,6 +159,7 @@
         <div class="cc-row-status c"><span class="cc-pill cc-pill-${r.status}">${esc(r.status)}</span></div>
         <div class="cc-row-by">${esc(r.created_by || '')}</div>
         <div class="cc-row-by">${esc(r.reviewed_by || '')}</div>
+        <div class="cc-row-resolution" title="${esc(r.reviewer_notes || '')}">${esc(r.reviewer_notes || '')}</div>
         <div class="cc-row-note" title="${esc(r.inventory_notes || '')}">${esc(r.inventory_notes || '')}</div>
       </div>`;
     }).join('');
@@ -196,10 +195,7 @@
     });
     paintSuggest();
   }
-  function suggestStatus() {
-    const vals = ['ocl', 'icl', 'bar'].map(f => state.form[f]);
-    return vals.some(v => v === 'Wrong' || v === 'Missing') ? 'red' : 'pending';
-  }
+  function suggestStatus() { return 'pending'; }   // new records always enter as pending → Need Review
   function paintSuggest() {
     const s = suggestStatus();
     const el = $('ccStatusSuggest');
@@ -241,7 +237,7 @@
     $('ccQty').value       = record?.qty ?? '';
     $('ccPo').value        = record?.po || '';
     $('ccNotes').value     = record?.inventory_notes || '';
-    $('ccRecordedBy').value = record?.created_by || lastUser();
+    $('ccRecordedBy').value = record?.created_by || '';
     hideAc();
     paintSegments();
     renderPhotos();
@@ -451,19 +447,28 @@
       badge.style.display = items.length ? '' : 'none';
       if (!items.length) { list.innerHTML = '<div class="cc-empty">Nothing to review 🎉</div>'; return; }
       const lv = (k, v) => `<span><b>${k}</b> ${v ? `<span class="cc-lv cc-lv-${lvClass(v)}">${esc(v)}</span>` : '<span class="cc-lv cc-lv-blank">·</span>'}</span>`;
-      const uname = esc(lastUser());
       list.innerHTML = items.map(r => `
         <div class="cc-review-card" data-id="${r.id}">
-          <div class="cc-review-head">
-            <span class="cc-review-code">${esc(r.rapid_code || '')}</span>
-            <span class="cc-review-meta">${esc(fmtDate(r.check_date))} · <span class="cc-pill cc-pill-${r.status}">${esc(r.status)}</span> · QTY ${r.qty != null ? esc(r.qty) : '—'} · PO ${esc(r.po || '—')} · by ${esc(r.created_by || '—')}</span>
+          <div class="cc-review-info">
+            <div class="cc-ri-row"><span class="cc-ri-k">Date</span> ${esc(fmtDate(r.check_date))} <span class="cc-ri-sep">—</span> <span class="cc-pill cc-pill-${r.status}">${esc(r.status)}</span></div>
+            <div class="cc-ri-row"><span class="cc-ri-k">5DC</span> ${esc(r.five_dc || '—')}</div>
+            <div class="cc-ri-row"><span class="cc-ri-k">Product</span> <b>${esc(r.rapid_code || '—')}</b></div>
+            <div class="cc-ri-row"><span class="cc-ri-k">QTY</span> ${r.qty != null ? esc(r.qty) : '—'}</div>
+            <div class="cc-ri-row"><span class="cc-ri-k">PO</span> ${esc(r.po || '—')}</div>
+            <div class="cc-ri-row"><span class="cc-ri-k">Recorded by</span> ${esc(r.created_by || '—')}</div>
           </div>
           <div class="cc-review-labels">${lv('OCL', r.ocl)} ${lv('ICL', r.icl)} ${lv('Bar', r.bar)}</div>
           ${r.inventory_notes ? `<div class="cc-detail-note"><span class="k">Inventory notes</span>${esc(r.inventory_notes)}</div>` : ''}
           <div class="cc-detail-photos">${photoThumbs(r.photos) || '<span style="opacity:.5;font-size:12px">no photos</span>'}</div>
           <div class="cc-review-actions">
-            <input type="text" class="cc-rv-name" data-name="${r.id}" placeholder="Your name" value="${uname}" autocomplete="off" />
-            <textarea data-note="${r.id}" rows="1" placeholder="Comment (optional)…">${esc(r.reviewer_notes || '')}</textarea>
+            <label class="cc-rv-field">
+              <span class="cc-rv-label">Reviewed by *</span>
+              <input type="text" class="cc-rv-name" data-name="${r.id}" placeholder="Your name" autocomplete="off" />
+            </label>
+            <label class="cc-rv-field cc-rv-field-grow">
+              <span class="cc-rv-label">Resolution * <small>what did you do / what happened</small></span>
+              <textarea data-note="${r.id}" rows="2" placeholder="e.g. Re-labelled 30 units and notified Kim">${esc(r.reviewer_notes || '')}</textarea>
+            </label>
             <button class="cc-rv-confirm" data-confirm="${r.id}">✅ Confirm treated</button>
           </div>
         </div>`).join('');
@@ -476,9 +481,10 @@
     const nameEl = document.querySelector(`input[data-name="${id}"]`);
     const reviewer = nameEl ? nameEl.value.trim() : '';
     if (!reviewer) { toast('Enter your name first', 'err'); if (nameEl) nameEl.focus(); return; }
-    if (!window.confirm('Confirm this record is treated and ready? It moves to 🟢 Green.')) return;
     const ta = document.querySelector(`textarea[data-note="${id}"]`);
     const reviewer_notes = ta ? ta.value.trim() : '';
+    if (!reviewer_notes) { toast('Write the resolution (what you did) before confirming', 'err'); if (ta) ta.focus(); return; }
+    if (!window.confirm('Confirm this record is treated and ready? It moves to 🟢 Green.')) return;
     try {
       await api('/records/' + id, { method: 'PUT', body: { status: 'green', reviewer_notes }, user: reviewer });
       toast('Reviewed ✓', 'ok');

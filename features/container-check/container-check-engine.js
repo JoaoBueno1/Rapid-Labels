@@ -4,8 +4,8 @@
  * Substitui o Container Report.xlsx. Cada registro = 1 SKU recebido de um
  * container, com status das etiquetas (OCL/ICL/Bar), fotos e notas.
  *
- * Fluxo: novo registro → red (se Wrong/Missing) ou pending → "Need Review" →
- * o revisor confirma tratado → green (+ reviewed_by/at) → fica no histórico.
+ * Fluxo: novo registro → pending → "Need Review" → o revisor escreve a
+ * resolução e confirma tratado → green (+ reviewed_by/at) → fica no histórico.
  *
  * Architecture:
  *   - Persiste em cin7_mirror.container_checks (1 tabela).
@@ -26,10 +26,11 @@ const TABLE  = 'container_checks';
 const LOG    = 'container_check_log';
 
 const LABEL_VALUES  = ['OK', 'Wrong', 'Missing', 'N/A'];
-// 3 statuses: red = problem not yet reviewed · pending = clean, awaiting review ·
-// green = reviewed/confirmed. (orange retired — the DB CHECK still allows it for
-// any legacy rows, but nothing sets it anymore.)
-const STATUS_VALUES = ['green', 'red', 'pending'];
+// 2 statuses: pending = not yet reviewed · green = reviewed/confirmed. (red +
+// orange retired — the DB CHECK still allows them for any legacy rows, but
+// nothing sets them anymore. Every record is treated eventually, so a simple
+// pending → green flow is clearer than a traffic light.)
+const STATUS_VALUES = ['green', 'pending'];
 
 // ─── Response helpers ───────────────────────────────────────────────
 function ok(res, data)            { return res.json({ success: true, data }); }
@@ -157,11 +158,11 @@ module.exports = function registerContainerCheckRoutes(app, supabaseBackend) {
     }
   });
 
-  // ─── GET /review — fila Need Review (não revisados: pending + red) ─
+  // ─── GET /review — fila Need Review (status = pending) ───────────
   app.get('/api/container-check/review', async (req, res) => {
     try {
       if (!supabaseBackend) return fail(res, 503, 'Supabase backend not configured');
-      const { data, error } = await db().select('*').in('status', ['pending', 'red'])
+      const { data, error } = await db().select('*').eq('status', 'pending')
         .order('check_date', { ascending: true }).order('created_at', { ascending: true }).limit(2000);
       if (error) throw error;
       return ok(res, { items: data || [], count: (data || []).length });
@@ -237,9 +238,7 @@ module.exports = function registerContainerCheckRoutes(app, supabaseBackend) {
         photos,
         inventory_notes: txt(b.inventory_notes),
         reviewer_notes:  txt(b.reviewer_notes),
-        // red if a label is Wrong/Missing (problem to treat), else pending
-        // (clean, awaiting review). Green only happens later, via review.
-        status:          hasIssue({ ocl: cleanLabel(b.ocl), icl: cleanLabel(b.icl), bar: cleanLabel(b.bar) }) ? 'red' : 'pending',
+        status:          'pending',   // always enters as pending → Need Review → green
         created_by:      user,
       };
       if (row.qty != null && !Number.isFinite(row.qty)) row.qty = null;

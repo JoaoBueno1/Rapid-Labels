@@ -104,13 +104,13 @@
 .cc-filter input:focus, .cc-filter select:focus { border-color: #1a1a1a; }
 
 /* ─── Table ─── */
-/* Date · 5DC · Rapid Code · PO · QTY · OCL · ICL · Bar · 📷 · Status · Recorded by · Reviewed by · Note */
+/* Date · 5DC · Rapid Code · PO · QTY · OCL · ICL · Bar · Photo · Status · Recorded by · Reviewed by · Resolution · Note */
 .cc-table { background: white; overflow-x: auto; }
 .cc-thead, .cc-row {
   display: grid;
-  grid-template-columns: 74px 62px 1.3fr 58px 48px 46px 46px 46px 38px 74px 0.9fr 0.9fr 1.1fr;
+  grid-template-columns: 72px 58px 1.2fr 54px 44px 42px 42px 42px 38px 70px 0.85fr 0.85fr 1fr 1fr;
   gap: 6px; align-items: center;
-  min-width: 900px;
+  min-width: 1040px;
 }
 .cc-thead {
   background: #1a1a1a; color: #FAF8F5; padding: 8px 12px;
@@ -126,7 +126,7 @@
 .cc-row-code { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-row-date { font-size: 11px; opacity: 0.8; }
 .cc-row-5dc, .cc-row-po, .cc-row-by { font-size: 11px; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cc-row-note { font-size: 11px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-row-note, .cc-row-resolution { font-size: 11px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-row-del { background: transparent; border: none; cursor: pointer; opacity: 0.25; font-size: 14px; color: #1a1a1a; padding: 0; }
 .cc-row-del:hover { opacity: 1; color: #DC2F02; }
 .cc-empty { padding: 28px; text-align: center; color: #94a3b8; font-size: 13px; }
@@ -222,14 +222,21 @@
 
 /* ─── Review cards ─── */
 .cc-review-card { background: white; border: 1px solid #d4cfc5; border-left: 4px solid #F77F00; padding: 14px 16px; margin-bottom: 12px; }
-.cc-review-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
-.cc-review-code { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; }
-.cc-review-meta { font-size: 11px; opacity: 0.65; font-family: 'IBM Plex Mono', monospace; }
+/* product data as labelled lines, one per row (Date/5DC/Product/QTY/PO/Recorded by) */
+.cc-review-info { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 14px; }
+.cc-ri-row { display: flex; align-items: baseline; gap: 8px; }
+.cc-ri-k { flex: 0 0 96px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; font-weight: 600; }
+.cc-ri-row b { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; }
+.cc-ri-sep { color: #cbd5e1; }
 .cc-review-labels { display: flex; gap: 14px; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
-.cc-review-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-.cc-review-actions textarea { flex: 1; min-width: 200px; font-family: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid #d4cfc5; outline: none; resize: vertical; }
-.cc-rv-name { flex: 0 0 150px; font-family: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid #d4cfc5; outline: none; }
-.cc-rv-name:focus { border-color: #1a1a1a; }
+.cc-review-actions { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px; }
+.cc-rv-field { display: flex; flex-direction: column; gap: 3px; flex: 0 0 170px; }
+.cc-rv-field-grow { flex: 1 1 240px; }
+.cc-rv-label { font-size: 11px; font-weight: 600; color: #475569; }
+.cc-rv-label small { font-weight: 400; opacity: 0.7; }
+.cc-rv-field input, .cc-rv-field textarea { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid #d4cfc5; outline: none; }
+.cc-rv-field textarea { resize: vertical; }
+.cc-rv-field input:focus, .cc-rv-field textarea:focus { border-color: #1a1a1a; }
 .cc-rv-confirm { font-size: 13px; font-weight: 600; padding: 8px 16px; border: 1px solid #16a34a; background: #16a34a; color: #fff; cursor: pointer; border-radius: 6px; white-space: nowrap; }
 .cc-rv-confirm:hover { background: #15803d; border-color: #15803d; }
 
@@ -310,8 +317,11 @@
   .cc-row-cam    { order: 8; }
   .cc-row-by     { order: 9; font-size: 11px; opacity: 0.8; }
   .cc-row-by:not(:empty)::before { content: '👤 '; opacity: 0.6; }
-  .cc-row-note   { order: 10; flex-basis: 100%; font-size: 11px; opacity: 0.75; white-space: normal; }
-  .cc-review-actions .cc-rv-name { flex: 1 1 100%; }
+  .cc-row-resolution { order: 10; flex-basis: 100%; font-size: 11px; opacity: 0.8; white-space: normal; }
+  .cc-row-resolution:not(:empty)::before { content: '✅ '; opacity: 0.6; }
+  .cc-row-note   { order: 11; flex-basis: 100%; font-size: 11px; opacity: 0.75; white-space: normal; }
+  .cc-row-note:not(:empty)::before { content: '📝 '; opacity: 0.6; }
+  .cc-review-actions .cc-rv-field { flex: 1 1 100%; }
   .cc-label-name { min-width: 100%; }
   .cc-seg { min-width: 100%; }
 }
