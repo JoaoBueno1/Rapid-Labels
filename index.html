@@ -611,21 +611,33 @@
                         <h2 class="category-title">Quality & Compliance</h2>
                     </div>
                     <div class="category-items">
-                        <a class="cat-btn" href="features/pick-anomalies/pick-anomalies.html" style="flex-wrap:wrap">
-                            <span class="cat-btn-icon">📋</span>
-                            <span>Pick Anomalies</span>
-                            <span id="syncBadgePA" class="home-sync-badge" style="display:none"></span>
-                        </a>
-                        <a class="cat-btn" href="features/replenishment/replenishment.html">
-                            <span class="cat-btn-icon">📦</span>
-                            <span>Branch Replenishment</span>
-                        </a>
-                        <a class="cat-btn" href="gateway-main.html" style="flex-wrap:wrap">
-                            <span class="cat-btn-icon">🏭</span>
-                            <span>Gateway</span>
-                            <span id="syncBadgeGateway" class="home-sync-badge" style="display:none"></span>
-                        </a>
-                        <a class="cat-btn" href="features/container-check/container-check.html">
+                        <!-- PIN-gated group: Pick Anomalies · Branch Replenishment · Gateway -->
+                        <div class="qc-gated" style="position:relative;grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:8px">
+                            <a class="cat-btn" href="features/pick-anomalies/pick-anomalies.html" style="flex-wrap:wrap">
+                                <span class="cat-btn-icon">📋</span>
+                                <span>Pick Anomalies</span>
+                                <span id="syncBadgePA" class="home-sync-badge" style="display:none"></span>
+                            </a>
+                            <a class="cat-btn" href="features/replenishment/replenishment.html">
+                                <span class="cat-btn-icon">📦</span>
+                                <span>Branch Replenishment</span>
+                            </a>
+                            <a class="cat-btn" href="gateway-main.html" style="flex-wrap:wrap">
+                                <span class="cat-btn-icon">🏭</span>
+                                <span>Gateway</span>
+                                <span id="syncBadgeGateway" class="home-sync-badge" style="display:none"></span>
+                            </a>
+                            <!-- Password overlay — covers only the gated group above -->
+                            <div id="qcLocked" style="position:absolute;inset:0;background:rgba(255,255,255,.97);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;gap:6px">
+                                <div style="font-size:32px">🔒</div>
+                                <div style="display:flex;gap:6px;align-items:center">
+                                    <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN" style="width:80px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font-size:15px;outline:none" onkeydown="if(event.key==='Enter')document.getElementById('qcUnlockBtn').click()">
+                                    <button id="qcUnlockBtn" type="button" onclick="if(document.getElementById('qcPin').value==='4209'){document.getElementById('qcLocked').remove();var pc=document.getElementById('whPipelineCard');if(pc)pc.classList.remove('wh-locked')}else{document.getElementById('qcPin').style.borderColor='#ef4444';document.getElementById('qcPin').value='';document.getElementById('qcPin').placeholder='Wrong'}" style="padding:6px 14px;background:#eab308;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Unlock</button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Container Check — open, no PIN -->
+                        <a class="cat-btn" href="features/container-check/container-check.html" style="grid-column:1 / -1">
                             <span class="cat-btn-icon">📥</span>
                             <span>Container Check</span>
                         </a>
@@ -642,14 +654,6 @@
                         </a>
                         -->
                         <!-- Rapid Inventory hidden for now (not in use yet) -->
-                    </div>
-                    <!-- Password overlay -->
-                    <div id="qcLocked" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:14px;gap:6px">
-                        <div style="font-size:32px">🔒</div>
-                        <div style="display:flex;gap:6px;align-items:center">
-                            <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN" style="width:80px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font-size:15px;outline:none" onkeydown="if(event.key==='Enter')document.getElementById('qcUnlockBtn').click()">
-                            <button id="qcUnlockBtn" type="button" onclick="if(document.getElementById('qcPin').value==='4209'){document.getElementById('qcLocked').remove();var pc=document.getElementById('whPipelineCard');if(pc)pc.classList.remove('wh-locked')}else{document.getElementById('qcPin').style.borderColor='#ef4444';document.getElementById('qcPin').value='';document.getElementById('qcPin').placeholder='Wrong'}" style="padding:6px 14px;background:#eab308;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Unlock</button>
-                        </div>
                     </div>
                 </div>
 
