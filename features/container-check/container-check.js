@@ -467,7 +467,7 @@
             </label>
             <label class="cc-rv-field cc-rv-field-grow">
               <span class="cc-rv-label">Resolution * <small>what did you do / what happened</small></span>
-              <textarea data-note="${r.id}" rows="2" placeholder="e.g. Re-labelled 30 units and notified Kim">${esc(r.reviewer_notes || '')}</textarea>
+              <textarea data-note="${r.id}" rows="2">${esc(r.reviewer_notes || '')}</textarea>
             </label>
             <button class="cc-rv-confirm" data-confirm="${r.id}">✅ Confirm treated</button>
           </div>

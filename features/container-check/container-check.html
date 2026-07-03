@@ -18,7 +18,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/styles.css" />
-  <link rel="stylesheet" href="container-check.css?v=20260702a" />
+  <link rel="stylesheet" href="container-check.css?v=20260703a" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
 </head>
 <body>
@@ -134,20 +134,20 @@
         </div>
         <div class="cc-field cc-field-wide cc-field-ac">
           <label>Rapid Code *</label>
-          <input type="text" id="ccRapidCode" placeholder="R1030-WH-TRI  (type to search products)" autocomplete="off" />
+          <input type="text" id="ccRapidCode" autocomplete="off" />
           <div class="cc-ac" id="ccAcList" style="display:none"></div>
         </div>
         <div class="cc-field">
           <label>5DC</label>
-          <input type="text" id="ccFiveDc" placeholder="30619" inputmode="numeric" />
+          <input type="text" id="ccFiveDc" inputmode="numeric" />
         </div>
         <div class="cc-field">
           <label>QTY</label>
-          <input type="number" id="ccQty" placeholder="300" inputmode="numeric" />
+          <input type="number" id="ccQty" inputmode="numeric" />
         </div>
         <div class="cc-field">
           <label>PO</label>
-          <input type="text" id="ccPo" placeholder="11822" />
+          <input type="text" id="ccPo" />
         </div>
         <div class="cc-field">
           <label>Recorded by *</label>
@@ -185,7 +185,7 @@
       <!-- Notes -->
       <div class="cc-field cc-field-full">
         <label>Notes <small>(inventory)</small></label>
-        <textarea id="ccNotes" rows="2" placeholder="e.g. Printed and Notified to Kim"></textarea>
+        <textarea id="ccNotes" rows="2"></textarea>
       </div>
 
       <div class="cc-form-foot">
@@ -222,6 +222,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="container-check.js?v=20260702a"></script>
+  <script src="container-check.js?v=20260703a"></script>
 </body>
 </html>
