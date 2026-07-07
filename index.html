@@ -540,7 +540,9 @@
 
                     <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
                     <div class="wh-chart-wrap">
-                        <div class="wh-chart-title">📈 Daily Orders Completed <span id="whChartNote" class="wh-chart-note"></span></div>
+                        <div class="wh-chart-title" style="display:flex;align-items:center;gap:8px">📈 Daily Warehouse Activity <span id="whChartNote" class="wh-chart-note"></span>
+                            <button class="wh-sync-btn" style="margin-left:auto;white-space:nowrap" onclick="openPickErrors()" title="View pick errors (anomalies) detail">🔎 Errors</button>
+                        </div>
                         <div class="wh-chart-canvas"><canvas id="pipelineChart"></canvas></div>
                     </div>
                 </div>
@@ -1024,6 +1026,32 @@
         </div>
     </div>
 
+    <!-- ═══ Pick Errors (anomalies) Modal ═══ -->
+    <div class="tr-modal-overlay" id="pickErrOverlay" onclick="if(event.target===this)closePickErrors()">
+        <div class="tr-modal">
+            <div class="tr-modal-header">
+                <h2>🔎 Pick Errors — anomalies</h2>
+                <span class="tr-count" id="pickErrCount"></span>
+                <button class="tr-modal-close" onclick="closePickErrors()">&times;</button>
+            </div>
+            <div class="tr-modal-filters">
+                <input class="tr-search" id="pickErrSearch" placeholder="Search order, SKU, bin…" oninput="renderPickErrors()">
+                <span style="font-size:11px;color:#64748b;align-self:center">Operator &amp; scanner/manual come with the daily scanner report (Phase 2)</span>
+            </div>
+            <div class="tr-modal-body">
+                <table class="tr-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Order</th><th>Type</th><th>SKU</th><th>Qty</th><th>Picked from</th><th>Pickface (expected)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pickErrBody"></tbody>
+                </table>
+                <div class="tr-empty" id="pickErrEmpty" style="display:none">No errors in range 🎉</div>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ Orders Pipeline Modal ═══ -->
     <div class="orders-modal-overlay" id="ordersModalOverlay" onclick="if(event.target===this)closeOrdersModal()">
         <div class="orders-modal">
@@ -1487,54 +1515,160 @@
                 if (!sb) return;
                 const DAYS = 16;
                 const aestDate = off => new Date(Date.now() + 10 * 3600000 - off * 86400000); // shifted so UTC parts = AEST
+                const lo = aestDate(DAYS - 1).toISOString().slice(0, 10), hi = aestDate(0).toISOString().slice(0, 10);
+                // ── sales + FG completed with error counts (pick_anomaly_orders by fulfilled_date) ──
+                const salesCounts = {}, salesErrCounts = {}, fgCounts = {}, fgErrCounts = {};
+                const pullEntity = async (entity, counts, errCounts) => {
+                    let acc = [], from = 0;
+                    for (;;) {
+                        const r = await sb.from('pick_anomaly_orders')
+                            .select('fulfilled_date,anomaly_picks')
+                            .eq('entity_type', entity)
+                            .gte('fulfilled_date', lo).lte('fulfilled_date', hi)
+                            .range(from, from + 999);
+                        if (r.error) break;
+                        acc.push(...(r.data || []));
+                        if (!r.data || r.data.length < 1000) break;
+                        from += 1000;
+                    }
+                    acc.forEach(o => { if (!o.fulfilled_date) return;
+                        counts[o.fulfilled_date] = (counts[o.fulfilled_date] || 0) + 1;
+                        if ((o.anomaly_picks || 0) > 0) errCounts[o.fulfilled_date] = (errCounts[o.fulfilled_date] || 0) + 1; });
+                };
+                await pullEntity('sale', salesCounts, salesErrCounts);
+                await pullEntity('assembly', fgCounts, fgErrCounts);
+
+                // ── transfers completed (cin7_mirror.stock_movements bin_transfer, distinct TR/AEST day) ──
+                const trByDay = {};
+                try {
+                    const sinceUtc = new Date(Date.now() - DAYS * 86400000).toISOString();
+                    let tfrom = 0;
+                    for (;;) {
+                        const t = await sb.schema('cin7_mirror').from('stock_movements')
+                            .select('reference_number,detected_at')
+                            .eq('movement_type', 'bin_transfer')
+                            .gte('detected_at', sinceUtc)
+                            .range(tfrom, tfrom + 999);
+                        if (t.error) break;
+                        (t.data || []).forEach(m => {
+                            if (!m.detected_at || !m.reference_number) return;
+                            const day = new Date(new Date(m.detected_at).getTime() + 10 * 3600000).toISOString().slice(0, 10);
+                            (trByDay[day] ??= new Set()).add(m.reference_number);
+                        });
+                        if (!t.data || t.data.length < 1000) break;
+                        tfrom += 1000;
+                    }
+                } catch (_) { /* transfers optional */ }
+
+                const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const labels = [], salesData = [], salesErr = [], trData = [], fgData = [], fgErr = [];
+                for (let i = DAYS - 1; i >= 0; i--) {
+                    const d = aestDate(i);
+                    const key = d.toISOString().slice(0, 10);
+                    labels.push(`${dow[d.getUTCDay()]} ${d.getUTCDate()}`);
+                    salesData.push(salesCounts[key] || 0); salesErr.push(salesErrCounts[key] || 0);
+                    trData.push(trByDay[key] ? trByDay[key].size : 0);
+                    fgData.push(fgCounts[key] || 0); fgErr.push(fgErrCounts[key] || 0);
+                }
+                const pct = (e, t) => t ? Math.round(100 * e / t) : 0;
+                const cv = document.getElementById('pipelineChart');
+                if (!cv) return;
+                if (window.__pipelineChart) window.__pipelineChart.destroy();
+                window.__pipelineChart = new Chart(cv.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [
+                            { label: 'Sales orders', data: salesData, stack: 'wh', backgroundColor: 'rgba(34,197,94,.8)', borderRadius: 3 },
+                            { label: 'Transfers (TR)', data: trData, stack: 'wh', backgroundColor: 'rgba(59,130,246,.8)', borderRadius: 3 },
+                            { label: 'FG / Assembly', data: fgData, stack: 'wh', backgroundColor: 'rgba(139,92,246,.85)', borderRadius: 3 },
+                        ],
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: (c) => {
+                                        const i = c.dataIndex, l = c.dataset.label;
+                                        if (l.startsWith('Transfers')) return `Transfers: ${trData[i]} completed`;
+                                        if (l.startsWith('FG')) return `FG: ${fgData[i]} · ${fgErr[i]} errors (${pct(fgErr[i], fgData[i])}%)`;
+                                        return `Sales: ${salesData[i]} · ${salesErr[i]} errors (${pct(salesErr[i], salesData[i])}%)`;
+                                    },
+                                },
+                            },
+                        },
+                        scales: {
+                            x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+                            y: { stacked: true, beginAtZero: true, grid: { color: '#eef2f7' }, title: { display: true, text: 'Count' } },
+                        },
+                    },
+                });
+                const note = document.getElementById('whChartNote');
+                if (note) note.textContent = `· Main Warehouse · Sales + TR + FG per day · last ${DAYS} days`;
+            } catch (e) { console.warn('pipeline chart error', e); }
+        }
+
+        // ── Pick Errors modal (anomalies from pick_anomaly_orders, last 16 days) ──
+        let __pickErrRows = [];
+        async function openPickErrors() {
+            const ov = document.getElementById('pickErrOverlay');
+            if (ov) ov.classList.add('active');
+            const body = document.getElementById('pickErrBody');
+            if (body) body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b">Loading…</td></tr>';
+            try {
+                const sb = window.supabase; if (!sb) return;
+                const DAYS = 16;
+                const aestDate = off => new Date(Date.now() + 10 * 3600000 - off * 86400000);
+                const lo = aestDate(DAYS - 1).toISOString().slice(0, 10), hi = aestDate(0).toISOString().slice(0, 10);
                 let rows = [], from = 0;
                 for (;;) {
                     const r = await sb.from('pick_anomaly_orders')
-                        .select('fulfilled_date')
-                        .eq('entity_type', 'sale')   // sales orders only — matches the "Completed today" tile
-                        .gte('fulfilled_date', aestDate(DAYS - 1).toISOString().slice(0, 10))
-                        .lte('fulfilled_date', aestDate(0).toISOString().slice(0, 10))
+                        .select('order_number,entity_type,fulfilled_date,picks')
+                        .gt('anomaly_picks', 0)
+                        .gte('fulfilled_date', lo).lte('fulfilled_date', hi)
+                        .order('fulfilled_date', { ascending: false })
                         .range(from, from + 999);
                     if (r.error) break;
                     rows.push(...(r.data || []));
                     if (!r.data || r.data.length < 1000) break;
                     from += 1000;
                 }
-                const counts = {};
-                rows.forEach(o => { if (o.fulfilled_date) counts[o.fulfilled_date] = (counts[o.fulfilled_date] || 0) + 1; });
-                const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                const labels = [], data = [];
-                for (let i = DAYS - 1; i >= 0; i--) {
-                    const d = aestDate(i);
-                    labels.push(`${dow[d.getUTCDay()]} ${d.getUTCDate()}`);
-                    data.push(counts[d.toISOString().slice(0, 10)] || 0);
-                }
-                const cv = document.getElementById('pipelineChart');
-                if (!cv) return;
-                if (window.__pipelineChart) window.__pipelineChart.destroy();
-                window.__pipelineChart = new Chart(cv.getContext('2d'), {
-                    data: {
-                        labels,
-                        datasets: [
-                            { type: 'bar', label: 'Orders completed', data, yAxisID: 'y',
-                              backgroundColor: 'rgba(34,197,94,.6)', borderRadius: 4, categoryPercentage: .8, barPercentage: .9 },
-                        ],
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: c => `${c.parsed.y} orders completed` } },
-                        },
-                        scales: {
-                            x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
-                            y: { beginAtZero: true, grid: { color: '#eef2f7' }, title: { display: true, text: 'Orders' } },
-                        },
-                    },
-                });
-                const note = document.getElementById('whChartNote');
-                if (note) note.textContent = `· Main Warehouse · completed/day · last ${DAYS} days`;
-            } catch (e) { console.warn('pipeline chart error', e); }
+                __pickErrRows = [];
+                rows.forEach(o => (o.picks || []).forEach(p => {
+                    if (p.status !== 'anomaly') return;
+                    __pickErrRows.push({ date: o.fulfilled_date, order: o.order_number,
+                        type: o.entity_type === 'assembly' ? 'FG' : 'Sales',
+                        sku: p.sku || '', qty: p.qty, from: p.bin || '', pickface: p.expectedBin || '' });
+                }));
+                renderPickErrors();
+            } catch (e) {
+                if (body) body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#ef4444">Error: ${e.message}</td></tr>`;
+            }
+        }
+        function closePickErrors() { const ov = document.getElementById('pickErrOverlay'); if (ov) ov.classList.remove('active'); }
+        function renderPickErrors() {
+            const q = (document.getElementById('pickErrSearch').value || '').toLowerCase();
+            const rows = __pickErrRows.filter(r => !q || `${r.order} ${r.sku} ${r.from} ${r.pickface}`.toLowerCase().includes(q));
+            const body = document.getElementById('pickErrBody');
+            document.getElementById('pickErrCount').textContent = `${rows.length} error lines`;
+            document.getElementById('pickErrEmpty').style.display = rows.length ? 'none' : 'block';
+            const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+            body.innerHTML = rows.map(r => {
+                const badge = r.type === 'FG'
+                    ? 'background:#ede9fe;color:#6d28d9' : 'background:#dcfce7;color:#166534';
+                return `<tr>
+                    <td>${esc(r.date)}</td>
+                    <td><strong>${esc(r.order)}</strong></td>
+                    <td><span style="padding:1px 6px;border-radius:4px;font-size:11px;${badge}">${r.type}</span></td>
+                    <td>${esc(r.sku)}</td>
+                    <td style="text-align:right">${esc(r.qty)}</td>
+                    <td>${esc(r.from)}</td>
+                    <td>${esc(r.pickface)}</td>
+                </tr>`;
+            }).join('');
         }
 
         // ══════════════════════════════════════════════════════
