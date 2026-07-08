@@ -540,9 +540,7 @@
 
                     <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
                     <div class="wh-chart-wrap">
-                        <div class="wh-chart-title" style="display:flex;align-items:center;gap:8px">📈 Daily Warehouse Activity <span id="whChartNote" class="wh-chart-note"></span>
-                            <button class="wh-sync-btn" style="margin-left:auto;white-space:nowrap" onclick="openPickErrors()" title="View pick errors (anomalies) detail">🔎 Errors</button>
-                        </div>
+                        <div class="wh-chart-title">📈 Daily Warehouse Activity <span id="whChartNote" class="wh-chart-note"></span></div>
                         <div class="wh-chart-canvas"><canvas id="pipelineChart"></canvas></div>
                     </div>
                 </div>
@@ -628,6 +626,10 @@
                                 <span class="cat-btn-icon">🏭</span>
                                 <span>Gateway</span>
                                 <span id="syncBadgeGateway" class="home-sync-badge" style="display:none"></span>
+                            </a>
+                            <a class="cat-btn" href="features/pick-productivity/pick-productivity.html">
+                                <span class="cat-btn-icon">📈</span>
+                                <span>Pick Productivity</span>
                             </a>
                             <!-- Password overlay — covers only the gated group above -->
                             <div id="qcLocked" style="position:absolute;inset:0;background:rgba(255,255,255,.97);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;gap:6px">
@@ -1022,32 +1024,6 @@
                     <tbody id="trTableBody"></tbody>
                 </table>
                 <div class="tr-empty" id="trEmpty" style="display:none">No transfers match your filters</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══ Pick Errors (anomalies) Modal ═══ -->
-    <div class="tr-modal-overlay" id="pickErrOverlay" onclick="if(event.target===this)closePickErrors()">
-        <div class="tr-modal">
-            <div class="tr-modal-header">
-                <h2>🔎 Pick Errors — anomalies</h2>
-                <span class="tr-count" id="pickErrCount"></span>
-                <button class="tr-modal-close" onclick="closePickErrors()">&times;</button>
-            </div>
-            <div class="tr-modal-filters">
-                <input class="tr-search" id="pickErrSearch" placeholder="Search order, SKU, bin…" oninput="renderPickErrors()">
-                <span style="font-size:11px;color:#64748b;align-self:center">Operator &amp; scanner/manual come with the daily scanner report (Phase 2)</span>
-            </div>
-            <div class="tr-modal-body">
-                <table class="tr-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th><th>Order</th><th>Type</th><th>SKU</th><th>Qty</th><th>Picked from</th><th>Pickface (expected)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pickErrBody"></tbody>
-                </table>
-                <div class="tr-empty" id="pickErrEmpty" style="display:none">No errors in range 🎉</div>
             </div>
         </div>
     </div>
@@ -1538,36 +1514,42 @@
                 await pullEntity('sale', salesCounts, salesErrCounts);
                 await pullEntity('assembly', fgCounts, fgErrCounts);
 
-                // ── transfers completed (cin7_mirror.stock_movements bin_transfer, distinct TR/AEST day) ──
-                const trByDay = {};
+                // ── transfers dispatched from Main to a BRANCH (stock_transfer movements) ──
+                // cin7_mirror.stock_movements type='stock_transfer' (dispatch, same source
+                // as the modal). Branch = customer warehouses only; Project/Gateway/Ghost/
+                // Faulty excluded (we don't monitor project transfers).
+                const trBranchByDay = {};
                 try {
                     const sinceUtc = new Date(Date.now() - DAYS * 86400000).toISOString();
-                    let tfrom = 0;
+                    let mv = [], mf = 0;
                     for (;;) {
                         const t = await sb.schema('cin7_mirror').from('stock_movements')
-                            .select('reference_number,detected_at')
-                            .eq('movement_type', 'bin_transfer')
-                            .gte('detected_at', sinceUtc)
-                            .range(tfrom, tfrom + 999);
+                            .select('reference_number,to_location,quantity,detected_at')
+                            .eq('movement_type', 'stock_transfer').gte('detected_at', sinceUtc).range(mf, mf + 999);
                         if (t.error) break;
-                        (t.data || []).forEach(m => {
-                            if (!m.detected_at || !m.reference_number) return;
-                            const day = new Date(new Date(m.detected_at).getTime() + 10 * 3600000).toISOString().slice(0, 10);
-                            (trByDay[day] ??= new Set()).add(m.reference_number);
-                        });
+                        mv.push(...(t.data || []));
                         if (!t.data || t.data.length < 1000) break;
-                        tfrom += 1000;
+                        mf += 1000;
                     }
+                    const destOf = {};
+                    mv.forEach(m => { if (m.quantity > 0 && m.to_location && !String(m.to_location).startsWith('Main Warehouse')) destOf[m.reference_number] = m.to_location; });
+                    mv.forEach(m => {
+                        if (!(m.quantity < 0)) return;                 // OUT side dates it by dispatch
+                        const dest = destOf[m.reference_number]; if (!dest) return;
+                        if (/project|gateway|ghost|faulty/i.test(dest)) return;   // branches only
+                        const day = new Date(new Date(m.detected_at).getTime() + 10 * 3600000).toISOString().slice(0, 10);
+                        (trBranchByDay[day] ??= new Set()).add(m.reference_number);
+                    });
                 } catch (_) { /* transfers optional */ }
 
                 const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                const labels = [], salesData = [], salesErr = [], trData = [], fgData = [], fgErr = [];
+                const labels = [], salesData = [], salesErr = [], trBranchData = [], fgData = [], fgErr = [];
                 for (let i = DAYS - 1; i >= 0; i--) {
                     const d = aestDate(i);
                     const key = d.toISOString().slice(0, 10);
                     labels.push(`${dow[d.getUTCDay()]} ${d.getUTCDate()}`);
                     salesData.push(salesCounts[key] || 0); salesErr.push(salesErrCounts[key] || 0);
-                    trData.push(trByDay[key] ? trByDay[key].size : 0);
+                    trBranchData.push(trBranchByDay[key] ? trBranchByDay[key].size : 0);
                     fgData.push(fgCounts[key] || 0); fgErr.push(fgErrCounts[key] || 0);
                 }
                 const pct = (e, t) => t ? Math.round(100 * e / t) : 0;
@@ -1580,7 +1562,7 @@
                         labels,
                         datasets: [
                             { label: 'Sales orders', data: salesData, stack: 'wh', backgroundColor: 'rgba(34,197,94,.8)', borderRadius: 3 },
-                            { label: 'Transfers (TR)', data: trData, stack: 'wh', backgroundColor: 'rgba(59,130,246,.8)', borderRadius: 3 },
+                            { label: 'TR — branches', data: trBranchData, stack: 'wh', backgroundColor: 'rgba(59,130,246,.85)', borderRadius: 3 },
                             { label: 'FG / Assembly', data: fgData, stack: 'wh', backgroundColor: 'rgba(139,92,246,.85)', borderRadius: 3 },
                         ],
                     },
@@ -1593,7 +1575,7 @@
                                 callbacks: {
                                     label: (c) => {
                                         const i = c.dataIndex, l = c.dataset.label;
-                                        if (l.startsWith('Transfers')) return `Transfers: ${trData[i]} completed`;
+                                        if (l === 'TR — branches') return `TR branches: ${trBranchData[i]}`;
                                         if (l.startsWith('FG')) return `FG: ${fgData[i]} · ${fgErr[i]} errors (${pct(fgErr[i], fgData[i])}%)`;
                                         return `Sales: ${salesData[i]} · ${salesErr[i]} errors (${pct(salesErr[i], salesData[i])}%)`;
                                     },
@@ -1607,68 +1589,285 @@
                     },
                 });
                 const note = document.getElementById('whChartNote');
-                if (note) note.textContent = `· Main Warehouse · Sales + TR + FG per day · last ${DAYS} days`;
+                if (note) note.textContent = `· Main Warehouse · Sales + TR (branches) + FG per day · last ${DAYS} days`;
             } catch (e) { console.warn('pipeline chart error', e); }
         }
 
-        // ── Pick Errors modal (anomalies from pick_anomaly_orders, last 16 days) ──
-        let __pickErrRows = [];
+        // ── Modal — Errors (anomalies) + Transfers (branches only), per day ──
+        let __pickErrRows = [], __trRows = [], __scanMap = {}, __pickErrMethod = 'all', __modalTab = 'errors';
+        const __esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
         async function openPickErrors() {
             const ov = document.getElementById('pickErrOverlay');
             if (ov) ov.classList.add('active');
             const body = document.getElementById('pickErrBody');
-            if (body) body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b">Loading…</td></tr>';
+            if (body) body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#64748b">Loading…</td></tr>';
             try {
                 const sb = window.supabase; if (!sb) return;
                 const DAYS = 16;
                 const aestDate = off => new Date(Date.now() + 10 * 3600000 - off * 86400000);
                 const lo = aestDate(DAYS - 1).toISOString().slice(0, 10), hi = aestDate(0).toISOString().slice(0, 10);
-                let rows = [], from = 0;
+                try { const sr = await fetch('/api/scanner-activity'); __scanMap = (await sr.json()).scanned || {}; } catch (_) { __scanMap = {}; }
+                // ── errors (order/FG anomalies, per line) ──
+                let orows = [], from = 0;
                 for (;;) {
                     const r = await sb.from('pick_anomaly_orders')
                         .select('order_number,entity_type,fulfilled_date,picks')
-                        .gt('anomaly_picks', 0)
-                        .gte('fulfilled_date', lo).lte('fulfilled_date', hi)
-                        .order('fulfilled_date', { ascending: false })
-                        .range(from, from + 999);
+                        .gt('anomaly_picks', 0).gte('fulfilled_date', lo).lte('fulfilled_date', hi)
+                        .order('fulfilled_date', { ascending: false }).range(from, from + 999);
                     if (r.error) break;
-                    rows.push(...(r.data || []));
+                    orows.push(...(r.data || []));
                     if (!r.data || r.data.length < 1000) break;
                     from += 1000;
                 }
+                const hasScan = Object.keys(__scanMap).length > 0;
                 __pickErrRows = [];
-                rows.forEach(o => (o.picks || []).forEach(p => {
+                orows.forEach(o => (o.picks || []).forEach(p => {
                     if (p.status !== 'anomaly') return;
+                    const isFg = o.entity_type === 'assembly', scan = __scanMap[o.order_number];
                     __pickErrRows.push({ date: o.fulfilled_date, order: o.order_number,
-                        type: o.entity_type === 'assembly' ? 'FG' : 'Sales',
+                        type: isFg ? 'FG' : 'Sales',
+                        method: isFg ? 'FG' : (hasScan ? (scan ? 'Scanner' : 'Manual') : '—'),
+                        operator: scan ? scan.op : '',
                         sku: p.sku || '', qty: p.qty, from: p.bin || '', pickface: p.expectedBin || '' });
                 }));
-                renderPickErrors();
+                // ── transfers OUT of Main to a BRANCH (per movement line) ──
+                __trRows = [];
+                try {
+                    const sinceUtc = new Date(Date.now() - DAYS * 86400000).toISOString();
+                    let mv = [], mf = 0;
+                    for (;;) {
+                        const t = await sb.schema('cin7_mirror').from('stock_movements')
+                            .select('reference_number,sku,from_location,to_location,quantity,detected_at')
+                            .eq('movement_type', 'stock_transfer').gte('detected_at', sinceUtc).range(mf, mf + 999);
+                        if (t.error) break;
+                        mv.push(...(t.data || []));
+                        if (!t.data || t.data.length < 1000) break;
+                        mf += 1000;
+                    }
+                    const destOf = {};
+                    mv.forEach(m => { if (m.quantity > 0 && m.to_location && !String(m.to_location).startsWith('Main Warehouse')) destOf[m.reference_number] = m.to_location; });
+                    mv.forEach(m => {
+                        if (!(m.quantity < 0)) return;
+                        if (!String(m.from_location || '').includes('Main')) return;
+                        const dest = destOf[m.reference_number]; if (!dest) return;
+                        if (/project|gateway|ghost|faulty/i.test(dest)) return;      // branches only
+                        const day = new Date(new Date(m.detected_at).getTime() + 10 * 3600000).toISOString().slice(0, 10);
+                        if (day > hi) return;                                        // skip future-dated
+                        __trRows.push({ date: day, tr: m.reference_number, dest, sku: m.sku || '', qty: Math.abs(m.quantity || 0) });
+                    });
+                } catch (_) { __trRows = []; }
+                __modalTab = 'errors';
+                document.querySelectorAll('#pickErrOverlay [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === 'errors'));
+                document.getElementById('pickErrMethodGroup').style.display = '';
+                _rebuildModalDays();
+                renderCurrentTab();
             } catch (e) {
-                if (body) body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#ef4444">Error: ${e.message}</td></tr>`;
+                if (body) body.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:20px;color:#ef4444">Error: ${e.message}</td></tr>`;
             }
         }
         function closePickErrors() { const ov = document.getElementById('pickErrOverlay'); if (ov) ov.classList.remove('active'); }
+        function _rebuildModalDays() {
+            const dsel = document.getElementById('pickErrDay'); if (!dsel) return;
+            const src = __modalTab === 'transfers' ? __trRows : __pickErrRows;
+            const uniq = [...new Set(src.map(r => r.date))].filter(Boolean).sort().reverse();
+            const cur = dsel.value;
+            dsel.innerHTML = uniq.map(d => `<option value="${d}">${d}</option>`).join('');
+            if (uniq.includes(cur)) dsel.value = cur;
+        }
+        function setModalTab(btn) {
+            __modalTab = btn.dataset.tab;
+            btn.parentElement.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b === btn));
+            document.getElementById('pickErrMethodGroup').style.display = __modalTab === 'errors' ? '' : 'none';
+            const h = document.querySelector('#pickErrOverlay h2'); if (h) h.textContent = __modalTab === 'transfers' ? '🔄 Branch Transfers' : '⚠️ Pick Errors';
+            _rebuildModalDays();
+            renderCurrentTab();
+        }
+        function setPickErrMethod(btn) { __pickErrMethod = btn.dataset.method; btn.parentElement.querySelectorAll('.tr-direction-btn').forEach(b => b.classList.toggle('active', b === btn)); renderPickErrors(); }
+        function renderCurrentTab() { if (__modalTab === 'transfers') renderTransfers(); else renderPickErrors(); }
         function renderPickErrors() {
+            document.getElementById('pickErrHead').innerHTML = '<th>Date</th><th>Order</th><th>Type</th><th>Operator</th><th>Method</th><th>SKU</th><th>Qty</th><th>Picked from</th><th>Pickface</th>';
+            const day = (document.getElementById('pickErrDay').value) || '';
             const q = (document.getElementById('pickErrSearch').value || '').toLowerCase();
-            const rows = __pickErrRows.filter(r => !q || `${r.order} ${r.sku} ${r.from} ${r.pickface}`.toLowerCase().includes(q));
-            const body = document.getElementById('pickErrBody');
-            document.getElementById('pickErrCount').textContent = `${rows.length} error lines`;
+            const dayRows = __pickErrRows.filter(r => r.date === day);
+            let rows = dayRows;
+            if (__pickErrMethod !== 'all') rows = rows.filter(r => r.method === __pickErrMethod);
+            if (q) rows = rows.filter(r => `${r.order} ${r.sku} ${r.from} ${r.pickface} ${r.operator}`.toLowerCase().includes(q));
+            document.getElementById('pickErrCount').textContent = `${rows.length} errors · ${day}`;
             document.getElementById('pickErrEmpty').style.display = rows.length ? 'none' : 'block';
-            const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-            body.innerHTML = rows.map(r => {
-                const badge = r.type === 'FG'
-                    ? 'background:#ede9fe;color:#6d28d9' : 'background:#dcfce7;color:#166534';
-                return `<tr>
-                    <td>${esc(r.date)}</td>
-                    <td><strong>${esc(r.order)}</strong></td>
-                    <td><span style="padding:1px 6px;border-radius:4px;font-size:11px;${badge}">${r.type}</span></td>
-                    <td>${esc(r.sku)}</td>
-                    <td style="text-align:right">${esc(r.qty)}</td>
-                    <td>${esc(r.from)}</td>
-                    <td>${esc(r.pickface)}</td>
-                </tr>`;
+            const by = { Scanner: 0, Manual: 0, FG: 0 };
+            dayRows.forEach(r => { if (by[r.method] != null) by[r.method]++; });
+            const rl = document.getElementById('pickErrRates');
+            if (rl) rl.textContent = `${day} — 📟 ${by.Scanner} scanner · ✋ ${by.Manual} manual · 🟣 ${by.FG} FG`;
+            const mColor = m => m === 'Scanner' ? 'background:#dbeafe;color:#1e40af' : m === 'Manual' ? 'background:#fee2e2;color:#991b1b' : m === 'FG' ? 'background:#ede9fe;color:#6d28d9' : 'background:#f1f5f9;color:#64748b';
+            document.getElementById('pickErrBody').innerHTML = rows.map(r => `<tr>
+                <td>${__esc(r.date)}</td>
+                <td><strong>${__esc(r.order)}</strong></td>
+                <td>${__esc(r.type)}</td>
+                <td>${__esc(r.operator) || '<span style="color:#cbd5e1">—</span>'}</td>
+                <td><span style="padding:1px 6px;border-radius:4px;font-size:11px;${mColor(r.method)}">${__esc(r.method)}</span></td>
+                <td>${__esc(r.sku)}</td>
+                <td style="text-align:right">${__esc(r.qty)}</td>
+                <td>${__esc(r.from)}</td>
+                <td>${__esc(r.pickface)}</td>
+            </tr>`).join('');
+        }
+        function renderTransfers() {
+            document.getElementById('pickErrHead').innerHTML = '<th>Date</th><th>TR #</th><th>Destination</th><th>SKU</th><th>Qty</th>';
+            const day = (document.getElementById('pickErrDay').value) || '';
+            const q = (document.getElementById('pickErrSearch').value || '').toLowerCase();
+            const dayRows = __trRows.filter(r => r.date === day);
+            let rows = dayRows;
+            if (q) rows = rows.filter(r => `${r.tr} ${r.dest} ${r.sku}`.toLowerCase().includes(q));
+            document.getElementById('pickErrCount').textContent = `${rows.length} lines · ${day}`;
+            document.getElementById('pickErrEmpty').style.display = rows.length ? 'none' : 'block';
+            const nTr = new Set(dayRows.map(r => r.tr)).size;
+            const rl = document.getElementById('pickErrRates');
+            if (rl) rl.textContent = `${day} — 🔵 ${nTr} branch transfers · ${dayRows.length} lines`;
+            document.getElementById('pickErrBody').innerHTML = rows.map(r => `<tr>
+                <td>${__esc(r.date)}</td>
+                <td><strong>${__esc(r.tr)}</strong></td>
+                <td>${__esc(r.dest)}</td>
+                <td>${__esc(r.sku)}</td>
+                <td style="text-align:right">${__esc(r.qty)}</td>
+            </tr>`).join('');
+        }
+
+        // ── Import scanner report (client-side xlsx/csv parse → persist operator map) ──
+        function ensureXLSX() {
+            return new Promise((resolve, reject) => {
+                if (window.XLSX) return resolve();
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+                s.onload = () => resolve();
+                s.onerror = () => reject(new Error('could not load xlsx library'));
+                document.head.appendChild(s);
+            });
+        }
+        function _parseReportRows(aoa) {
+            const MON = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+            const toISO = (v) => {
+                if (v == null || v === '') return '';
+                if (v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+                const s = String(v).trim();
+                let m = /(\d{2})-([A-Za-z]{3})-(\d{4})/.exec(s); if (m && MON[m[2]]) return `${m[3]}-${MON[m[2]]}-${m[1]}`;
+                m = /(\d{4})-(\d{2})-(\d{2})/.exec(s); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+                m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s); if (m) return `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
+                if (/^\d{5}$/.test(s)) { const dt = new Date(Date.UTC(1899, 11, 30) + Number(s) * 86400000); return dt.toISOString().slice(0, 10); }
+                return '';
+            };
+            // report period date from the "From:" metadata line — fallback for every row
+            let reportDate = '';
+            for (let i = 0; i < Math.min(aoa.length, 12) && !reportDate; i++) {
+                for (const c of (aoa[i] || [])) { if (/from:/i.test(String(c))) { const iso = toISO(String(c).replace(/.*from:\s*/i, '')); if (iso) { reportDate = iso; break; } } }
+            }
+            // header row + column indices
+            let start = 0, col = {};
+            for (let i = 0; i < Math.min(aoa.length, 20); i++) {
+                const cs = (aoa[i] || []).map(c => String(c == null ? '' : c).toLowerCase().trim());
+                if (cs.some(c => c.includes('sale order')) && cs.some(c => c === 'user')) {
+                    start = i + 1;
+                    cs.forEach((c, idx) => {
+                        if (c === 'user') col.user = idx;
+                        else if (c === 'date') col.date = idx;
+                        else if (c.includes('sale order')) col.so = idx;
+                        else if (c.includes('sku')) col.sku = idx;
+                        else if (c.includes('time')) col.time = idx;
+                    });
+                    break;
+                }
+            }
+            const scanned = {}, days = new Set(), ops = {};
+            let totalSkus = 0, totalMin = 0;
+            for (let i = start; i < aoa.length; i++) {
+                const raw = aoa[i]; if (!Array.isArray(raw)) continue;
+                const cells = raw.map(c => (c instanceof Date) ? c : String(c == null ? '' : c).trim());
+                const email = (col.user != null ? String(cells[col.user] || '') : (cells.find(c => /@rapidled/i.test(String(c))) || ''));
+                const soCell = (col.so != null ? String(cells[col.so] || '') : (cells.find(c => /^SO-\d+$/.test(String(c).trim())) || ''));
+                if (!/@rapidled\.com\.au/i.test(String(email)) || !/^SO-\d+$/.test(String(soCell).trim())) continue;
+                const so = String(soCell).trim();
+                const rawDate = col.date != null ? cells[col.date] : cells.find(c => toISO(c));
+                const date = toISO(rawDate) || reportDate;
+                const op = String(email).replace(/@rapidled\.com\.au/i, '').replace('project.scanner', 'scanner');
+                const skus = col.sku != null ? (parseFloat(String(cells[col.sku]).replace(/,/g, '')) || 0) : 0;
+                const min = col.time != null ? (parseFloat(String(cells[col.time]).replace(/[^\d.]/g, '')) || 0) : 0;
+                scanned[so] = { op, date, skus, min }; if (date) days.add(date);
+                ops[op] = ops[op] || { orders: 0, skus: 0, min: 0 };
+                ops[op].orders++; ops[op].skus += skus; ops[op].min += min;
+                totalSkus += skus; totalMin += min;
+            }
+            return { scanned, days: [...days].sort(), stats: { orders: Object.keys(scanned).length, ops, totalSkus, totalMin } };
+        }
+        let __importParsed = null;
+        function openImportModal() {
+            __importParsed = null;
+            const sum = document.getElementById('importSummary'); if (sum) sum.innerHTML = '';
+            const drop = document.getElementById('importDrop'); if (drop) { drop.style.display = ''; drop.style.borderColor = '#cbd5e1'; drop.style.background = ''; }
+            const btn = document.getElementById('importConfirmBtn'); if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
+            const ov = document.getElementById('importOverlay'); if (ov) ov.classList.add('active');
+            _wireImportDrop();
+        }
+        function _wireImportDrop() {
+            const drop = document.getElementById('importDrop'); if (!drop || drop._wired) return;
+            drop._wired = true;
+            ['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.style.borderColor = '#3b82f6'; drop.style.background = '#eff6ff'; }));
+            ['dragleave', 'dragend'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.style.borderColor = '#cbd5e1'; drop.style.background = ''; }));
+            drop.addEventListener('drop', e => { e.preventDefault(); drop.style.borderColor = '#cbd5e1'; drop.style.background = ''; const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) _handleImportFile(f); });
+        }
+        async function importScannerReport(input) {
+            const file = input && input.files && input.files[0];
+            if (input) input.value = '';
+            if (file) await _handleImportFile(file);
+        }
+        async function _handleImportFile(file) {
+            const sum = document.getElementById('importSummary');
+            try {
+                if (sum) sum.innerHTML = '<div style="color:#64748b;font-size:13px;padding:8px 0">Reading “' + __esc(file.name) + '”…</div>';
+                await ensureXLSX();
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+                const parsed = _parseReportRows(aoa);
+                if (!parsed.stats.orders) { if (sum) sum.innerHTML = '<div style="color:#ef4444;font-size:13px;padding:8px 0">No picking rows found — is this the InventoryWarehouseDetails report?</div>'; return; }
+                parsed.fileName = file.name;
+                try { const c = await (await fetch('/api/scanner-activity')).json(); parsed.existingDays = c.days || []; } catch (_) { parsed.existingDays = []; }
+                __importParsed = parsed;
+                _showImportPreview(parsed);
+            } catch (e) { if (sum) sum.innerHTML = `<div style="color:#ef4444;font-size:13px;padding:8px 0">Error: ${__esc(e.message)}</div>`; }
+        }
+        function _showImportPreview(p) {
+            const s = p.stats;
+            const opRows = Object.entries(s.ops).sort((a, b) => b[1].orders - a[1].orders).map(([op, v]) =>
+                `<tr><td>${__esc(op)}</td><td style="text-align:right">${v.orders}</td><td style="text-align:right">${Math.round(v.skus).toLocaleString()}</td><td style="text-align:right">${v.min.toFixed(1)}m</td></tr>`).join('');
+            const dayChips = (p.days.length ? p.days : ['(no date found)']).map(d => {
+                const already = p.existingDays.includes(d);
+                return `<span style="display:inline-block;padding:2px 9px;margin:2px;border-radius:6px;font-size:12px;${already ? 'background:#fef3c7;color:#92400e' : 'background:#dcfce7;color:#166534'}">${__esc(d)} ${d.includes('no date') ? '' : (already ? '· will update' : '· new')}</span>`;
             }).join('');
+            const tile = (n, l) => `<div style="text-align:center;padding:0 6px"><div style="font-size:22px;font-weight:600;line-height:1">${n}</div><div style="font-size:11px;color:#64748b">${l}</div></div>`;
+            document.getElementById('importSummary').innerHTML = `
+                <div style="font-size:13px;color:#475569;margin-bottom:10px">📄 <strong>${__esc(p.fileName)}</strong></div>
+                <div style="display:flex;gap:10px;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap">
+                    ${tile(s.orders, 'picked orders')}${tile(Object.keys(s.ops).length, 'operators')}${tile(Math.round(s.totalSkus).toLocaleString(), 'SKUs picked')}${tile(Math.round(s.totalMin) + 'm', 'time tracked')}
+                </div>
+                <div style="font-size:12px;color:#475569;margin-bottom:4px">Day(s) this import will register:</div>
+                <div style="margin-bottom:14px">${dayChips}</div>
+                <table class="tr-table" style="min-width:0"><thead><tr><th>Operator</th><th style="text-align:right">Orders</th><th style="text-align:right">SKUs</th><th style="text-align:right">Time</th></tr></thead><tbody>${opRows}</tbody></table>`;
+            const drop = document.getElementById('importDrop'); if (drop) drop.style.display = 'none';
+            const btn = document.getElementById('importConfirmBtn'); if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        }
+        function closeImportModal() { document.getElementById('importOverlay').classList.remove('active'); }
+        async function confirmImport() {
+            if (!__importParsed) return;
+            const btn = document.getElementById('importConfirmBtn');
+            btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Importing…';
+            try {
+                const res = await fetch('/api/scanner-activity/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scanned: __importParsed.scanned, days: __importParsed.days }) });
+                const j = await res.json();
+                if (!res.ok || !j.success) throw new Error(j.error || 'import failed');
+                closeImportModal();
+                openPickErrors();
+            } catch (e) { alert('Import error: ' + e.message); }
+            finally { btn.disabled = false; btn.textContent = orig; }
         }
 
         // ══════════════════════════════════════════════════════

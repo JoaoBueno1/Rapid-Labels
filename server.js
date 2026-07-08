@@ -65,7 +65,7 @@ app.use((req, res, next) => {
 });
 
 // JSON body parsing (2MB for stocktake MAP uploads)
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '8mb' })); // 8mb: scanner-report grand-dump imports can be large
 
 // Static caching headers — short cache for JS/CSS (feature files change frequently)
 app.use((req, res, next) => {
@@ -84,6 +84,47 @@ app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// ── Scanner activity (Cin7 InventoryWarehouseDetails ingest) — SO → operator map ──
+// Same-origin (staff tool, same trust as the rest of the app). The data file is
+// gitignored (employee names). Returns an empty map until a report is ingested via
+// cin7-stock-sync/ingest-scanner-report.js. Used to tag pick anomalies scanner vs manual.
+app.get('/api/scanner-activity', (req, res) => {
+  try {
+    const fs = require('fs');
+    const p = path.join(__dirname, 'data', 'scanner_activity.json');
+    if (!fs.existsSync(p)) return res.json({ count: 0, days: [], scanned: {} });
+    res.type('application/json').send(fs.readFileSync(p, 'utf8'));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Import a parsed scanner report ({ scanned:{SO:{op,date}}, days:[] }) — merges by SO.
+// The xlsx/csv is parsed client-side; this just persists the map (gitignored file).
+app.post('/api/scanner-activity/import', (req, res) => {
+  try {
+    const fs = require('fs');
+    const dir = path.join(__dirname, 'data'), p = path.join(dir, 'scanner_activity.json');
+    const incoming = req.body && req.body.scanned;
+    if (!incoming || typeof incoming !== 'object') return res.status(400).json({ error: 'no "scanned" map in body' });
+    fs.mkdirSync(dir, { recursive: true });
+    let cur = { scanned: {}, days: [] };
+    if (fs.existsSync(p)) { try { cur = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) {} }
+    cur.scanned = cur.scanned || {};
+    let imported = 0;
+    for (const [so, v] of Object.entries(incoming)) { if (so) { cur.scanned[so] = v; imported++; } }
+    const days = new Set(cur.days || []);
+    (req.body.days || []).forEach(d => days.add(d));
+    cur.days = [...days].sort();
+    cur.count = Object.keys(cur.scanned).length;
+    cur.generated_at = new Date().toISOString().slice(0, 10);
+    fs.writeFileSync(p, JSON.stringify(cur));
+    res.json({ success: true, imported, total: cur.count, days: cur.days });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Cin7 Webhook & Stock Audit routes ──

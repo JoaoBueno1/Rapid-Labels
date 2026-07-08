@@ -42,3 +42,6 @@ Thumbs.db
 
 # Supabase local emulator data (if ever used)
 .supabase/
+
+# scanner report ingest (employee names — do not commit)
+data/scanner_activity.json

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pick Productivity — Rapid Led</title>
+  <script>
+    // Self-heal stale cache (this app abandoned its service worker)
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {}); }
+    if (window.caches && caches.keys) { caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {}); }
+  </script>
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="pick-productivity.css?v=20260708c" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="/index.html" class="nav-link">Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container wide-container pp-shell">
+
+    <div class="pp-topbar">
+      <div>
+        <h1 class="pp-title">Pick Productivity</h1>
+        <div class="pp-sub" id="ppSub">Loading…</div>
+      </div>
+      <div class="pp-controls">
+        <div class="pp-field"><label>From</label><input type="date" id="ppFrom" /></div>
+        <div class="pp-field"><label>To</label><input type="date" id="ppTo" /></div>
+        <div class="pp-field"><label>Operator</label>
+          <select id="ppOp" style="font-family:inherit;font-size:13px;height:32px;padding:6px 9px;border:1px solid #d4cfc5;background:#fff;outline:none;border-radius:0">
+            <option value="all">All operators</option>
+          </select>
+        </div>
+        <div class="pp-range" style="display:flex;gap:4px;align-self:flex-end">
+          <button class="pp-btn pp-btn-secondary" onclick="ppQuickRange(7)" type="button">7d</button>
+          <button class="pp-btn pp-btn-secondary" onclick="ppQuickRange(30)" type="button">30d</button>
+          <button class="pp-btn pp-btn-secondary" onclick="ppQuickRange(0)" type="button">All</button>
+        </div>
+        <button class="pp-btn" id="ppImport" type="button">Import report</button>
+      </div>
+    </div>
+
+    <div id="ppContent">
+      <div class="pp-kpis" id="ppKpis"></div>
+
+      <div class="pp-grid-2">
+        <div class="pp-card">
+          <div class="pp-card-title">Orders per day &amp; errors</div>
+          <div class="pp-chart-wrap"><canvas id="ppChartDay"></canvas></div>
+        </div>
+        <div class="pp-card" id="ppOpChartCard">
+          <div class="pp-card-title">Orders by operator</div>
+          <div class="pp-chart-wrap"><canvas id="ppChartOp"></canvas></div>
+        </div>
+      </div>
+
+      <div class="pp-card" id="ppOpCard">
+        <div class="pp-card-title">By operator</div>
+        <div style="overflow-x:auto">
+          <table class="pp-table">
+            <thead><tr>
+              <th>Operator</th><th class="r">Orders</th><th class="r">SKUs</th><th class="r">Time</th><th class="r">SKUs / hr</th><th class="r">Avg / order</th><th class="r">Errors</th><th class="r">Error %</th>
+            </tr></thead>
+            <tbody id="ppOpBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pp-card">
+        <div class="pp-card-title">By day</div>
+        <div style="overflow-x:auto">
+          <table class="pp-table">
+            <thead><tr>
+              <th>Date</th><th class="r">Orders</th><th class="r">SKUs</th><th class="r">Time</th><th class="r">SKUs / hr</th><th class="r">Operators</th><th class="r">Errors</th>
+            </tr></thead>
+            <tbody id="ppDayBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pp-card">
+        <div class="pp-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <span>Pick errors <span id="ppErrCount" style="color:#6b6b6b;font-weight:400;text-transform:none;letter-spacing:0"></span></span>
+          <input type="text" id="ppErrSearch" placeholder="Search order, SKU, operator…" style="font-family:inherit;font-size:12px;padding:6px 9px;border:1px solid #d4cfc5;background:#fff;outline:none;max-width:260px" oninput="ppErrSearchChanged()" />
+        </div>
+        <div class="pp-note">An error = a SKU picked from a stock shelf that is not the product's pickface. Scanner and manual picks are both counted (manual has no operator). Excludes staging locations (DOCK, RETURNS, PRODUCTION, SAMPLES, GA), transfers, reviewed non-error shelves and FG.</div>
+        <div style="overflow-x:auto">
+          <table class="pp-table">
+            <thead><tr>
+              <th>Date</th><th>Order</th><th>Operator</th><th>SKU</th><th class="r">Qty</th><th>Picked from (shelf)</th><th>Should be (pickface)</th>
+            </tr></thead>
+            <tbody id="ppErrBody"></tbody>
+          </table>
+        </div>
+        <div class="pp-pager" id="ppPager"></div>
+      </div>
+    </div>
+
+    <div class="pp-empty" id="ppEmpty" style="display:none">
+      No pick data yet. Import the Cin7 InventoryWarehouseDetails report to begin.
+      <div style="margin-top:16px"><button class="pp-btn" onclick="ppOpenImport()" type="button">Import report</button></div>
+    </div>
+
+  </main>
+
+  <!-- ═══ Import modal ═══ -->
+  <div class="pp-modal" id="ppImportModal">
+    <div class="pp-modal-box">
+      <div class="pp-modal-head">
+        <h3>Import Scanner Report</h3>
+        <button class="pp-modal-close" onclick="ppCloseImport()" type="button">×</button>
+      </div>
+      <div class="pp-modal-body">
+        <label class="pp-drop" id="ppDrop">
+          <div style="font-size:13px;color:#334155"><strong>Click to choose</strong> or drop the file here</div>
+          <div style="font-size:12px;color:#94a3b8">Cin7 InventoryWarehouseDetails — .xlsx or .csv</div>
+          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="ppImportFile(this)" />
+        </label>
+        <div id="ppImportSummary" style="margin-top:14px"></div>
+      </div>
+      <div class="pp-modal-foot">
+        <button class="pp-btn pp-btn-secondary" onclick="ppCloseImport()" type="button">Cancel</button>
+        <button class="pp-btn" id="ppImportConfirm" disabled style="opacity:.5" onclick="ppConfirmImport()" type="button">Confirm import</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ppToast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <script src="pick-productivity.js?v=20260708j"></script>
+</body>
+</html>

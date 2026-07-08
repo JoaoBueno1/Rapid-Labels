@@ -1,0 +1,104 @@
+/* ════════════════════════════════════════════════════════════════
+   Pick Productivity — module styles (pp-* prefix)
+   Professional, minimal colour, IBM Plex. Same design language as
+   Container Builder / Container Check. Loaded after global styles.css.
+   ════════════════════════════════════════════════════════════════ */
+
+.pp-shell {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: #FAF8F5;
+  color: #1a1a1a;
+  padding: 16px 22px 52px !important;
+}
+.pp-shell .mono,
+.pp-kpi-value,
+.pp-table td.num,
+.pp-table th { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
+
+/* ─── Top bar ─── */
+.pp-topbar {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  border-bottom: 2px solid #1a1a1a; padding-bottom: 14px; margin-bottom: 18px;
+}
+.pp-title { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; margin: 0; }
+.pp-sub { font-size: 12px; color: #6b6b6b; margin-top: 4px; }
+.pp-controls { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.pp-field { display: flex; flex-direction: column; gap: 3px; }
+.pp-field label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b6b6b; }
+.pp-field input {
+  font-family: inherit; font-size: 13px; padding: 6px 9px; height: 32px;
+  border: 1px solid #d4cfc5; background: #fff; border-radius: 0; color: #1a1a1a; outline: none;
+}
+.pp-field input:focus { border-color: #1a1a1a; }
+
+.pp-btn {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.08em; padding: 0 14px; height: 32px; border: 1px solid #1a1a1a;
+  background: #1a1a1a; color: #FAF8F5; cursor: pointer; border-radius: 0; transition: all .15s;
+}
+.pp-btn:hover { background: #000; }
+.pp-btn:disabled { opacity: .4; cursor: not-allowed; }
+.pp-btn-secondary { background: transparent; color: #1a1a1a; }
+.pp-btn-secondary:hover { background: #1a1a1a; color: #FAF8F5; }
+
+/* ─── KPI tiles ─── */
+.pp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.pp-kpi { border: 2px solid #1a1a1a; background: #fff; padding: 12px 14px; }
+.pp-kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b6b6b; }
+.pp-kpi-value { font-size: 26px; font-weight: 500; line-height: 1.1; margin-top: 6px; }
+.pp-kpi-unit { font-size: 11px; color: #94a3b8; margin-left: 4px; font-family: 'IBM Plex Sans', sans-serif; }
+
+/* ─── Cards ─── */
+.pp-card { background: #fff; border: 1px solid #d4cfc5; padding: 14px 16px; margin-bottom: 16px; }
+.pp-card-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #1a1a1a; font-weight: 600; margin: 0 0 12px; }
+.pp-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .pp-grid-2 { grid-template-columns: 1fr; } }
+.pp-chart-wrap { position: relative; height: 268px; }
+
+/* ─── Tables ─── */
+.pp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pp-table th {
+  background: #1a1a1a; color: #FAF8F5; text-align: left; padding: 8px 10px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; white-space: nowrap;
+}
+.pp-table th.r, .pp-table td.r { text-align: right; }
+.pp-table td { padding: 7px 10px; border-top: 1px solid #ece7dc; }
+.pp-table td.num { font-feature-settings: 'tnum'; }
+.pp-table tbody tr:hover { background: #f8f6f1; }
+.pp-table .op { font-weight: 500; }
+.pp-empty { padding: 40px; text-align: center; color: #94a3b8; font-size: 13px; border: 1px dashed #d4cfc5; background: #fff; }
+.pp-note { font-size: 11px; color: #6b6b6b; margin-bottom: 10px; padding: 7px 10px; background: #f6f4ef; border-left: 2px solid #d4cfc5; }
+.pp-pager { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.pp-pager .pp-pg-info { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #6b6b6b; margin-right: auto; }
+.pp-pg-btn { font-family: 'IBM Plex Mono', monospace; font-size: 11px; padding: 5px 11px; border: 1px solid #d4cfc5; background: #fff; cursor: pointer; }
+.pp-pg-btn:hover:not(:disabled) { border-color: #1a1a1a; }
+.pp-pg-btn:disabled { opacity: .35; cursor: not-allowed; }
+.pp-op-row { cursor: pointer; }
+
+/* ─── Import modal ─── */
+.pp-modal { position: fixed; inset: 0; background: rgba(26,26,26,.45); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.pp-modal.active { display: flex; }
+.pp-modal-box { background: #fff; border: 2px solid #1a1a1a; width: 100%; max-width: 600px; max-height: 92vh; overflow-y: auto; }
+.pp-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #ece7dc; }
+.pp-modal-head h3 { font-size: 15px; font-weight: 500; margin: 0; }
+.pp-modal-close { background: none; border: none; font-size: 24px; line-height: 1; cursor: pointer; color: #1a1a1a; opacity: .55; }
+.pp-modal-close:hover { opacity: 1; }
+.pp-modal-body { padding: 16px 18px; }
+.pp-modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid #ece7dc; }
+.pp-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 2px dashed #cbd5e1; padding: 30px; cursor: pointer; color: #6b6b6b; text-align: center; transition: all .15s; }
+.pp-drop:hover { border-color: #1a1a1a; }
+.pp-drop strong { color: #1a1a1a; }
+.pp-tiles { display: flex; gap: 12px; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
+.pp-tile { text-align: center; padding: 0 6px; }
+.pp-tile-v { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 500; line-height: 1; }
+.pp-tile-l { font-size: 11px; color: #6b6b6b; margin-top: 3px; }
+.pp-chip { display: inline-block; padding: 2px 9px; margin: 2px; border-radius: 2px; font-size: 12px; border: 1px solid #d4cfc5; }
+.pp-chip.new { border-color: #86efac; color: #166534; background: #f0fdf4; }
+.pp-chip.upd { border-color: #fde68a; color: #92400e; background: #fffbeb; }
+
+/* ─── Toast ─── */
+#ppToast { position: fixed; bottom: 22px; right: 22px; z-index: 2000; }
+.pp-toast { background: #1a1a1a; color: #FAF8F5; padding: 10px 16px; font-size: 12px; max-width: 340px; margin-top: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.pp-toast.err { background: #DC2F02; }
+.pp-toast.ok { background: #2A9D8F; }
