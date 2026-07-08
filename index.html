@@ -498,25 +498,25 @@
 
                     <!-- Order flow board (left → right) -->
                     <div class="wh-flow">
-                        <div class="wh-flow-stage stage-ordered clickable" onclick="openOrdersModal()">
+                        <div class="wh-flow-stage stage-ordered clickable" onclick="openOrdersModal('ordered')">
                             <div class="wh-flow-val loading" id="flowOrderedVal">—</div>
                             <div class="wh-flow-label">Ordered</div>
                             <div class="wh-flow-sub" id="flowOrderedSub">awaiting pick</div>
                         </div>
                         <div class="wh-flow-arrow">→</div>
-                        <div class="wh-flow-stage stage-picking clickable" onclick="openOrdersModal()">
+                        <div class="wh-flow-stage stage-picking clickable" onclick="openOrdersModal('picking')">
                             <div class="wh-flow-val loading" id="flowPickingVal">—</div>
                             <div class="wh-flow-label">Picking</div>
                             <div class="wh-flow-sub" id="flowPickingSub">in progress</div>
                         </div>
                         <div class="wh-flow-arrow">→</div>
-                        <div class="wh-flow-stage stage-topack clickable" onclick="openOrdersModal()">
+                        <div class="wh-flow-stage stage-topack clickable" onclick="openOrdersModal('topack')">
                             <div class="wh-flow-val loading" id="flowToPackVal">—</div>
                             <div class="wh-flow-label">To Pack</div>
                             <div class="wh-flow-sub">picked · awaiting pack</div>
                         </div>
                         <div class="wh-flow-arrow">→</div>
-                        <div class="wh-flow-stage stage-completed">
+                        <div class="wh-flow-stage stage-completed clickable" onclick="openOrdersModal('completed')">
                             <div class="wh-flow-val loading" id="flowCompletedVal">—</div>
                             <div class="wh-flow-label">Completed</div>
                             <div class="wh-flow-sub">today</div>
@@ -1032,7 +1032,7 @@
     <div class="orders-modal-overlay" id="ordersModalOverlay" onclick="if(event.target===this)closeOrdersModal()">
         <div class="orders-modal">
             <div class="orders-modal-header">
-                <h2>📦 Order Pipeline</h2>
+                <h2 id="ordersModalTitle">📦 Order Pipeline</h2>
                 <span class="orders-count" id="ordersCount"></span>
                 <button class="orders-modal-close" onclick="closeOrdersModal()">&times;</button>
             </div>
@@ -1877,13 +1877,31 @@
         let _ordersViewFilter = 'active'; // 'active' or 'completed'
         let _ordersStatusFilter = 'all'; // 'all' or specific status
         let _ordersDateSort = 'desc'; // 'desc' = newest first, 'asc' = oldest first
+        let _ordersStageFilter = 'all'; // 'all' | 'ordered' | 'picking' | 'topack' (from a clicked flow tile)
+        const _STAGE_LABEL = { ordered: 'Ordered', picking: 'Picking', topack: 'To Pack', completed: 'Completed' };
         const _activeStatuses = ['PICKING', 'PICKED', 'PACKING', 'ORDERED'];
         const _completedModalStatuses = ['COMPLETED'];
 
-        function openOrdersModal() {
+        function openOrdersModal(stage) {
+            _ordersStageFilter = stage || 'all';
+            _ordersViewFilter = stage === 'completed' ? 'completed' : 'active';
+            _ordersStatusFilter = 'all';
+            _ordersTypeFilter = 'all';
+            // reflect the scoped state on the modal chrome
+            document.querySelectorAll('.orders-filter-btn[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === _ordersViewFilter));
+            document.querySelectorAll('.orders-filter-btn[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+            const label = _ordersViewFilter === 'completed' ? 'Completed' : 'Created';
+            const dh = document.getElementById('dateHeader'); if (dh) dh.innerHTML = label + ' ' + (_ordersDateSort === 'desc' ? '▼' : '▲');
+            _setOrdersModalScope();
             document.getElementById('ordersModalOverlay').classList.add('active');
             document.body.style.overflow = 'hidden';
             renderOrdersTable();
+        }
+        // Show which flow stage the modal is scoped to (title chip)
+        function _setOrdersModalScope() {
+            const h = document.getElementById('ordersModalTitle'); if (!h) return;
+            const lbl = _STAGE_LABEL[_ordersStageFilter];
+            h.innerHTML = lbl ? `📦 Order Pipeline <span style="color:#64748b;font-weight:500">— ${lbl}</span>` : '📦 Order Pipeline';
         }
         function closeOrdersModal() {
             document.getElementById('ordersModalOverlay').classList.remove('active');
@@ -1894,6 +1912,8 @@
             btn.classList.add('active');
             _ordersViewFilter = btn.dataset.view;
             _ordersStatusFilter = 'all'; // reset status filter on view change
+            _ordersStageFilter = 'all';  // manual view change clears the flow-tile scope
+            _setOrdersModalScope();
             const label = _ordersViewFilter === 'completed' ? 'Completed' : 'Created';
             document.getElementById('dateHeader').innerHTML = label + ' ' + (_ordersDateSort === 'desc' ? '▼' : '▲');
             renderOrdersTable();
@@ -1937,6 +1957,8 @@
             document.querySelectorAll('.orders-filter-btn[data-filter="all"],.orders-filter-btn[data-filter="SO"],.orders-filter-btn[data-filter="TR"]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             _ordersTypeFilter = btn.dataset.filter;
+            _ordersStageFilter = 'all';  // manual type change clears the flow-tile scope
+            _setOrdersModalScope();
             renderOrdersTable();
         }
 
@@ -1960,8 +1982,23 @@
                 return awaitingPick || r.pick_status === 'PICKING' || (r.pick_status === 'PICKED' && r.pack_status !== 'PACKED');
             };
 
+            // Stage scope (set when a flow tile is clicked). 'completed' is already
+            // handled by the completed view above, so only the 3 active stages gate here.
+            const inStage = r => {
+                if (r.type !== 'SO') return false;   // the flow funnel is sales-orders only (TR live in the footer)
+                if (_ordersStageFilter === 'ordered') return r.status === 'ORDERED' && r.pick_status !== 'PICKING' && r.pick_status !== 'PICKED';
+                if (_ordersStageFilter === 'picking') return r.pick_status === 'PICKING';
+                if (_ordersStageFilter === 'topack')  return r.pick_status === 'PICKED' && r.pack_status !== 'PACKED';
+                return true;
+            };
+
+            // When scoped to a flow tile, match that tile exactly (incl. aged/backordered
+            // stuck orders) so the modal count == the tile and the stuck ones are visible.
+            // Unscoped, keep the tidy daily "active" view.
+            const useStage = _ordersStageFilter !== 'all' && _ordersStageFilter !== 'completed';
             let rows = data.filter(r => {
-                if (!inView(r)) return false;
+                if (useStage) { if (DONE.includes(r.status) || !inStage(r)) return false; }
+                else if (!inView(r)) return false;
                 if (_ordersStatusFilter !== 'all' && r.status !== _ordersStatusFilter) return false;
                 if (_ordersTypeFilter !== 'all' && r.type !== _ordersTypeFilter) return false;
                 if (search) {
@@ -1982,7 +2019,7 @@
             const tbody = document.getElementById('ordersTableBody');
             const empty = document.getElementById('ordersEmpty');
             const countEl = document.getElementById('ordersCount');
-            const totalInView = data.filter(inView).length;
+            const totalInView = useStage ? data.filter(r => !DONE.includes(r.status) && inStage(r)).length : data.filter(inView).length;
             if (countEl) countEl.textContent = `${rows.length}` + (rows.length < totalInView ? ` of ${totalInView}` : '');
 
             if (rows.length === 0) {
