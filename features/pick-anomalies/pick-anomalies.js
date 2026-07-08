@@ -145,7 +145,20 @@
     perPage: 50,
     totalOrders: 0,
     stats: null,  // Global KPI stats (all orders, not just current page)
+    scanner: {},          // SO -> { op, date } from the scanner report (Pick Productivity)
+    scannerLoaded: false,
   };
+
+  /* Scanner report map — links an order to the operator who scanned it.
+     Fetched once; server-backed (same source as the Pick Productivity page). */
+  async function ensureScanner() {
+    if (state.scannerLoaded) return;
+    try {
+      const r = await fetch('/api/scanner-activity');
+      if (r.ok) { const d = await r.json(); state.scanner = d.scanned || {}; }
+    } catch (_) { /* non-fatal: column falls back to "manual" */ }
+    state.scannerLoaded = true;
+  }
 
   /* ═══════════════════════════════════════════════
      BIN PARSING & ERROR CLASSIFICATION
@@ -342,7 +355,7 @@
           setSyncStatus('error', '⚠️ Database tables not created yet');
           const tableBody = document.getElementById('paTableBody');
           if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:40px">
+            tableBody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:40px">
               <div style="font-size:16px;font-weight:600;color:#b45309;margin-bottom:8px">⚠️ Setup Required</div>
               <div style="font-size:13px;color:#64748b;margin-bottom:12px">The Pick Anomalies tables have not been created in Supabase yet.</div>
               <div style="font-size:13px;color:#64748b">Go to <b>Supabase Dashboard → SQL Editor</b> and run the migration file:</div>
@@ -360,6 +373,7 @@
       state.orders = data.orders || [];
       state.totalOrders = data.total || state.orders.length;
 
+      await ensureScanner();
       renderOrdersTable();
       renderPagination();
 
@@ -488,7 +502,7 @@
     card.style.display = '';
 
     if (!state.orders.length) {
-      tbody.innerHTML = '<tr><td colspan="12" class="pa-empty">No orders found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" class="pa-empty">No orders found.</td></tr>';
       return;
     }
 
@@ -499,6 +513,7 @@
       // assembly (FG) — so a sale whose only error is in the assembly still shows
       // and surfaces in the Anomalies/Pending filters.
       const anom = (o.anomaly_picks || 0) + (o.fg_anomaly_picks || 0);
+      const sc = state.scanner[o.order_number];   // scanner report link (operator), if any
       const correct = o.correct_picks || 0;
       const fg = o.fg_count || 0;
       const corrections = o.corrections || [];
@@ -592,6 +607,7 @@
         <td><input type="checkbox" class="pa-bulk-check" data-idx="${idx}" onclick="event.stopPropagation(); PA.toggleBulk(${idx}, this.checked)" ${state.selectedBulk.has(idx) ? 'checked' : ''} /></td>
         <td onclick="PA.openDetail(${idx})">${offset + idx + 1}</td>
         <td onclick="PA.openDetail(${idx})"><strong>${esc(o.order_number)}</strong>${o.entity_type === 'assembly' ? ' <span class="pa-badge" style="background:#ede9fe;color:#6d28d9;font-size:10px">🔧 Assembly</span>' : ((o.fg_anomaly_picks || 0) > 0 ? ' <span class="pa-badge" style="background:#fef3c7;color:#92400e;font-size:10px" title="Anomaly is in the linked assembly">🔧 FG</span>' : (fg > 0 ? ' <span class="pa-badge" style="background:#f3f4f6;color:#6b7280;font-size:10px">FG</span>' : ''))}</td>
+        <td onclick="PA.openDetail(${idx})">${o.entity_type === 'assembly' ? '<span style="color:#9ca3af">—</span>' : (sc && sc.op ? `<span title="Linked to scanner report">${esc(sc.op)}</span>` : '<span style="color:#9ca3af" title="Order not found in the scanner report">manual</span>')}</td>
         <td onclick="PA.openDetail(${idx})">${formatDate(o.order_date)}</td>
         <td onclick="PA.openDetail(${idx})">${formatDate(o.fulfilled_date)}</td>
         <td onclick="PA.openDetail(${idx})">${esc(o.customer)}</td>

@@ -119,6 +119,7 @@
                 <th style="width:30px"><input type="checkbox" title="Select All" onchange="PA.toggleBulkAll(this.checked)" /></th>
                 <th>#</th>
                 <th title="Sales order (SO-) or assembly build (FG-)">Order / Assembly</th>
+                <th title="Operator who scanned this order (from the scanner report). 'manual' = the order isn't in the report.">Picker</th>
                 <th>Date</th>
                 <th title="Cin7 'Ship' stage date — when picks were finalised and stock left the bins. Includes dispatched orders and customer collections.">Ship Stage</th>
                 <th>Customer</th>
@@ -226,7 +227,7 @@
     </div>
   </div>
 
-  <script src="pick-anomalies.js?v=20260611a"></script>
+  <script src="pick-anomalies.js?v=20260708a"></script>
   <!-- Analytics v2 deps: Chart.js (charts) + html2canvas & jsPDF (PNG/PDF export) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
