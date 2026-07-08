@@ -90,8 +90,28 @@ app.get('/', (req, res) => {
 // Same-origin (staff tool, same trust as the rest of the app). The data file is
 // gitignored (employee names). Returns an empty map until a report is ingested via
 // cin7-stock-sync/ingest-scanner-report.js. Used to tag pick anomalies scanner vs manual.
-app.get('/api/scanner-activity', (req, res) => {
+app.get('/api/scanner-activity', async (req, res) => {
   try {
+    if (supabaseBackend) {                 // durable store (service_role bypasses RLS)
+      try {
+        let rows = [], from = 0;
+        for (;;) {
+          const { data, error } = await supabaseBackend.from('scanner_activity')
+            .select('order_number,op,scan_date,skus,minutes').range(from, from + 999);
+          if (error) throw error;
+          rows.push(...(data || []));
+          if (!data || data.length < 1000) break;
+          from += 1000;
+        }
+        const scanned = {}, days = new Set();
+        for (const r of rows) {
+          scanned[r.order_number] = { op: r.op, date: r.scan_date, skus: Number(r.skus) || 0, min: Number(r.minutes) || 0 };
+          if (r.scan_date) days.add(r.scan_date);
+        }
+        return res.json({ count: rows.length, days: [...days].sort(), scanned });
+      } catch (_) { /* table not migrated yet / transient — degrade to file/empty below */ }
+    }
+    // dev fallback: local gitignored file when no service key is configured
     const fs = require('fs');
     const p = path.join(__dirname, 'data', 'scanner_activity.json');
     if (!fs.existsSync(p)) return res.json({ count: 0, days: [], scanned: {} });
@@ -103,12 +123,28 @@ app.get('/api/scanner-activity', (req, res) => {
 
 // Import a parsed scanner report ({ scanned:{SO:{op,date}}, days:[] }) — merges by SO.
 // The xlsx/csv is parsed client-side; this just persists the map (gitignored file).
-app.post('/api/scanner-activity/import', (req, res) => {
+app.post('/api/scanner-activity/import', async (req, res) => {
   try {
-    const fs = require('fs');
-    const dir = path.join(__dirname, 'data'), p = path.join(dir, 'scanner_activity.json');
     const incoming = req.body && req.body.scanned;
     if (!incoming || typeof incoming !== 'object') return res.status(400).json({ error: 'no "scanned" map in body' });
+    if (supabaseBackend) {                 // durable store: upsert by SO (no double-count on re-import)
+      const now = new Date().toISOString();
+      const rows = Object.entries(incoming).filter(([so]) => so).map(([so, v]) => ({
+        order_number: so, op: v.op || null, scan_date: v.date || null,
+        skus: Number(v.skus) || 0, minutes: Number(v.min) || 0, updated_at: now,
+      }));
+      let imported = 0;
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await supabaseBackend.from('scanner_activity').upsert(rows.slice(i, i + 500), { onConflict: 'order_number' });
+        if (error) throw new Error(error.message || 'scanner_activity write failed — is the migration applied?');
+        imported += Math.min(500, rows.length - i);
+      }
+      const { count } = await supabaseBackend.from('scanner_activity').select('*', { count: 'exact', head: true });
+      return res.json({ success: true, imported, total: count ?? imported });
+    }
+    // dev fallback: local gitignored file when no service key is configured
+    const fs = require('fs');
+    const dir = path.join(__dirname, 'data'), p = path.join(dir, 'scanner_activity.json');
     fs.mkdirSync(dir, { recursive: true });
     let cur = { scanned: {}, days: [] };
     if (fs.existsSync(p)) { try { cur = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) {} }
