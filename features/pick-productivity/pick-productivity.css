@@ -76,6 +76,18 @@
 .pp-pg-btn:disabled { opacity: .35; cursor: not-allowed; }
 .pp-op-row { cursor: pointer; }
 
+/* ─── Pick-error exclude ─── */
+.pp-x-btn {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  padding: 3px 9px; border: 1px solid #d4cfc5; background: #fff; color: #6b6b6b; cursor: pointer; border-radius: 0; white-space: nowrap;
+}
+.pp-x-btn:hover { border-color: #b91c1c; color: #b91c1c; }
+.pp-x-restore { border-color: #cbb7b7; color: #b91c1c; }
+.pp-x-restore:hover { background: #b91c1c; color: #fff; border-color: #b91c1c; }
+.pp-table tbody tr.pp-row-excluded { background: #fdeaea; color: #9b6a6a; }
+.pp-table tbody tr.pp-row-excluded:hover { background: #fbdede; }
+.pp-table tbody tr.pp-row-excluded .op { color: #9b6a6a; }
+
 /* ─── Import modal ─── */
 .pp-modal { position: fixed; inset: 0; background: rgba(26,26,26,.45); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
 .pp-modal.active { display: flex; }

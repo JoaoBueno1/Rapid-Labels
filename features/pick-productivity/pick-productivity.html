@@ -11,7 +11,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/styles.css" />
-  <link rel="stylesheet" href="pick-productivity.css?v=20260708c" />
+  <link rel="stylesheet" href="pick-productivity.css?v=20260710a" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
 </head>
 <body>
@@ -93,13 +93,16 @@
       <div class="pp-card">
         <div class="pp-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
           <span>Pick errors <span id="ppErrCount" style="color:#6b6b6b;font-weight:400;text-transform:none;letter-spacing:0"></span></span>
-          <input type="text" id="ppErrSearch" placeholder="Search order, SKU, operator…" style="font-family:inherit;font-size:12px;padding:6px 9px;border:1px solid #d4cfc5;background:#fff;outline:none;max-width:260px" oninput="ppErrSearchChanged()" />
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="pp-btn pp-btn-secondary" id="ppShowExcl" type="button" onclick="ppToggleExcluded()">Show excluded</button>
+            <input type="text" id="ppErrSearch" placeholder="Search order, SKU, operator…" style="font-family:inherit;font-size:12px;padding:6px 9px;border:1px solid #d4cfc5;background:#fff;outline:none;max-width:260px" oninput="ppErrSearchChanged()" />
+          </span>
         </div>
-        <div class="pp-note">An error = a SKU picked from a stock shelf that is not the product's pickface. Scanner and manual picks are both counted (manual has no operator). Excludes staging locations (DOCK, RETURNS, PRODUCTION, SAMPLES, GA), transfers, reviewed non-error shelves and FG.</div>
+        <div class="pp-note">An error = a SKU picked from a stock shelf that is not the product's pickface. Scanner and manual picks are both counted (manual has no operator). Excludes staging locations (DOCK, RETURNS, PRODUCTION, SAMPLES, GA), transfers, reviewed non-error shelves and FG. <strong>Rows you Exclude are not counted</strong> anywhere (KPIs, charts, totals) — use “Show excluded” to review or restore them.</div>
         <div style="overflow-x:auto">
           <table class="pp-table">
             <thead><tr>
-              <th>Date</th><th>Order</th><th>Operator</th><th>SKU</th><th class="r">Qty</th><th>Picked from (shelf)</th><th>Should be (pickface)</th>
+              <th>Date</th><th>Order</th><th>Operator</th><th>SKU</th><th class="r">Qty</th><th>Picked from (shelf)</th><th>Should be (pickface)</th><th class="r">Action</th>
             </tr></thead>
             <tbody id="ppErrBody"></tbody>
           </table>
@@ -142,6 +145,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="pick-productivity.js?v=20260708j"></script>
+  <script src="pick-productivity.js?v=20260710a"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@
  */
 'use strict';
 
-const PP = { data: { scanned: {}, days: [] }, anomalies: [], errRows: [], stagingRows: [], from: null, to: null, op: 'all', errPage: 1, chartDay: null, chartTrend: null, chartOp: null, import: null };
+const PP = { data: { scanned: {}, days: [] }, anomalies: [], errRows: [], manualRows: [], stagingRows: [], excludedRows: [], excluded: new Set(), rowByKey: {}, showExcluded: false, from: null, to: null, op: 'all', errPage: 1, chartDay: null, chartTrend: null, chartOp: null, import: null };
 const PER_PAGE = 20;
 const CHART_INK = '#334155', CHART_RED = '#b91c1c';
 const $ = id => document.getElementById(id);
@@ -33,6 +33,7 @@ async function ppLoad() {
   try { const r = await fetch('/api/scanner-activity'); PP.data = await r.json(); }
   catch (e) { PP.data = { scanned: {}, days: [] }; }
   await ppFetchAnomalies();
+  await ppFetchExclusions();
   ppBuildErrRows();
   ppSetRange(7);          // focus on the last 7 days by default
   ppFillOperators();
@@ -90,18 +91,60 @@ async function ppFetchAnomalies() {
 //  - manualRows: order NOT in the report → picked manually, no operator
 function ppBuildErrRows() {
   const scan = PP.data.scanned || {};
-  PP.errRows = []; PP.manualRows = []; PP.stagingRows = [];
+  PP.errRows = []; PP.manualRows = []; PP.stagingRows = []; PP.excludedRows = []; PP.rowByKey = {};
   (PP.anomalies || []).forEach(a => {
     const sc = scan[a.order_number];
     const date = sc ? sc.date : (a.fulfilled_date ? String(a.fulfilled_date).slice(0, 10) : '');
     (a.picks || []).forEach(p => {
       if (p.status !== 'anomaly') return;
-      const row = { order: a.order_number, op: sc ? sc.op : '', date, sku: p.sku || '', qty: p.qty, from: p.bin || '', pickface: p.expectedBin || '', manual: !sc };
-      if (isStaging(p.bin) || isNonError(p.bin)) PP.stagingRows.push(row); // staging / reviewed non-error — not counted
-      else if (sc) PP.errRows.push(row);                              // scanner-picked, attributed
-      else PP.manualRows.push(row);                                   // manual pick, no operator
+      const key = p.id || `${a.order_number}|${p.sku || ''}|${p.bin || ''}`;
+      const row = { key, order: a.order_number, op: sc ? sc.op : '', date, sku: p.sku || '', qty: p.qty, from: p.bin || '', pickface: p.expectedBin || '', manual: !sc };
+      if (isStaging(p.bin) || isNonError(p.bin)) { PP.stagingRows.push(row); return; } // staging / reviewed-bin — not counted
+      PP.rowByKey[key] = row;
+      if (PP.excluded.has(key)) PP.excludedRows.push(row);           // user-excluded — not counted
+      else if (sc) PP.errRows.push(row);                             // scanner-picked, attributed
+      else PP.manualRows.push(row);                                  // manual pick, no operator
     });
   });
+}
+// User-curated exclusions ("this wasn't an error") — durable in Supabase, shared across screens.
+async function ppFetchExclusions() {
+  PP.excluded = new Set();
+  try {
+    if (window.supabaseReady) await window.supabaseReady;
+    const sb = window.supabase; if (!sb || typeof sb.from !== 'function') return;
+    let rows = [], from = 0;
+    for (;;) {
+      const r = await sb.from('pick_error_exclusions').select('error_key').range(from, from + 999);
+      if (r.error) break;
+      rows.push(...(r.data || []));
+      if (!r.data || r.data.length < 1000) break;
+      from += 1000;
+    }
+    rows.forEach(r => PP.excluded.add(r.error_key));
+  } catch (_) { /* non-fatal: nothing excluded */ }
+}
+async function ppExclude(key) {
+  const row = PP.rowByKey[key]; if (!row) return;
+  try {
+    const sb = window.supabase;
+    if (sb) { const { error } = await sb.from('pick_error_exclusions').upsert({ error_key: key, order_number: row.order, sku: row.sku, from_bin: row.from, op: row.op || null }, { onConflict: 'error_key' }); if (error) throw error; }
+    PP.excluded.add(key); ppBuildErrRows(); ppRender();
+    ppToast('Excluded — no longer counted', 'ok');
+  } catch (e) { ppToast('Could not save exclusion', 'err'); }
+}
+async function ppRestore(key) {
+  try {
+    const sb = window.supabase;
+    if (sb) { const { error } = await sb.from('pick_error_exclusions').delete().eq('error_key', key); if (error) throw error; }
+    PP.excluded.delete(key); ppBuildErrRows(); ppRender();
+    ppToast('Restored — counts again', 'ok');
+  } catch (e) { ppToast('Could not restore', 'err'); }
+}
+function ppToggleExcluded() {
+  PP.showExcluded = !PP.showExcluded; PP.errPage = 1;
+  const b = $('ppShowExcl'); if (b) { b.textContent = PP.showExcluded ? 'Hide excluded' : 'Show excluded'; b.classList.toggle('pp-btn-secondary', !PP.showExcluded); }
+  ppRenderErrTable();
 }
 
 // ─── Aggregate (respects date range + operator) ───
@@ -263,15 +306,23 @@ function ppRenderErrTable() {
   const q = ($('ppErrSearch') && $('ppErrSearch').value || '').toLowerCase();
   const scanned = ppScopeErr();
   const manual = ppScopeErr(PP.manualRows);
-  let rows = scanned.concat(manual);
+  const excluded = ppScopeErr(PP.excludedRows).map(e => ({ ...e, _excluded: true }));
+  const active = scanned.concat(manual);
+  let rows = PP.showExcluded ? active.concat(excluded) : active;
   if (q) rows = rows.filter(e => `${e.order} ${e.sku} ${e.from} ${e.pickface} ${e.op} ${e.manual ? 'manual' : ''}`.toLowerCase().includes(q));
   rows.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
   const staged = ppScopeErr(PP.stagingRows).length;
-  if ($('ppErrCount')) $('ppErrCount').textContent = `(${rows.length} · ${scanned.length} scanned, ${manual.length} manual${staged ? ` · ${staged} excluded` : ''})`;
+  if ($('ppErrCount')) $('ppErrCount').textContent =
+    `(${active.length} · ${scanned.length} scanned, ${manual.length} manual · ${excluded.length} excluded${staged ? ` · ${staged} filtered` : ''})`;
   const total = rows.length, pages = Math.max(1, Math.ceil(total / PER_PAGE));
   if (PP.errPage > pages) PP.errPage = pages;
   const slice = rows.slice((PP.errPage - 1) * PER_PAGE, PP.errPage * PER_PAGE);
-  $('ppErrBody').innerHTML = slice.map(e => `<tr>
+  $('ppErrBody').innerHTML = slice.map(e => {
+    const k = encodeURIComponent(e.key || '');
+    const action = e._excluded
+      ? `<button class="pp-x-btn pp-x-restore" onclick="ppRestore(decodeURIComponent('${k}'))" title="Count this again">Restore</button>`
+      : `<button class="pp-x-btn" onclick="ppExclude(decodeURIComponent('${k}'))" title="Not an error — stop counting it">Exclude</button>`;
+    return `<tr class="${e._excluded ? 'pp-row-excluded' : ''}">
     <td>${fmtD(e.date)}</td>
     <td class="op">${esc(e.order)}</td>
     <td>${e.manual ? '<span style="color:#a39c8c">manual</span>' : (esc(e.op) || '—')}</td>
@@ -279,7 +330,9 @@ function ppRenderErrTable() {
     <td class="r num">${e.qty != null ? esc(e.qty) : ''}</td>
     <td>${esc(e.from)}</td>
     <td>${esc(e.pickface)}</td>
-  </tr>`).join('') || '<tr><td colspan="7" class="pp-empty">No errors in range</td></tr>';
+    <td class="r">${action}</td>
+  </tr>`;
+  }).join('') || '<tr><td colspan="8" class="pp-empty">No errors in range</td></tr>';
   ppRenderPager(total, pages);
 }
 function ppRenderPager(total, pages) {
