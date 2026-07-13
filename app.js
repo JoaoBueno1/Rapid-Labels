@@ -832,7 +832,7 @@ function generateLabelHTML(labelData) {
                         </div>
                         <div class="barcodes-stack">
                             <div class="barcode-box">
-                                <div class="barcode-box-label">Barcode</div>
+                                <div class="barcode-box-label">Product Code</div>
                                 <svg class="barcode-code"></svg>
                             </div>
                         </div>
@@ -1119,37 +1119,27 @@ function generateLabelHTML(labelData) {
                     }
                     
                     var barcodeHeight = isA3 ? 130 : 100;
-
-                    // Encode the ACTUAL Cin7 barcode (UPC/EAN/ITF) so scans match Cin7.
-                    // Fall back to the product code (CODE128) when a product has no barcode.
-                    var barcodeValue = (productBarcode && productBarcode.trim()) ? productBarcode.trim() : productCode;
-                    var barcodeFormat = detectBarcodeFormat(barcodeValue) || 'CODE128';
+                    
+                    // Generate CODE128 barcode for product code (Cin7 SKU)
                     var codeElements = document.querySelectorAll('.barcode-code');
-                    console.log('Found', codeElements.length, 'barcode elements; value=', barcodeValue, 'format=', barcodeFormat);
-
-                    function drawBarcode(el, value, format) {
-                        JsBarcode(el, value, {
-                            format: format,
-                            width: 2,
-                            height: barcodeHeight,
-                            displayValue: true,
-                            fontSize: 14,
-                            textAlign: "center",
-                            textPosition: "bottom",
-                            background: "#ffffff",
-                            lineColor: "#000000"
-                        });
-                    }
+                    console.log('Found', codeElements.length, 'product code barcode elements');
+                    
                     codeElements.forEach(function(el, idx) {
                         try {
-                            drawBarcode(el, barcodeValue, barcodeFormat);
-                            console.log('Barcode generated', idx, barcodeFormat);
+                            JsBarcode(el, productCode, {
+                                format: "CODE128",
+                                width: 2,
+                                height: barcodeHeight,
+                                displayValue: true,
+                                fontSize: 14,
+                                textAlign: "center",
+                                textPosition: "bottom",
+                                background: "#ffffff",
+                                lineColor: "#000000"
+                            });
+                            console.log('Product code barcode generated', idx);
                         } catch (error) {
-                            // UPC/EAN reject bad check digits — fall back to CODE128 of the SAME digits
-                            // (still scans to the same value), then to the product code as last resort.
-                            console.warn('Barcode', barcodeFormat, 'failed, retrying CODE128', error && error.message);
-                            try { drawBarcode(el, barcodeValue, 'CODE128'); }
-                            catch (e2) { try { drawBarcode(el, productCode, 'CODE128'); } catch (e3) { console.error('Barcode generation failed', idx, e3); } }
+                            console.error('Error generating product code barcode', idx, error);
                         }
                     });
                     
