@@ -168,6 +168,9 @@
       if (!d) return null;
       if (d.length === 14) return { format:'ITF14', value:d };
       if (d.length === 13){
+        // A 13-digit EAN-13 starting with 0 is a UPC-A: scanners drop the leading 0.
+        // Cin7 stores (and matches) the full 13 digits, so encode as CODE128 (literal string).
+        if (d[0] === '0') return { format:'CODE128', value:d };
         if (isValidEan13(d)) return { format:'EAN13', value:d };
         return { format:'UPC', value:d.slice(0,12) };
       }

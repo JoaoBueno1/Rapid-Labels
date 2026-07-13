@@ -400,7 +400,7 @@ function printBarcodes3Up(){
                 return;
             }
             const payload = { sections: finalSections };
-            const w = window.open('barcodes_labels.html?v=20260710a', '_blank');
+            const w = window.open('barcodes_labels.html?v=20260710b', '_blank');
             if (!w) { try { toast('Popup blocked','error'); } catch(_) { alert('Popup blocked'); } return; }
             const onReady = (e)=>{
                 if (e.data === 'BARCODES_READY'){

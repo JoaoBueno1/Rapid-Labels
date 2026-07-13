@@ -396,7 +396,16 @@ function mlPrint() {
   parts.push('    if (!val && !skuFallback) { svg.style.display="none"; continue; }');
   parts.push('    if (!val) { val = skuFallback; }');
   parts.push('    try {');
-  parts.push('      var fmt = val.length === 13 ? "EAN13" : (val.length === 12 ? "UPC" : "CODE128");');
+  parts.push('      // Correct symbology per situation. A 13-digit EAN13 starting with 0 = UPC-A;');
+  parts.push('      // scanners drop the leading 0 but Cin7 needs the exact 13 digits, so use CODE128 (literal).');
+  parts.push('      var isNum = /^[0-9]+$/.test(val);');
+  parts.push('      var fmt = !isNum ? "CODE128"');
+  parts.push('        : (val.length === 13 && val.charAt(0) === "0") ? "CODE128"');
+  parts.push('        : (val.length === 14) ? "ITF14"');
+  parts.push('        : (val.length === 13) ? "EAN13"');
+  parts.push('        : (val.length === 12) ? "UPC"');
+  parts.push('        : (val.length === 8) ? "EAN8"');
+  parts.push('        : "CODE128";');
   parts.push('      JsBarcode(svg, val, { format:fmt, height:' + bcPixelH + ', width:' + bcW + ', displayValue:true, fontSize:11, margin:2, textMargin:1 });');
   parts.push('    } catch(e) {');
   parts.push('      try { JsBarcode(svg, val, { format:"CODE128", height:' + bcPixelH + ', width:' + bcW + ', displayValue:true, fontSize:11, margin:2, textMargin:1 }); }');
