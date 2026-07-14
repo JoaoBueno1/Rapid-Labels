@@ -449,6 +449,23 @@
       border-color: var(--focus);
       box-shadow: 0 0 0 3px rgba(102, 119, 255, .18);
     }
+    .cover-filter {
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg-card);
+      cursor: pointer;
+      transition: border-color .12s, box-shadow .12s;
+    }
+    .cover-filter:focus { outline: none; border-color: var(--focus); }
+    .cover-filter.cover-active {
+      border-color: #d97706;
+      color: #d97706;
+      background: rgba(217, 119, 6, .08);
+      font-weight: 600;
+    }
     .result-count {
       color: var(--text-mute);
       font-size: 12px;
@@ -1148,6 +1165,14 @@
       <input type="text" id="searchInput" class="search-input"
              placeholder="Search product, name, location…"
              oninput="applyFilters()">
+      <select id="coverFilter" class="cover-filter" onchange="setCoverMax(this.value)"
+              title="Focus on items running out within N days at current sales rate (combines with the filter above)">
+        <option value="0">Cover: any</option>
+        <option value="7">Cover ≤ 7d</option>
+        <option value="14">Cover ≤ 14d</option>
+        <option value="21">Cover ≤ 21d</option>
+        <option value="30">Cover ≤ 30d</option>
+      </select>
       <label class="hide-toggle" title="Hide rows where Main has no stock to send (oversold lines stay visible)">
         <input type="checkbox" id="hideNoMainStock" checked onchange="toggleHideNoMainStock()">
         Hide what Main can't send
@@ -1282,6 +1307,6 @@
 
   <script src="../../supabase-config.js"></script>
   <script src="replenishment-config.js?v=20260625c"></script>
-  <script src="replenishment-branch.js?v=20260625c"></script>
+  <script src="replenishment-branch.js?v=20260714a"></script>
 </body>
 </html>

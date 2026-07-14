@@ -58,6 +58,7 @@
     selectedRows: new Set(),
     filter: 'to_send',    // Default: only actionable items
     search: '',
+    coverMax: 0,          // cover-days focus (0 = any); combines with the chip filter
     currentPage: 1,
     pageSize: 100,
     sortField: 'cover_days',
@@ -1131,7 +1132,13 @@
         (l.location && l.location.toLowerCase().includes(s))
       );
     }
-    
+
+    // Cover-days focus (secondary filter — combines with the active chip).
+    // Keeps only items running out within N days at current sales rate.
+    if (state.coverMax) {
+      lines = lines.filter(l => l.cover_days <= state.coverMax);
+    }
+
     return lines;
   }
 
@@ -1314,6 +1321,16 @@
     const searchInput = document.getElementById('searchInput');
     state.search = searchInput?.value.trim() || '';
     state.currentPage = 1;
+    renderTable();
+  };
+
+  // Cover-days focus: keep only items running out within N days (0 = any).
+  // Combines with the active chip + search.
+  window.setCoverMax = function(v) {
+    state.coverMax = Number(v) || 0;
+    state.currentPage = 1;
+    const sel = document.getElementById('coverFilter');
+    if (sel) sel.classList.toggle('cover-active', state.coverMax > 0);
     renderTable();
   };
 
