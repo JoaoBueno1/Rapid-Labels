@@ -316,48 +316,41 @@ class SupabaseWriter {
           });
 
         if (error) {
-          // PK conflict (23505) — Cin7 recycled/reassigned UUIDs.
-          // Retry each row individually: UPDATE existing by SKU, INSERT only truly new.
-          if (error.code === '23505' && batch[0]?.id && batch[0]?.sku) {
-            log('warn', `PK conflict on ${table} batch ${batchNum}, falling back to row-by-row update...`);
-            let recovered = 0;
-            for (const row of batch) {
-              try {
-                // Try update by SKU first (most rows already exist)
-                const { id, ...updateFields } = row;
-                const { error: updErr, count } = await this.client
+          // ANY batch error — recover ROW-BY-ROW so one bad row never silently drops
+          // the whole 500-row batch (this used to lose hundreds of products).
+          // Causes seen: 21000 "ON CONFLICT ... cannot affect row a second time"
+          // (duplicate SKU in a batch from Cin7 pagination overlap) and 23505 PK
+          // conflict (Cin7 recycled a UUID onto a new SKU).
+          log('warn', `Upsert error on ${table} batch ${batchNum}/${totalBatches} (${error.code || ''}: ${error.message}) — recovering row-by-row...`);
+          let recovered = 0;
+          for (const row of batch) {
+            try {
+              // Per-row upsert handles both insert-new and update-existing correctly.
+              const { error: rErr } = await this.client
+                .from(table)
+                .upsert(row, { onConflict: conflictColumns, ignoreDuplicates: false });
+              if (!rErr) { recovered++; continue; }
+              // PK (id) collision: the id belongs to a stale/old product (Cin7 reused
+              // the UUID). Overwrite that row with the new product (id stays the same).
+              if (rErr.code === '23505' && row.id && row.sku) {
+                const { id, ...fields } = row;
+                const { error: uErr } = await this.client
                   .from(table)
-                  .update(updateFields)
-                  .eq('sku', row.sku);
-                if (updErr) {
-                  // If update fails, try full upsert for this single row
-                  const { error: singleErr } = await this.client
-                    .from(table)
-                    .upsert(row, { onConflict: conflictColumns, ignoreDuplicates: false });
-                  if (singleErr) {
-                    log('debug', `Row-level upsert failed for ${row.sku}: ${singleErr.message}`);
-                  } else {
-                    recovered++;
-                  }
-                } else {
-                  recovered++;
-                }
-              } catch (rowErr) {
-                log('debug', `Row-level error for ${row.sku}: ${rowErr.message}`);
+                  .update(fields)
+                  .eq('id', row.id);
+                if (!uErr) { recovered++; continue; }
+                log('debug', `Row recovery (by id) failed for ${row.sku}: ${uErr.message}`);
+              } else {
+                log('debug', `Row upsert failed for ${row.sku || row.id}: ${rErr.message}`);
               }
+            } catch (rowErr) {
+              log('debug', `Row-level error for ${row.sku || row.id}: ${rowErr.message}`);
             }
-            totalInserted += recovered;
-            log('info', `PK conflict recovery: ${recovered}/${batch.length} rows saved for batch ${batchNum}`);
-            if (recovered < batch.length) {
-              errors.push({ batch: batchNum, error: `PK conflict: ${recovered}/${batch.length} recovered` });
-            }
-          } else {
-            log('error', `Upsert error on ${table} batch ${batchNum}/${totalBatches}`, {
-              error: error.message,
-              code: error.code,
-              details: error.details,
-            });
-            errors.push({ batch: batchNum, error: error.message });
+          }
+          totalInserted += recovered;
+          log('info', `Row-by-row recovery: ${recovered}/${batch.length} saved for ${table} batch ${batchNum}`);
+          if (recovered < batch.length) {
+            errors.push({ batch: batchNum, error: `${recovered}/${batch.length} recovered (${error.code || error.message})` });
           }
         } else {
           totalInserted += batch.length;
@@ -734,7 +727,18 @@ class SyncOrchestrator {
     metrics.total_api_calls += pages;
     metrics.total_pages += pages;
 
-    const mapped = rows.map(mapProductRow);
+    const mappedRaw = rows.map(mapProductRow);
+    // Dedupe by SKU. Cin7's paginated /product can return the same product on two
+    // pages (pagination isn't stable while products are edited); a duplicate SKU in
+    // one upsert batch throws Postgres "ON CONFLICT ... cannot affect row a second
+    // time" and the whole batch was being dropped (hundreds of products lost). Keep
+    // the last occurrence.
+    const bySku = new Map();
+    for (const r of mappedRaw) if (r.sku) bySku.set(String(r.sku), r);
+    const mapped = [...bySku.values()];
+    if (mapped.length < mappedRaw.length) {
+      log('warn', `Deduped ${mappedRaw.length - mapped.length} duplicate-SKU product row(s) before upsert`);
+    }
     log('info', `Mapped ${mapped.length} products`, {
       total,
       active: mapped.filter(p => p.status === 'Active').length,
