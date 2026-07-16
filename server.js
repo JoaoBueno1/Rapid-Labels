@@ -163,6 +163,32 @@ app.post('/api/scanner-activity/import', async (req, res) => {
   }
 });
 
+// ── Cin7 customers (Returns autocomplete) — cached {id, name, code} list ──
+// Pulled from Cin7 /customer (~9.8k), cached in memory for 1h. Same-origin.
+let _custCache = { at: 0, list: [] };
+app.get('/api/customers', async (req, res) => {
+  try {
+    if (_custCache.list.length && Date.now() - _custCache.at < 3600000) {
+      return res.json({ count: _custCache.list.length, customers: _custCache.list, cached: true });
+    }
+    const acc = process.env.CIN7_ACCOUNT_ID, key = process.env.CIN7_API_KEY;
+    if (!acc || !key) return res.status(500).json({ error: 'Cin7 not configured' });
+    const H = { 'api-auth-accountid': acc, 'api-auth-applicationkey': key, 'Content-Type': 'application/json' };
+    const list = [];
+    for (let page = 1; page <= 15; page++) {
+      const r = await fetch(`https://inventory.dearsystems.com/ExternalApi/v2/customer?Page=${page}&Limit=1000`, { headers: H });
+      if (!r.ok) break;
+      const rows = (await r.json()).CustomerList || [];
+      for (const c of rows) list.push({ id: c.ID, name: (c.Name || '').trim(), code: c.DisplayName || '' });
+      if (rows.length < 1000) break;
+    }
+    if (list.length) _custCache = { at: Date.now(), list };
+    res.json({ count: list.length, customers: list });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Cin7 Webhook & Stock Audit routes ──
 try {
   const registerWebhookRoutes = require('./cin7-stock-sync/webhook-receiver');

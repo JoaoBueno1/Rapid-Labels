@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Return document</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1a2230; background: #e9edf2; }
+    .doc { width: 210mm; min-height: 297mm; margin: 0 auto; background: #fff; padding: 16mm 15mm; page-break-after: always; }
+    .doc:last-child { page-break-after: auto; }
+    .top { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 3px solid #0aa5e6; padding-bottom: 12px; }
+    .logo-wrap { display: flex; align-items: center; gap: 12px; }
+    .logo { width: 46px; height: 46px; border-radius: 50%; background: #0aa5e6; color: #fff; font-weight: 700; font-size: 28px; display: flex; align-items: center; justify-content: center; }
+    .logo-txt { font-size: 22px; font-weight: 700; letter-spacing: .04em; line-height: 1; }
+    .logo-txt small { display: block; font-size: 11px; font-weight: 500; color: #6b7a92; letter-spacing: .2em; margin-top: 2px; }
+    .doc-title { text-align: right; }
+    .doc-title h1 { margin: 0; font-size: 20px; letter-spacing: .08em; color: #1a2230; }
+    .doc-title .no { font-size: 22px; font-weight: 700; color: #0aa5e6; font-family: 'IBM Plex Sans'; }
+    .copy-tag { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: #fff; background: #5b6b86; padding: 2px 10px; border-radius: 12px; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 30px; margin: 16px 0; font-size: 13px; }
+    .meta .row { display: flex; gap: 8px; }
+    .meta .lbl { color: #7a8aa2; min-width: 108px; font-weight: 500; }
+    .meta .val { font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12.5px; }
+    th { background: #f2f6fa; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #5b6b86; border-bottom: 2px solid #d6dde7; }
+    th.r, td.r { text-align: right; }
+    td { padding: 8px 10px; border-bottom: 1px solid #eef1f6; }
+    tbody tr:nth-child(even) { background: #fafbfd; }
+    .notes { margin-top: 16px; font-size: 12.5px; }
+    .notes .lbl { color: #7a8aa2; font-weight: 500; margin-bottom: 3px; }
+    .notes .box { border: 1px solid #e2e7ef; border-radius: 6px; min-height: 40px; padding: 8px 10px; }
+    .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 34px; font-size: 12px; }
+    .sign .line { border-top: 1px solid #9aa6ba; padding-top: 4px; color: #6b7a92; }
+    .foot { margin-top: 20px; font-size: 10.5px; color: #9aa6ba; text-align: center; border-top: 1px solid #eef1f6; padding-top: 8px; }
+    .print-bar { position: fixed; top: 12px; right: 12px; }
+    .print-bar button { font-family: inherit; font-size: 13px; padding: 8px 16px; border-radius: 7px; border: none; background: #0aa5e6; color: #fff; cursor: pointer; }
+    @media print { .print-bar { display: none; } body { background: #fff; } .doc { margin: 0; } }
+  </style>
+</head>
+<body>
+  <div class="print-bar"><button onclick="window.print()">🖨 Print</button></div>
+  <div id="root" style="padding:40px;text-align:center;color:#7a8aa2">Loading return…</div>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <script>
+    const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+    const qs = new URLSearchParams(location.search);
+
+    function copyHtml(r, lines, tag) {
+      const rows = lines.map(l => `<tr>
+        <td><strong>${esc(l.sku)}</strong></td>
+        <td>${esc(l.dc5 || '')}</td>
+        <td>${esc(l.product_name || '')}</td>
+        <td class="r">${l.qty}</td>
+        <td>${esc(l.reason || '')}</td>
+      </tr>`).join('');
+      return `<div class="doc">
+        <div class="top">
+          <div class="logo-wrap">
+            <div class="logo">R</div>
+            <div class="logo-txt">RAPID LED<small>RETURNS</small></div>
+          </div>
+          <div class="doc-title">
+            <h1>RETURN</h1>
+            <div class="no">${esc(r.return_no)}</div>
+            <div class="copy-tag">${tag}</div>
+          </div>
+        </div>
+        <div class="meta">
+          <div class="row"><span class="lbl">Date</span><span class="val">${fmtD(r.created_at)}</span></div>
+          <div class="row"><span class="lbl">Operator</span><span class="val">${esc(r.operator || '—')}</span></div>
+          <div class="row"><span class="lbl">Customer</span><span class="val">${esc(r.customer_name || '—')}</span></div>
+          <div class="row"><span class="lbl">Customer ID</span><span class="val">${esc(r.customer_id || '—')}</span></div>
+          <div class="row"><span class="lbl">Origin order</span><span class="val">${esc(r.origin_order || '—')}</span></div>
+        </div>
+        <table>
+          <thead><tr><th>SKU</th><th>5DC</th><th>Description</th><th class="r">Qty</th><th>Reason</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="notes">
+          <div class="lbl">Notes</div>
+          <div class="box">${esc(r.notes || '')}</div>
+        </div>
+        <div class="sign">
+          <div class="line">Received by (Rapid LED)</div>
+          <div class="line">Customer signature</div>
+        </div>
+        <div class="foot">This document acknowledges receipt of the returned goods listed above. It is not a credit note. Rapid LED Pty Ltd.</div>
+      </div>`;
+    }
+
+    (async function () {
+      const id = qs.get('id');
+      const root = document.getElementById('root');
+      if (!window.supabase || !id) { root.textContent = 'Missing data.'; return; }
+      try {
+        const { data: r } = await window.supabase.from('returns_active').select('*').eq('id', id).single();
+        const { data: lines } = await window.supabase.from('returns_lines').select('*').eq('return_id', id).order('line_no');
+        if (!r) { root.textContent = 'Return not found.'; return; }
+        document.title = 'Return ' + r.return_no;
+        // two identical copies
+        root.outerHTML = copyHtml(r, lines || [], 'Customer Copy') + copyHtml(r, lines || [], 'Office Copy');
+        setTimeout(() => { try { window.print(); } catch (_) {} }, 400);
+      } catch (e) { root.textContent = 'Error: ' + e.message; }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Returns — Rapid LED</title>
+  <script>
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {}); }
+  </script>
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="returns.css?v=20260717a" />
+</head>
+<body>
+  <header class="rt-header">
+    <div class="rt-header-inner">
+      <a class="rt-back" href="/index.html">← Back</a>
+      <div class="rt-brand"><span class="rt-logo">R</span> Returns</div>
+      <div class="rt-sub" id="rtSub">Loading…</div>
+    </div>
+  </header>
+
+  <main class="rt-main">
+    <div class="rt-tabs">
+      <button class="rt-tab active" data-tab="active" onclick="rtTab('active')">Active</button>
+      <button class="rt-tab" data-tab="history" onclick="rtTab('history')">History</button>
+    </div>
+
+    <!-- ACTIVE -->
+    <section id="rtActive" class="rt-panel">
+      <div class="rt-toolbar">
+        <button class="rt-btn rt-btn-primary" onclick="rtOpenNew()">+ New return</button>
+        <input type="text" id="rtSearch" class="rt-input" placeholder="Search return #, customer, order…" oninput="rtRenderActive()" />
+        <span class="rt-count" id="rtActiveCount"></span>
+      </div>
+      <div class="rt-table-wrap">
+        <table class="rt-table">
+          <thead><tr>
+            <th>Return #</th><th>Date</th><th>Customer</th><th>Customer ID</th><th>Origin order</th><th>Operator</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th>
+          </tr></thead>
+          <tbody id="rtActiveBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="rtHistory" class="rt-panel" style="display:none">
+      <div class="rt-toolbar">
+        <input type="text" id="rtHistSearch" class="rt-input" placeholder="Search completed returns…" oninput="rtRenderHistory()" />
+        <span class="rt-count" id="rtHistCount"></span>
+      </div>
+      <div class="rt-table-wrap">
+        <table class="rt-table">
+          <thead><tr>
+            <th>Return #</th><th>Created</th><th>Customer</th><th>Treatment ref</th><th>Treated</th><th class="r">Actions</th>
+          </tr></thead>
+          <tbody id="rtHistBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══ NEW / CREATE MODAL ═══ -->
+  <div class="rt-modal" id="rtNewModal">
+    <div class="rt-modal-box rt-modal-lg">
+      <div class="rt-modal-head">
+        <h3>New return</h3>
+        <button class="rt-x" onclick="rtCloseNew()">×</button>
+      </div>
+      <div class="rt-modal-body">
+        <div class="rt-form-grid">
+          <div class="rt-field rt-cust">
+            <label>Customer *</label>
+            <input type="text" id="rtCustName" class="rt-input" placeholder="Start typing customer name…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
+            <div class="rt-ac" id="rtCustAc"></div>
+          </div>
+          <div class="rt-field">
+            <label>Customer ID</label>
+            <input type="text" id="rtCustId" class="rt-input rt-readonly" readonly placeholder="— (select a customer)" />
+          </div>
+          <div class="rt-field">
+            <label>Origin order (optional)</label>
+            <input type="text" id="rtOrigin" class="rt-input" placeholder="e.g. SO-123456" />
+          </div>
+          <div class="rt-field">
+            <label>Operator *</label>
+            <input type="text" id="rtOperator" class="rt-input" list="rtOperators" placeholder="Your name" />
+            <datalist id="rtOperators"></datalist>
+          </div>
+          <div class="rt-field rt-field-full">
+            <label>Notes (optional)</label>
+            <textarea id="rtNotes" class="rt-input" rows="2" placeholder="Anything useful about this return…"></textarea>
+          </div>
+        </div>
+
+        <div class="rt-lines-head">
+          <span>Products</span>
+          <button class="rt-btn rt-btn-ghost" onclick="rtAddLine()">+ Add line</button>
+        </div>
+        <div class="rt-table-wrap">
+          <table class="rt-table rt-lines">
+            <thead><tr>
+              <th style="width:34%">Product</th><th style="width:9%" class="r">Qty</th><th style="width:16%">Reason</th><th style="width:13%" class="r">Unit $</th><th style="width:13%" class="r">Line $</th><th style="width:8%"></th>
+            </tr></thead>
+            <tbody id="rtLinesBody"></tbody>
+            <tfoot><tr><td colspan="4" class="r"><strong>Total</strong></td><td class="r"><strong id="rtTotal">0.00</strong></td><td></td></tr></tfoot>
+          </table>
+        </div>
+        <p class="rt-hint">Tip: you can add the <strong>same product on multiple lines</strong> with different reasons (e.g. some faulty, some OK). Prices default to the standard tier and are editable.</p>
+      </div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtCloseNew()">Cancel</button>
+        <button class="rt-btn rt-btn-primary" id="rtSaveBtn" onclick="rtSaveNew()">Save &amp; print</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- product autocomplete overlay (shared) -->
+  <div class="rt-ac rt-ac-float" id="rtProdAc" style="display:none"></div>
+
+  <div id="rtToast"></div>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <script src="returns.js?v=20260717a"></script>
+</body>
+</html>

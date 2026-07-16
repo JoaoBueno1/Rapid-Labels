@@ -1,0 +1,101 @@
+/* Returns — Rapid LED. Clean, professional, IBM Plex. */
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: #f4f6f9; color: #1a2230; font-size: 14px;
+}
+.mono, .rt-table .num, .rt-count { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
+
+/* Header */
+.rt-header { background: #fff; border-bottom: 1px solid #e2e7ef; }
+.rt-header-inner { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; gap: 16px; padding: 12px 22px; }
+.rt-back { color: #5b6b86; text-decoration: none; font-size: 13px; }
+.rt-back:hover { color: #1a2230; }
+.rt-brand { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 9px; }
+.rt-logo { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #0aa5e6; color: #fff; font-weight: 700; font-size: 15px; }
+.rt-sub { margin-left: auto; font-size: 12px; color: #8a97ab; }
+
+.rt-main { max-width: 1280px; margin: 0 auto; padding: 18px 22px 60px; }
+
+/* Tabs */
+.rt-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e2e7ef; margin-bottom: 18px; }
+.rt-tab { background: none; border: none; padding: 10px 18px; font-size: 14px; font-weight: 500; color: #6b7a92; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+.rt-tab:hover { color: #1a2230; }
+.rt-tab.active { color: #0aa5e6; border-bottom-color: #0aa5e6; }
+
+/* Toolbar */
+.rt-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.rt-count { color: #8a97ab; font-size: 12px; margin-left: auto; }
+
+/* Buttons */
+.rt-btn { font-size: 13px; font-weight: 500; padding: 8px 15px; border-radius: 7px; border: 1px solid #d3dae6; background: #fff; color: #1a2230; cursor: pointer; transition: all .12s; }
+.rt-btn:hover { border-color: #0aa5e6; }
+.rt-btn-primary { background: #0aa5e6; border-color: #0aa5e6; color: #fff; }
+.rt-btn-primary:hover { background: #0893cc; }
+.rt-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.rt-btn-ghost { background: transparent; }
+.rt-btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* Inputs */
+.rt-input { width: 100%; font-family: inherit; font-size: 13px; padding: 8px 11px; border: 1px solid #d3dae6; border-radius: 7px; background: #fff; color: #1a2230; outline: none; }
+.rt-input:focus { border-color: #0aa5e6; box-shadow: 0 0 0 3px rgba(10,165,230,.14); }
+.rt-readonly { background: #f0f3f8; color: #5b6b86; }
+textarea.rt-input { resize: vertical; }
+.rt-toolbar .rt-input { max-width: 320px; }
+
+/* Cards / tables */
+.rt-table-wrap { background: #fff; border: 1px solid #e2e7ef; border-radius: 10px; overflow: auto; }
+.rt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rt-table th { background: #f7f9fc; text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #7a8aa2; font-weight: 600; white-space: nowrap; border-bottom: 1px solid #e2e7ef; }
+.rt-table th.r, .rt-table td.r { text-align: right; }
+.rt-table td { padding: 9px 12px; border-top: 1px solid #eef1f6; vertical-align: middle; }
+.rt-table tbody tr:hover { background: #f9fbfd; }
+.rt-empty { text-align: center; color: #9aa6ba; padding: 34px; }
+
+/* Status pills */
+.rt-pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.rt-pill.pending { background: #fff4e0; color: #b46a00; }
+.rt-pill.in_treatment { background: #e3f0ff; color: #1667c9; }
+.rt-pill.completed { background: #e5f7ec; color: #1b8a4b; }
+
+/* Modal */
+.rt-modal { position: fixed; inset: 0; background: rgba(20,28,42,.5); display: none; align-items: flex-start; justify-content: center; padding: 30px 16px; z-index: 1000; overflow: auto; }
+.rt-modal.active { display: flex; }
+.rt-modal-box { background: #fff; border-radius: 12px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(20,28,42,.3); }
+.rt-modal-lg { max-width: 900px; }
+.rt-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #eef1f6; }
+.rt-modal-head h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.rt-x { background: none; border: none; font-size: 24px; line-height: 1; color: #9aa6ba; cursor: pointer; }
+.rt-x:hover { color: #1a2230; }
+.rt-modal-body { padding: 18px 20px; }
+.rt-modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid #eef1f6; }
+
+/* Form */
+.rt-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; margin-bottom: 18px; }
+.rt-field { display: flex; flex-direction: column; gap: 5px; position: relative; }
+.rt-field label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #7a8aa2; font-weight: 600; }
+.rt-field-full { grid-column: 1 / -1; }
+
+/* Autocomplete */
+.rt-ac { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d3dae6; border-radius: 8px; margin-top: 4px; box-shadow: 0 10px 30px rgba(20,28,42,.15); max-height: 260px; overflow: auto; z-index: 50; display: none; }
+.rt-ac.show { display: block; }
+.rt-ac-item { padding: 8px 11px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f2f4f8; }
+.rt-ac-item:hover, .rt-ac-item.sel { background: #eaf6fd; }
+.rt-ac-item .sub { font-size: 11px; color: #8a97ab; }
+.rt-ac-float { position: fixed; z-index: 1100; }
+
+/* Lines */
+.rt-lines-head { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #7a8aa2; font-weight: 600; }
+.rt-lines td { padding: 6px 8px; }
+.rt-lines .rt-input { padding: 6px 8px; font-size: 13px; }
+.rt-line-x { background: none; border: none; color: #c9536b; cursor: pointer; font-size: 15px; }
+.rt-line-x:hover { color: #a02040; }
+.rt-hint { font-size: 12px; color: #8a97ab; margin: 10px 2px 0; }
+
+/* Toast */
+#rtToast { position: fixed; bottom: 22px; right: 22px; z-index: 2000; }
+.rt-toast { background: #1a2230; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; margin-top: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+.rt-toast.err { background: #c0392b; }
+.rt-toast.ok { background: #1b8a4b; }
+
+@media (max-width: 720px) { .rt-form-grid { grid-template-columns: 1fr; } }
