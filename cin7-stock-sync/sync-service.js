@@ -516,6 +516,11 @@ function mapProductRow(raw) {
     // Cin7 AdditionalAttribute1 = 5DC code, AdditionalAttribute2 = e.g. brand/supplier
     attribute1: raw.AdditionalAttribute1 || null,
     attribute2: raw.AdditionalAttribute2 || null,
+    // Sell prices (PriceTier1 = standard/default) + warranty + tags. Added 2026-07-17.
+    price_tier1: raw.PriceTier1 != null ? Number(raw.PriceTier1) : null,
+    price_tiers: raw.PriceTiers || null,
+    warranty_name: raw.WarrantyName || null,
+    tags: raw.Tags || null,
     synced_at: new Date().toISOString(),
   };
 }
