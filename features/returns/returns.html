@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717c" />
+  <link rel="stylesheet" href="returns.css?v=20260717e" />
 </head>
 <body>
   <header class="rt-header">
@@ -30,7 +30,7 @@
     <section id="rtActive" class="rt-panel">
       <div class="rt-toolbar">
         <button class="rt-btn rt-btn-primary" onclick="rtOpenNew()">+ New return</button>
-        <input type="text" id="rtSearch" class="rt-input" placeholder="Search return #, customer, order…" oninput="rtRenderActive()" />
+        <input type="text" id="rtSearch" class="rt-input" placeholder="Search return #, customer, order…" oninput="RT.activePage=1;rtRenderActive()" />
         <span class="rt-count" id="rtActiveCount"></span>
       </div>
       <div class="rt-table-wrap">
@@ -41,22 +41,24 @@
           <tbody id="rtActiveBody"></tbody>
         </table>
       </div>
+      <div class="rt-pager" id="rtActivePager"></div>
     </section>
 
     <!-- HISTORY -->
     <section id="rtHistory" class="rt-panel" style="display:none">
       <div class="rt-toolbar">
-        <input type="text" id="rtHistSearch" class="rt-input" placeholder="Search completed returns…" oninput="rtRenderHistory()" />
+        <input type="text" id="rtHistSearch" class="rt-input" placeholder="Search completed returns…" oninput="RT.histPage=1;rtRenderHistory()" />
         <span class="rt-count" id="rtHistCount"></span>
       </div>
       <div class="rt-table-wrap">
         <table class="rt-table">
           <thead><tr>
-            <th>Return #</th><th>Created</th><th>Customer</th><th>Treatment ref</th><th>Treated</th><th class="r">Actions</th>
+            <th>Return #</th><th>Created</th><th>Customer</th><th>Treatment ref</th><th class="r">Value</th><th>Treated</th><th class="r">Actions</th>
           </tr></thead>
           <tbody id="rtHistBody"></tbody>
         </table>
       </div>
+      <div class="rt-pager" id="rtHistPager"></div>
     </section>
   </main>
 
@@ -197,6 +199,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717d"></script>
+  <script src="returns.js?v=20260717e"></script>
 </body>
 </html>

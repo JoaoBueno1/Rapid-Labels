@@ -5,7 +5,8 @@
  */
 'use strict';
 
-const RT = { customers: [], operators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null };
+const RT = { customers: [], operators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1 };
+const PAGE_SIZE = 25;
 const REASONS = ['Faulty', 'Change of mind', 'Wrong item', 'Warranty', 'Damaged in transit', 'Other'];
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -14,6 +15,12 @@ const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''
 const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', completed: 'Completed' }[s] || s);
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
+const sumVal = arr => (arr || []).reduce((s, l) => s + (Number(l.line_value) || 0), 0);
+const rtCredit = r => sumVal(r.returns_treatment_lines);
+const rtValue = r => { const c = rtCredit(r); return c || sumVal(r.returns_lines); }; // credit if treated, else intake total
+function paginate(rows, page) { const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE)); const p = Math.min(Math.max(1, page), pages); return { slice: rows.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE), p, pages, total: rows.length }; }
+function pagerHtml(kind, pg) { if (pg.total <= PAGE_SIZE) return `<span class="rt-pager-info">${pg.total} row(s)</span>`; return `<button class="rt-btn rt-btn-sm" ${pg.p <= 1 ? 'disabled' : ''} onclick="rtGoPage('${kind}',-1)">‹ Prev</button><span class="rt-pager-info">Page ${pg.p} of ${pg.pages} · ${pg.total} total</span><button class="rt-btn rt-btn-sm" ${pg.p >= pg.pages ? 'disabled' : ''} onclick="rtGoPage('${kind}',1)">Next ›</button>`; }
+function rtGoPage(kind, d) { if (kind === 'active') { RT.activePage += d; rtRenderActive(); } else { RT.histPage += d; rtRenderHistory(); } }
 
 // ─── Init ───
 (async function init() {
@@ -48,10 +55,11 @@ async function loadOperators() {
 }
 async function loadReturns() {
   try {
-    const r = await sb().from('returns_active').select('*, returns_lines(id)').order('created_at', { ascending: false });
+    const r = await sb().from('returns_active').select('*, returns_lines(qty,line_value), returns_treatment_lines(line_value)').order('created_at', { ascending: false });
     const rows = r.data || [];
     RT.active = rows.filter(x => x.status !== 'completed');
     RT.history = rows.filter(x => x.status === 'completed');
+    RT.activePage = 1; RT.histPage = 1;
     $('rtSub').textContent = `${RT.active.length} active · ${RT.history.length} completed`;
     rtRenderActive(); rtRenderHistory();
   } catch (e) { toast('Could not load returns: ' + e.message, 'err'); }
@@ -69,6 +77,7 @@ function rtRenderActive() {
   let rows = RT.active;
   if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.customer_id || ''} ${r.origin_order || ''} ${r.operator || ''}`.toLowerCase().includes(q));
   $('rtActiveCount').textContent = `${rows.length} return(s)`;
+  const pg = paginate(rows, RT.activePage); rows = pg.slice; $('rtActivePager').innerHTML = pagerHtml('active', pg);
   $('rtActiveBody').innerHTML = rows.map(r => `<tr class="rt-row" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtD(r.created_at)}</td>
@@ -90,17 +99,19 @@ function rtRenderHistory() {
   let rows = RT.history;
   if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''}`.toLowerCase().includes(q));
   $('rtHistCount').textContent = `${rows.length} completed`;
+  const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
   $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtD(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.treatment_ref || '—')}</td>
+    <td class="r num">${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</td>
     <td>${fmtD(r.treated_at)}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">
-      <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>
+      <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print form</button>
       <button class="rt-btn rt-btn-sm" onclick="rtView('${r.id}')">View</button>
     </td>
-  </tr>`).join('') || '<tr><td colspan="6" class="rt-empty">No completed returns yet.</td></tr>';
+  </tr>`).join('') || '<tr><td colspan="7" class="rt-empty">No completed returns yet.</td></tr>';
 }
 function rtHdr(id) { return RT.active.concat(RT.history).find(r => r.id === id); }
 
