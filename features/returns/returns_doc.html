@@ -27,6 +27,7 @@
     table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12.5px; }
     th { background: #f2f6fa; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #5b6b86; border-bottom: 2px solid #d6dde7; }
     th.r, td.r { text-align: right; }
+    th.dc5, td.dc5 { width: 62px; white-space: nowrap; color: #5b6b86; font-variant-numeric: tabular-nums; }
     td { padding: 8px 10px; border-bottom: 1px solid #eef1f6; }
     tbody tr:nth-child(even) { background: #fafbfd; }
     .notes { margin-top: 16px; font-size: 12.5px; }
@@ -62,7 +63,8 @@
 
     function copyHtml(r, lines, internal) {
       const rows = lines.map(l => `<tr>
-        <td><strong>${esc(l.sku)}</strong>${internal && l.dc5 ? `<div class="sku-sub">5DC ${esc(l.dc5)}</div>` : ''}<div class="sku-sub">${esc((l.product_name || '').slice(0, 46))}</div></td>
+        <td class="dc5">${esc(l.dc5 || '')}</td>
+        <td><strong>${esc(l.sku)}</strong><div class="sku-sub">${esc((l.product_name || '').slice(0, 46))}</div></td>
         <td class="r">${l.qty}</td>
         <td>${esc(l.reason || '')}</td>
         ${internal ? `<td>${esc(l.condition || '')}</td>` : ''}
@@ -85,7 +87,7 @@
           <div class="row"><span class="lbl">Invoice</span><span class="val">${esc(r.invoice_number || '—')}</span></div>
         </div>
         <table>
-          <thead><tr><th>SKU</th><th class="r">Qty</th><th>Reason</th>${internal ? '<th>Condition (Internal)</th>' : ''}</tr></thead>
+          <thead><tr><th class="dc5">5DC</th><th>SKU</th><th class="r">Qty</th><th>Reason</th>${internal ? '<th>Condition (Internal)</th>' : ''}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
         ${internal ? `<div class="notes">

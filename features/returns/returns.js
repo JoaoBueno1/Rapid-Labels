@@ -375,7 +375,7 @@ async function rtScanResolve(code) {
   return null;
 }
 
-function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717n', '_blank'); }
+function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717o', '_blank'); }
 
 // ─── View (consult) ───
 async function rtView(id) {
