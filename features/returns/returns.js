@@ -130,7 +130,6 @@ async function rtOpenForm(row) {
   if (row) RT.sel = { name: row.customer_name, code: row.customer_id };
   $('rtCustEmail').value = row ? (row.customer_email || '') : '';
   $('rtRep').value = row ? (row.rep || '') : '';
-  $('rtWarehouse').value = row ? (row.warehouse || '') : '';
   $('rtOrigin').value = row ? (row.origin_order || '') : '';
   $('rtOperator').value = row ? (row.operator || '') : '';
   $('rtNotes').value = row ? (row.notes || '') : '';
@@ -138,7 +137,7 @@ async function rtOpenForm(row) {
     const r = await sb().from('returns_lines').select('*').eq('return_id', row.id).order('line_no');
     RT.lines = (r.data || []).map(l => ({ sku: l.sku, name: l.product_name, dc5: l.dc5, qty: l.qty, reason: l.reason || '', unit: l.unit_value }));
   }
-  if (!RT.lines.length) { RT.lines = [{ sku: '', name: '', dc5: '', qty: 1, reason: '', unit: 0 }, { sku: '', name: '', dc5: '', qty: 1, reason: '', unit: 0 }]; }
+  if (!RT.lines.length) { RT.lines = [{ sku: '', name: '', dc5: '', qty: '', reason: '', unit: 0 }, { sku: '', name: '', dc5: '', qty: '', reason: '', unit: 0 }]; }
   rtRenderLines();
   $('rtNewModal').classList.add('active');
 }
@@ -158,13 +157,13 @@ function rtPickCust(c) {
   $('rtCustAc').classList.remove('show');
 }
 
-function rtAddLine(dup) { RT.lines.push(dup ? { ...dup } : { sku: '', name: '', dc5: '', qty: 1, reason: '', unit: 0 }); rtRenderLines(); }
+function rtAddLine(dup) { RT.lines.push(dup ? { ...dup } : { sku: '', name: '', dc5: '', qty: '', reason: '', unit: 0 }); rtRenderLines(); }
 function rtRemoveLine(i) { RT.lines.splice(i, 1); rtRenderLines(); }
 function rtRenderLines() {
   $('rtLinesBody').innerHTML = RT.lines.map((l, i) => `<tr>
     <td class="rt-prod-cell" style="position:relative">
       <input class="rt-input" placeholder="SKU / name / 5DC" value="${esc(l.name ? l.sku + ' — ' + l.name : (l.sku || ''))}" oninput="rtProdInput(${i}, this)" onfocus="rtProdInput(${i}, this)" autocomplete="off" /></td>
-    <td class="r"><input class="rt-input r" type="number" min="0" step="1" value="${l.qty}" oninput="rtLineSet(${i},'qty',this.value)" /></td>
+    <td class="r"><input class="rt-input r" type="number" min="0" step="1" placeholder="0" value="${l.qty}" oninput="rtLineSet(${i},'qty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtLineSet(${i},'unit',this.value)" /></td>
     <td class="r num">${money((Number(l.qty) || 0) * (Number(l.unit) || 0))}</td>
@@ -199,17 +198,18 @@ function rtPickProd(p) {
 async function rtSaveNew() {
   const name = ($('rtCustName').value || '').trim();
   const operator = ($('rtOperator').value || '').trim();
-  const lines = RT.lines.filter(l => l.sku && (Number(l.qty) || 0) > 0);
+  const withSku = RT.lines.filter(l => l.sku);
+  const lines = withSku.filter(l => (Number(l.qty) || 0) > 0);
   if (!name) return toast('Pick a customer', 'err');
   if (!operator) return toast('Enter the operator', 'err');
-  if (!lines.length) return toast('Add at least one product line', 'err');
+  if (!withSku.length) return toast('Add at least one product line', 'err');
+  if (lines.length !== withSku.length) return toast('Enter a quantity for every product line', 'err');
   const btn = $('rtSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const hdr = {
       customer_name: name, customer_id: (RT.sel ? RT.sel.code : ($('rtCustId').value || '')) || null,
       customer_email: ($('rtCustEmail').value || '').trim() || null,
       rep: ($('rtRep').value || '').trim() || null,
-      warehouse: ($('rtWarehouse').value || '') || null,
       customer_reference: ($('rtCustRef').value || '').trim() || null,
       origin_order: ($('rtOrigin').value || '').trim() || null, operator, notes: ($('rtNotes').value || '').trim() || null,
     };
@@ -245,7 +245,7 @@ async function rtFindSo() {
     RT.so = {
       number: j.order_number, customer: j.customer_name, code: j.customer_code, email: j.customer_email,
       rep: j.rep, reference: j.customer_reference,
-      lines: (j.lines || []).map(l => ({ sku: l.sku, name: l.name, ordered: l.qty, price: l.price != null ? l.price : 0, sel: true, rqty: l.qty, reason: '' })),
+      lines: (j.lines || []).map(l => ({ sku: l.sku, name: l.name, ordered: l.qty, price: l.price != null ? l.price : 0, sel: true, rqty: '', reason: '' })),
     };
     if (!RT.so.lines.length) return toast(`${j.order_number} has no order lines`, 'err');
     rtSoRender();
@@ -265,14 +265,25 @@ function rtSoRender() {
     <td><input type="checkbox" ${l.sel ? 'checked' : ''} onchange="rtSoSet(${i},'sel',this.checked)" /></td>
     <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 48))}</div></td>
     <td class="r num">${l.ordered}</td>
-    <td class="r"><input class="rt-input r" type="number" min="0" step="1" value="${l.rqty}" oninput="rtSoSet(${i},'rqty',this.value)" /></td>
+    <td class="r"><input class="rt-input r" type="number" min="0" max="${l.ordered}" step="1" placeholder="0" value="${l.rqty}" oninput="rtSoSet(${i},'rqty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtSoSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="r num">${money(l.price)}</td>
   </tr>`).join('');
   const nSel = so.lines.filter(l => l.sel).length;
   $('rtSoAdd').textContent = `Add ${nSel} item(s) to return`;
 }
-function rtSoSet(i, k, v) { RT.so.lines[i][k] = v; if (k === 'sel') rtSoRender(); }
+function rtSoSet(i, k, v) {
+  if (k === 'rqty') {                                  // cap at ordered qty — can't return more than was sold
+    const max = RT.so.lines[i].ordered;
+    let n = v === '' ? '' : Math.max(0, Number(v) || 0);
+    if (n !== '' && n > max) { n = max; toast(`Max ${max} for ${RT.so.lines[i].sku} (ordered)`, 'err'); }
+    RT.so.lines[i].rqty = n;
+    if (String(n) !== String(v)) rtSoRender();
+    return;
+  }
+  RT.so.lines[i][k] = v;
+  if (k === 'sel') rtSoRender();
+}
 function rtSoClose() { $('rtSoModal').classList.remove('active'); }
 function rtSoConfirm() {
   const so = RT.so; const chosen = so.lines.filter(l => l.sel && (Number(l.rqty) || 0) > 0);
@@ -299,7 +310,7 @@ async function rtScanProduct() {
   try {
     const p = await rtScanResolve(code);
     if (!p) return toast(`No product found for "${code}"`, 'err');
-    RT.lines.push({ sku: p.sku, name: p.name || '', dc5: p.attribute1 || '', qty: 1, reason: '', unit: p.price_tier1 != null ? Number(p.price_tier1) : 0 });
+    RT.lines.push({ sku: p.sku, name: p.name || '', dc5: p.attribute1 || '', qty: '', reason: '', unit: p.price_tier1 != null ? Number(p.price_tier1) : 0 });
     rtRenderLines();
     const rows = $('rtLinesBody').querySelectorAll('tr');
     const last = rows[rows.length - 1];
@@ -345,6 +356,7 @@ async function rtView(id) {
     <div class="rt-sec-title">Treatment</div>
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Credit note #</span><b>${esc(r.treatment_ref || '—')}</b></div>
+      <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Emailed</span><b>${esc(r.customer_emailed || '—')}</b></div>
       <div class="rt-kv"><span>Moved to</span><b>${esc(r.treatment_location_notes || '—')}</b></div>
       <div class="rt-kv"><span>Treated by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtD(r.treated_at) : ''}</b></div>
@@ -364,7 +376,6 @@ async function rtView(id) {
       <div class="rt-kv"><span>Customer</span><b>${esc(r.customer_name || '—')}</b></div>
       <div class="rt-kv"><span>Customer ID</span><b>${esc(r.customer_id || '—')}</b></div>
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
-      <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
@@ -394,12 +405,12 @@ async function rtAction(id) {
   $('rtActNotes').value = r.treatment_notes || '';
   $('rtActBy').value = r.treated_by || '';
   $('rtActEmailed').value = r.customer_emailed || '';
+  $('rtActWarehouse').value = r.warehouse || '';
   $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Treatment</b></span>`;
   $('rtActStage1').innerHTML = `
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Customer</span><b>${esc(r.customer_name || '—')} ${r.customer_id ? '(' + esc(r.customer_id) + ')' : ''}</b></div>
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
-      <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
@@ -439,6 +450,7 @@ async function rtSaveAct(complete) {
       treatment_location_notes: ($('rtActMoved').value || '').trim() || null,
       treatment_notes: ($('rtActNotes').value || '').trim() || null,
       customer_emailed: ($('rtActEmailed').value || '') || null,
+      warehouse: ($('rtActWarehouse').value || '').trim() || null,
       treated_by: by || null,
       status: complete ? 'completed' : 'in_treatment',
       updated_at: new Date().toISOString(),

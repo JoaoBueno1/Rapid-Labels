@@ -99,16 +99,6 @@
             <input type="text" id="rtRep" class="rt-input" placeholder="Sales rep" autocomplete="off" />
           </div>
           <div class="rt-field">
-            <label>Warehouse</label>
-            <select id="rtWarehouse" class="rt-input">
-              <option value="">— select —</option>
-              <option>Main</option><option>Brisbane</option><option>Gold Coast</option>
-              <option>Cairns</option><option>Coffs Harbour</option><option>Melbourne</option>
-              <option>Sydney</option><option>Newcastle</option><option>Adelaide</option>
-              <option>Perth</option><option>Hobart</option>
-            </select>
-          </div>
-          <div class="rt-field">
             <label>Origin order (optional)</label>
             <input type="text" id="rtOrigin" class="rt-input" placeholder="e.g. SO-123456" />
           </div>
@@ -204,6 +194,10 @@
               </select>
             </div>
             <div class="rt-field">
+              <label>Warehouse</label>
+              <input type="text" id="rtActWarehouse" class="rt-input" placeholder="Where it was received / handled" />
+            </div>
+            <div class="rt-field rt-field-full">
               <label>Moved to (general)</label>
               <input type="text" id="rtActMoved" class="rt-input" placeholder="Where did the goods go overall" />
             </div>
@@ -269,6 +263,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717g"></script>
+  <script src="returns.js?v=20260717h"></script>
 </body>
 </html>
