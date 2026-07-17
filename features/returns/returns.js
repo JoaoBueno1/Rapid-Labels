@@ -34,7 +34,7 @@ function rtGoPage(kind, d) { if (kind === 'active') { RT.activePage += d; rtRend
     if (!e.target.closest('.rt-cust')) $('rtCustAc').classList.remove('show');
     if (!e.target.closest('.rt-oper')) $('rtOperatorAc') && $('rtOperatorAc').classList.remove('show');
     if (!e.target.closest('.rt-actby')) $('rtActByAc') && $('rtActByAc').classList.remove('show');
-    if (!e.target.closest('.rt-prod-cell') && !e.target.closest('#rtProdAc')) $('rtProdAc').style.display = 'none';
+    if (!e.target.closest('.rt-prod-cell') && !e.target.closest('.rt-dc5-cell') && !e.target.closest('#rtProdAc')) $('rtProdAc').style.display = 'none';
   });
 })();
 
@@ -166,9 +166,11 @@ function rtAddLine(dup) { RT.lines.push(dup ? { ...dup } : { sku: '', name: '', 
 function rtRemoveLine(i) { RT.lines.splice(i, 1); rtRenderLines(); }
 function rtRenderLines() {
   $('rtLinesBody').innerHTML = RT.lines.map((l, i) => `<tr class="${l._invalid ? 'rt-row-bad' : ''}">
-    <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
+    <td class="rt-dc5-cell" style="position:relative">
+      <input class="rt-input" placeholder="5DC" value="${esc(l.dc5 || '')}" oninput="rtDc5Input(${i}, this)" onfocus="rtDc5Input(${i}, this)" autocomplete="off" /></td>
     <td class="rt-prod-cell" style="position:relative">
-      <input class="rt-input" placeholder="SKU / name / 5DC" value="${esc(l.name ? l.sku + ' — ' + l.name : (l.sku || ''))}" oninput="rtProdInput(${i}, this)" onfocus="rtProdInput(${i}, this)" autocomplete="off" /></td>
+      <input class="rt-input" placeholder="SKU / name" value="${esc(l.sku || '')}" oninput="rtProdInput(${i}, this)" onfocus="rtProdInput(${i}, this)" autocomplete="off" />
+      ${l.name ? `<div class="rt-line-desc">${esc(l.name)}</div>` : ''}</td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" placeholder="0" value="${l.qty}" oninput="rtLineSet(${i},'qty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'condition',this.value)"><option value="">— condition —</option>${CONDITIONS.map(r => `<option ${l.condition === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
@@ -201,6 +203,21 @@ function rtPickProd(p) {
   l.sku = p.sku; l.name = p.name || ''; l.dc5 = p.attribute1 || '';
   if (!l.unit || Number(l.unit) === 0) l.unit = p.price_tier1 != null ? Number(p.price_tier1) : 0;
   $('rtProdAc').style.display = 'none'; rtRenderLines();
+}
+// find a product by typing its 5DC (attribute1) in the 5DC column
+function rtDc5Input(i, inp) {
+  const l = RT.lines[i]; if (l) l.dc5 = inp.value.trim();   // capture typed 5DC (free text ok)
+  RT.prodTarget = { i, inp }; const q = (inp.value || '').trim(); const ac = $('rtProdAc');
+  const rect = inp.getBoundingClientRect(); ac.style.left = rect.left + 'px'; ac.style.top = (rect.bottom + 2) + 'px'; ac.style.width = Math.max(rect.width, 240) + 'px';
+  if (q.length < 2) { ac.style.display = 'none'; return; }
+  clearTimeout(_prodTimer);
+  _prodTimer = setTimeout(async () => {
+    try {
+      const r = await sb().schema('cin7_mirror').from('products').select('sku,name,attribute1,price_tier1').ilike('attribute1', `${q}%`).limit(8);
+      ac.innerHTML = (r.data || []).map(p => `<div class="rt-ac-item" onclick='rtPickProd(${JSON.stringify(p).replace(/'/g, "&#39;")})'><strong>5DC ${esc(p.attribute1)}</strong> <span class="sub">${esc(p.sku)}</span><div class="sub">${esc((p.name || '').slice(0, 60))}${p.price_tier1 != null ? ' · $' + money(p.price_tier1) : ''}</div></div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match</div>';
+      ac.style.display = 'block';
+    } catch (e) { ac.style.display = 'none'; }
+  }, 200);
 }
 
 async function rtSaveNew() {
@@ -375,7 +392,7 @@ async function rtScanResolve(code) {
   return null;
 }
 
-function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717o', '_blank'); }
+function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717p', '_blank'); }
 
 // ─── View (consult) ───
 async function rtView(id) {
@@ -463,7 +480,8 @@ async function rtAction(id) {
 function rtCloseAct() { $('rtActModal').classList.remove('active'); }
 function rtRenderTLines() {
   $('rtTLinesBody').innerHTML = RT.tlines.map((l, i) => `<tr>
-    <td><strong>${esc(l.sku)}</strong>${l.dc5 ? `<div class="rt-line-dc5">5DC ${esc(l.dc5)}</div>` : ''}<div class="sub">${esc((l.name || '').slice(0, 28))}</div></td>
+    <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
+    <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 26))}</div></td>
     <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td><input class="rt-input" value="${esc(l.reason)}" oninput="rtTSet(${i},'reason',this.value)" /></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" /></td>
