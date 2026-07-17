@@ -125,6 +125,7 @@ async function rtOpenForm(row) {
   if ($('rtSoInput')) $('rtSoInput').value = '';
   if ($('rtScanInput')) $('rtScanInput').value = '';
   $('rtCustRef').value = row ? (row.customer_reference || '') : '';
+  $('rtInvoice').value = row ? (row.invoice_number || '') : '';
   $('rtFormTitle').textContent = row ? `Edit return ${row.return_no}` : 'New return';
   $('rtSaveBtn').textContent = row ? 'Save changes' : 'Save & print';
   $('rtCustName').value = row ? (row.customer_name || '') : '';
@@ -219,6 +220,7 @@ async function rtSaveNew() {
       contact_name: ($('rtContact').value || '').trim() || null,
       customer_email: ($('rtCustEmail').value || '').trim() || null,
       rep: ($('rtRep').value || '').trim() || null,
+      invoice_number: ($('rtInvoice').value || '').trim() || null,
       customer_reference: ($('rtCustRef').value || '').trim() || null,
       origin_order: ($('rtOrigin').value || '').trim() || null, operator, notes: ($('rtNotes').value || '').trim() || null,
     };
@@ -252,8 +254,8 @@ async function rtFindSo() {
     const j = await (await fetch('/api/sale?q=' + encodeURIComponent(q))).json();
     if (!j.found) return toast(`No sales order found for "${q}"`, 'err');
     RT.so = {
-      number: j.order_number, customer: j.customer_name, code: j.customer_code, email: j.customer_email,
-      rep: j.rep, reference: j.customer_reference,
+      number: j.order_number, customer: j.customer_name, code: j.customer_code, contact: j.contact_name, email: j.customer_email,
+      rep: j.rep, invoice: j.invoice_number, reference: j.customer_reference,
       lines: (j.lines || []).map(l => ({ sku: l.sku, name: l.name, ordered: l.qty, price: l.price != null ? l.price : 0, sel: true, rqty: '', reason: '' })),
     };
     if (!RT.so.lines.length) return toast(`${j.order_number} has no order lines`, 'err');
@@ -274,7 +276,9 @@ function rtSoRender() {
   const so = RT.so;
   $('rtSoTitle').textContent = 'Sales order ' + so.number;
   $('rtSoMeta').innerHTML = `<div class="rt-kv-grid">
-    <div class="rt-kv"><span>Customer</span><b>${esc(so.customer || '—')} ${so.code ? '(' + esc(so.code) + ')' : ''}</b></div>
+    <div class="rt-kv"><span>Business</span><b>${esc(so.customer || '—')} ${so.code ? '(' + esc(so.code) + ')' : ''}</b></div>
+    <div class="rt-kv"><span>Contact</span><b>${esc(so.contact || '—')}</b></div>
+    <div class="rt-kv"><span>Invoice</span><b>${esc(so.invoice || '—')}</b></div>
     <div class="rt-kv"><span>Reference</span><b>${esc(so.reference || '—')}</b></div>
     <div class="rt-kv"><span>Email</span><b>${esc(so.email || '—')}</b></div>
     <div class="rt-kv"><span>Rep</span><b>${esc(so.rep || '—')}</b></div>
@@ -307,10 +311,12 @@ function rtSoConfirm() {
   const so = RT.so; const chosen = so.lines.filter(l => l.sel && (Number(l.rqty) || 0) > 0);
   if (!chosen.length) return toast('Tick at least one item with QTY > 0', 'err');
   // fill customer + order fields from the SO
-  if (so.customer) { $('rtCustName').value = so.customer; RT.sel = { name: so.customer, code: so.code, email: so.email, rep: so.rep }; }
+  if (so.customer) { $('rtCustName').value = so.customer; RT.sel = { name: so.customer, code: so.code, email: so.email, rep: so.rep, contact: so.contact }; }
   $('rtCustId').value = so.code || '';
+  if (so.contact) $('rtContact').value = so.contact;
   if (so.email) $('rtCustEmail').value = so.email;
   if (so.rep) $('rtRep').value = so.rep;
+  if (so.invoice) $('rtInvoice').value = so.invoice;
   $('rtOrigin').value = so.number;
   if (so.reference) $('rtCustRef').value = so.reference;
   // append chosen lines (keep any real manual lines, drop blank placeholders)
@@ -359,7 +365,7 @@ async function rtScanResolve(code) {
   return null;
 }
 
-function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717j', '_blank'); }
+function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717k', '_blank'); }
 
 // ─── View (consult) ───
 async function rtView(id) {
@@ -396,6 +402,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Account</span><b>${esc(r.customer_id || '—')}</b></div>
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
+      <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
@@ -432,6 +439,7 @@ async function rtAction(id) {
       <div class="rt-kv"><span>Contact</span><b>${esc(r.contact_name || '—')}</b></div>
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
+      <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
@@ -496,10 +504,10 @@ const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.q
 function rtExportCsv() {
   const rows = RT.history;
   if (!rows.length) return toast('No completed returns to export', 'err');
-  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Origin order', 'Cust. reference', 'Products (qty × sku / reason / condition / status)', 'Total Qty', 'Credit Note', 'Emailed', 'Received by', 'Treated by', 'Treated Date', 'Credit $', 'Comments', 'Treatment Notes'];
+  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Origin order', 'Cust. reference', 'Products (qty × sku / reason / condition / status)', 'Total Qty', 'Credit Note', 'Emailed', 'Received by', 'Treated by', 'Treated Date', 'Credit $', 'Comments', 'Treatment Notes'];
   const lines = [headers.map(csvCell).join(',')];
   rows.forEach(r => lines.push([
-    fmtD(r.created_at), r.return_no, r.customer_name, r.contact_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.origin_order, r.customer_reference,
+    fmtD(r.created_at), r.return_no, r.customer_name, r.contact_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.invoice_number, r.origin_order, r.customer_reference,
     rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
     rtCredit(r) ? money(rtCredit(r)) : '', r.notes, r.treatment_notes,
   ].map(csvCell).join(',')));

@@ -208,7 +208,7 @@ app.get('/api/sale', async (req, res) => {
     if (!sl.ok) return res.status(502).json({ error: 'Cin7 saleList ' + sl.status });
     const rows = (await sl.json()).SaleList || [];
     const norm = s => String(s || '').trim().toLowerCase();
-    const hit = rows.find(r => norm(r.OrderNumber) === norm(q)) || rows.find(r => norm(r.OrderNumber).includes(norm(q))) || rows[0];
+    const hit = rows.find(r => norm(r.OrderNumber) === norm(q)) || rows.find(r => norm(r.InvoiceNumber) === norm(q)) || rows.find(r => norm(r.OrderNumber).includes(norm(q))) || rows[0];
     if (!hit) return res.json({ found: false });
     // 2) full sale for the order lines + customer detail
     const s = await fetch(`https://inventory.dearsystems.com/ExternalApi/v2/sale?ID=${encodeURIComponent(hit.SaleID)}`, { headers: H });
@@ -229,6 +229,7 @@ app.get('/api/sale', async (req, res) => {
       contact_name: sale.Contact || '',
       customer_email: sale.Email || '',
       rep: sale.SalesRepresentative || '',
+      invoice_number: hit.InvoiceNumber || ((sale.Invoices || [])[0] || {}).InvoiceNumber || '',
       customer_reference: sale.CustomerReference || hit.CustomerReference || '',
       lines,
     });

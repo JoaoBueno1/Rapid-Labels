@@ -73,9 +73,9 @@
       <div class="rt-modal-body">
         <!-- Scan / find a sales order to pre-fill everything -->
         <div class="rt-so">
-          <div class="rt-so-hint">💡 <b>One return per sales order.</b> Scan or type the SO to pull the customer &amp; its items — then just pick what's coming back. Returning items from another order? Save this and start a new return.</div>
+          <div class="rt-so-hint">💡 <b>One return per sales order.</b> Scan or type the SO <b>or invoice</b> to pull the customer &amp; its items — then just pick what's coming back. Returning items from another order? Save this and start a new return.</div>
           <div class="rt-so-bar">
-            <input type="text" id="rtSoInput" class="rt-input" placeholder="Scan or type a sales order (e.g. SO-00123)…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rtFindSo();}" />
+            <input type="text" id="rtSoInput" class="rt-input" placeholder="Scan or type a sales order or invoice (e.g. SO-00123 / INV-00123)…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rtFindSo();}" />
             <button class="rt-btn rt-btn-primary" id="rtSoBtn" type="button" onclick="rtFindSo()">Find order</button>
           </div>
         </div>
@@ -101,6 +101,10 @@
           <div class="rt-field">
             <label>Rep <small style="text-transform:none;color:#9aa6ba">(from Cin7)</small></label>
             <input type="text" id="rtRep" class="rt-input" placeholder="Sales rep" autocomplete="off" />
+          </div>
+          <div class="rt-field">
+            <label>Invoice #</label>
+            <input type="text" id="rtInvoice" class="rt-input" placeholder="e.g. INV-256568" />
           </div>
           <div class="rt-field">
             <label>Origin order (optional)</label>
@@ -267,6 +271,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717j"></script>
+  <script src="returns.js?v=20260717k"></script>
 </body>
 </html>
