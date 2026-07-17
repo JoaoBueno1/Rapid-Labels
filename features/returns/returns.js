@@ -22,9 +22,21 @@ function toast(msg, kind) { const el = document.createElement('div'); el.classNa
   await Promise.all([loadCustomers(), loadOperators(), loadReturns()]);
   document.addEventListener('click', e => {
     if (!e.target.closest('.rt-cust')) $('rtCustAc').classList.remove('show');
+    if (!e.target.closest('.rt-oper')) $('rtOperatorAc') && $('rtOperatorAc').classList.remove('show');
+    if (!e.target.closest('.rt-actby')) $('rtActByAc') && $('rtActByAc').classList.remove('show');
     if (!e.target.closest('.rt-prod-cell') && !e.target.closest('#rtProdAc')) $('rtProdAc').style.display = 'none';
   });
 })();
+
+// operator autocomplete (shared by New-return operator + Action Treated-by)
+function rtOperInput(inputId, acId) {
+  const q = ($(inputId).value || '').trim().toLowerCase(); const ac = $(acId);
+  let hits = RT.operators; if (q) hits = RT.operators.filter(o => o.toLowerCase().includes(q));
+  hits = hits.slice(0, 12);
+  ac.innerHTML = hits.map(o => `<div class="rt-ac-item" data-v="${esc(o)}" onclick="rtOperPick('${inputId}','${acId}',this.dataset.v)">${esc(o)}</div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match — you can type a new name</div>';
+  ac.classList.add('show');
+}
+function rtOperPick(inputId, acId, name) { $(inputId).value = name; $(acId).classList.remove('show'); }
 
 async function loadCustomers() { try { const r = await fetch('/api/customers'); RT.customers = (await r.json()).customers || []; } catch (_) {} }
 async function loadOperators() {
