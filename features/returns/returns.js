@@ -162,7 +162,8 @@ function rtRemoveLine(i) { RT.lines.splice(i, 1); rtRenderLines(); }
 function rtRenderLines() {
   $('rtLinesBody').innerHTML = RT.lines.map((l, i) => `<tr>
     <td class="rt-prod-cell" style="position:relative">
-      <input class="rt-input" placeholder="SKU / name / 5DC" value="${esc(l.name ? l.sku + ' — ' + l.name : (l.sku || ''))}" oninput="rtProdInput(${i}, this)" onfocus="rtProdInput(${i}, this)" autocomplete="off" /></td>
+      <input class="rt-input" placeholder="SKU / name / 5DC" value="${esc(l.name ? l.sku + ' — ' + l.name : (l.sku || ''))}" oninput="rtProdInput(${i}, this)" onfocus="rtProdInput(${i}, this)" autocomplete="off" />
+      ${l.dc5 ? `<div class="rt-line-dc5">5DC ${esc(l.dc5)}</div>` : ''}</td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" placeholder="0" value="${l.qty}" oninput="rtLineSet(${i},'qty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtLineSet(${i},'unit',this.value)" /></td>
@@ -175,6 +176,8 @@ function rtLineSet(i, k, v) { RT.lines[i][k] = v; if (k === 'qty' || k === 'unit
 
 let _prodTimer = null;
 function rtProdInput(i, inp) {
+  // capture free text so an unmatched product still saves (user typed it + a qty)
+  const l = RT.lines[i]; if (l) { l.sku = inp.value.trim(); l.name = ''; l.dc5 = ''; }
   RT.prodTarget = { i, inp }; const q = (inp.value || '').trim(); const ac = $('rtProdAc');
   const rect = inp.getBoundingClientRect(); ac.style.left = rect.left + 'px'; ac.style.top = (rect.bottom + 2) + 'px'; ac.style.width = rect.width + 'px';
   if (q.length < 2) { ac.style.display = 'none'; return; }
@@ -248,6 +251,15 @@ async function rtFindSo() {
       lines: (j.lines || []).map(l => ({ sku: l.sku, name: l.name, ordered: l.qty, price: l.price != null ? l.price : 0, sel: true, rqty: '', reason: '' })),
     };
     if (!RT.so.lines.length) return toast(`${j.order_number} has no order lines`, 'err');
+    // enrich SO lines with 5DC (attribute1) from the mirror — the sale API only gives SKU
+    try {
+      const skus = [...new Set(RT.so.lines.map(l => l.sku).filter(Boolean))];
+      if (skus.length) {
+        const { data } = await sb().schema('cin7_mirror').from('products').select('sku,attribute1').in('sku', skus);
+        const map = {}; (data || []).forEach(p => { map[(p.sku || '').toLowerCase()] = p.attribute1 || ''; });
+        RT.so.lines.forEach(l => { l.dc5 = map[(l.sku || '').toLowerCase()] || ''; });
+      }
+    } catch (_) {}
     rtSoRender();
     $('rtSoModal').classList.add('active');
   } catch (e) { toast('Lookup failed: ' + e.message, 'err'); } finally { btn.disabled = false; btn.textContent = old; }
@@ -263,7 +275,7 @@ function rtSoRender() {
   </div>`;
   $('rtSoBody').innerHTML = so.lines.map((l, i) => `<tr class="${l.sel ? '' : 'rt-so-off'}">
     <td><input type="checkbox" ${l.sel ? 'checked' : ''} onchange="rtSoSet(${i},'sel',this.checked)" /></td>
-    <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 48))}</div></td>
+    <td><strong>${esc(l.sku)}</strong>${l.dc5 ? ` <span class="sub">· 5DC ${esc(l.dc5)}</span>` : ''}<div class="sub">${esc((l.name || '').slice(0, 48))}</div></td>
     <td class="r num">${l.ordered}</td>
     <td class="r"><input class="rt-input r" type="number" min="0" max="${l.ordered}" step="1" placeholder="0" value="${l.rqty}" oninput="rtSoSet(${i},'rqty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtSoSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
@@ -296,7 +308,7 @@ function rtSoConfirm() {
   $('rtOrigin').value = so.number;
   if (so.reference) $('rtCustRef').value = so.reference;
   // append chosen lines (keep any real manual lines, drop blank placeholders)
-  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: '', qty: Number(l.rqty) || 0, reason: l.reason || '', unit: Number(l.price) || 0 })));
+  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: l.dc5 || '', qty: Number(l.rqty) || 0, reason: l.reason || '', unit: Number(l.price) || 0 })));
   RT.soLoadedNumber = so.number;
   rtRenderLines(); rtSoClose();
   toast(`Added ${chosen.length} item(s) from ${so.number}`, 'ok');
@@ -399,7 +411,7 @@ async function rtAction(id) {
   const lines = ln.data || [], tlines = tl.data || [];
   RT.stageLines = lines;
   // credit lines: existing treatment lines, or seed from stage-1
-  RT.tlines = (tlines.length ? tlines : lines).map(l => ({ sku: l.sku, name: l.product_name, qty: l.qty, reason: l.reason || '', unit: l.unit_value != null ? l.unit_value : 0, moved: l.moved_to_location || '' }));
+  RT.tlines = (tlines.length ? tlines : lines).map(l => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', unit: l.unit_value != null ? l.unit_value : 0, moved: l.moved_to_location || '' }));
   $('rtActRef').value = r.treatment_ref || '';
   $('rtActMoved').value = r.treatment_location_notes || '';
   $('rtActNotes').value = r.treatment_notes || '';
@@ -425,7 +437,7 @@ async function rtAction(id) {
 function rtCloseAct() { $('rtActModal').classList.remove('active'); }
 function rtRenderTLines() {
   $('rtTLinesBody').innerHTML = RT.tlines.map((l, i) => `<tr>
-    <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 34))}</div></td>
+    <td><strong>${esc(l.sku)}</strong>${l.dc5 ? ` <span class="sub">· 5DC ${esc(l.dc5)}</span>` : ''}<div class="sub">${esc((l.name || '').slice(0, 34))}</div></td>
     <td><input class="rt-input" value="${esc(l.reason)}" oninput="rtTSet(${i},'reason',this.value)" /></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" /></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtTSet(${i},'unit',this.value)" /></td>
