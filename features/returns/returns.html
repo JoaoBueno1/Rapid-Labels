@@ -47,6 +47,7 @@
     <!-- HISTORY -->
     <section id="rtHistory" class="rt-panel" style="display:none">
       <div class="rt-toolbar">
+        <button class="rt-btn" onclick="rtExportCsv()">⬇ Export CSV</button>
         <input type="text" id="rtHistSearch" class="rt-input" placeholder="Search completed returns…" oninput="RT.histPage=1;rtRenderHistory()" />
         <span class="rt-count" id="rtHistCount"></span>
       </div>
@@ -79,6 +80,24 @@
           <div class="rt-field">
             <label>Customer ID</label>
             <input type="text" id="rtCustId" class="rt-input rt-readonly" readonly placeholder="— (select a customer)" />
+          </div>
+          <div class="rt-field">
+            <label>Customer email <small style="text-transform:none;color:#9aa6ba">(from Cin7, editable)</small></label>
+            <input type="email" id="rtCustEmail" class="rt-input" placeholder="— (auto-filled on pick)" autocomplete="off" />
+          </div>
+          <div class="rt-field">
+            <label>Rep <small style="text-transform:none;color:#9aa6ba">(from Cin7)</small></label>
+            <input type="text" id="rtRep" class="rt-input" placeholder="Sales rep" autocomplete="off" />
+          </div>
+          <div class="rt-field">
+            <label>Warehouse</label>
+            <select id="rtWarehouse" class="rt-input">
+              <option value="">— select —</option>
+              <option>Main</option><option>Brisbane</option><option>Gold Coast</option>
+              <option>Cairns</option><option>Coffs Harbour</option><option>Melbourne</option>
+              <option>Sydney</option><option>Newcastle</option><option>Adelaide</option>
+              <option>Perth</option><option>Hobart</option>
+            </select>
           </div>
           <div class="rt-field">
             <label>Origin order (optional)</label>
@@ -151,17 +170,26 @@
           <div class="rt-stage-tag rt-stage-tag-next">② Stage 2 — Treatment <span class="rt-stage-hint">fill this in, then Complete</span></div>
           <div class="rt-form-grid">
             <div class="rt-field">
-              <label>Treatment ref (credit / order #)</label>
-              <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. CRD-1024 or SO-99123" />
+              <label>Credit note #</label>
+              <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. 24408" />
             </div>
             <div class="rt-field rt-actby">
               <label>Treated by *</label>
               <input type="text" id="rtActBy" class="rt-input" autocomplete="off" placeholder="Start typing name…" oninput="rtOperInput('rtActBy','rtActByAc')" onfocus="rtOperInput('rtActBy','rtActByAc')" />
               <div class="rt-ac" id="rtActByAc"></div>
             </div>
-            <div class="rt-field rt-field-full">
+            <div class="rt-field">
+              <label>Emailed customer</label>
+              <select id="rtActEmailed" class="rt-input">
+                <option value="">— not set —</option>
+                <option>Emailed</option>
+                <option>Should have emailed</option>
+                <option>Not emailed</option>
+              </select>
+            </div>
+            <div class="rt-field">
               <label>Moved to (general)</label>
-              <input type="text" id="rtActMoved" class="rt-input" placeholder="Where did the goods go overall (free text)" />
+              <input type="text" id="rtActMoved" class="rt-input" placeholder="Where did the goods go overall" />
             </div>
           </div>
 
@@ -199,6 +227,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717e"></script>
+  <script src="returns.js?v=20260717f"></script>
 </body>
 </html>

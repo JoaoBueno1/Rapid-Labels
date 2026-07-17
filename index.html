@@ -1141,6 +1141,19 @@
                     }
                 } catch(e) {}
 
+                // ─── 1b. Returns active (pending / in treatment) ───
+                try {
+                    const { count, error } = await sb
+                        .from('returns_active')
+                        .select('id', { count: 'exact', head: true })
+                        .neq('status', 'completed');
+                    if (!error && typeof count === 'number') {
+                        const badge = document.getElementById('returnsCount');
+                        if (badge) { badge.textContent = count; badge.style.display = ''; if (count === 0) badge.classList.add('zero'); }
+                        if (count > 0) addActivity('↩️', `${count} return${count>1?'s':''} awaiting action`, '');
+                    }
+                } catch(e) {}
+
                 // ─── 2. Collections completed today ───
                 let collToday = 0;
                 try {

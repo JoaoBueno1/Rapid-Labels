@@ -179,7 +179,18 @@ app.get('/api/customers', async (req, res) => {
       const r = await fetch(`https://inventory.dearsystems.com/ExternalApi/v2/customer?Page=${page}&Limit=1000`, { headers: H });
       if (!r.ok) break;
       const rows = (await r.json()).CustomerList || [];
-      for (const c of rows) list.push({ id: c.ID, name: (c.Name || '').trim(), code: c.AdditionalAttribute1 || '' });
+      for (const c of rows) {
+        // email: default contact first, else first contact that has one
+        const contacts = Array.isArray(c.Contacts) ? c.Contacts : [];
+        const def = contacts.find(ct => ct.Default && ct.Email) || contacts.find(ct => ct.Email);
+        list.push({
+          id: c.ID,
+          name: (c.Name || '').trim(),
+          code: c.AdditionalAttribute1 || '',
+          email: (def && def.Email) || '',
+          rep: c.SalesRepresentative || '',
+        });
+      }
       if (rows.length < 1000) break;
     }
     if (list.length) _custCache = { at: Date.now(), list };

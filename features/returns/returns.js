@@ -55,7 +55,7 @@ async function loadOperators() {
 }
 async function loadReturns() {
   try {
-    const r = await sb().from('returns_active').select('*, returns_lines(qty,line_value), returns_treatment_lines(line_value)').order('created_at', { ascending: false });
+    const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no)').order('created_at', { ascending: false });
     const rows = r.data || [];
     RT.active = rows.filter(x => x.status !== 'completed');
     RT.history = rows.filter(x => x.status === 'completed');
@@ -125,6 +125,9 @@ async function rtOpenForm(row) {
   $('rtCustName').value = row ? (row.customer_name || '') : '';
   $('rtCustId').value = row ? (row.customer_id || '') : '';
   if (row) RT.sel = { name: row.customer_name, code: row.customer_id };
+  $('rtCustEmail').value = row ? (row.customer_email || '') : '';
+  $('rtRep').value = row ? (row.rep || '') : '';
+  $('rtWarehouse').value = row ? (row.warehouse || '') : '';
   $('rtOrigin').value = row ? (row.origin_order || '') : '';
   $('rtOperator').value = row ? (row.operator || '') : '';
   $('rtNotes').value = row ? (row.notes || '') : '';
@@ -145,7 +148,12 @@ function rtCustInput() {
   ac.innerHTML = hits.map(c => `<div class="rt-ac-item" onclick='rtPickCust(${JSON.stringify(c).replace(/'/g, "&#39;")})'>${esc(c.name)}${c.code ? `<span class="sub"> · ${esc(c.code)}</span>` : ''}</div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match</div>';
   ac.classList.add('show'); RT.sel = null; $('rtCustId').value = '';
 }
-function rtPickCust(c) { RT.sel = c; $('rtCustName').value = c.name; $('rtCustId').value = c.code || ''; $('rtCustAc').classList.remove('show'); }
+function rtPickCust(c) {
+  RT.sel = c; $('rtCustName').value = c.name; $('rtCustId').value = c.code || '';
+  if (c.email) $('rtCustEmail').value = c.email;   // Cin7 default-contact email
+  if (c.rep) $('rtRep').value = c.rep;             // Cin7 sales rep
+  $('rtCustAc').classList.remove('show');
+}
 
 function rtAddLine(dup) { RT.lines.push(dup ? { ...dup } : { sku: '', name: '', dc5: '', qty: 1, reason: '', unit: 0 }); rtRenderLines(); }
 function rtRemoveLine(i) { RT.lines.splice(i, 1); rtRenderLines(); }
@@ -196,6 +204,9 @@ async function rtSaveNew() {
   try {
     const hdr = {
       customer_name: name, customer_id: (RT.sel ? RT.sel.code : ($('rtCustId').value || '')) || null,
+      customer_email: ($('rtCustEmail').value || '').trim() || null,
+      rep: ($('rtRep').value || '').trim() || null,
+      warehouse: ($('rtWarehouse').value || '') || null,
       origin_order: ($('rtOrigin').value || '').trim() || null, operator, notes: ($('rtNotes').value || '').trim() || null,
     };
     let id, return_no;
@@ -228,10 +239,13 @@ async function rtView(id) {
   const rowsC = lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc(l.product_name || '')}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td></tr>`).join('');
   const treatBlock = (r.status === 'completed' || r.status === 'in_treatment') ? `
     <div class="rt-sec-title">Treatment</div>
-    <div class="rt-kv"><span>Treatment ref</span><b>${esc(r.treatment_ref || '—')}</b></div>
-    <div class="rt-kv"><span>Moved to</span><b>${esc(r.treatment_location_notes || '—')}</b></div>
-    <div class="rt-kv"><span>Treated by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtD(r.treated_at) : ''}</b></div>
-    ${r.treatment_notes ? `<div class="rt-kv"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
+    <div class="rt-kv-grid">
+      <div class="rt-kv"><span>Credit note #</span><b>${esc(r.treatment_ref || '—')}</b></div>
+      <div class="rt-kv"><span>Emailed</span><b>${esc(r.customer_emailed || '—')}</b></div>
+      <div class="rt-kv"><span>Moved to</span><b>${esc(r.treatment_location_notes || '—')}</b></div>
+      <div class="rt-kv"><span>Treated by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtD(r.treated_at) : ''}</b></div>
+      ${r.treatment_notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
+    </div>
     ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th class="r">Qty</th><th>Reason</th><th class="r">Credit $</th><th>Moved to</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td><td class="r num">${money(t.line_value)}</td><td>${esc(t.moved_to_location || '')}</td></tr>`).join('')}</tbody></table>` : ''}
   ` : '';
   $('rtViewBody').innerHTML = `
@@ -245,6 +259,9 @@ async function rtView(id) {
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Customer</span><b>${esc(r.customer_name || '—')}</b></div>
       <div class="rt-kv"><span>Customer ID</span><b>${esc(r.customer_id || '—')}</b></div>
+      <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
+      <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
+      <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
@@ -271,10 +288,14 @@ async function rtAction(id) {
   $('rtActMoved').value = r.treatment_location_notes || '';
   $('rtActNotes').value = r.treatment_notes || '';
   $('rtActBy').value = r.treated_by || '';
+  $('rtActEmailed').value = r.customer_emailed || '';
   $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Treatment</b></span>`;
   $('rtActStage1').innerHTML = `
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Customer</span><b>${esc(r.customer_name || '—')} ${r.customer_id ? '(' + esc(r.customer_id) + ')' : ''}</b></div>
+      <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
+      <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
+      <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
@@ -311,6 +332,7 @@ async function rtSaveAct(complete) {
       treatment_ref: ($('rtActRef').value || '').trim() || null,
       treatment_location_notes: ($('rtActMoved').value || '').trim() || null,
       treatment_notes: ($('rtActNotes').value || '').trim() || null,
+      customer_emailed: ($('rtActEmailed').value || '') || null,
       treated_by: by || null,
       status: complete ? 'completed' : 'in_treatment',
       updated_at: new Date().toISOString(),
@@ -324,4 +346,27 @@ async function rtSaveAct(complete) {
     toast(complete ? `${r.return_no} completed` : 'Progress saved', 'ok');
     rtCloseAct(); await loadReturns();
   } catch (e) { toast('Save failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
+}
+
+// ─── CSV export (History) — mirrors the team's credit-note sheet + our detail ───
+const csvCell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+const rtProductsStr = r => (r.returns_lines || []).slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0)).map(l => `${l.qty}X ${l.sku}`).join(' | ');
+const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.qty) || 0), 0);
+function rtExportCsv() {
+  const rows = RT.history;
+  if (!rows.length) return toast('No completed returns to export', 'err');
+  const headers = ['Date', 'Return #', 'Customer', 'Customer ID', 'Email', 'Warehouse', 'Rep', 'Faulty Products', 'Total Qty', 'Credit Note', 'Emailed', 'Operator', 'Treated by', 'Treated Date', 'Credit $', 'Notes', 'Treatment Notes'];
+  const lines = [headers.map(csvCell).join(',')];
+  rows.forEach(r => lines.push([
+    fmtD(r.created_at), r.return_no, r.customer_name, r.customer_id, r.customer_email, r.warehouse, r.rep,
+    rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
+    rtCredit(r) ? money(rtCredit(r)) : '', r.notes, r.treatment_notes,
+  ].map(csvCell).join(',')));
+  const csv = '﻿' + lines.join('\r\n'); // BOM so Excel reads UTF-8
+  const stamp = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `returns_export_${stamp}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`Exported ${rows.length} return(s)`, 'ok');
 }
