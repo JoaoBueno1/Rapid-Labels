@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717b" />
+  <link rel="stylesheet" href="returns.css?v=20260717c" />
 </head>
 <body>
   <header class="rt-header">
@@ -115,6 +115,79 @@
     </div>
   </div>
 
+  <!-- ═══ VIEW / CONSULT MODAL ═══ -->
+  <div class="rt-modal" id="rtViewModal">
+    <div class="rt-modal-box rt-modal-lg">
+      <div class="rt-modal-head">
+        <h3>Return details</h3>
+        <button class="rt-x" onclick="rtCloseView()">×</button>
+      </div>
+      <div class="rt-modal-body" id="rtViewBody"></div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtCloseView()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ ACTION / TREATMENT MODAL ═══ -->
+  <div class="rt-modal" id="rtActModal">
+    <div class="rt-modal-box rt-modal-lg">
+      <div class="rt-modal-head">
+        <h3 id="rtActTitle">Action</h3>
+        <button class="rt-x" onclick="rtCloseAct()">×</button>
+      </div>
+      <div class="rt-modal-body">
+        <!-- STAGE 1 (read-only) -->
+        <div class="rt-stage rt-stage-done">
+          <div class="rt-stage-tag">① Stage 1 — Created <span class="rt-stage-lock">read-only</span></div>
+          <div id="rtActStage1"></div>
+        </div>
+
+        <!-- STAGE 2 (treatment) -->
+        <div class="rt-stage rt-stage-active">
+          <div class="rt-stage-tag rt-stage-tag-next">② Stage 2 — Treatment <span class="rt-stage-hint">fill this in, then Complete</span></div>
+          <div class="rt-form-grid">
+            <div class="rt-field">
+              <label>Treatment ref (credit / order #)</label>
+              <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. CRD-1024 or SO-99123" />
+            </div>
+            <div class="rt-field">
+              <label>Treated by *</label>
+              <input type="text" id="rtActBy" class="rt-input" list="rtOperators" placeholder="Who handled it" />
+            </div>
+            <div class="rt-field rt-field-full">
+              <label>Moved to (general)</label>
+              <input type="text" id="rtActMoved" class="rt-input" placeholder="Where did the goods go overall (free text)" />
+            </div>
+          </div>
+
+          <div class="rt-lines-head">
+            <span>Credit / disposition lines</span>
+            <span class="rt-hint" style="margin:0">Seeded from stage 1 — edit qty/value, split ⧉ or remove ×, zero out anything not credited.</span>
+          </div>
+          <div class="rt-table-wrap">
+            <table class="rt-table rt-lines">
+              <thead><tr>
+                <th style="width:22%">Product</th><th style="width:16%">Reason</th><th style="width:9%" class="r">Qty</th><th style="width:12%" class="r">Unit $</th><th style="width:12%" class="r">Credit $</th><th style="width:21%">Moved to</th><th style="width:8%"></th>
+              </tr></thead>
+              <tbody id="rtTLinesBody"></tbody>
+              <tfoot><tr><td colspan="4" class="r"><strong>Total credit</strong></td><td class="r"><strong id="rtTTotal">0.00</strong></td><td colspan="2"></td></tr></tfoot>
+            </table>
+          </div>
+          <div class="rt-field rt-field-full" style="margin-top:10px">
+            <label>Treatment notes</label>
+            <textarea id="rtActNotes" class="rt-input" rows="2" placeholder="Finance / warehouse notes about this treatment…"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtCloseAct()">Cancel</button>
+        <button class="rt-btn" id="rtActSave" onclick="rtSaveAct(false)">Save progress</button>
+        <button class="rt-btn rt-btn-primary" id="rtActComplete" onclick="rtSaveAct(true)">Complete ▸ move to History</button>
+      </div>
+    </div>
+  </div>
+
   <!-- product autocomplete overlay (shared) -->
   <div class="rt-ac rt-ac-float" id="rtProdAc" style="display:none"></div>
 
@@ -122,6 +195,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717b"></script>
+  <script src="returns.js?v=20260717c"></script>
 </body>
 </html>

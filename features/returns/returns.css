@@ -52,11 +52,37 @@ textarea.rt-input { resize: vertical; }
 .rt-table tbody tr:hover { background: #f9fbfd; }
 .rt-empty { text-align: center; color: #9aa6ba; padding: 34px; }
 
-/* Status pills */
-.rt-pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.rt-pill.pending { background: #fff4e0; color: #b46a00; }
-.rt-pill.in_treatment { background: #e3f0ff; color: #1667c9; }
-.rt-pill.completed { background: #e5f7ec; color: #1b8a4b; }
+/* Status — plain text (no pill), just a subtle colour cue */
+.rt-status { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.rt-status.pending { color: #b46a00; }
+.rt-status.in_treatment { color: #1667c9; }
+.rt-status.completed { color: #1b8a4b; }
+
+/* Clickable rows + row action buttons */
+.rt-row { cursor: pointer; }
+.rt-actions { white-space: nowrap; }
+.rt-actions .rt-btn { margin-left: 5px; }
+
+/* View / stage sections */
+.rt-view-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.rt-view-no { font-size: 20px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+.rt-sec-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #7a8aa2; font-weight: 700; margin: 16px 0 6px; border-bottom: 1px solid #eef1f6; padding-bottom: 4px; }
+.rt-kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
+.rt-kv { display: flex; gap: 8px; font-size: 13px; padding: 2px 0; }
+.rt-kv span { color: #8a97ab; min-width: 96px; }
+.rt-kv b { font-weight: 600; }
+.rt-table .sub { font-size: 11px; color: #8a97ab; }
+
+/* Action / treatment stages */
+.rt-stage { border: 1px solid #e2e7ef; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+.rt-stage-done { background: #f7f9fc; }
+.rt-stage-active { background: #fff; border-color: #bfe6f9; box-shadow: 0 0 0 3px rgba(10,165,230,.08); }
+.rt-stage-tag { font-size: 12px; font-weight: 700; color: #5b6b86; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.rt-stage-tag-next { color: #0893cc; }
+.rt-stage-lock { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #9aa6ba; background: #eef1f6; padding: 2px 7px; border-radius: 10px; }
+.rt-stage-hint { font-size: 11px; font-weight: 500; color: #8a97ab; }
+.rt-step { font-size: 12px; font-weight: 500; color: #8a97ab; margin-left: 10px; }
+.rt-step b { color: #0893cc; }
 
 /* Modal */
 .rt-modal { position: fixed; inset: 0; background: rgba(20,28,42,.5); display: none; align-items: flex-start; justify-content: center; padding: 30px 16px; z-index: 1000; overflow: auto; }
