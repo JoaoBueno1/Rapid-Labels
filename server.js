@@ -163,38 +163,70 @@ app.post('/api/scanner-activity/import', async (req, res) => {
   }
 });
 
-// ── Cin7 customers (Returns autocomplete) — cached {id, name, code} list ──
+// ── Cin7 customers (Returns autocomplete) — cached {id, name, code, email, rep} ──
 // Pulled from Cin7 /customer (~9.8k), cached in memory for 1h. Same-origin.
+const _cin7H = () => ({ 'api-auth-accountid': process.env.CIN7_ACCOUNT_ID, 'api-auth-applicationkey': process.env.CIN7_API_KEY, 'Content-Type': 'application/json' });
 let _custCache = { at: 0, list: [] };
+async function getCustomers() {
+  if (_custCache.list.length && Date.now() - _custCache.at < 3600000) return _custCache.list;
+  if (!process.env.CIN7_ACCOUNT_ID || !process.env.CIN7_API_KEY) throw new Error('Cin7 not configured');
+  const H = _cin7H(), list = [];
+  for (let page = 1; page <= 15; page++) {
+    const r = await fetch(`https://inventory.dearsystems.com/ExternalApi/v2/customer?Page=${page}&Limit=1000`, { headers: H });
+    if (!r.ok) break;
+    const rows = (await r.json()).CustomerList || [];
+    for (const c of rows) {
+      const contacts = Array.isArray(c.Contacts) ? c.Contacts : [];
+      const def = contacts.find(ct => ct.Default && ct.Email) || contacts.find(ct => ct.Email);
+      list.push({ id: c.ID, name: (c.Name || '').trim(), code: c.AdditionalAttribute1 || '', email: (def && def.Email) || '', rep: c.SalesRepresentative || '' });
+    }
+    if (rows.length < 1000) break;
+  }
+  if (list.length) _custCache = { at: Date.now(), list };
+  return list;
+}
 app.get('/api/customers', async (req, res) => {
+  try { const list = await getCustomers(); res.json({ count: list.length, customers: list, cached: _custCache.at > 0 }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Cin7 sale lookup (Returns: scan a sales order to pre-fill lines) ──
+// GET /api/sale?q=SO-00123 → { found, order_number, sale_id, customer_name,
+//   customer_code, customer_email, rep, customer_reference, lines:[{sku,name,qty,price}] }
+app.get('/api/sale', async (req, res) => {
   try {
-    if (_custCache.list.length && Date.now() - _custCache.at < 3600000) {
-      return res.json({ count: _custCache.list.length, customers: _custCache.list, cached: true });
-    }
-    const acc = process.env.CIN7_ACCOUNT_ID, key = process.env.CIN7_API_KEY;
-    if (!acc || !key) return res.status(500).json({ error: 'Cin7 not configured' });
-    const H = { 'api-auth-accountid': acc, 'api-auth-applicationkey': key, 'Content-Type': 'application/json' };
-    const list = [];
-    for (let page = 1; page <= 15; page++) {
-      const r = await fetch(`https://inventory.dearsystems.com/ExternalApi/v2/customer?Page=${page}&Limit=1000`, { headers: H });
-      if (!r.ok) break;
-      const rows = (await r.json()).CustomerList || [];
-      for (const c of rows) {
-        // email: default contact first, else first contact that has one
-        const contacts = Array.isArray(c.Contacts) ? c.Contacts : [];
-        const def = contacts.find(ct => ct.Default && ct.Email) || contacts.find(ct => ct.Email);
-        list.push({
-          id: c.ID,
-          name: (c.Name || '').trim(),
-          code: c.AdditionalAttribute1 || '',
-          email: (def && def.Email) || '',
-          rep: c.SalesRepresentative || '',
-        });
-      }
-      if (rows.length < 1000) break;
-    }
-    if (list.length) _custCache = { at: Date.now(), list };
-    res.json({ count: list.length, customers: list });
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.status(400).json({ error: 'missing q' });
+    if (!process.env.CIN7_ACCOUNT_ID || !process.env.CIN7_API_KEY) return res.status(500).json({ error: 'Cin7 not configured' });
+    const H = _cin7H();
+    // 1) find the sale by order number (exact match preferred)
+    const sl = await fetch(`https://inventory.dearsystems.com/ExternalApi/v2/saleList?Page=1&Limit=20&Search=${encodeURIComponent(q)}`, { headers: H });
+    if (!sl.ok) return res.status(502).json({ error: 'Cin7 saleList ' + sl.status });
+    const rows = (await sl.json()).SaleList || [];
+    const norm = s => String(s || '').trim().toLowerCase();
+    const hit = rows.find(r => norm(r.OrderNumber) === norm(q)) || rows.find(r => norm(r.OrderNumber).includes(norm(q))) || rows[0];
+    if (!hit) return res.json({ found: false });
+    // 2) full sale for the order lines + customer detail
+    const s = await fetch(`https://inventory.dearsystems.com/ExternalApi/v2/sale?ID=${encodeURIComponent(hit.SaleID)}`, { headers: H });
+    if (!s.ok) return res.status(502).json({ error: 'Cin7 sale ' + s.status });
+    const sale = await s.json();
+    const lines = ((sale.Order && sale.Order.Lines) || []).map(l => ({
+      sku: l.SKU || '', name: l.Name || '', qty: Number(l.Quantity) || 0, price: l.Price != null ? Number(l.Price) : null,
+    })).filter(l => l.sku);
+    // map Cin7 customer UUID → our C#### code (best-effort via cache)
+    let code = '';
+    try { const cust = (await getCustomers()).find(c => c.id === sale.CustomerID); if (cust) code = cust.code; } catch (_) {}
+    res.json({
+      found: true,
+      order_number: hit.OrderNumber || q,
+      sale_id: hit.SaleID,
+      customer_name: sale.Customer || hit.Customer || '',
+      customer_code: code,
+      customer_email: sale.Email || '',
+      rep: sale.SalesRepresentative || '',
+      customer_reference: sale.CustomerReference || hit.CustomerReference || '',
+      lines,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

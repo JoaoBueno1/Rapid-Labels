@@ -5,7 +5,7 @@
  */
 'use strict';
 
-const RT = { customers: [], operators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1 };
+const RT = { customers: [], operators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1, so: null, soLoadedNumber: null };
 const PAGE_SIZE = 25;
 const REASONS = ['Faulty', 'Change of mind', 'Wrong item', 'Warranty', 'Damaged in transit', 'Other'];
 const $ = id => document.getElementById(id);
@@ -119,7 +119,10 @@ function rtHdr(id) { return RT.active.concat(RT.history).find(r => r.id === id);
 function rtOpenNew() { rtOpenForm(null); }
 async function rtEdit(id) { rtOpenForm(rtHdr(id)); }
 async function rtOpenForm(row) {
-  RT.editId = row ? row.id : null; RT.sel = null; RT.lines = [];
+  RT.editId = row ? row.id : null; RT.sel = null; RT.lines = []; RT.so = null; RT.soLoadedNumber = null;
+  if ($('rtSoInput')) $('rtSoInput').value = '';
+  if ($('rtScanInput')) $('rtScanInput').value = '';
+  $('rtCustRef').value = row ? (row.customer_reference || '') : '';
   $('rtFormTitle').textContent = row ? `Edit return ${row.return_no}` : 'New return';
   $('rtSaveBtn').textContent = row ? 'Save changes' : 'Save & print';
   $('rtCustName').value = row ? (row.customer_name || '') : '';
@@ -207,6 +210,7 @@ async function rtSaveNew() {
       customer_email: ($('rtCustEmail').value || '').trim() || null,
       rep: ($('rtRep').value || '').trim() || null,
       warehouse: ($('rtWarehouse').value || '') || null,
+      customer_reference: ($('rtCustRef').value || '').trim() || null,
       origin_order: ($('rtOrigin').value || '').trim() || null, operator, notes: ($('rtNotes').value || '').trim() || null,
     };
     let id, return_no;
@@ -224,6 +228,106 @@ async function rtSaveNew() {
     const wasNew = !RT.editId; rtCloseNew(); await loadReturns();
     if (wasNew) rtPrint(id);
   } catch (e) { toast('Save failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
+}
+
+// ─── Sales-order scan → pre-fill (one SO per return) ───
+const rtNorm = s => String(s || '').trim().toLowerCase();
+async function rtFindSo() {
+  const q = ($('rtSoInput').value || '').trim();
+  if (!q) return toast('Scan or type a sales order', 'err');
+  if (RT.soLoadedNumber && rtNorm(RT.soLoadedNumber) !== rtNorm(q)) {
+    return toast(`This return already uses ${RT.soLoadedNumber}. One return per sales order — save it and create a new return for ${q}.`, 'err');
+  }
+  const btn = $('rtSoBtn'); btn.disabled = true; const old = btn.textContent; btn.textContent = 'Finding…';
+  try {
+    const j = await (await fetch('/api/sale?q=' + encodeURIComponent(q))).json();
+    if (!j.found) return toast(`No sales order found for "${q}"`, 'err');
+    RT.so = {
+      number: j.order_number, customer: j.customer_name, code: j.customer_code, email: j.customer_email,
+      rep: j.rep, reference: j.customer_reference,
+      lines: (j.lines || []).map(l => ({ sku: l.sku, name: l.name, ordered: l.qty, price: l.price != null ? l.price : 0, sel: true, rqty: l.qty, reason: '' })),
+    };
+    if (!RT.so.lines.length) return toast(`${j.order_number} has no order lines`, 'err');
+    rtSoRender();
+    $('rtSoModal').classList.add('active');
+  } catch (e) { toast('Lookup failed: ' + e.message, 'err'); } finally { btn.disabled = false; btn.textContent = old; }
+}
+function rtSoRender() {
+  const so = RT.so;
+  $('rtSoTitle').textContent = 'Sales order ' + so.number;
+  $('rtSoMeta').innerHTML = `<div class="rt-kv-grid">
+    <div class="rt-kv"><span>Customer</span><b>${esc(so.customer || '—')} ${so.code ? '(' + esc(so.code) + ')' : ''}</b></div>
+    <div class="rt-kv"><span>Reference</span><b>${esc(so.reference || '—')}</b></div>
+    <div class="rt-kv"><span>Email</span><b>${esc(so.email || '—')}</b></div>
+    <div class="rt-kv"><span>Rep</span><b>${esc(so.rep || '—')}</b></div>
+  </div>`;
+  $('rtSoBody').innerHTML = so.lines.map((l, i) => `<tr class="${l.sel ? '' : 'rt-so-off'}">
+    <td><input type="checkbox" ${l.sel ? 'checked' : ''} onchange="rtSoSet(${i},'sel',this.checked)" /></td>
+    <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 48))}</div></td>
+    <td class="r num">${l.ordered}</td>
+    <td class="r"><input class="rt-input r" type="number" min="0" step="1" value="${l.rqty}" oninput="rtSoSet(${i},'rqty',this.value)" /></td>
+    <td><select class="rt-input" onchange="rtSoSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+    <td class="r num">${money(l.price)}</td>
+  </tr>`).join('');
+  const nSel = so.lines.filter(l => l.sel).length;
+  $('rtSoAdd').textContent = `Add ${nSel} item(s) to return`;
+}
+function rtSoSet(i, k, v) { RT.so.lines[i][k] = v; if (k === 'sel') rtSoRender(); }
+function rtSoClose() { $('rtSoModal').classList.remove('active'); }
+function rtSoConfirm() {
+  const so = RT.so; const chosen = so.lines.filter(l => l.sel && (Number(l.rqty) || 0) > 0);
+  if (!chosen.length) return toast('Tick at least one item with QTY > 0', 'err');
+  // fill customer + order fields from the SO
+  if (so.customer) { $('rtCustName').value = so.customer; RT.sel = { name: so.customer, code: so.code, email: so.email, rep: so.rep }; }
+  $('rtCustId').value = so.code || '';
+  if (so.email) $('rtCustEmail').value = so.email;
+  if (so.rep) $('rtRep').value = so.rep;
+  $('rtOrigin').value = so.number;
+  if (so.reference) $('rtCustRef').value = so.reference;
+  // append chosen lines (keep any real manual lines, drop blank placeholders)
+  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: '', qty: Number(l.rqty) || 0, reason: l.reason || '', unit: Number(l.price) || 0 })));
+  RT.soLoadedNumber = so.number;
+  rtRenderLines(); rtSoClose();
+  toast(`Added ${chosen.length} item(s) from ${so.number}`, 'ok');
+}
+
+// ─── Manual scan → resolve to the UNIT (never the carton) → focused line ───
+async function rtScanProduct() {
+  const code = ($('rtScanInput').value || '').trim();
+  if (!code) return;
+  $('rtScanInput').value = '';
+  try {
+    const p = await rtScanResolve(code);
+    if (!p) return toast(`No product found for "${code}"`, 'err');
+    RT.lines.push({ sku: p.sku, name: p.name || '', dc5: p.attribute1 || '', qty: 1, reason: '', unit: p.price_tier1 != null ? Number(p.price_tier1) : 0 });
+    rtRenderLines();
+    const rows = $('rtLinesBody').querySelectorAll('tr');
+    const last = rows[rows.length - 1];
+    if (last) { const qi = last.querySelector('input[type=number]'); if (qi) { qi.focus(); qi.select(); } }
+    toast('Added ' + p.sku, 'ok');
+  } catch (e) { toast('Scan failed: ' + e.message, 'err'); }
+}
+const rtIsCarton = s => /-Carton\d+$/i.test(s || '');
+async function rtScanResolve(code) {
+  const c = code.replace(/,/g, '').trim();
+  const sel = 'sku,name,attribute1,price_tier1,barcode';
+  // 1) direct match on barcode / sku / 5DC
+  let { data } = await sb().schema('cin7_mirror').from('products').select(sel).or(`barcode.eq.${c},sku.ilike.${c},attribute1.eq.${c}`).limit(10);
+  data = data || [];
+  const unit = data.find(p => !rtIsCarton(p.sku));
+  if (unit) return unit;                                   // prefer the unit
+  // 2) only a carton matched → derive base unit SKU (strip -Carton<n>)
+  if (data[0]) {
+    const base = data[0].sku.replace(/-Carton\d+$/i, '');
+    const { data: u } = await sb().schema('cin7_mirror').from('products').select(sel).ilike('sku', base).limit(1);
+    return (u && u[0]) ? u[0] : data[0];                   // fallback: carton if no unit exists
+  }
+  // 3) nothing by barcode — carton barcode = "1" + unit barcode (13→14 digits). Try stripping the lead "1".
+  if (/^1\d{13}$/.test(c)) {
+    const { data: b } = await sb().schema('cin7_mirror').from('products').select(sel).eq('barcode', c.slice(1)).limit(1);
+    if (b && b[0]) return b[0];
+  }
+  return null;
 }
 
 function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717c', '_blank'); }
@@ -263,6 +367,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
+      <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
       ${r.notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.notes)}</b></div>` : ''}
@@ -297,6 +402,7 @@ async function rtAction(id) {
       <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
+      <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
     </div>
@@ -355,10 +461,10 @@ const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.q
 function rtExportCsv() {
   const rows = RT.history;
   if (!rows.length) return toast('No completed returns to export', 'err');
-  const headers = ['Date', 'Return #', 'Customer', 'Customer ID', 'Email', 'Warehouse', 'Rep', 'Faulty Products', 'Total Qty', 'Credit Note', 'Emailed', 'Operator', 'Treated by', 'Treated Date', 'Credit $', 'Notes', 'Treatment Notes'];
+  const headers = ['Date', 'Return #', 'Customer', 'Customer ID', 'Email', 'Warehouse', 'Rep', 'Origin order', 'Cust. reference', 'Faulty Products', 'Total Qty', 'Credit Note', 'Emailed', 'Operator', 'Treated by', 'Treated Date', 'Credit $', 'Notes', 'Treatment Notes'];
   const lines = [headers.map(csvCell).join(',')];
   rows.forEach(r => lines.push([
-    fmtD(r.created_at), r.return_no, r.customer_name, r.customer_id, r.customer_email, r.warehouse, r.rep,
+    fmtD(r.created_at), r.return_no, r.customer_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.origin_order, r.customer_reference,
     rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
     rtCredit(r) ? money(rtCredit(r)) : '', r.notes, r.treatment_notes,
   ].map(csvCell).join(',')));

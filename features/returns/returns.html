@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717e" />
+  <link rel="stylesheet" href="returns.css?v=20260717g" />
 </head>
 <body>
   <header class="rt-header">
@@ -71,6 +71,15 @@
         <button class="rt-x" onclick="rtCloseNew()">×</button>
       </div>
       <div class="rt-modal-body">
+        <!-- Scan / find a sales order to pre-fill everything -->
+        <div class="rt-so">
+          <div class="rt-so-hint">💡 <b>One return per sales order.</b> Scan or type the SO to pull the customer &amp; its items — then just pick what's coming back. Returning items from another order? Save this and start a new return.</div>
+          <div class="rt-so-bar">
+            <input type="text" id="rtSoInput" class="rt-input" placeholder="Scan or type a sales order (e.g. SO-00123)…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rtFindSo();}" />
+            <button class="rt-btn rt-btn-primary" id="rtSoBtn" type="button" onclick="rtFindSo()">Find order</button>
+          </div>
+        </div>
+
         <div class="rt-form-grid">
           <div class="rt-field rt-cust">
             <label>Customer *</label>
@@ -103,6 +112,10 @@
             <label>Origin order (optional)</label>
             <input type="text" id="rtOrigin" class="rt-input" placeholder="e.g. SO-123456" />
           </div>
+          <div class="rt-field">
+            <label>Customer reference</label>
+            <input type="text" id="rtCustRef" class="rt-input" placeholder="e.g. site / PO ref" />
+          </div>
           <div class="rt-field rt-oper">
             <label>Operator *</label>
             <input type="text" id="rtOperator" class="rt-input" autocomplete="off" placeholder="Start typing operator name…" oninput="rtOperInput('rtOperator','rtOperatorAc')" onfocus="rtOperInput('rtOperator','rtOperatorAc')" />
@@ -117,7 +130,10 @@
 
         <div class="rt-lines-head">
           <span>Products</span>
-          <button class="rt-btn rt-btn-ghost" onclick="rtAddLine()">+ Add line</button>
+          <div class="rt-lines-tools">
+            <input type="text" id="rtScanInput" class="rt-input" placeholder="📷 Scan product (barcode / SKU)…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rtScanProduct();}" />
+            <button class="rt-btn rt-btn-ghost" type="button" onclick="rtAddLine()">+ Add line</button>
+          </div>
         </div>
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
@@ -220,6 +236,32 @@
     </div>
   </div>
 
+  <!-- ═══ SALES ORDER PICKER MODAL ═══ -->
+  <div class="rt-modal" id="rtSoModal">
+    <div class="rt-modal-box rt-modal-lg">
+      <div class="rt-modal-head">
+        <h3 id="rtSoTitle">Sales order</h3>
+        <button class="rt-x" onclick="rtSoClose()">×</button>
+      </div>
+      <div class="rt-modal-body">
+        <div id="rtSoMeta" class="rt-so-meta"></div>
+        <p class="rt-hint" style="margin-top:0">Tick the items the customer is returning and set the <strong>Return QTY</strong>. Untick anything not coming back. Only QTY is required — reason is optional.</p>
+        <div class="rt-table-wrap">
+          <table class="rt-table rt-lines">
+            <thead><tr>
+              <th style="width:36px"></th><th style="width:40%">Product</th><th class="r" style="width:70px">Ordered</th><th class="r" style="width:96px">Return QTY</th><th style="width:150px">Reason</th><th class="r">Unit $</th>
+            </tr></thead>
+            <tbody id="rtSoBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtSoClose()">Cancel</button>
+        <button class="rt-btn rt-btn-primary" id="rtSoAdd" onclick="rtSoConfirm()">Add selected to return</button>
+      </div>
+    </div>
+  </div>
+
   <!-- product autocomplete overlay (shared) -->
   <div class="rt-ac rt-ac-float" id="rtProdAc" style="display:none"></div>
 
@@ -227,6 +269,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717f"></script>
+  <script src="returns.js?v=20260717g"></script>
 </body>
 </html>
