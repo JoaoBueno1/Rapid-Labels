@@ -117,7 +117,7 @@ function rtCustInput() {
 function rtPickCust(c) {
   RT.sel = c;
   $('rtCustName').value = c.name;
-  $('rtCustId').value = c.id || '';
+  $('rtCustId').value = c.code || '';   // customer CODE (C####), not the UUID
   $('rtCustAc').classList.remove('show');
 }
 
@@ -193,7 +193,7 @@ async function rtSaveNew() {
   try {
     const { data: hdr, error: e1 } = await sb().from('returns_active').insert({
       customer_name: name,
-      customer_id: RT.sel ? RT.sel.id : ($('rtCustId').value || null),
+      customer_id: (RT.sel ? RT.sel.code : ($('rtCustId').value || '')) || null,
       origin_order: ($('rtOrigin').value || '').trim() || null,
       operator, notes: ($('rtNotes').value || '').trim() || null,
       status: 'pending',
@@ -215,7 +215,7 @@ async function rtSaveNew() {
   } finally { btn.disabled = false; btn.textContent = 'Save & print'; }
 }
 
-function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717a', '_blank'); }
+function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717b', '_blank'); }
 
 function rtAction(id) {
   toast('Treatment flow is the next increment — creation + print is live now.', '');

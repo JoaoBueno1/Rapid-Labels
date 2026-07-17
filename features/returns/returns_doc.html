@@ -49,24 +49,28 @@
     const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
     const qs = new URLSearchParams(location.search);
 
-    function copyHtml(r, lines, tag) {
+    const LOGO = `<svg width="176" height="48" viewBox="0 0 176 48" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="24" cy="24" r="23" fill="#12a4dc"/>
+      <text x="24" y="35" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#ffffff">R</text>
+      <rect x="59" y="6" width="2.4" height="36" fill="#c3ccd8"/>
+      <text x="73" y="22" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" letter-spacing="3" fill="#2b3441">RAPID</text>
+      <text x="73" y="41" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" letter-spacing="3" fill="#2b3441">LED</text>
+    </svg>`;
+
+    function copyHtml(r, lines) {
       const rows = lines.map(l => `<tr>
-        <td><strong>${esc(l.sku)}</strong></td>
         <td>${esc(l.dc5 || '')}</td>
+        <td><strong>${esc(l.sku)}</strong></td>
         <td>${esc(l.product_name || '')}</td>
         <td class="r">${l.qty}</td>
         <td>${esc(l.reason || '')}</td>
       </tr>`).join('');
       return `<div class="doc">
         <div class="top">
-          <div class="logo-wrap">
-            <div class="logo">R</div>
-            <div class="logo-txt">RAPID LED<small>RETURNS</small></div>
-          </div>
+          <div class="logo-wrap">${LOGO}</div>
           <div class="doc-title">
             <h1>RETURN</h1>
             <div class="no">${esc(r.return_no)}</div>
-            <div class="copy-tag">${tag}</div>
           </div>
         </div>
         <div class="meta">
@@ -77,7 +81,7 @@
           <div class="row"><span class="lbl">Origin order</span><span class="val">${esc(r.origin_order || '—')}</span></div>
         </div>
         <table>
-          <thead><tr><th>SKU</th><th>5DC</th><th>Description</th><th class="r">Qty</th><th>Reason</th></tr></thead>
+          <thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         <div class="notes">
@@ -101,8 +105,8 @@
         const { data: lines } = await window.supabase.from('returns_lines').select('*').eq('return_id', id).order('line_no');
         if (!r) { root.textContent = 'Return not found.'; return; }
         document.title = 'Return ' + r.return_no;
-        // two identical copies
-        root.outerHTML = copyHtml(r, lines || [], 'Customer Copy') + copyHtml(r, lines || [], 'Office Copy');
+        // two identical copies (customer + office) — no labels, they're the same
+        root.outerHTML = copyHtml(r, lines || []) + copyHtml(r, lines || []);
         setTimeout(() => { try { window.print(); } catch (_) {} }, 400);
       } catch (e) { root.textContent = 'Error: ' + e.message; }
     })();
