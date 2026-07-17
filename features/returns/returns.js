@@ -522,7 +522,7 @@ async function rtSaveAct(complete) {
   RT.tlines.forEach(l => { const g = grp[l._grp] || (grp[l._grp] = { recv: l._recv || 0, sum: 0, sku: l.sku }); g.sum += Number(l.qty) || 0; });
   const bad = Object.values(grp).find(g => g.sum !== g.recv);
   if (bad) return toast(`Split quantities for ${bad.sku} must add up to ${bad.recv} (received)`, 'err');
-  const btn = complete ? $('rtActComplete') : $('rtActSave'); btn.disabled = true;
+  const btn = $('rtActComplete'); btn.disabled = true;
   try {
     const upd = {
       treatment_ref: ($('rtActRef').value || '').trim() || null,
