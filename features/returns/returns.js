@@ -7,7 +7,9 @@
 
 const RT = { customers: [], operators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1, so: null, soLoadedNumber: null };
 const PAGE_SIZE = 25;
-const REASONS = ['Faulty', 'Change of mind', 'Wrong item', 'Warranty', 'Damaged in transit', 'Other'];
+const REASONS = ['Faulty', 'Product Left Over / Change of Mind', 'Incorrect Item Supplied', 'Incorrect Item Ordered', 'Freight Damage', 'Other'];
+const CONDITIONS = ['Resaleable', 'Not Resaleable', 'Faulty'];                                   // warehouse assessment (internal)
+const RET_STATUSES = ['Accepted for Credit Assessment', 'Accepted for Warranty Assessment', 'Return Not Accepted']; // printed on customer receipt
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -55,7 +57,7 @@ async function loadOperators() {
 }
 async function loadReturns() {
   try {
-    const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no)').order('created_at', { ascending: false });
+    const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,condition,return_status,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no)').order('created_at', { ascending: false });
     const rows = r.data || [];
     RT.active = rows.filter(x => x.status !== 'completed');
     RT.history = rows.filter(x => x.status === 'completed');
@@ -129,15 +131,16 @@ async function rtOpenForm(row) {
   $('rtCustId').value = row ? (row.customer_id || '') : '';
   if (row) RT.sel = { name: row.customer_name, code: row.customer_id };
   $('rtCustEmail').value = row ? (row.customer_email || '') : '';
+  $('rtContact').value = row ? (row.contact_name || '') : '';
   $('rtRep').value = row ? (row.rep || '') : '';
   $('rtOrigin').value = row ? (row.origin_order || '') : '';
   $('rtOperator').value = row ? (row.operator || '') : '';
   $('rtNotes').value = row ? (row.notes || '') : '';
   if (row) {
     const r = await sb().from('returns_lines').select('*').eq('return_id', row.id).order('line_no');
-    RT.lines = (r.data || []).map(l => ({ sku: l.sku, name: l.product_name, dc5: l.dc5, qty: l.qty, reason: l.reason || '', unit: l.unit_value }));
+    RT.lines = (r.data || []).map(l => ({ sku: l.sku, name: l.product_name, dc5: l.dc5, qty: l.qty, reason: l.reason || '', condition: l.condition || '', return_status: l.return_status || '', unit: l.unit_value }));
   }
-  if (!RT.lines.length) { RT.lines = [{ sku: '', name: '', dc5: '', qty: '', reason: '', unit: 0 }, { sku: '', name: '', dc5: '', qty: '', reason: '', unit: 0 }]; }
+  if (!RT.lines.length) { RT.lines = [{ sku: '', name: '', dc5: '', qty: '', reason: '', condition: '', return_status: '', unit: 0 }, { sku: '', name: '', dc5: '', qty: '', reason: '', condition: '', return_status: '', unit: 0 }]; }
   rtRenderLines();
   $('rtNewModal').classList.add('active');
 }
@@ -154,10 +157,11 @@ function rtPickCust(c) {
   RT.sel = c; $('rtCustName').value = c.name; $('rtCustId').value = c.code || '';
   if (c.email) $('rtCustEmail').value = c.email;   // Cin7 default-contact email
   if (c.rep) $('rtRep').value = c.rep;             // Cin7 sales rep
+  if (c.contact) $('rtContact').value = c.contact; // Cin7 primary contact person
   $('rtCustAc').classList.remove('show');
 }
 
-function rtAddLine(dup) { RT.lines.push(dup ? { ...dup } : { sku: '', name: '', dc5: '', qty: '', reason: '', unit: 0 }); rtRenderLines(); }
+function rtAddLine(dup) { RT.lines.push(dup ? { ...dup } : { sku: '', name: '', dc5: '', qty: '', reason: '', condition: '', return_status: '', unit: 0 }); rtRenderLines(); }
 function rtRemoveLine(i) { RT.lines.splice(i, 1); rtRenderLines(); }
 function rtRenderLines() {
   $('rtLinesBody').innerHTML = RT.lines.map((l, i) => `<tr>
@@ -166,8 +170,9 @@ function rtRenderLines() {
       ${l.dc5 ? `<div class="rt-line-dc5">5DC ${esc(l.dc5)}</div>` : ''}</td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" placeholder="0" value="${l.qty}" oninput="rtLineSet(${i},'qty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+    <td><select class="rt-input" onchange="rtLineSet(${i},'condition',this.value)"><option value="">— condition —</option>${CONDITIONS.map(r => `<option ${l.condition === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+    <td><select class="rt-input" onchange="rtLineSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtLineSet(${i},'unit',this.value)" /></td>
-    <td class="r num">${money((Number(l.qty) || 0) * (Number(l.unit) || 0))}</td>
     <td class="r"><button class="rt-line-x" title="Duplicate" onclick="rtAddLine(RT.lines[${i}])">⧉</button><button class="rt-line-x" title="Remove" onclick="rtRemoveLine(${i})">×</button></td>
   </tr>`).join('');
   $('rtTotal').textContent = money(RT.lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit) || 0), 0));
@@ -211,6 +216,7 @@ async function rtSaveNew() {
   try {
     const hdr = {
       customer_name: name, customer_id: (RT.sel ? RT.sel.code : ($('rtCustId').value || '')) || null,
+      contact_name: ($('rtContact').value || '').trim() || null,
       customer_email: ($('rtCustEmail').value || '').trim() || null,
       rep: ($('rtRep').value || '').trim() || null,
       customer_reference: ($('rtCustRef').value || '').trim() || null,
@@ -225,7 +231,7 @@ async function rtSaveNew() {
       const { data, error } = await sb().from('returns_active').insert({ ...hdr, status: 'pending' }).select('id,return_no').single();
       if (error) throw error; id = data.id; return_no = data.return_no;
     }
-    const lineRows = lines.map((l, idx) => ({ return_id: id, line_no: idx + 1, sku: l.sku, product_name: l.name, dc5: l.dc5 || null, qty: Number(l.qty) || 0, reason: l.reason || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0) }));
+    const lineRows = lines.map((l, idx) => ({ return_id: id, line_no: idx + 1, sku: l.sku, product_name: l.name, dc5: l.dc5 || null, qty: Number(l.qty) || 0, reason: l.reason || null, condition: l.condition || null, return_status: l.return_status || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0) }));
     const { error: e2 } = await sb().from('returns_lines').insert(lineRows); if (e2) throw e2;
     toast(`${return_no} ${RT.editId ? 'updated' : 'created'}`, 'ok');
     const wasNew = !RT.editId; rtCloseNew(); await loadReturns();
@@ -308,7 +314,7 @@ function rtSoConfirm() {
   $('rtOrigin').value = so.number;
   if (so.reference) $('rtCustRef').value = so.reference;
   // append chosen lines (keep any real manual lines, drop blank placeholders)
-  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: l.dc5 || '', qty: Number(l.rqty) || 0, reason: l.reason || '', unit: Number(l.price) || 0 })));
+  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: l.dc5 || '', qty: Number(l.rqty) || 0, reason: l.reason || '', condition: '', return_status: '', unit: Number(l.price) || 0 })));
   RT.soLoadedNumber = so.number;
   rtRenderLines(); rtSoClose();
   toast(`Added ${chosen.length} item(s) from ${so.number}`, 'ok');
@@ -322,7 +328,7 @@ async function rtScanProduct() {
   try {
     const p = await rtScanResolve(code);
     if (!p) return toast(`No product found for "${code}"`, 'err');
-    RT.lines.push({ sku: p.sku, name: p.name || '', dc5: p.attribute1 || '', qty: '', reason: '', unit: p.price_tier1 != null ? Number(p.price_tier1) : 0 });
+    RT.lines.push({ sku: p.sku, name: p.name || '', dc5: p.attribute1 || '', qty: '', reason: '', condition: '', return_status: '', unit: p.price_tier1 != null ? Number(p.price_tier1) : 0 });
     rtRenderLines();
     const rows = $('rtLinesBody').querySelectorAll('tr');
     const last = rows[rows.length - 1];
@@ -353,7 +359,7 @@ async function rtScanResolve(code) {
   return null;
 }
 
-function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717c', '_blank'); }
+function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717j', '_blank'); }
 
 // ─── View (consult) ───
 async function rtView(id) {
@@ -363,7 +369,7 @@ async function rtView(id) {
     sb().from('returns_treatment_lines').select('*').eq('return_id', id).order('line_no'),
   ]);
   const lines = ln.data || [], tlines = tl.data || [];
-  const rowsC = lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc(l.product_name || '')}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td></tr>`).join('');
+  const rowsC = lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc(l.product_name || '')}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td><td>${esc(l.return_status || '')}</td></tr>`).join('');
   const treatBlock = (r.status === 'completed' || r.status === 'in_treatment') ? `
     <div class="rt-sec-title">Treatment</div>
     <div class="rt-kv-grid">
@@ -385,8 +391,9 @@ async function rtView(id) {
     </div>
     <div class="rt-sec-title">Creation</div>
     <div class="rt-kv-grid">
-      <div class="rt-kv"><span>Customer</span><b>${esc(r.customer_name || '—')}</b></div>
-      <div class="rt-kv"><span>Customer ID</span><b>${esc(r.customer_id || '—')}</b></div>
+      <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')}</b></div>
+      <div class="rt-kv"><span>Contact</span><b>${esc(r.contact_name || '—')}</b></div>
+      <div class="rt-kv"><span>Account</span><b>${esc(r.customer_id || '—')}</b></div>
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
@@ -395,7 +402,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
       ${r.notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.notes)}</b></div>` : ''}
     </div>
-    <table class="rt-table" style="margin-top:8px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th></tr></thead><tbody>${rowsC}</tbody></table>
+    <table class="rt-table" style="margin-top:8px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th><th>Return status</th></tr></thead><tbody>${rowsC}</tbody></table>
     ${treatBlock}`;
   $('rtViewModal').classList.add('active');
 }
@@ -421,7 +428,8 @@ async function rtAction(id) {
   $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Treatment</b></span>`;
   $('rtActStage1').innerHTML = `
     <div class="rt-kv-grid">
-      <div class="rt-kv"><span>Customer</span><b>${esc(r.customer_name || '—')} ${r.customer_id ? '(' + esc(r.customer_id) + ')' : ''}</b></div>
+      <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')} ${r.customer_id ? '(' + esc(r.customer_id) + ')' : ''}</b></div>
+      <div class="rt-kv"><span>Contact</span><b>${esc(r.contact_name || '—')}</b></div>
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
@@ -429,8 +437,8 @@ async function rtAction(id) {
       <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
     </div>
-    <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th></tr></thead>
-    <tbody>${lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td></tr>`).join('')}</tbody></table>`;
+    <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th><th>Return status</th></tr></thead>
+    <tbody>${lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td><td>${esc(l.return_status || '')}</td></tr>`).join('')}</tbody></table>`;
   rtRenderTLines();
   $('rtActModal').classList.add('active');
 }
@@ -480,15 +488,18 @@ async function rtSaveAct(complete) {
 
 // ─── CSV export (History) — mirrors the team's credit-note sheet + our detail ───
 const csvCell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-const rtProductsStr = r => (r.returns_lines || []).slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0)).map(l => `${l.qty}X ${l.sku}`).join(' | ');
+const rtProductsStr = r => (r.returns_lines || []).slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0)).map(l => {
+  const extra = [l.reason, l.condition, l.return_status].filter(Boolean).join(' / ');
+  return `${l.qty}× ${l.sku}${extra ? ' (' + extra + ')' : ''}`;
+}).join(' | ');
 const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.qty) || 0), 0);
 function rtExportCsv() {
   const rows = RT.history;
   if (!rows.length) return toast('No completed returns to export', 'err');
-  const headers = ['Date', 'Return #', 'Customer', 'Customer ID', 'Email', 'Warehouse', 'Rep', 'Origin order', 'Cust. reference', 'Faulty Products', 'Total Qty', 'Credit Note', 'Emailed', 'Operator', 'Treated by', 'Treated Date', 'Credit $', 'Notes', 'Treatment Notes'];
+  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Origin order', 'Cust. reference', 'Products (qty × sku / reason / condition / status)', 'Total Qty', 'Credit Note', 'Emailed', 'Received by', 'Treated by', 'Treated Date', 'Credit $', 'Comments', 'Treatment Notes'];
   const lines = [headers.map(csvCell).join(',')];
   rows.forEach(r => lines.push([
-    fmtD(r.created_at), r.return_no, r.customer_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.origin_order, r.customer_reference,
+    fmtD(r.created_at), r.return_no, r.customer_name, r.contact_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.origin_order, r.customer_reference,
     rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
     rtCredit(r) ? money(rtCredit(r)) : '', r.notes, r.treatment_notes,
   ].map(csvCell).join(',')));

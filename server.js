@@ -177,8 +177,12 @@ async function getCustomers() {
     const rows = (await r.json()).CustomerList || [];
     for (const c of rows) {
       const contacts = Array.isArray(c.Contacts) ? c.Contacts : [];
-      const def = contacts.find(ct => ct.Default && ct.Email) || contacts.find(ct => ct.Email);
-      list.push({ id: c.ID, name: (c.Name || '').trim(), code: c.AdditionalAttribute1 || '', email: (def && def.Email) || '', rep: c.SalesRepresentative || '' });
+      const primary = contacts.find(ct => ct.Default) || contacts.find(ct => ct.Email) || contacts[0];
+      list.push({
+        id: c.ID, name: (c.Name || '').trim(), code: c.AdditionalAttribute1 || '',
+        email: (primary && primary.Email) || '', rep: c.SalesRepresentative || '',
+        contact: (primary && primary.Name) || '',   // primary contact person
+      });
     }
     if (rows.length < 1000) break;
   }
@@ -222,6 +226,7 @@ app.get('/api/sale', async (req, res) => {
       sale_id: hit.SaleID,
       customer_name: sale.Customer || hit.Customer || '',
       customer_code: code,
+      contact_name: sale.Contact || '',
       customer_email: sale.Email || '',
       rep: sale.SalesRepresentative || '',
       customer_reference: sale.CustomerReference || hit.CustomerReference || '',

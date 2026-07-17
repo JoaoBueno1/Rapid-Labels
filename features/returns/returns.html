@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717i" />
+  <link rel="stylesheet" href="returns.css?v=20260717j" />
 </head>
 <body>
   <header class="rt-header">
@@ -65,7 +65,7 @@
 
   <!-- ═══ NEW / CREATE MODAL ═══ -->
   <div class="rt-modal" id="rtNewModal">
-    <div class="rt-modal-box rt-modal-lg">
+    <div class="rt-modal-box rt-modal-xl">
       <div class="rt-modal-head">
         <h3 id="rtFormTitle">New return</h3>
         <button class="rt-x" onclick="rtCloseNew()">×</button>
@@ -82,13 +82,17 @@
 
         <div class="rt-form-grid">
           <div class="rt-field rt-cust">
-            <label>Customer *</label>
-            <input type="text" id="rtCustName" class="rt-input" placeholder="Start typing customer name…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
+            <label>Business (customer) *</label>
+            <input type="text" id="rtCustName" class="rt-input" placeholder="Start typing business name…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
             <div class="rt-ac" id="rtCustAc"></div>
           </div>
           <div class="rt-field">
-            <label>Customer ID</label>
-            <input type="text" id="rtCustId" class="rt-input rt-readonly" readonly placeholder="— (select a customer)" />
+            <label>Customer name <small style="text-transform:none;color:#9aa6ba">(contact)</small></label>
+            <input type="text" id="rtContact" class="rt-input" placeholder="Primary contact" autocomplete="off" />
+          </div>
+          <div class="rt-field">
+            <label>Customer account</label>
+            <input type="text" id="rtCustId" class="rt-input rt-readonly" readonly placeholder="— (select a business)" />
           </div>
           <div class="rt-field">
             <label>Customer email <small style="text-transform:none;color:#9aa6ba">(from Cin7, editable)</small></label>
@@ -128,13 +132,13 @@
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:34%">Product</th><th style="width:9%" class="r">Qty</th><th style="width:16%">Reason</th><th style="width:13%" class="r">Unit $</th><th style="width:13%" class="r">Line $</th><th style="width:8%"></th>
+              <th style="width:23%">Product</th><th style="width:7%" class="r">Qty</th><th style="width:15%">Reason</th><th style="width:14%">Condition <small>(internal)</small></th><th style="width:20%">Return status <small>(on receipt)</small></th><th style="width:11%" class="r">Unit $</th><th style="width:5%"></th>
             </tr></thead>
             <tbody id="rtLinesBody"></tbody>
-            <tfoot><tr><td colspan="4" class="r"><strong>Total</strong></td><td class="r"><strong id="rtTotal">0.00</strong></td><td></td></tr></tfoot>
+            <tfoot><tr><td colspan="5" class="r"><strong>Total</strong></td><td class="r"><strong id="rtTotal">0.00</strong></td><td></td></tr></tfoot>
           </table>
         </div>
-        <p class="rt-hint">Tip: you can add the <strong>same product on multiple lines</strong> with different reasons (e.g. some faulty, some OK). Prices default to the standard tier and are editable.</p>
+        <p class="rt-hint">Tip: same product can go on multiple lines with different reasons/conditions. <strong>Condition</strong> is warehouse-only (never on the customer copy); <strong>Return status</strong> is printed on the customer receipt. Prices default to the standard tier and are editable.</p>
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCloseNew()">Cancel</button>
@@ -263,6 +267,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717i"></script>
+  <script src="returns.js?v=20260717j"></script>
 </body>
 </html>
