@@ -57,7 +57,7 @@ async function loadOperators() {
 }
 async function loadReturns() {
   try {
-    const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,condition,return_status,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no)').order('created_at', { ascending: false });
+    const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,condition,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no,return_status)').order('created_at', { ascending: false });
     const rows = r.data || [];
     RT.active = rows.filter(x => x.status !== 'completed');
     RT.history = rows.filter(x => x.status === 'completed');
@@ -172,7 +172,6 @@ function rtRenderLines() {
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" placeholder="0" value="${l.qty}" oninput="rtLineSet(${i},'qty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'condition',this.value)"><option value="">— condition —</option>${CONDITIONS.map(r => `<option ${l.condition === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
-    <td><select class="rt-input" onchange="rtLineSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtLineSet(${i},'unit',this.value)" /></td>
     <td class="r"><button class="rt-line-x" title="Duplicate" onclick="rtAddLine(RT.lines[${i}])">⧉</button><button class="rt-line-x" title="Remove" onclick="rtRemoveLine(${i})">×</button></td>
   </tr>`).join('');
@@ -233,7 +232,7 @@ async function rtSaveNew() {
       const { data, error } = await sb().from('returns_active').insert({ ...hdr, status: 'pending' }).select('id,return_no').single();
       if (error) throw error; id = data.id; return_no = data.return_no;
     }
-    const lineRows = lines.map((l, idx) => ({ return_id: id, line_no: idx + 1, sku: l.sku, product_name: l.name, dc5: l.dc5 || null, qty: Number(l.qty) || 0, reason: l.reason || null, condition: l.condition || null, return_status: l.return_status || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0) }));
+    const lineRows = lines.map((l, idx) => ({ return_id: id, line_no: idx + 1, sku: l.sku, product_name: l.name, dc5: l.dc5 || null, qty: Number(l.qty) || 0, reason: l.reason || null, condition: l.condition || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0) }));
     const { error: e2 } = await sb().from('returns_lines').insert(lineRows); if (e2) throw e2;
     toast(`${return_no} ${RT.editId ? 'updated' : 'created'}`, 'ok');
     const wasNew = !RT.editId; rtCloseNew(); await loadReturns();
@@ -256,7 +255,7 @@ async function rtFindSo() {
     RT.so = {
       number: j.order_number, customer: j.customer_name, code: j.customer_code, contact: j.contact_name, email: j.customer_email,
       rep: j.rep, invoice: j.invoice_number, reference: j.customer_reference,
-      lines: (j.lines || []).map(l => ({ sku: l.sku, name: l.name, ordered: l.qty, price: l.price != null ? l.price : 0, sel: true, rqty: '', reason: '' })),
+      lines: (j.lines || []).map(l => ({ sku: l.sku, name: l.name, ordered: l.qty, price: l.price != null ? l.price : 0, rqty: '', reason: '', condition: '' })),
     };
     if (!RT.so.lines.length) return toast(`${j.order_number} has no order lines`, 'err');
     // enrich SO lines with 5DC (attribute1) from the mirror — the sale API only gives SKU
@@ -283,33 +282,38 @@ function rtSoRender() {
     <div class="rt-kv"><span>Email</span><b>${esc(so.email || '—')}</b></div>
     <div class="rt-kv"><span>Rep</span><b>${esc(so.rep || '—')}</b></div>
   </div>`;
-  $('rtSoBody').innerHTML = so.lines.map((l, i) => `<tr class="${l.sel ? '' : 'rt-so-off'}">
-    <td><input type="checkbox" ${l.sel ? 'checked' : ''} onchange="rtSoSet(${i},'sel',this.checked)" /></td>
-    <td><strong>${esc(l.sku)}</strong>${l.dc5 ? ` <span class="sub">· 5DC ${esc(l.dc5)}</span>` : ''}<div class="sub">${esc((l.name || '').slice(0, 48))}</div></td>
+  $('rtSoBody').innerHTML = so.lines.map((l, i) => `<tr>
+    <td><strong>${esc(l.sku)}</strong>${l.dc5 ? `<div class="rt-line-dc5">5DC ${esc(l.dc5)}</div>` : ''}<div class="sub">${esc((l.name || '').slice(0, 44))}</div></td>
     <td class="r num">${l.ordered}</td>
     <td class="r"><input class="rt-input r" type="number" min="0" max="${l.ordered}" step="1" placeholder="0" value="${l.rqty}" oninput="rtSoSet(${i},'rqty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtSoSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+    <td><select class="rt-input" onchange="rtSoSet(${i},'condition',this.value)"><option value="">— condition —</option>${CONDITIONS.map(r => `<option ${l.condition === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="r num">${money(l.price)}</td>
-  </tr>`).join('');
-  const nSel = so.lines.filter(l => l.sel).length;
-  $('rtSoAdd').textContent = `Add ${nSel} item(s) to return`;
+    <td class="r"><button class="rt-line-x" title="Remove line" onclick="rtSoRemove(${i})">×</button></td>
+  </tr>`).join('') || '<tr><td colspan="7" class="rt-empty">No items left — close and add manually.</td></tr>';
+  rtSoUpdateBtn();
+}
+function rtSoUpdateBtn() {
+  const n = RT.so.lines.length;
+  const allQty = n > 0 && RT.so.lines.every(l => (Number(l.rqty) || 0) > 0);
+  const btn = $('rtSoAdd'); btn.disabled = !allQty;
+  btn.textContent = allQty ? `Add ${n} item(s) to return` : (n ? `Enter qty on all ${n} line(s)` : 'No items');
 }
 function rtSoSet(i, k, v) {
   if (k === 'rqty') {                                  // cap at ordered qty — can't return more than was sold
     const max = RT.so.lines[i].ordered;
     let n = v === '' ? '' : Math.max(0, Number(v) || 0);
-    if (n !== '' && n > max) { n = max; toast(`Max ${max} for ${RT.so.lines[i].sku} (ordered)`, 'err'); }
-    RT.so.lines[i].rqty = n;
-    if (String(n) !== String(v)) rtSoRender();
+    if (n !== '' && n > max) { n = max; toast(`Max ${max} for ${RT.so.lines[i].sku} (ordered)`, 'err'); RT.so.lines[i].rqty = n; rtSoRender(); return; }
+    RT.so.lines[i].rqty = n; rtSoUpdateBtn();
     return;
   }
   RT.so.lines[i][k] = v;
-  if (k === 'sel') rtSoRender();
 }
+function rtSoRemove(i) { RT.so.lines.splice(i, 1); rtSoRender(); }
 function rtSoClose() { $('rtSoModal').classList.remove('active'); }
 function rtSoConfirm() {
-  const so = RT.so; const chosen = so.lines.filter(l => l.sel && (Number(l.rqty) || 0) > 0);
-  if (!chosen.length) return toast('Tick at least one item with QTY > 0', 'err');
+  const so = RT.so; const chosen = so.lines.filter(l => (Number(l.rqty) || 0) > 0);
+  if (!so.lines.length || chosen.length !== so.lines.length) return toast('Enter a quantity on every line (or remove it)', 'err');
   // fill customer + order fields from the SO
   if (so.customer) { $('rtCustName').value = so.customer; RT.sel = { name: so.customer, code: so.code, email: so.email, rep: so.rep, contact: so.contact }; }
   $('rtCustId').value = so.code || '';
@@ -320,7 +324,7 @@ function rtSoConfirm() {
   $('rtOrigin').value = so.number;
   if (so.reference) $('rtCustRef').value = so.reference;
   // append chosen lines (keep any real manual lines, drop blank placeholders)
-  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: l.dc5 || '', qty: Number(l.rqty) || 0, reason: l.reason || '', condition: '', return_status: '', unit: Number(l.price) || 0 })));
+  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: l.dc5 || '', qty: Number(l.rqty) || 0, reason: l.reason || '', condition: l.condition || '', unit: Number(l.price) || 0 })));
   RT.soLoadedNumber = so.number;
   rtRenderLines(); rtSoClose();
   toast(`Added ${chosen.length} item(s) from ${so.number}`, 'ok');
@@ -365,7 +369,7 @@ async function rtScanResolve(code) {
   return null;
 }
 
-function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717k', '_blank'); }
+function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717m', '_blank'); }
 
 // ─── View (consult) ───
 async function rtView(id) {
@@ -375,7 +379,7 @@ async function rtView(id) {
     sb().from('returns_treatment_lines').select('*').eq('return_id', id).order('line_no'),
   ]);
   const lines = ln.data || [], tlines = tl.data || [];
-  const rowsC = lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc(l.product_name || '')}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td><td>${esc(l.return_status || '')}</td></tr>`).join('');
+  const rowsC = lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc(l.product_name || '')}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('');
   const treatBlock = (r.status === 'completed' || r.status === 'in_treatment') ? `
     <div class="rt-sec-title">Treatment</div>
     <div class="rt-kv-grid">
@@ -386,7 +390,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Treated by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtD(r.treated_at) : ''}</b></div>
       ${r.treatment_notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
     </div>
-    ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th class="r">Qty</th><th>Reason</th><th class="r">Credit $</th><th>Moved to</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td><td class="r num">${money(t.line_value)}</td><td>${esc(t.moved_to_location || '')}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th>Return status</th><th class="r">Qty</th><th>Reason</th><th class="r">Credit $</th><th>Moved to</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td>${esc(t.return_status || '')}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td><td class="r num">${money(t.line_value)}</td><td>${esc(t.moved_to_location || '')}</td></tr>`).join('')}</tbody></table>` : ''}
   ` : '';
   $('rtViewBody').innerHTML = `
     <div class="rt-view-head">
@@ -405,11 +409,11 @@ async function rtView(id) {
       <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
-      <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
+      <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
       ${r.notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.notes)}</b></div>` : ''}
     </div>
-    <table class="rt-table" style="margin-top:8px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th><th>Return status</th></tr></thead><tbody>${rowsC}</tbody></table>
+    <table class="rt-table" style="margin-top:8px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead><tbody>${rowsC}</tbody></table>
     ${treatBlock}`;
   $('rtViewModal').classList.add('active');
 }
@@ -425,7 +429,7 @@ async function rtAction(id) {
   const lines = ln.data || [], tlines = tl.data || [];
   RT.stageLines = lines;
   // credit lines: existing treatment lines, or seed from stage-1
-  RT.tlines = (tlines.length ? tlines : lines).map(l => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', unit: l.unit_value != null ? l.unit_value : 0, moved: l.moved_to_location || '' }));
+  RT.tlines = (tlines.length ? tlines : lines).map(l => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || '', unit: l.unit_value != null ? l.unit_value : 0, moved: l.moved_to_location || '' }));
   $('rtActRef').value = r.treatment_ref || '';
   $('rtActMoved').value = r.treatment_location_notes || '';
   $('rtActNotes').value = r.treatment_notes || '';
@@ -442,18 +446,19 @@ async function rtAction(id) {
       <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
-      <div class="rt-kv"><span>Operator</span><b>${esc(r.operator || '—')}</b></div>
+      <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
     </div>
-    <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th><th>Return status</th></tr></thead>
-    <tbody>${lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td><td>${esc(l.return_status || '')}</td></tr>`).join('')}</tbody></table>`;
+    <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead>
+    <tbody>${lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('')}</tbody></table>`;
   rtRenderTLines();
   $('rtActModal').classList.add('active');
 }
 function rtCloseAct() { $('rtActModal').classList.remove('active'); }
 function rtRenderTLines() {
   $('rtTLinesBody').innerHTML = RT.tlines.map((l, i) => `<tr>
-    <td><strong>${esc(l.sku)}</strong>${l.dc5 ? ` <span class="sub">· 5DC ${esc(l.dc5)}</span>` : ''}<div class="sub">${esc((l.name || '').slice(0, 34))}</div></td>
+    <td><strong>${esc(l.sku)}</strong>${l.dc5 ? `<div class="rt-line-dc5">5DC ${esc(l.dc5)}</div>` : ''}<div class="sub">${esc((l.name || '').slice(0, 28))}</div></td>
+    <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td><input class="rt-input" value="${esc(l.reason)}" oninput="rtTSet(${i},'reason',this.value)" /></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" /></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtTSet(${i},'unit',this.value)" /></td>
@@ -487,7 +492,7 @@ async function rtSaveAct(complete) {
     await sb().from('returns_active').update(upd).eq('id', r.id);
     // replace treatment (credit) lines
     await sb().from('returns_treatment_lines').delete().eq('return_id', r.id);
-    const rows = RT.tlines.filter(l => l.sku).map((l, idx) => ({ return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name, qty: Number(l.qty) || 0, reason: l.reason || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0), moved_to_location: l.moved || null }));
+    const rows = RT.tlines.filter(l => l.sku).map((l, idx) => ({ return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name, qty: Number(l.qty) || 0, reason: l.reason || null, return_status: l.return_status || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0), moved_to_location: l.moved || null }));
     if (rows.length) { const { error } = await sb().from('returns_treatment_lines').insert(rows); if (error) throw error; }
     toast(complete ? `${r.return_no} completed` : 'Progress saved', 'ok');
     rtCloseAct(); await loadReturns();
@@ -497,18 +502,19 @@ async function rtSaveAct(complete) {
 // ─── CSV export (History) — mirrors the team's credit-note sheet + our detail ───
 const csvCell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
 const rtProductsStr = r => (r.returns_lines || []).slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0)).map(l => {
-  const extra = [l.reason, l.condition, l.return_status].filter(Boolean).join(' / ');
+  const extra = [l.reason, l.condition].filter(Boolean).join(' / ');
   return `${l.qty}× ${l.sku}${extra ? ' (' + extra + ')' : ''}`;
 }).join(' | ');
+const rtStatuses = r => [...new Set((r.returns_treatment_lines || []).map(t => t.return_status).filter(Boolean))].join('; ');
 const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.qty) || 0), 0);
 function rtExportCsv() {
   const rows = RT.history;
   if (!rows.length) return toast('No completed returns to export', 'err');
-  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Origin order', 'Cust. reference', 'Products (qty × sku / reason / condition / status)', 'Total Qty', 'Credit Note', 'Emailed', 'Received by', 'Treated by', 'Treated Date', 'Credit $', 'Comments', 'Treatment Notes'];
+  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Origin order', 'Cust. reference', 'Products (qty × sku / reason / condition)', 'Total Qty', 'Credit Note', 'Return status', 'Emailed', 'Received by', 'Treated by', 'Treated Date', 'Credit $', 'Comments', 'Treatment Notes'];
   const lines = [headers.map(csvCell).join(',')];
   rows.forEach(r => lines.push([
     fmtD(r.created_at), r.return_no, r.customer_name, r.contact_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.invoice_number, r.origin_order, r.customer_reference,
-    rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
+    rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, rtStatuses(r), r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
     rtCredit(r) ? money(rtCredit(r)) : '', r.notes, r.treatment_notes,
   ].map(csvCell).join(',')));
   const csv = '﻿' + lines.join('\r\n'); // BOM so Excel reads UTF-8

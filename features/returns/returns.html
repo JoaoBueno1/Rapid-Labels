@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717j" />
+  <link rel="stylesheet" href="returns.css?v=20260717m" />
 </head>
 <body>
   <header class="rt-header">
@@ -95,11 +95,11 @@
             <input type="text" id="rtCustId" class="rt-input rt-readonly" readonly placeholder="— (select a business)" />
           </div>
           <div class="rt-field">
-            <label>Customer email <small style="text-transform:none;color:#9aa6ba">(from Cin7, editable)</small></label>
-            <input type="email" id="rtCustEmail" class="rt-input" placeholder="— (auto-filled on pick)" autocomplete="off" />
+            <label>Customer email</label>
+            <input type="email" id="rtCustEmail" class="rt-input" placeholder="" autocomplete="off" />
           </div>
           <div class="rt-field">
-            <label>Rep <small style="text-transform:none;color:#9aa6ba">(from Cin7)</small></label>
+            <label>Rep</label>
             <input type="text" id="rtRep" class="rt-input" placeholder="Sales rep" autocomplete="off" />
           </div>
           <div class="rt-field">
@@ -115,7 +115,7 @@
             <input type="text" id="rtCustRef" class="rt-input" placeholder="e.g. site / PO ref" />
           </div>
           <div class="rt-field rt-oper">
-            <label>Operator *</label>
+            <label>Received by *</label>
             <input type="text" id="rtOperator" class="rt-input" autocomplete="off" placeholder="Start typing operator name…" oninput="rtOperInput('rtOperator','rtOperatorAc')" onfocus="rtOperInput('rtOperator','rtOperatorAc')" />
             <div class="rt-ac" id="rtOperatorAc"></div>
             <datalist id="rtOperators"></datalist>
@@ -136,13 +136,13 @@
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:23%">Product</th><th style="width:7%" class="r">Qty</th><th style="width:15%">Reason</th><th style="width:14%">Condition <small>(internal)</small></th><th style="width:20%">Return status <small>(on receipt)</small></th><th style="width:11%" class="r">Unit $</th><th style="width:5%"></th>
+              <th style="width:30%">Product</th><th style="width:8%" class="r">Qty</th><th style="width:19%">Reason</th><th style="width:19%">Condition <small>(internal)</small></th><th style="width:13%" class="r">Unit $</th><th style="width:6%"></th>
             </tr></thead>
             <tbody id="rtLinesBody"></tbody>
-            <tfoot><tr><td colspan="5" class="r"><strong>Total</strong></td><td class="r"><strong id="rtTotal">0.00</strong></td><td></td></tr></tfoot>
+            <tfoot><tr><td colspan="4" class="r"><strong>Total</strong></td><td class="r"><strong id="rtTotal">0.00</strong></td><td></td></tr></tfoot>
           </table>
         </div>
-        <p class="rt-hint">Tip: same product can go on multiple lines with different reasons/conditions. <strong>Condition</strong> is warehouse-only (never on the customer copy); <strong>Return status</strong> is printed on the customer receipt. Prices default to the standard tier and are editable.</p>
+        <p class="rt-hint">Tip: same product can go on multiple lines with different reasons/conditions. <strong>Condition</strong> is warehouse-only (internal). The <strong>return status</strong> (credit / warranty) is decided later by the office in <strong>Action</strong>. Prices default to the standard tier and are editable.</p>
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCloseNew()">Cancel</button>
@@ -218,10 +218,10 @@
           <div class="rt-table-wrap">
             <table class="rt-table rt-lines">
               <thead><tr>
-                <th style="width:22%">Product</th><th style="width:16%">Reason</th><th style="width:9%" class="r">Qty</th><th style="width:12%" class="r">Unit $</th><th style="width:12%" class="r">Credit $</th><th style="width:21%">Moved to</th><th style="width:8%"></th>
+                <th style="width:17%">Product</th><th style="width:20%">Return status</th><th style="width:13%">Reason</th><th style="width:8%" class="r">Qty</th><th style="width:10%" class="r">Unit $</th><th style="width:11%" class="r">Credit $</th><th style="width:14%">Moved to</th><th style="width:7%"></th>
               </tr></thead>
               <tbody id="rtTLinesBody"></tbody>
-              <tfoot><tr><td colspan="4" class="r"><strong>Total credit</strong></td><td class="r"><strong id="rtTTotal">0.00</strong></td><td colspan="2"></td></tr></tfoot>
+              <tfoot><tr><td colspan="5" class="r"><strong>Total credit</strong></td><td class="r"><strong id="rtTTotal">0.00</strong></td><td colspan="2"></td></tr></tfoot>
             </table>
           </div>
           <div class="rt-field rt-field-full" style="margin-top:10px">
@@ -247,11 +247,11 @@
       </div>
       <div class="rt-modal-body">
         <div id="rtSoMeta" class="rt-so-meta"></div>
-        <p class="rt-hint" style="margin-top:0">Tick the items the customer is returning and set the <strong>Return QTY</strong>. Untick anything not coming back. Only QTY is required — reason is optional.</p>
+        <p class="rt-hint" style="margin-top:0">Set the <strong>Return QTY</strong> for each item (can't exceed Ordered). <strong>Remove ×</strong> anything not coming back. Every remaining line needs a qty before you can add.</p>
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:36px"></th><th style="width:40%">Product</th><th class="r" style="width:70px">Ordered</th><th class="r" style="width:96px">Return QTY</th><th style="width:150px">Reason</th><th class="r">Unit $</th>
+              <th style="width:30%">Product</th><th class="r" style="width:66px">Ordered</th><th class="r" style="width:92px">Return QTY</th><th style="width:16%">Reason</th><th style="width:16%">Condition</th><th class="r">Unit $</th><th style="width:34px"></th>
             </tr></thead>
             <tbody id="rtSoBody"></tbody>
           </table>
@@ -271,6 +271,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717k"></script>
+  <script src="returns.js?v=20260717m"></script>
 </body>
 </html>
