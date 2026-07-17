@@ -452,7 +452,7 @@ async function rtAction(id) {
   const lines = ln.data || [], tlines = tl.data || [];
   RT.stageLines = lines;
   // credit lines: existing treatment lines, or seed from stage-1
-  RT.tlines = (tlines.length ? tlines : lines).map(l => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || '', unit: l.unit_value != null ? l.unit_value : 0, moved: l.moved_to_location || '' }));
+  RT.tlines = (tlines.length ? tlines : lines).map((l, idx) => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || '', unit: l.unit_value != null ? l.unit_value : 0, moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false }));
   $('rtActRef').value = r.treatment_ref || '';
   $('rtActMoved').value = r.treatment_location_notes || '';
   $('rtActNotes').value = r.treatment_notes || '';
@@ -479,27 +479,49 @@ async function rtAction(id) {
 }
 function rtCloseAct() { $('rtActModal').classList.remove('active'); }
 function rtRenderTLines() {
-  $('rtTLinesBody').innerHTML = RT.tlines.map((l, i) => `<tr>
+  $('rtTLinesBody').innerHTML = RT.tlines.map((l, i) => {
+    const grpN = RT.tlines.filter(x => x._grp === l._grp).length;   // >1 = this line was split
+    const qtyEditable = grpN > 1;
+    return `<tr>
     <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
     <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 26))}</div></td>
     <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
-    <td><input class="rt-input" value="${esc(l.reason)}" oninput="rtTSet(${i},'reason',this.value)" /></td>
-    <td class="r"><input class="rt-input r" type="number" min="0" step="1" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" /></td>
+    <td class="rt-frozen">${esc(l.reason || '—')}</td>
+    <td class="r">${qtyEditable ? `<input class="rt-input r" type="number" min="0" step="1" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" />` : `<span class="rt-frozen num">${l.qty}</span>`}</td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtTSet(${i},'unit',this.value)" /></td>
     <td class="r num">${money((Number(l.qty) || 0) * (Number(l.unit) || 0))}</td>
     <td><input class="rt-input" placeholder="e.g. Returns / Faulty" value="${esc(l.moved)}" oninput="rtTSet(${i},'moved',this.value)" /></td>
-    <td class="r"><button class="rt-line-x" title="Split (duplicate)" onclick="rtTSplit(${i})">⧉</button><button class="rt-line-x" title="Remove" onclick="rtTRemove(${i})">×</button></td>
-  </tr>`).join('');
+    <td class="r"><button class="rt-line-x" title="Split for credit vs warranty" onclick="rtTSplit(${i})">⧉</button>${l._split ? `<button class="rt-line-x" title="Remove split" onclick="rtTRemove(${i})">×</button>` : ''}</td>
+  </tr>`; }).join('');
   $('rtTTotal').textContent = money(RT.tlines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit) || 0), 0));
 }
 function rtTSet(i, k, v) { RT.tlines[i][k] = v; if (k === 'qty' || k === 'unit') rtRenderTLines(); }
-function rtTSplit(i) { RT.tlines.splice(i + 1, 0, { ...RT.tlines[i] }); rtRenderTLines(); }
-function rtTRemove(i) { RT.tlines.splice(i, 1); rtRenderTLines(); }
+function rtTSplit(i) {
+  const l = RT.tlines[i];
+  if ((Number(l.qty) || 0) <= 1) return toast('Nothing to split — quantity is 1', 'err');
+  const child = { ...l, qty: 1, _split: true, return_status: '', moved: '' };   // 1 unit peeled off for a separate status
+  l.qty = (Number(l.qty) || 0) - 1;
+  RT.tlines.splice(i + 1, 0, child);
+  rtRenderTLines();
+}
+function rtTRemove(i) {
+  const l = RT.tlines[i];
+  if (!l._split) return toast("Can't remove a received line — split it if you need to divide it", 'err');
+  const sib = RT.tlines.find((x, j) => j !== i && x._grp === l._grp);   // give its qty back to the group
+  if (sib) sib.qty = (Number(sib.qty) || 0) + (Number(l.qty) || 0);
+  RT.tlines.splice(i, 1);
+  rtRenderTLines();
+}
 
 async function rtSaveAct(complete) {
   const r = RT.actRow; if (!r) return;
   const by = ($('rtActBy').value || '').trim();
   if (complete && !by) return toast('Enter who treated it (Treated by)', 'err');
+  // split quantities must add back up to what was received
+  const grp = {};
+  RT.tlines.forEach(l => { const g = grp[l._grp] || (grp[l._grp] = { recv: l._recv || 0, sum: 0, sku: l.sku }); g.sum += Number(l.qty) || 0; });
+  const bad = Object.values(grp).find(g => g.sum !== g.recv);
+  if (bad) return toast(`Split quantities for ${bad.sku} must add up to ${bad.recv} (received)`, 'err');
   const btn = complete ? $('rtActComplete') : $('rtActSave'); btn.disabled = true;
   try {
     const upd = {
