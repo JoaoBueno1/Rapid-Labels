@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717m" />
+  <link rel="stylesheet" href="returns.css?v=20260717n" />
 </head>
 <body>
   <header class="rt-header">
@@ -36,7 +36,7 @@
       <div class="rt-table-wrap">
         <table class="rt-table">
           <thead><tr>
-            <th>Return #</th><th>Date</th><th>Customer</th><th>Customer ID</th><th>Origin order</th><th>Operator</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th>
+            <th>Return #</th><th>Date</th><th>Business</th><th>Account</th><th>Sales order</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th>
           </tr></thead>
           <tbody id="rtActiveBody"></tbody>
         </table>
@@ -136,10 +136,10 @@
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:30%">Product</th><th style="width:8%" class="r">Qty</th><th style="width:19%">Reason</th><th style="width:19%">Condition <small>(internal)</small></th><th style="width:13%" class="r">Unit $</th><th style="width:6%"></th>
+              <th style="width:10%">5DC</th><th style="width:23%">Product</th><th style="width:7%" class="r">Qty</th><th style="width:18%">Reason</th><th style="width:18%">Condition <small>(internal)</small></th><th style="width:12%" class="r">Unit $</th><th style="width:5%"></th>
             </tr></thead>
             <tbody id="rtLinesBody"></tbody>
-            <tfoot><tr><td colspan="4" class="r"><strong>Total</strong></td><td class="r"><strong id="rtTotal">0.00</strong></td><td></td></tr></tfoot>
+            <tfoot><tr><td colspan="5" class="r"><strong>Total</strong></td><td class="r"><strong id="rtTotal">0.00</strong></td><td></td></tr></tfoot>
           </table>
         </div>
         <p class="rt-hint">Tip: same product can go on multiple lines with different reasons/conditions. <strong>Condition</strong> is warehouse-only (internal). The <strong>return status</strong> (credit / warranty) is decided later by the office in <strong>Action</strong>. Prices default to the standard tier and are editable.</p>
@@ -251,7 +251,7 @@
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:30%">Product</th><th class="r" style="width:66px">Ordered</th><th class="r" style="width:92px">Return QTY</th><th style="width:16%">Reason</th><th style="width:16%">Condition</th><th class="r">Unit $</th><th style="width:34px"></th>
+              <th style="width:9%">5DC</th><th style="width:26%">Product</th><th class="r" style="width:62px">Ordered</th><th class="r" style="width:88px">Return QTY</th><th style="width:15%">Reason</th><th style="width:15%">Condition</th><th class="r">Unit $</th><th style="width:40px"></th>
             </tr></thead>
             <tbody id="rtSoBody"></tbody>
           </table>
@@ -271,6 +271,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717m"></script>
+  <script src="returns.js?v=20260717n"></script>
 </body>
 </html>

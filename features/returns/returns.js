@@ -17,6 +17,7 @@ const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''
 const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', completed: 'Completed' }[s] || s);
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
+function rtInvalid(id) { const el = $(id); if (!el) return; el.classList.add('rt-invalid'); try { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} el.addEventListener('input', function h() { el.classList.remove('rt-invalid'); el.removeEventListener('input', h); }); }
 const sumVal = arr => (arr || []).reduce((s, l) => s + (Number(l.line_value) || 0), 0);
 const rtCredit = r => sumVal(r.returns_treatment_lines);
 const rtValue = r => { const c = rtCredit(r); return c || sumVal(r.returns_lines); }; // credit if treated, else intake total
@@ -158,17 +159,16 @@ function rtPickCust(c) {
   RT.sel = c; $('rtCustName').value = c.name; $('rtCustId').value = c.code || '';
   if (c.email) $('rtCustEmail').value = c.email;   // Cin7 default-contact email
   if (c.rep) $('rtRep').value = c.rep;             // Cin7 sales rep
-  if (c.contact) $('rtContact').value = c.contact; // Cin7 primary contact person
-  $('rtCustAc').classList.remove('show');
+  $('rtCustAc').classList.remove('show');          // contact name is typed by the user (varies per employee)
 }
 
 function rtAddLine(dup) { RT.lines.push(dup ? { ...dup } : { sku: '', name: '', dc5: '', qty: '', reason: '', condition: '', return_status: '', unit: 0 }); rtRenderLines(); }
 function rtRemoveLine(i) { RT.lines.splice(i, 1); rtRenderLines(); }
 function rtRenderLines() {
-  $('rtLinesBody').innerHTML = RT.lines.map((l, i) => `<tr>
+  $('rtLinesBody').innerHTML = RT.lines.map((l, i) => `<tr class="${l._invalid ? 'rt-row-bad' : ''}">
+    <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
     <td class="rt-prod-cell" style="position:relative">
-      <input class="rt-input" placeholder="SKU / name / 5DC" value="${esc(l.name ? l.sku + ' — ' + l.name : (l.sku || ''))}" oninput="rtProdInput(${i}, this)" onfocus="rtProdInput(${i}, this)" autocomplete="off" />
-      ${l.dc5 ? `<div class="rt-line-dc5">5DC ${esc(l.dc5)}</div>` : ''}</td>
+      <input class="rt-input" placeholder="SKU / name / 5DC" value="${esc(l.name ? l.sku + ' — ' + l.name : (l.sku || ''))}" oninput="rtProdInput(${i}, this)" onfocus="rtProdInput(${i}, this)" autocomplete="off" /></td>
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" placeholder="0" value="${l.qty}" oninput="rtLineSet(${i},'qty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'condition',this.value)"><option value="">— condition —</option>${CONDITIONS.map(r => `<option ${l.condition === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
@@ -206,12 +206,17 @@ function rtPickProd(p) {
 async function rtSaveNew() {
   const name = ($('rtCustName').value || '').trim();
   const operator = ($('rtOperator').value || '').trim();
+  RT.lines.forEach(l => l._invalid = false);
   const withSku = RT.lines.filter(l => l.sku);
-  const lines = withSku.filter(l => (Number(l.qty) || 0) > 0);
-  if (!name) return toast('Pick a customer', 'err');
-  if (!operator) return toast('Enter the operator', 'err');
-  if (!withSku.length) return toast('Add at least one product line', 'err');
-  if (lines.length !== withSku.length) return toast('Enter a quantity for every product line', 'err');
+  const lines = withSku.filter(l => (Number(l.qty) || 0) > 0 && l.reason);
+  if (!name) { toast('Pick or type a business', 'err'); return rtInvalid('rtCustName'); }
+  if (!operator) { toast('Enter who received it (Received by)', 'err'); return rtInvalid('rtOperator'); }
+  if (!withSku.length) { toast('Add at least one product line', 'err'); return; }
+  if (lines.length !== withSku.length) {
+    withSku.forEach(l => { if (!((Number(l.qty) || 0) > 0) || !l.reason) l._invalid = true; });
+    rtRenderLines();
+    return toast('Every product line needs a quantity and a reason', 'err');
+  }
   const btn = $('rtSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const hdr = {
@@ -283,21 +288,22 @@ function rtSoRender() {
     <div class="rt-kv"><span>Rep</span><b>${esc(so.rep || '—')}</b></div>
   </div>`;
   $('rtSoBody').innerHTML = so.lines.map((l, i) => `<tr>
-    <td><strong>${esc(l.sku)}</strong>${l.dc5 ? `<div class="rt-line-dc5">5DC ${esc(l.dc5)}</div>` : ''}<div class="sub">${esc((l.name || '').slice(0, 44))}</div></td>
+    <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
+    <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 40))}</div></td>
     <td class="r num">${l.ordered}</td>
     <td class="r"><input class="rt-input r" type="number" min="0" max="${l.ordered}" step="1" placeholder="0" value="${l.rqty}" oninput="rtSoSet(${i},'rqty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtSoSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td><select class="rt-input" onchange="rtSoSet(${i},'condition',this.value)"><option value="">— condition —</option>${CONDITIONS.map(r => `<option ${l.condition === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="r num">${money(l.price)}</td>
-    <td class="r"><button class="rt-line-x" title="Remove line" onclick="rtSoRemove(${i})">×</button></td>
-  </tr>`).join('') || '<tr><td colspan="7" class="rt-empty">No items left — close and add manually.</td></tr>';
+    <td class="r"><button class="rt-rm" title="Remove line" onclick="rtSoRemove(${i})">×</button></td>
+  </tr>`).join('') || '<tr><td colspan="8" class="rt-empty">No items left — close and add manually.</td></tr>';
   rtSoUpdateBtn();
 }
 function rtSoUpdateBtn() {
   const n = RT.so.lines.length;
-  const allQty = n > 0 && RT.so.lines.every(l => (Number(l.rqty) || 0) > 0);
-  const btn = $('rtSoAdd'); btn.disabled = !allQty;
-  btn.textContent = allQty ? `Add ${n} item(s) to return` : (n ? `Enter qty on all ${n} line(s)` : 'No items');
+  const ok = n > 0 && RT.so.lines.every(l => (Number(l.rqty) || 0) > 0 && l.reason);
+  const btn = $('rtSoAdd'); btn.disabled = !ok;
+  btn.textContent = ok ? `Add ${n} item(s) to return` : (n ? `Set qty + reason on all ${n} line(s)` : 'No items');
 }
 function rtSoSet(i, k, v) {
   if (k === 'rqty') {                                  // cap at ordered qty — can't return more than was sold
@@ -308,16 +314,16 @@ function rtSoSet(i, k, v) {
     return;
   }
   RT.so.lines[i][k] = v;
+  if (k === 'reason') rtSoUpdateBtn();
 }
 function rtSoRemove(i) { RT.so.lines.splice(i, 1); rtSoRender(); }
 function rtSoClose() { $('rtSoModal').classList.remove('active'); }
 function rtSoConfirm() {
-  const so = RT.so; const chosen = so.lines.filter(l => (Number(l.rqty) || 0) > 0);
-  if (!so.lines.length || chosen.length !== so.lines.length) return toast('Enter a quantity on every line (or remove it)', 'err');
-  // fill customer + order fields from the SO
-  if (so.customer) { $('rtCustName').value = so.customer; RT.sel = { name: so.customer, code: so.code, email: so.email, rep: so.rep, contact: so.contact }; }
+  const so = RT.so; const chosen = so.lines.filter(l => (Number(l.rqty) || 0) > 0 && l.reason);
+  if (!so.lines.length || chosen.length !== so.lines.length) return toast('Every line needs a qty and a reason (or remove it)', 'err');
+  // fill business + order fields from the SO (contact name is typed by the user)
+  if (so.customer) { $('rtCustName').value = so.customer; RT.sel = { name: so.customer, code: so.code, email: so.email, rep: so.rep }; }
   $('rtCustId').value = so.code || '';
-  if (so.contact) $('rtContact').value = so.contact;
   if (so.email) $('rtCustEmail').value = so.email;
   if (so.rep) $('rtRep').value = so.rep;
   if (so.invoice) $('rtInvoice').value = so.invoice;
@@ -369,7 +375,7 @@ async function rtScanResolve(code) {
   return null;
 }
 
-function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717m', '_blank'); }
+function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717n', '_blank'); }
 
 // ─── View (consult) ───
 async function rtView(id) {
