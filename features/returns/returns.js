@@ -245,17 +245,20 @@ async function rtSaveNew() {
       customer_reference: ($('rtCustRef').value || '').trim() || null,
       origin_order: ($('rtOrigin').value || '').trim() || null, operator, notes: ($('rtNotes').value || '').trim() || null,
     };
-    let id, return_no;
+    let id, return_no, oldLineIds = [];
     if (RT.editId) {
-      await sb().from('returns_active').update({ ...hdr, updated_at: new Date().toISOString() }).eq('id', RT.editId);
-      await sb().from('returns_lines').delete().eq('return_id', RT.editId);
       id = RT.editId; return_no = (rtHdr(RT.editId) || {}).return_no;
+      const { error: eu } = await sb().from('returns_active').update({ ...hdr, updated_at: new Date().toISOString() }).eq('id', RT.editId);
+      if (eu) throw eu;
+      const { data: old } = await sb().from('returns_lines').select('id').eq('return_id', RT.editId);
+      oldLineIds = (old || []).map(o => o.id);   // remove these only AFTER the new lines are safely inserted
     } else {
       const { data, error } = await sb().from('returns_active').insert({ ...hdr, status: 'pending' }).select('id,return_no').single();
       if (error) throw error; id = data.id; return_no = data.return_no;
     }
     const lineRows = lines.map((l, idx) => ({ return_id: id, line_no: idx + 1, sku: l.sku, product_name: l.name, dc5: l.dc5 || null, qty: Number(l.qty) || 0, reason: l.reason || null, condition: l.condition || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0) }));
     const { error: e2 } = await sb().from('returns_lines').insert(lineRows); if (e2) throw e2;
+    if (oldLineIds.length) await sb().from('returns_lines').delete().in('id', oldLineIds);   // safe: new rows already in
     toast(`${return_no} ${RT.editId ? 'updated' : 'created'}`, 'ok');
     const wasNew = !RT.editId; rtCloseNew(); await loadReturns();
     if (wasNew) rtPrint(id);
@@ -535,11 +538,15 @@ async function rtSaveAct(complete) {
       updated_at: new Date().toISOString(),
     };
     if (complete) upd.treated_at = new Date().toISOString();
-    await sb().from('returns_active').update(upd).eq('id', r.id);
-    // replace treatment (credit) lines
-    await sb().from('returns_treatment_lines').delete().eq('return_id', r.id);
+    // replace credit lines safely: insert new first, then drop the old ones by id
+    const { data: oldT } = await sb().from('returns_treatment_lines').select('id').eq('return_id', r.id);
+    const oldTIds = (oldT || []).map(o => o.id);
     const rows = RT.tlines.filter(l => l.sku).map((l, idx) => ({ return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name, qty: Number(l.qty) || 0, reason: l.reason || null, return_status: l.return_status || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0), moved_to_location: l.moved || null }));
     if (rows.length) { const { error } = await sb().from('returns_treatment_lines').insert(rows); if (error) throw error; }
+    if (oldTIds.length) await sb().from('returns_treatment_lines').delete().in('id', oldTIds);
+    // header LAST — a line failure above never leaves a wrong 'completed' status
+    const { error: eu } = await sb().from('returns_active').update(upd).eq('id', r.id);
+    if (eu) throw eu;
     toast(complete ? `${r.return_no} completed` : 'Progress saved', 'ok');
     rtCloseAct(); await loadReturns();
   } catch (e) { toast('Save failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
