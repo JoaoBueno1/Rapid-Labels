@@ -83,7 +83,7 @@
         <div class="rt-form-grid">
           <div class="rt-field rt-cust">
             <label>Business (customer) *</label>
-            <input type="text" id="rtCustName" class="rt-input" placeholder="Start typing business name…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
+            <input type="text" id="rtCustName" class="rt-input" placeholder="Search &amp; pick a business from Cin7…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
             <div class="rt-ac" id="rtCustAc"></div>
           </div>
           <div class="rt-field">
@@ -136,13 +136,12 @@
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:10%">5DC</th><th style="width:23%">Product</th><th style="width:7%" class="r">Qty</th><th style="width:18%">Reason</th><th style="width:18%">Condition <small>(internal)</small></th><th style="width:12%" class="r">Unit $</th><th style="width:5%"></th>
+              <th style="width:11%">5DC</th><th style="width:29%">Product</th><th style="width:8%" class="r">Qty</th><th style="width:23%">Reason</th><th style="width:23%">Condition <small>(internal)</small></th><th style="width:6%"></th>
             </tr></thead>
             <tbody id="rtLinesBody"></tbody>
-            <tfoot><tr><td colspan="5" class="r"><strong>Total</strong></td><td class="r"><strong id="rtTotal">0.00</strong></td><td></td></tr></tfoot>
           </table>
         </div>
-        <p class="rt-hint">Tip: same product can go on multiple lines with different reasons/conditions. <strong>Condition</strong> is warehouse-only (internal). The <strong>return status</strong> (credit / warranty) is decided later by the office in <strong>Action</strong>. Prices default to the standard tier and are editable.</p>
+        <p class="rt-hint">Tip: same product can go on multiple lines with different reasons/conditions. <strong>Condition</strong> is warehouse-only (internal). Credit values and the <strong>return status</strong> (credit / warranty) are handled later by the office in <strong>Action</strong>.</p>
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCloseNew()">Cancel</button>
@@ -270,6 +269,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717u"></script>
+  <script src="returns.js?v=20260717v"></script>
 </body>
 </html>

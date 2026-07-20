@@ -152,7 +152,7 @@ function rtCustInput() {
   const q = ($('rtCustName').value || '').trim().toLowerCase(); const ac = $('rtCustAc');
   if (q.length < 2) { ac.classList.remove('show'); return; }
   const hits = RT.customers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 12);
-  ac.innerHTML = hits.map(c => `<div class="rt-ac-item" onclick='rtPickCust(${JSON.stringify(c).replace(/'/g, "&#39;")})'>${esc(c.name)}${c.code ? `<span class="sub"> · ${esc(c.code)}</span>` : ''}</div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match</div>';
+  ac.innerHTML = hits.map(c => `<div class="rt-ac-item" onclick='rtPickCust(${JSON.stringify(c).replace(/'/g, "&#39;")})'>${esc(c.name)}${c.code ? `<span class="sub"> · ${esc(c.code)}</span>` : ''}</div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match in Cin7 — pick an existing business</div>';
   ac.classList.add('show'); RT.sel = null; $('rtCustId').value = '';
 }
 function rtPickCust(c) {
@@ -174,12 +174,10 @@ function rtRenderLines() {
     <td class="r"><input class="rt-input r" type="number" min="0" step="1" placeholder="0" value="${l.qty}" oninput="rtLineSet(${i},'qty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td><select class="rt-input" onchange="rtLineSet(${i},'condition',this.value)"><option value="">— condition —</option>${CONDITIONS.map(r => `<option ${l.condition === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
-    <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtLineSet(${i},'unit',this.value)" /></td>
     <td class="r"><button class="rt-line-x" title="Duplicate" onclick="rtAddLine(RT.lines[${i}])">⧉</button><button class="rt-line-x" title="Remove" onclick="rtRemoveLine(${i})">×</button></td>
   </tr>`).join('');
-  $('rtTotal').textContent = money(RT.lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit) || 0), 0));
 }
-function rtLineSet(i, k, v) { RT.lines[i][k] = v; if (k === 'qty' || k === 'unit') rtRenderLines(); }
+function rtLineSet(i, k, v) { RT.lines[i][k] = v; }
 
 let _prodTimer = null;
 function rtProdInput(i, inp) {
@@ -221,12 +219,14 @@ function rtDc5Input(i, inp) {
 }
 
 async function rtSaveNew() {
-  const name = ($('rtCustName').value || '').trim();
+  // business MUST be one selected from Cin7 (RT.sel) — free-typed names are rejected.
+  // A business with no account code is still valid; we only require it was picked.
+  const name = RT.sel ? (RT.sel.name || '').trim() : '';
   const operator = ($('rtOperator').value || '').trim();
   RT.lines.forEach(l => l._invalid = false);
   const withSku = RT.lines.filter(l => l.sku);
   const lines = withSku.filter(l => (Number(l.qty) || 0) > 0 && l.reason);
-  if (!name) { toast('Pick or type a business', 'err'); return rtInvalid('rtCustName'); }
+  if (!name) { toast('Pick the business from the list (Cin7)', 'err'); return rtInvalid('rtCustName'); }
   if (!operator) { toast('Enter who received it (Received by)', 'err'); return rtInvalid('rtOperator'); }
   if (!withSku.length) { toast('Add at least one product line', 'err'); return; }
   if (lines.length !== withSku.length) {
