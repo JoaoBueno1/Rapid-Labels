@@ -187,7 +187,7 @@
               <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. 24408" />
             </div>
             <div class="rt-field rt-actby">
-              <label>Treated by *</label>
+              <label>Treated by <span class="rt-req">*</span></label>
               <input type="text" id="rtActBy" class="rt-input" autocomplete="off" placeholder="Start typing name…" oninput="rtOperInput('rtActBy','rtActByAc')" onfocus="rtOperInput('rtActBy','rtActByAc')" />
               <div class="rt-ac" id="rtActByAc"></div>
             </div>
@@ -217,7 +217,7 @@
           <div class="rt-table-wrap">
             <table class="rt-table rt-lines">
               <thead><tr>
-                <th style="width:7%">5DC</th><th style="width:15%">Product</th><th style="width:18%">Return status</th><th style="width:12%">Reason</th><th style="width:7%" class="r">Qty</th><th style="width:9%" class="r">Unit $</th><th style="width:10%" class="r">Credit $</th><th style="width:14%">Moved to</th><th style="width:6%"></th>
+                <th style="width:7%">5DC</th><th style="width:15%">Product</th><th style="width:18%">Return status</th><th style="width:12%">Reason</th><th style="width:7%" class="r">Qty</th><th style="width:9%" class="r">Unit $ <small>(opt.)</small></th><th style="width:10%" class="r">Credit $</th><th style="width:14%">Moved to</th><th style="width:6%"></th>
               </tr></thead>
               <tbody id="rtTLinesBody"></tbody>
               <tfoot><tr><td colspan="6" class="r"><strong>Total credit</strong></td><td class="r"><strong id="rtTTotal">0.00</strong></td><td colspan="2"></td></tr></tfoot>
@@ -269,6 +269,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717w"></script>
+  <script src="returns.js?v=20260717x"></script>
 </body>
 </html>

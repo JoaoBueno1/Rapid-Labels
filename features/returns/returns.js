@@ -199,7 +199,7 @@ function rtProdInput(i, inp) {
 function rtPickProd(p) {
   const t = RT.prodTarget; if (!t) return; const l = RT.lines[t.i];
   l.sku = p.sku; l.name = p.name || ''; l.dc5 = p.attribute1 || '';
-  if (!l.unit || Number(l.unit) === 0) l.unit = p.price_tier1 != null ? Number(p.price_tier1) : 0;
+  // no value at creation — the office types the credit value in stage 2 (discounts vary)
   $('rtProdAc').style.display = 'none'; rtRenderLines();
 }
 // find a product by typing its 5DC (attribute1) in the 5DC column
@@ -350,7 +350,7 @@ function rtSoConfirm() {
   $('rtOrigin').value = so.number;
   if (so.reference) $('rtCustRef').value = so.reference;
   // append chosen lines (keep any real manual lines, drop blank placeholders)
-  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: l.dc5 || '', qty: Number(l.rqty) || 0, reason: l.reason || '', condition: l.condition || '', unit: Number(l.price) || 0 })));
+  RT.lines = RT.lines.filter(l => l.sku).concat(chosen.map(l => ({ sku: l.sku, name: l.name, dc5: l.dc5 || '', qty: Number(l.rqty) || 0, reason: l.reason || '', condition: l.condition || '', unit: 0 })));
   RT.soLoadedNumber = so.number;
   rtRenderLines(); rtSoClose();
   toast(`Added ${chosen.length} item(s) from ${so.number}`, 'ok');
@@ -364,7 +364,7 @@ async function rtScanProduct() {
   try {
     const p = await rtScanResolve(code);
     if (!p) return toast(`No product found for "${code}"`, 'err');
-    RT.lines.push({ sku: p.sku, name: p.name || '', dc5: p.attribute1 || '', qty: '', reason: '', condition: '', return_status: '', unit: p.price_tier1 != null ? Number(p.price_tier1) : 0 });
+    RT.lines.push({ sku: p.sku, name: p.name || '', dc5: p.attribute1 || '', qty: '', reason: '', condition: '', return_status: '', unit: 0 });
     rtRenderLines();
     const rows = $('rtLinesBody').querySelectorAll('tr');
     const last = rows[rows.length - 1];
@@ -454,8 +454,10 @@ async function rtAction(id) {
   ]);
   const lines = ln.data || [], tlines = tl.data || [];
   RT.stageLines = lines;
-  // credit lines: existing treatment lines, or seed from stage-1
-  RT.tlines = (tlines.length ? tlines : lines).map((l, idx) => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || '', unit: l.unit_value != null ? l.unit_value : 0, moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false }));
+  // credit lines: existing treatment lines, or seed from stage-1. Value starts BLANK
+  // on first treatment (lots of discounts → varies); shows the saved value on reopen.
+  const fromT = tlines.length > 0;
+  RT.tlines = (fromT ? tlines : lines).map((l, idx) => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || '', unit: fromT ? (l.unit_value != null ? l.unit_value : '') : '', moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false }));
   $('rtActRef').value = r.treatment_ref || '';
   $('rtActMoved').value = r.treatment_location_notes || '';
   $('rtActNotes').value = r.treatment_notes || '';
