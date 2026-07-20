@@ -81,7 +81,7 @@
           <div class="row"><span class="lbl">Return No</span><span class="val">${esc(r.return_no)}</span></div>
           <div class="row"><span class="lbl">Date &amp; time</span><span class="val">${fmtDT(r.created_at)}</span></div>
           <div class="row"><span class="lbl">Business</span><span class="val">${esc(r.customer_name || '—')}${r.customer_id ? ' — ' + esc(r.customer_id) : ''}</span></div>
-          <div class="row"><span class="lbl">Customer</span><span class="val">${esc(r.contact_name || '—')}</span></div>
+          <div class="row"><span class="lbl">Customer name</span><span class="val">${esc(r.contact_name || '—')}</span></div>
           <div class="row"><span class="lbl">Sales order</span><span class="val">${esc(r.origin_order || '—')}</span></div>
           <div class="row"><span class="lbl">Reference</span><span class="val">${esc(r.customer_reference || '—')}</span></div>
           <div class="row"><span class="lbl">Invoice</span><span class="val">${esc(r.invoice_number || '—')}</span></div>

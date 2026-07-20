@@ -225,14 +225,14 @@ async function rtSaveNew() {
   const operator = ($('rtOperator').value || '').trim();
   RT.lines.forEach(l => l._invalid = false);
   const withSku = RT.lines.filter(l => l.sku);
-  const lines = withSku.filter(l => (Number(l.qty) || 0) > 0 && l.reason);
+  const lines = withSku.filter(l => (Number(l.qty) || 0) > 0 && l.reason && l.condition);
   if (!name) { toast('Pick the business from the list (Cin7)', 'err'); return rtInvalid('rtCustName'); }
   if (!operator) { toast('Enter who received it (Received by)', 'err'); return rtInvalid('rtOperator'); }
   if (!withSku.length) { toast('Add at least one product line', 'err'); return; }
   if (lines.length !== withSku.length) {
-    withSku.forEach(l => { if (!((Number(l.qty) || 0) > 0) || !l.reason) l._invalid = true; });
+    withSku.forEach(l => { if (!((Number(l.qty) || 0) > 0) || !l.reason || !l.condition) l._invalid = true; });
     rtRenderLines();
-    return toast('Every product line needs a quantity and a reason', 'err');
+    return toast('Every product line needs a quantity, a reason and a condition', 'err');
   }
   const btn = $('rtSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
@@ -321,9 +321,9 @@ function rtSoRender() {
 }
 function rtSoUpdateBtn() {
   const n = RT.so.lines.length;
-  const ok = n > 0 && RT.so.lines.every(l => (Number(l.rqty) || 0) > 0 && l.reason);
+  const ok = n > 0 && RT.so.lines.every(l => (Number(l.rqty) || 0) > 0 && l.reason && l.condition);
   const btn = $('rtSoAdd'); btn.disabled = !ok;
-  btn.textContent = ok ? `Add ${n} item(s) to return` : (n ? `Set qty + reason on all ${n} line(s)` : 'No items');
+  btn.textContent = ok ? `Add ${n} item(s) to return` : (n ? `Set qty + reason + condition on all ${n} line(s)` : 'No items');
 }
 function rtSoSet(i, k, v) {
   if (k === 'rqty') {                                  // cap at ordered qty — can't return more than was sold
@@ -334,13 +334,13 @@ function rtSoSet(i, k, v) {
     return;
   }
   RT.so.lines[i][k] = v;
-  if (k === 'reason') rtSoUpdateBtn();
+  if (k === 'reason' || k === 'condition') rtSoUpdateBtn();
 }
 function rtSoRemove(i) { RT.so.lines.splice(i, 1); rtSoRender(); }
 function rtSoClose() { $('rtSoModal').classList.remove('active'); }
 function rtSoConfirm() {
-  const so = RT.so; const chosen = so.lines.filter(l => (Number(l.rqty) || 0) > 0 && l.reason);
-  if (!so.lines.length || chosen.length !== so.lines.length) return toast('Every line needs a qty and a reason (or remove it)', 'err');
+  const so = RT.so; const chosen = so.lines.filter(l => (Number(l.rqty) || 0) > 0 && l.reason && l.condition);
+  if (!so.lines.length || chosen.length !== so.lines.length) return toast('Every line needs a qty, a reason and a condition (or remove it)', 'err');
   // fill business + order fields from the SO (contact name is typed by the user)
   if (so.customer) { $('rtCustName').value = so.customer; RT.sel = { name: so.customer, code: so.code, email: so.email, rep: so.rep }; }
   $('rtCustId').value = so.code || '';
@@ -395,7 +395,7 @@ async function rtScanResolve(code) {
   return null;
 }
 
-function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717q', '_blank'); }
+function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717w', '_blank'); }
 
 // ─── View (consult) ───
 async function rtView(id) {

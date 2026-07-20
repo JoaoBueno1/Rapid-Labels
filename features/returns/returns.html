@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717t" />
+  <link rel="stylesheet" href="returns.css?v=20260717w" />
 </head>
 <body>
   <header class="rt-header">
@@ -82,7 +82,7 @@
 
         <div class="rt-form-grid">
           <div class="rt-field rt-cust">
-            <label>Business (customer) *</label>
+            <label>Business (customer) <span class="rt-req">*</span></label>
             <input type="text" id="rtCustName" class="rt-input" placeholder="Search &amp; pick a business from Cin7…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
             <div class="rt-ac" id="rtCustAc"></div>
           </div>
@@ -115,7 +115,7 @@
             <input type="text" id="rtCustRef" class="rt-input" placeholder="e.g. site / PO ref" />
           </div>
           <div class="rt-field rt-oper">
-            <label>Received by *</label>
+            <label>Received by <span class="rt-req">*</span></label>
             <input type="text" id="rtOperator" class="rt-input" autocomplete="off" placeholder="Start typing operator name…" oninput="rtOperInput('rtOperator','rtOperatorAc')" onfocus="rtOperInput('rtOperator','rtOperatorAc')" />
             <div class="rt-ac" id="rtOperatorAc"></div>
             <datalist id="rtOperators"></datalist>
@@ -136,7 +136,7 @@
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:11%">5DC</th><th style="width:29%">Product</th><th style="width:8%" class="r">Qty</th><th style="width:23%">Reason</th><th style="width:23%">Condition <small>(internal)</small></th><th style="width:6%"></th>
+              <th style="width:11%">5DC</th><th style="width:29%">Product</th><th style="width:8%" class="r">Qty <span class="rt-req">*</span></th><th style="width:23%">Reason <span class="rt-req">*</span></th><th style="width:23%">Condition <span class="rt-req">*</span> <small>(internal)</small></th><th style="width:6%"></th>
             </tr></thead>
             <tbody id="rtLinesBody"></tbody>
           </table>
@@ -249,7 +249,7 @@
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:9%">5DC</th><th style="width:26%">Product</th><th class="r" style="width:62px">Ordered</th><th class="r" style="width:88px">Return QTY</th><th style="width:15%">Reason</th><th style="width:15%">Condition</th><th class="r">Unit $</th><th style="width:40px"></th>
+              <th style="width:9%">5DC</th><th style="width:26%">Product</th><th class="r" style="width:62px">Ordered</th><th class="r" style="width:88px">Return QTY <span class="rt-req">*</span></th><th style="width:15%">Reason <span class="rt-req">*</span></th><th style="width:15%">Condition <span class="rt-req">*</span></th><th class="r">Unit $</th><th style="width:40px"></th>
             </tr></thead>
             <tbody id="rtSoBody"></tbody>
           </table>
@@ -269,6 +269,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717v"></script>
+  <script src="returns.js?v=20260717w"></script>
 </body>
 </html>
