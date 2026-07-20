@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+/* ══════════════════════════════════════════════════════════════════════
+   Returns-style theme for the HOME page (index.html) — PREVIEW / REVERSIBLE.
+   Loaded AFTER the inline <style> so it wins. To revert: delete the one
+   <link ... home-returns-theme.css> line in index.html. Nothing else changes.
+   Palette: bg #f4f6f9 · surface #fff · ink #1a2230 · muted #7a8aa2 ·
+            accent #0aa5e6 (hover #0893cc) · border #e2e7ef · radius 10/7
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 1) Re-point the design tokens — most of the page uses these var()s */
+body {
+  --bg: #f4f6f9 !important;
+  --surface: #ffffff !important;
+  --text: #1a2230 !important;
+  --muted: #7a8aa2 !important;
+  --primary: #0aa5e6 !important;
+  --primary-600: #0893cc !important;
+  --border: #e2e7ef !important;
+  --hover: #f9fbfd !important;
+  --header: #ffffff !important;        /* white header (was dark) */
+  --header-text: #1a2230 !important;   /* dark text on the white header */
+  background: #f4f6f9 !important;
+  color: #1a2230 !important;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif !important;
+}
+.mono, .kpi-value, .wh-hero-val, .cat-badge { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
+
+/* 2) Header + footer → clean white with a light divider */
+.site-header { background: #fff !important; color: #1a2230 !important; border-bottom: 1px solid #e2e7ef !important; box-shadow: 0 1px 0 rgba(20,28,42,.02); }
+.brand { color: #1a2230 !important; font-weight: 600 !important; }
+.nav-link { color: #5b6b86 !important; }
+.nav-link:hover { background: #eef1f6 !important; color: #1a2230 !important; }
+.nav-link.active { background: #eaf6fd !important; border-color: #cfeafb !important; color: #0893cc !important; }
+.site-footer { background: #fff !important; color: #7a8aa2 !important; border-top: 1px solid #e2e7ef !important; }
+
+/* 3) Page surface + headings */
+.main-container { background: #f4f6f9 !important; }
+h1 { color: #1a2230 !important; font-weight: 600 !important; letter-spacing: -.01em; }
+.home-subtitle { color: #8a97ab !important; }
+
+/* 4) KPI cards → white, soft */
+.kpi-card { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+.kpi-card:hover { box-shadow: 0 4px 14px rgba(20,28,42,.06) !important; }
+.kpi-value { color: #1a2230 !important; font-weight: 700 !important; }
+.kpi-label { color: #7a8aa2 !important; }
+
+/* 5) Dashboard sections + rows → white cards, subtle borders */
+.dash-section, .wh-pipeline { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+.dash-section-title, .wh-pipeline-title { color: #1a2230 !important; }
+.health-row, .activity-item, .wh-hero { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 8px !important; }
+.health-row:hover, .activity-item:hover { background: #f9fbfd !important; }
+.health-name { color: #1a2230 !important; }
+.health-detail, .activity-text .time, .wh-hero-label, .wh-hero-sub { color: #8a97ab !important; }
+
+/* 6) Category cards → clean white; keep only a subtle colour cue on the icon chip */
+.category-card { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 12px !important; box-shadow: 0 1px 2px rgba(20,28,42,.04) !important; }
+.category-card:hover { box-shadow: 0 6px 20px rgba(20,28,42,.08) !important; }
+.category-header { background: #fff !important; border-bottom: 1px solid #eef1f6 !important; }
+.category-labels .category-header, .category-warehouse .category-header,
+.category-quality .category-header, .category-analytics .category-header { background: #fff !important; border-bottom-color: #eef1f6 !important; }
+h2.category-title, .category-card .category-title { color: #1a2230 !important; font-weight: 600 !important; }
+.category-items,
+.category-labels .category-items, .category-warehouse .category-items,
+.category-quality .category-items, .category-analytics .category-items { background: #f7f9fc !important; }
+
+/* 7) Action buttons → white, cyan hover (like Returns rows/buttons) */
+.cat-btn { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 9px !important; color: #1a2230 !important; font-weight: 500 !important; }
+.cat-btn:hover { border-color: #0aa5e6 !important; box-shadow: 0 3px 10px rgba(10,165,230,.10) !important; }
+.cat-btn-icon { border-radius: 8px !important; }   /* keep the per-category tint as the only colour cue */
+
+/* 8) Badges + misc accents */
+.cat-badge { background: #c0392b !important; }       /* count badge stays red (attention) */
+.cat-badge.zero { background: #9aa6ba !important; }
+.wh-sync-btn:hover { background: #eaf6fd !important; color: #0893cc !important; border-color: #cfeafb !important; }
+.wh-fs-btn:hover { background: #0aa5e6 !important; color: #fff !important; border-color: #0aa5e6 !important; }
