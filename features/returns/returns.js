@@ -95,6 +95,7 @@ function rtRenderActive() {
       ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button>` : ''}
       <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>
       <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">Action</button>
+      ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}
     </td>
   </tr>`).join('') || '<tr><td colspan="9" class="rt-empty">No active returns. Click “+ New return” to create one.</td></tr>';
 }
@@ -460,10 +461,9 @@ function rtVoid(id) {
 function rtVoidClose() { $('rtVoidModal').classList.remove('active'); }
 async function rtVoidConfirm() {
   const reason = ($('rtVoidReason').value || '').trim();
-  if (!reason) { toast('Enter a reason', 'err'); return rtInvalid('rtVoidReason'); }
   const btn = $('rtVoidBtn'); btn.disabled = true;
   try {
-    const { error } = await sb().from('returns_active').update({ status: 'void', void_reason: reason, voided_by: ($('rtVoidBy').value || '').trim() || null, voided_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', RT.voidId);
+    const { error } = await sb().from('returns_active').update({ status: 'void', void_reason: reason || null, voided_by: ($('rtVoidBy').value || '').trim() || null, voided_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', RT.voidId);
     if (error) throw error;
     const no = (rtHdr(RT.voidId) || {}).return_no;
     toast(`${no || 'Return'} voided`, 'ok');
@@ -546,11 +546,9 @@ function rtTRemove(i) {
 
 // Complete is optional-treatment: warn before moving to History (esp. if untreated)
 function rtAskComplete() {
-  const anyField = ($('rtActRef').value || '').trim() || ($('rtActBy').value || '').trim() || ($('rtActEmailed').value || '') || ($('rtActWarehouse').value || '').trim() || ($('rtActMoved').value || '').trim() || ($('rtActNotes').value || '').trim();
-  const anyLine = RT.tlines.some(l => (Number(l.unit) || 0) > 0 || l.return_status || (l.moved || '').trim());
-  $('rtCompleteMsg').innerHTML = (anyField || anyLine)
-    ? 'Complete this return and move it to <strong>History</strong>?'
-    : '⚠️ <strong>No treatment recorded</strong> — credit note, return status and values are all empty. Complete and move it to <strong>History</strong> anyway?';
+  const by = ($('rtActBy').value || '').trim();
+  if (!by) { toast('Enter who treated it (Treated by)', 'err'); return rtInvalid('rtActBy'); }
+  $('rtCompleteMsg').innerHTML = 'Complete this return and move it to <strong>History</strong>?';
   $('rtCompleteModal').classList.add('active');
 }
 function rtCompleteClose() { $('rtCompleteModal').classList.remove('active'); }
@@ -558,7 +556,8 @@ function rtCompleteConfirm() { rtCompleteClose(); rtSaveAct(true); }
 
 async function rtSaveAct(complete) {
   const r = RT.actRow; if (!r) return;
-  const by = ($('rtActBy').value || '').trim();   // Treated by is optional now (finance may not use it)
+  const by = ($('rtActBy').value || '').trim();
+  if (complete && !by) return toast('Enter who treated it (Treated by)', 'err');   // only Treated by is required
   // split quantities must add back up to what was received
   const grp = {};
   RT.tlines.forEach(l => { const g = grp[l._grp] || (grp[l._grp] = { recv: l._recv || 0, sum: 0, sku: l.sku }); g.sum += Number(l.qty) || 0; });

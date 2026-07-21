@@ -183,7 +183,7 @@
               <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. 24408" />
             </div>
             <div class="rt-field rt-actby">
-              <label>Treated by</label>
+              <label>Treated by <span class="rt-req">*</span></label>
               <input type="text" id="rtActBy" class="rt-input" autocomplete="off" placeholder="Start typing name…" oninput="rtOperInput('rtActBy','rtActByAc')" onfocus="rtOperInput('rtActBy','rtActByAc')" />
               <div class="rt-ac" id="rtActByAc"></div>
             </div>
@@ -268,7 +268,7 @@
       <div class="rt-modal-body">
         <p class="rt-hint" style="margin-top:0">This cancels the return. It stays in History for audit — it is <strong>not deleted</strong>.</p>
         <div class="rt-field">
-          <label>Reason <span class="rt-req">*</span></label>
+          <label>Reason <small style="text-transform:none;color:#9aa6ba">(optional)</small></label>
           <input type="text" id="rtVoidReason" class="rt-input" placeholder="Why is this being voided?" autocomplete="off" />
         </div>
         <div class="rt-field" style="margin-top:10px">
@@ -307,6 +307,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260722b"></script>
+  <script src="returns.js?v=20260722c"></script>
 </body>
 </html>
