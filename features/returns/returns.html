@@ -187,7 +187,7 @@
               <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. 24408" />
             </div>
             <div class="rt-field rt-actby">
-              <label>Treated by <span class="rt-req">*</span></label>
+              <label>Treated by</label>
               <input type="text" id="rtActBy" class="rt-input" autocomplete="off" placeholder="Start typing name…" oninput="rtOperInput('rtActBy','rtActByAc')" onfocus="rtOperInput('rtActBy','rtActByAc')" />
               <div class="rt-ac" id="rtActByAc"></div>
             </div>
@@ -231,7 +231,7 @@
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCloseAct()">Cancel</button>
-        <button class="rt-btn rt-btn-primary" id="rtActComplete" onclick="rtSaveAct(true)">Complete</button>
+        <button class="rt-btn rt-btn-primary" id="rtActComplete" onclick="rtAskComplete()">Complete</button>
       </div>
     </div>
   </div>
@@ -287,6 +287,23 @@
     </div>
   </div>
 
+  <!-- ═══ COMPLETE CONFIRM / WARNING MODAL ═══ -->
+  <div class="rt-modal" id="rtCompleteModal">
+    <div class="rt-modal-box" style="max-width:480px">
+      <div class="rt-modal-head">
+        <h3>Complete return</h3>
+        <button class="rt-x" onclick="rtCompleteClose()">×</button>
+      </div>
+      <div class="rt-modal-body">
+        <p class="rt-hint" id="rtCompleteMsg" style="margin-top:0"></p>
+      </div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtCompleteClose()">Cancel</button>
+        <button class="rt-btn rt-btn-primary" id="rtCompleteBtn" onclick="rtCompleteConfirm()">Complete</button>
+      </div>
+    </div>
+  </div>
+
   <!-- product autocomplete overlay (shared) -->
   <div class="rt-ac rt-ac-float" id="rtProdAc" style="display:none"></div>
 
@@ -294,6 +311,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717y"></script>
+  <script src="returns.js?v=20260717z"></script>
 </body>
 </html>

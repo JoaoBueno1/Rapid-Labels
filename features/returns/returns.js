@@ -543,10 +543,21 @@ function rtTRemove(i) {
   rtRenderTLines();
 }
 
+// Complete is optional-treatment: warn before moving to History (esp. if untreated)
+function rtAskComplete() {
+  const anyField = ($('rtActRef').value || '').trim() || ($('rtActBy').value || '').trim() || ($('rtActEmailed').value || '') || ($('rtActWarehouse').value || '').trim() || ($('rtActMoved').value || '').trim() || ($('rtActNotes').value || '').trim();
+  const anyLine = RT.tlines.some(l => (Number(l.unit) || 0) > 0 || l.return_status || (l.moved || '').trim());
+  $('rtCompleteMsg').innerHTML = (anyField || anyLine)
+    ? 'Complete this return and move it to <strong>History</strong>?'
+    : '⚠️ <strong>No treatment recorded</strong> — credit note, return status and values are all empty. Complete and move it to <strong>History</strong> anyway?';
+  $('rtCompleteModal').classList.add('active');
+}
+function rtCompleteClose() { $('rtCompleteModal').classList.remove('active'); }
+function rtCompleteConfirm() { rtCompleteClose(); rtSaveAct(true); }
+
 async function rtSaveAct(complete) {
   const r = RT.actRow; if (!r) return;
-  const by = ($('rtActBy').value || '').trim();
-  if (complete && !by) return toast('Enter who treated it (Treated by)', 'err');
+  const by = ($('rtActBy').value || '').trim();   // Treated by is optional now (finance may not use it)
   // split quantities must add back up to what was received
   const grp = {};
   RT.tlines.forEach(l => { const g = grp[l._grp] || (grp[l._grp] = { recv: l._recv || 0, sum: 0, sku: l.sku }); g.sum += Number(l.qty) || 0; });
