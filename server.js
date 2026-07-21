@@ -208,7 +208,8 @@ app.get('/api/sale', async (req, res) => {
     if (!sl.ok) return res.status(502).json({ error: 'Cin7 saleList ' + sl.status });
     const rows = (await sl.json()).SaleList || [];
     const norm = s => String(s || '').trim().toLowerCase();
-    const hit = rows.find(r => norm(r.OrderNumber) === norm(q)) || rows.find(r => norm(r.InvoiceNumber) === norm(q)) || rows.find(r => norm(r.OrderNumber).includes(norm(q))) || rows[0];
+    // EXACT match only (order number or invoice) — no fuzzy fallback, so we never open the wrong order
+    const hit = rows.find(r => norm(r.OrderNumber) === norm(q)) || rows.find(r => norm(r.InvoiceNumber) === norm(q));
     if (!hit) return res.json({ found: false });
     // 2) full sale for the order lines + customer detail
     const s = await fetch(`https://inventory.dearsystems.com/ExternalApi/v2/sale?ID=${encodeURIComponent(hit.SaleID)}`, { headers: H });

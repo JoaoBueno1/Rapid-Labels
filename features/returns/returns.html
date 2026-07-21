@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717y" />
+  <link rel="stylesheet" href="returns.css?v=20260722a" />
 </head>
 <body>
   <header class="rt-header">
@@ -54,7 +54,7 @@
       <div class="rt-table-wrap">
         <table class="rt-table">
           <thead><tr>
-            <th>Return #</th><th>Created</th><th>Customer</th><th>Treatment ref</th><th class="r">Value</th><th>Treated</th><th class="r">Actions</th>
+            <th>Return #</th><th>Created</th><th>Customer</th><th>Treatment ref</th><th class="r">Value</th><th>Treated</th><th>Status</th><th class="r">Actions</th>
           </tr></thead>
           <tbody id="rtHistBody"></tbody>
         </table>
@@ -86,17 +86,13 @@
             <input type="text" id="rtCustName" class="rt-input" placeholder="Search &amp; pick a business from Cin7…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
             <div class="rt-ac" id="rtCustAc"></div>
           </div>
+          <div class="rt-field rt-field-sm">
+            <label>Account <small style="text-transform:none;color:#9aa6ba">(auto)</small></label>
+            <input type="text" id="rtCustId" class="rt-input rt-readonly" readonly placeholder="auto" />
+          </div>
           <div class="rt-field">
-            <label>Customer name <small style="text-transform:none;color:#9aa6ba">(contact)</small></label>
+            <label>Customer name <small style="text-transform:none;color:#9aa6ba">(contact)</small> <span class="rt-req">*</span></label>
             <input type="text" id="rtContact" class="rt-input" placeholder="Primary contact" autocomplete="off" />
-          </div>
-          <div class="rt-field">
-            <label>Customer account</label>
-            <input type="text" id="rtCustId" class="rt-input rt-readonly" readonly placeholder="— (select a business)" />
-          </div>
-          <div class="rt-field">
-            <label>Customer email</label>
-            <input type="email" id="rtCustEmail" class="rt-input" placeholder="" autocomplete="off" />
           </div>
           <div class="rt-field">
             <label>Rep</label>
@@ -311,6 +307,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717z"></script>
+  <script src="returns.js?v=20260722a"></script>
 </body>
 </html>

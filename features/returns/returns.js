@@ -104,17 +104,18 @@ function rtRenderHistory() {
   $('rtHistCount').textContent = `${rows.length} completed`;
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
   $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
-    <td class="num"><strong>${esc(r.return_no)}</strong>${r.status === 'void' ? ' <span class="rt-status void">Voided</span>' : ''}</td>
+    <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtD(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.treatment_ref || '—')}</td>
     <td class="r num">${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</td>
-    <td>${r.status === 'void' ? '—' : fmtD(r.treated_at)}</td>
+    <td>${r.status === 'void' ? '—' : (fmtD(r.treated_at) + (r.treated_by ? ' · ' + esc(r.treated_by) : ''))}</td>
+    <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">
       <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print form</button>
       <button class="rt-btn rt-btn-sm" onclick="rtView('${r.id}')">View</button>
     </td>
-  </tr>`).join('') || '<tr><td colspan="7" class="rt-empty">No completed returns yet.</td></tr>';
+  </tr>`).join('') || '<tr><td colspan="8" class="rt-empty">Nothing in history yet.</td></tr>';
 }
 function rtHdr(id) { return RT.active.concat(RT.history).find(r => r.id === id); }
 
@@ -131,8 +132,7 @@ async function rtOpenForm(row) {
   $('rtSaveBtn').textContent = row ? 'Save changes' : 'Save & print';
   $('rtCustName').value = row ? (row.customer_name || '') : '';
   $('rtCustId').value = row ? (row.customer_id || '') : '';
-  if (row) RT.sel = { name: row.customer_name, code: row.customer_id };
-  $('rtCustEmail').value = row ? (row.customer_email || '') : '';
+  if (row) RT.sel = { name: row.customer_name, code: row.customer_id, email: row.customer_email };   // email kept silently (no form field)
   $('rtContact').value = row ? (row.contact_name || '') : '';
   $('rtRep').value = row ? (row.rep || '') : '';
   $('rtOrigin').value = row ? (row.origin_order || '') : '';
@@ -157,8 +157,7 @@ function rtCustInput() {
 }
 function rtPickCust(c) {
   RT.sel = c; $('rtCustName').value = c.name; $('rtCustId').value = c.code || '';
-  if (c.email) $('rtCustEmail').value = c.email;   // Cin7 default-contact email
-  if (c.rep) $('rtRep').value = c.rep;             // Cin7 sales rep
+  if (c.rep) $('rtRep').value = c.rep;             // Cin7 sales rep (email kept on RT.sel, no form field)
   $('rtCustAc').classList.remove('show');          // contact name is typed by the user (varies per employee)
 }
 
@@ -222,11 +221,13 @@ async function rtSaveNew() {
   // business MUST be one selected from Cin7 (RT.sel) — free-typed names are rejected.
   // A business with no account code is still valid; we only require it was picked.
   const name = RT.sel ? (RT.sel.name || '').trim() : '';
+  const contact = ($('rtContact').value || '').trim();
   const operator = ($('rtOperator').value || '').trim();
   RT.lines.forEach(l => l._invalid = false);
   const withSku = RT.lines.filter(l => l.sku);
   const lines = withSku.filter(l => (Number(l.qty) || 0) > 0 && l.reason && l.condition);
   if (!name) { toast('Pick the business from the list (Cin7)', 'err'); return rtInvalid('rtCustName'); }
+  if (!contact) { toast('Enter the customer name (contact)', 'err'); return rtInvalid('rtContact'); }
   if (!operator) { toast('Enter who received it (Received by)', 'err'); return rtInvalid('rtOperator'); }
   if (!withSku.length) { toast('Add at least one product line', 'err'); return; }
   if (lines.length !== withSku.length) {
@@ -239,7 +240,7 @@ async function rtSaveNew() {
     const hdr = {
       customer_name: name, customer_id: (RT.sel ? RT.sel.code : ($('rtCustId').value || '')) || null,
       contact_name: ($('rtContact').value || '').trim() || null,
-      customer_email: ($('rtCustEmail').value || '').trim() || null,
+      customer_email: (RT.sel && RT.sel.email) || null,
       rep: ($('rtRep').value || '').trim() || null,
       invoice_number: ($('rtInvoice').value || '').trim() || null,
       customer_reference: ($('rtCustRef').value || '').trim() || null,
@@ -344,7 +345,6 @@ function rtSoConfirm() {
   // fill business + order fields from the SO (contact name is typed by the user)
   if (so.customer) { $('rtCustName').value = so.customer; RT.sel = { name: so.customer, code: so.code, email: so.email, rep: so.rep }; }
   $('rtCustId').value = so.code || '';
-  if (so.email) $('rtCustEmail').value = so.email;
   if (so.rep) $('rtRep').value = so.rep;
   if (so.invoice) $('rtInvoice').value = so.invoice;
   $('rtOrigin').value = so.number;
