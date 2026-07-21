@@ -14,6 +14,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+const fmtDT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return fmtD(iso); return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
 const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', completed: 'Completed', void: 'Voided' }[s] || s);
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
@@ -83,7 +84,7 @@ function rtRenderActive() {
   const pg = paginate(rows, RT.activePage); rows = pg.slice; $('rtActivePager').innerHTML = pagerHtml('active', pg);
   $('rtActiveBody').innerHTML = rows.map(r => `<tr class="rt-row" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
-    <td>${fmtD(r.created_at)}</td>
+    <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td class="num" style="color:#5b6b86">${esc(r.customer_id || '—')}</td>
     <td>${esc(r.origin_order || '—')}</td>
@@ -105,7 +106,7 @@ function rtRenderHistory() {
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
   $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
-    <td>${fmtD(r.created_at)}</td>
+    <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.treatment_ref || '—')}</td>
     <td class="r num">${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</td>
@@ -438,7 +439,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
-      <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
+      <div class="rt-kv"><span>Created</span><b>${fmtDT(r.created_at)}</b></div>
       ${r.notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.notes)}</b></div>` : ''}
     </div>
     <table class="rt-table" style="margin-top:8px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead><tbody>${rowsC}</tbody></table>
@@ -500,7 +501,7 @@ async function rtAction(id) {
       <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
-      <div class="rt-kv"><span>Created</span><b>${fmtD(r.created_at)}</b></div>
+      <div class="rt-kv"><span>Created</span><b>${fmtDT(r.created_at)}</b></div>
     </div>
     <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead>
     <tbody>${lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('')}</tbody></table>`;
