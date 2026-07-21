@@ -5,7 +5,7 @@
  */
 'use strict';
 
-const RT = { customers: [], operators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1, so: null, soLoadedNumber: null };
+const RT = { customers: [], operators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1, so: null, soLoadedNumber: null, voidId: null };
 const PAGE_SIZE = 25;
 const REASONS = ['Faulty', 'Product Left Over / Change of Mind', 'Incorrect Item Supplied', 'Incorrect Item Ordered', 'Freight Damage', 'Other'];
 const CONDITIONS = ['Resaleable', 'Not Resaleable', 'Faulty'];                                   // warehouse assessment (internal)
@@ -14,7 +14,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
-const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', completed: 'Completed' }[s] || s);
+const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', completed: 'Completed', void: 'Voided' }[s] || s);
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
 function rtInvalid(id) { const el = $(id); if (!el) return; el.classList.add('rt-invalid'); try { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} el.addEventListener('input', function h() { el.classList.remove('rt-invalid'); el.removeEventListener('input', h); }); }
@@ -60,10 +60,10 @@ async function loadReturns() {
   try {
     const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,condition,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no,return_status)').order('created_at', { ascending: false });
     const rows = r.data || [];
-    RT.active = rows.filter(x => x.status !== 'completed');
-    RT.history = rows.filter(x => x.status === 'completed');
+    RT.active = rows.filter(x => x.status !== 'completed' && x.status !== 'void');
+    RT.history = rows.filter(x => x.status === 'completed' || x.status === 'void');   // voided kept here for audit
     RT.activePage = 1; RT.histPage = 1;
-    $('rtSub').textContent = `${RT.active.length} active · ${RT.history.length} completed`;
+    $('rtSub').textContent = `${RT.active.length} active · ${RT.history.length} in history`;
     rtRenderActive(); rtRenderHistory();
   } catch (e) { toast('Could not load returns: ' + e.message, 'err'); }
 }
@@ -103,13 +103,13 @@ function rtRenderHistory() {
   if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''}`.toLowerCase().includes(q));
   $('rtHistCount').textContent = `${rows.length} completed`;
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
-  $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row" onclick="rtView('${r.id}')">
-    <td class="num"><strong>${esc(r.return_no)}</strong></td>
+  $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
+    <td class="num"><strong>${esc(r.return_no)}</strong>${r.status === 'void' ? ' <span class="rt-status void">Voided</span>' : ''}</td>
     <td>${fmtD(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.treatment_ref || '—')}</td>
     <td class="r num">${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</td>
-    <td>${fmtD(r.treated_at)}</td>
+    <td>${r.status === 'void' ? '—' : fmtD(r.treated_at)}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">
       <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print form</button>
       <button class="rt-btn rt-btn-sm" onclick="rtView('${r.id}')">View</button>
@@ -423,8 +423,10 @@ async function rtView(id) {
       <div><div class="rt-view-no">${esc(r.return_no)}</div><div class="rt-status ${r.status}" style="display:inline-block">${statusLabel(r.status)}</div></div>
       <div><button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>
       ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtCloseView();rtEdit('${r.id}')">Edit</button>` : ''}
-      ${r.status !== 'completed' ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtCloseView();rtAction('${r.id}')">Action</button>` : ''}</div>
+      ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtCloseView();rtAction('${r.id}')">Action</button>` : ''}
+      ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtCloseView();rtVoid('${r.id}')">Void</button>` : ''}</div>
     </div>
+    ${r.status === 'void' ? `<div class="rt-void-banner">⊘ Voided${r.voided_at ? ' · ' + fmtD(r.voided_at) : ''}${r.voided_by ? ' · by ' + esc(r.voided_by) : ''}${r.void_reason ? ' — ' + esc(r.void_reason) : ''}</div>` : ''}
     <div class="rt-sec-title">Creation</div>
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')}</b></div>
@@ -444,6 +446,29 @@ async function rtView(id) {
   $('rtViewModal').classList.add('active');
 }
 function rtCloseView() { $('rtViewModal').classList.remove('active'); }
+
+// ─── Void (soft-cancel — never deletes; keeps the record for audit) ───
+function rtVoid(id) {
+  const r = rtHdr(id); if (!r) return;
+  RT.voidId = id;
+  $('rtVoidTitle').textContent = `Void ${r.return_no}`;
+  $('rtVoidReason').value = ''; $('rtVoidBy').value = '';
+  $('rtVoidModal').classList.add('active');
+  setTimeout(() => { try { $('rtVoidReason').focus(); } catch (_) {} }, 50);
+}
+function rtVoidClose() { $('rtVoidModal').classList.remove('active'); }
+async function rtVoidConfirm() {
+  const reason = ($('rtVoidReason').value || '').trim();
+  if (!reason) { toast('Enter a reason', 'err'); return rtInvalid('rtVoidReason'); }
+  const btn = $('rtVoidBtn'); btn.disabled = true;
+  try {
+    const { error } = await sb().from('returns_active').update({ status: 'void', void_reason: reason, voided_by: ($('rtVoidBy').value || '').trim() || null, voided_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', RT.voidId);
+    if (error) throw error;
+    const no = (rtHdr(RT.voidId) || {}).return_no;
+    toast(`${no || 'Return'} voided`, 'ok');
+    rtVoidClose(); await loadReturns();
+  } catch (e) { toast('Void failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
+}
 
 // ─── Action / Treatment ───
 async function rtAction(id) {

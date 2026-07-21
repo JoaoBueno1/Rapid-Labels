@@ -34,6 +34,8 @@ body {
 .rt-btn-primary:hover { background: #0893cc; }
 .rt-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 .rt-btn-ghost { background: transparent; }
+.rt-btn-danger { background: #c0392b; border-color: #c0392b; color: #fff; }
+.rt-btn-danger:hover { background: #a02f24; border-color: #a02f24; }
 .rt-btn-sm { padding: 5px 11px; font-size: 13px; }
 
 /* Inputs */
@@ -57,6 +59,9 @@ textarea.rt-input { resize: vertical; }
 .rt-status.pending { color: #b46a00; }
 .rt-status.in_treatment { color: #1667c9; }
 .rt-status.completed { color: #1b8a4b; }
+.rt-status.void { color: #9aa6ba; }
+.rt-row-void { opacity: .6; }
+.rt-void-banner { background: #fdecec; color: #c0392b; border: 1px solid #f6c9c4; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 6px 0 8px; }
 
 /* Clickable rows + row action buttons */
 .rt-row { cursor: pointer; }

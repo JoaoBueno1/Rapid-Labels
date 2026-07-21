@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260717w" />
+  <link rel="stylesheet" href="returns.css?v=20260717y" />
 </head>
 <body>
   <header class="rt-header">
@@ -262,6 +262,31 @@
     </div>
   </div>
 
+  <!-- ═══ VOID CONFIRM MODAL ═══ -->
+  <div class="rt-modal" id="rtVoidModal">
+    <div class="rt-modal-box" style="max-width:460px">
+      <div class="rt-modal-head">
+        <h3 id="rtVoidTitle">Void return</h3>
+        <button class="rt-x" onclick="rtVoidClose()">×</button>
+      </div>
+      <div class="rt-modal-body">
+        <p class="rt-hint" style="margin-top:0">This cancels the return. It stays in History for audit — it is <strong>not deleted</strong>.</p>
+        <div class="rt-field">
+          <label>Reason <span class="rt-req">*</span></label>
+          <input type="text" id="rtVoidReason" class="rt-input" placeholder="Why is this being voided?" autocomplete="off" />
+        </div>
+        <div class="rt-field" style="margin-top:10px">
+          <label>Voided by</label>
+          <input type="text" id="rtVoidBy" class="rt-input" placeholder="Your name" autocomplete="off" />
+        </div>
+      </div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtVoidClose()">Cancel</button>
+        <button class="rt-btn rt-btn-danger" id="rtVoidBtn" onclick="rtVoidConfirm()">Void return</button>
+      </div>
+    </div>
+  </div>
+
   <!-- product autocomplete overlay (shared) -->
   <div class="rt-ac rt-ac-float" id="rtProdAc" style="display:none"></div>
 
@@ -269,6 +294,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260717x"></script>
+  <script src="returns.js?v=20260717y"></script>
 </body>
 </html>
