@@ -279,7 +279,7 @@ async function rtFindSo() {
   const btn = $('rtSoBtn'); btn.disabled = true; const old = btn.textContent; btn.textContent = 'Finding…';
   try {
     const j = await (await fetch('/api/sale?q=' + encodeURIComponent(q))).json();
-    if (!j.found) return toast(`No sales order found for "${q}"`, 'err');
+    if (!j.found) return toast(/^\d+$/.test(q) ? `Include the SO- or INV- prefix (e.g. SO-${q})` : `No sales order found for "${q}"`, 'err');
     RT.so = {
       number: j.order_number, customer: j.customer_name, code: j.customer_code, contact: j.contact_name, email: j.customer_email,
       rep: j.rep, invoice: j.invoice_number, reference: j.customer_reference,
@@ -437,7 +437,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
-      <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
+      <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtDT(r.created_at)}</b></div>
@@ -498,7 +498,7 @@ async function rtAction(id) {
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
       <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
-      <div class="rt-kv"><span>Origin order</span><b>${esc(r.origin_order || '—')}</b></div>
+      <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtDT(r.created_at)}</b></div>
@@ -601,7 +601,7 @@ const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.q
 function rtExportCsv() {
   const rows = RT.history;
   if (!rows.length) return toast('No completed returns to export', 'err');
-  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Origin order', 'Cust. reference', 'Products (qty × sku / reason / condition)', 'Total Qty', 'Credit Note', 'Return status', 'Emailed', 'Received by', 'Treated by', 'Treated Date', 'Credit $', 'Comments', 'Treatment Notes'];
+  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Sales order', 'Cust. reference', 'Products (qty × sku / reason / condition)', 'Total Qty', 'Credit Note', 'Return status', 'Emailed', 'Received by', 'Treated by', 'Treated Date', 'Credit $', 'Comments', 'Treatment Notes'];
   const lines = [headers.map(csvCell).join(',')];
   rows.forEach(r => lines.push([
     fmtD(r.created_at), r.return_no, r.customer_name, r.contact_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.invoice_number, r.origin_order, r.customer_reference,
