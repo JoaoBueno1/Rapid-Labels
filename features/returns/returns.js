@@ -144,7 +144,7 @@ async function rtOpenForm(row) {
     const r = await sb().from('returns_lines').select('*').eq('return_id', row.id).order('line_no');
     RT.lines = (r.data || []).map(l => ({ sku: l.sku, name: l.product_name, dc5: l.dc5, qty: l.qty, reason: l.reason || '', condition: l.condition || '', return_status: l.return_status || '', unit: l.unit_value }));
   }
-  if (!RT.lines.length) { RT.lines = [{ sku: '', name: '', dc5: '', qty: '', reason: '', condition: '', return_status: '', unit: 0 }, { sku: '', name: '', dc5: '', qty: '', reason: '', condition: '', return_status: '', unit: 0 }]; }
+  if (!RT.lines.length) { RT.lines = [{ sku: '', name: '', dc5: '', qty: '', reason: '', condition: '', return_status: '', unit: 0 }]; }   // start with ONE line; user clicks "+ Add line" for more
   rtRenderLines();
   $('rtNewModal').classList.add('active');
 }
