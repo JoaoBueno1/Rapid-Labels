@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Label Sheets — Rapid LED</title>
+  <script>
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister();});}).catch(function(){}); }
+  </script>
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="label-sheets.css?v=20260723a" />
+</head>
+<body>
+  <header class="ls-header">
+    <div class="ls-header-inner">
+      <a class="ls-back" href="/index.html">← Back</a>
+      <div class="ls-brand">Label Sheets</div>
+      <div class="ls-sub" id="lsSub">Folhas de etiqueta Celcast · escolha um modelo</div>
+    </div>
+  </header>
+
+  <main class="ls-main">
+
+    <!-- ═══ STEP 1 — model picker ═══ -->
+    <section id="lsModels">
+      <h2 class="ls-h2">1 · Escolha o modelo de folha</h2>
+      <p class="ls-hint">Cada card mostra a grade real do die-cut. As medidas seguem o padrão Avery A4 (compatível Celcast) e passam por verificação automática de encaixe em A4. Calibre o alinhamento antes do primeiro uso de cada modelo.</p>
+      <div class="ls-models" id="lsModelGrid"><div class="ls-loading">Carregando modelos…</div></div>
+    </section>
+
+    <!-- ═══ STEP 2 — editor ═══ -->
+    <section id="lsEditor">
+      <div class="ls-editor-bar">
+        <button class="ls-btn ls-btn-ghost" onclick="LS.backToModels()">← Modelos</button>
+        <div>
+          <div class="ls-model-name" id="lsEdName">—</div>
+          <div class="ls-model-meta" id="lsEdMeta">—</div>
+        </div>
+        <span class="ls-calib-pill off" id="lsCalibPill">Não calibrado</span>
+        <div class="grow"></div>
+        <button class="ls-btn" onclick="LS.openFillAll()">Preencher todas…</button>
+        <button class="ls-btn" onclick="LS.clearAll()">Limpar</button>
+      </div>
+
+      <div class="ls-editor-cols">
+        <!-- left: visual sheet -->
+        <div class="ls-sheet-wrap">
+          <div class="ls-sheet" id="lsSheet"></div>
+        </div>
+
+        <!-- right: controls -->
+        <div class="ls-panel">
+          <div class="ls-panel-card">
+            <h3>Impressão</h3>
+            <div style="display:flex;gap:12px;margin-bottom:12px;">
+              <div style="flex:1;">
+                <label class="ls-label">Nº de folhas</label>
+                <input type="number" min="1" max="200" value="1" id="lsSheets" class="ls-input num" />
+              </div>
+              <div style="flex:1;">
+                <label class="ls-label">Começar na etiqueta</label>
+                <input type="number" min="1" value="1" id="lsStart" class="ls-input num" oninput="LS.renderSheet()" />
+              </div>
+            </div>
+            <button class="ls-btn ls-btn-primary ls-btn-block ls-btn-lg" onclick="LS.generatePdf()">⬇ Gerar PDF para imprimir</button>
+            <div class="ls-note" style="margin-top:10px;">Na hora de imprimir escolha <b>Tamanho real / 100%</b> (sem “ajustar à página”). Coloque a folha Celcast <b>certa</b> na impressora.</div>
+          </div>
+
+          <div class="ls-panel-card">
+            <h3>Calibração <span class="ls-calib-pill off" id="lsCalibPill2" style="margin-left:6px;">off</span></h3>
+            <p class="ls-summary" style="margin:0 0 10px;">Garante o alinhamento na <b>sua</b> impressora e folha. Imprima o contorno, sobreponha a folha Celcast e ajuste.</p>
+            <button class="ls-btn ls-btn-block" onclick="LS.openCalib()">Calibrar / imprimir contorno de teste</button>
+          </div>
+
+          <div class="ls-panel-card">
+            <h3>Resumo</h3>
+            <div class="ls-summary" id="lsSummary">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══ Cell editor modal ═══ -->
+  <div class="ls-modal" id="lsCellModal">
+    <div class="ls-modal-box">
+      <div class="ls-modal-head">
+        <div class="ls-modal-title" id="lsCellTitle">Etiqueta</div>
+        <button class="ls-x" onclick="LS.closeCell()">×</button>
+      </div>
+
+      <div class="ls-types" id="lsTypeTabs">
+        <div class="ls-type active" data-type="product" onclick="LS.pickType('product')">Produto</div>
+        <div class="ls-type" data-type="text" onclick="LS.pickType('text')">Texto</div>
+        <div class="ls-type" data-type="barcode" onclick="LS.pickType('barcode')">Barcode</div>
+        <div class="ls-type" data-type="blank" onclick="LS.pickType('blank')">Vazio</div>
+      </div>
+
+      <div class="ls-type-body">
+        <!-- product -->
+        <div id="lsTypeProduct">
+          <label class="ls-label">Buscar por 5DC, SKU ou nome</label>
+          <input type="text" id="lsProdSearch" class="ls-input" placeholder="ex.: 5DC, SKU…" autocomplete="off" oninput="LS.searchProduct(this.value)" />
+          <div class="ls-results" id="lsProdResults" style="display:none;"></div>
+          <div id="lsProdChosen" style="display:none;margin-top:10px;font-size:13px;"></div>
+        </div>
+        <!-- text -->
+        <div id="lsTypeText" style="display:none;">
+          <label class="ls-label">Texto (pode digitar livre)</label>
+          <textarea id="lsTextVal" class="ls-input" rows="3" placeholder="Digite o texto…"></textarea>
+        </div>
+        <!-- barcode -->
+        <div id="lsTypeBarcode" style="display:none;">
+          <label class="ls-label">Valor do código</label>
+          <input type="text" id="lsBcVal" class="ls-input" placeholder="ex.: 9312345678901 ou SKU" autocomplete="off" />
+          <label class="ls-label" style="margin-top:10px;">Formato</label>
+          <select id="lsBcFmt" class="ls-select">
+            <option value="auto">Automático (EAN-13 se válido, senão CODE128)</option>
+            <option value="CODE128">CODE128</option>
+            <option value="EAN13">EAN-13</option>
+          </select>
+        </div>
+        <!-- blank -->
+        <div id="lsTypeBlank" style="display:none;">
+          <p class="ls-summary">Esta etiqueta ficará em branco (não imprime nada).</p>
+        </div>
+      </div>
+
+      <div class="ls-modal-actions">
+        <button class="ls-btn ls-btn-ghost" onclick="LS.closeCell()">Cancelar</button>
+        <button class="ls-btn ls-btn-primary" id="lsCellApply" onclick="LS.applyCell()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Calibration modal ═══ -->
+  <div class="ls-modal" id="lsCalibModal">
+    <div class="ls-modal-box wide">
+      <div class="ls-modal-head">
+        <div class="ls-modal-title">Calibração — <span id="lsCalibModel">—</span></div>
+        <button class="ls-x" onclick="LS.closeCalib()">×</button>
+      </div>
+
+      <div class="ls-note">
+        <b>Como calibrar:</b> 1) Clique em <b>Imprimir contorno</b> (imprima em 100%, papel comum). 2) Sobreponha a folha Celcast contra a luz. 3) Se estiver deslocado, ajuste abaixo em mm e reimprima até bater. <b>Start</b> move a grade toda; <b>Pitch</b> corrige o espaçamento acumulado entre colunas/linhas.
+      </div>
+
+      <button class="ls-btn ls-btn-block" style="margin:12px 0;" onclick="LS.printOutline()">🖨 Imprimir contorno de teste (PDF)</button>
+
+      <div class="ls-calib-grid">
+        <div>
+          <label class="ls-label">Deslocar horizontal — Start X (mm)</label>
+          <input type="number" step="0.1" id="lsCbOffX" class="ls-input num" value="0" />
+        </div>
+        <div>
+          <label class="ls-label">Deslocar vertical — Start Y (mm)</label>
+          <input type="number" step="0.1" id="lsCbOffY" class="ls-input num" value="0" />
+        </div>
+        <div>
+          <label class="ls-label">Ajuste de passo horizontal — Pitch X (mm)</label>
+          <input type="number" step="0.1" id="lsCbPitchX" class="ls-input num" value="0" />
+        </div>
+        <div>
+          <label class="ls-label">Ajuste de passo vertical — Pitch Y (mm)</label>
+          <input type="number" step="0.1" id="lsCbPitchY" class="ls-input num" value="0" />
+        </div>
+      </div>
+      <p class="ls-summary" style="margin-top:10px;">Positivo = move para a direita / para baixo (ou aumenta o passo). Salvo por modelo neste navegador.</p>
+
+      <div class="ls-modal-actions">
+        <button class="ls-btn ls-btn-ghost" onclick="LS.resetCalib()">Zerar</button>
+        <button class="ls-btn" onclick="LS.closeCalib()">Fechar</button>
+        <button class="ls-btn ls-btn-primary" onclick="LS.saveCalib()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- libs (same CDNs the other label tools already use) -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="label-templates.js?v=20260723a"></script>
+  <script src="label-sheets.js?v=20260723a"></script>
+</body>
+</html>
