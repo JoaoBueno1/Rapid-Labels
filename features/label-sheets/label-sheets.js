@@ -501,12 +501,12 @@
     ctx.textAlign = 'center'; ctx.fillStyle = '#111111';
     var pad = H * 0.035, iw = W - 2 * pad, top = pad, bot = H - pad, cx = W / 2, av = H - 2 * pad;
     if (cell.border) { ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, H * 0.006); var bi = H * 0.025; _roundRectPath(ctx, bi, bi, W - 2 * bi, H - 2 * bi, H * 0.03); ctx.stroke(); }
-    // bottom band: symbols (left) + generated barcode (right)
-    var bandH = av * 0.19, bcVal = cell.barcode || cell.code, bcC = bcVal ? barcodeCanvas(bcVal, cell.fmt || 'auto') : null, bcW = 0;
-    if (bcC) { var asp = bcC.width / bcC.height, bh = bandH, bw = bh * asp, mw = iw * 0.5; if (bw > mw) { bw = mw; bh = bw / asp; } bcW = bw; ctx.drawImage(bcC, W - pad - bw, bot - bh, bw, bh); }
+    // bottom band: SMALL compliance symbols (left) + generated barcode (right), clear gap
+    var barH = av * 0.13, bcVal = cell.barcode || cell.code, bcC = bcVal ? barcodeCanvas(bcVal, cell.fmt || 'auto') : null, bcW = 0;
+    if (bcC) { var asp = bcC.width / bcC.height, bh = barH, bw = bh * asp, mw = iw * 0.42; if (bw > mw) { bw = mw; bh = bw / asp; } bcW = bw; ctx.drawImage(bcC, W - pad - bw, bot - bh, bw, bh); }
     var symI = A.symbols && A.symbols.img;
-    if (symI && symI.naturalWidth) { var sasp = symI.naturalWidth / symI.naturalHeight, sh = bandH * 0.6, sw = sh * sasp, msy = Math.max(0, iw - bcW - iw * 0.04); if (sw > msy) { sw = msy; sh = sw / sasp; } ctx.drawImage(symI, pad, bot - sh, sw, sh); }
-    var contentBottom = bot - bandH - av * 0.02, cy = top;
+    if (symI && symI.naturalWidth) { var sasp = symI.naturalWidth / symI.naturalHeight, sh = av * 0.055, sw = sh * sasp, gap = iw * 0.06, msy = Math.max(0, iw - bcW - gap); if (sw > msy) { sw = msy; sh = sw / sasp; } ctx.drawImage(symI, pad, bot - sh, sw, sh); }
+    var contentBottom = bot - barH - av * 0.03, cy = top;
     // top: logo (centered)
     var logoI = A.logo && A.logo.img;
     if (logoI && logoI.naturalWidth) { var lasp = logoI.naturalWidth / logoI.naturalHeight, lh = av * 0.17, lw = lh * lasp; if (lw > iw * 0.75) { lw = iw * 0.75; lh = lw / lasp; } ctx.drawImage(logoI, cx - lw / 2, cy, lw, lh); cy += lh + av * 0.02; }
