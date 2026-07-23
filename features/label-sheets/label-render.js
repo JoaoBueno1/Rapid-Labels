@@ -25,9 +25,9 @@
   // "technically drawn".
   var SPEC = {
     pad:         0.045,   // × H   outer padding
-    logoH:       0.16,    // × av
-    logoMaxW:    0.70,    // × iw
-    logoGap:     0.035,   // × av
+    logoH:       0.15,    // × av
+    logoMaxW:    0.68,    // × iw
+    logoGap:     0.050,   // × av  clearance below the logo, above the code
     codeH:       0.115,   // × av  starting em size, shrinks to fit the width
     codeMinMM:   1.6,
     codeGap:     0.030,   // × av
@@ -43,6 +43,8 @@
     bandGap:     0.030,   // × av  between the content block and the band
     bcW:         0.58,    // × iw  barcode fills this share of the band
     symGap:      0.04,    // × iw  clearance between strip and barcode
+    symMaxW:     0.32,    // × iw  cap the compliance strip's width (small footnote)
+    symMaxH:     0.62,    // × bandH  and its height, so it never crowds the barcode
     borderInset: 0.025,   // × H
     borderW:     0.006,   // × H
     borderR:     0.03,    // × H
@@ -632,8 +634,12 @@
     var sym = A.symbols, symD = assetDims(sym);
     if (symD) {
       var sasp = symD.w / symD.h;
-      var sw = Math.max(0, iw - bcBoxW - iw * S.symGap), sh = sw / sasp;
-      if (sh > bandH) { sh = bandH; sw = sh * sasp; }
+      // The compliance strip is a footnote, not a feature: cap both its width
+      // (never past its half of the band) and its height so it sits small in
+      // the bottom-left with clear air before the barcode, whatever the sheet.
+      var symMaxW = Math.min(iw * S.symMaxW, iw - bcBoxW - iw * S.symGap);
+      var sh = Math.min(bandH * S.symMaxH, symMaxW / sasp), sw = sh * sasp;
+      if (sw > symMaxW) { sw = symMaxW; sh = sw / sasp; }
       if (sw > 0.2) out.push({ kind: 'image', img: sym.img, url: sym.url, x: pad, y: bot - sh, w: sw, h: sh });
     }
 
