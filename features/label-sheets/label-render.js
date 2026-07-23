@@ -304,19 +304,39 @@
       var c = barcodeCanvas(value, fmt);
       return c ? { prims: [{ kind: 'image', img: c, x: x, y: y, w: w, h: h }], moduleMM: 0 } : none;
     }
-    var kx = w / v.w, ky = h / v.h, out = [], i, b, narrow = Infinity;
+    var out = [], i, b, narrow = Infinity;
+    var kx = w / v.w;
+
+    // The digits get a reserved band at the bottom; the bars are scaled to end
+    // exactly where it starts. Scaling the whole symbol by one vertical factor
+    // and then clamping the font size separately let the two drift: squashed
+    // into a wide, short box the baseline landed above where the bars ended and
+    // the digits printed on top of them.
+    var barBottom = 0;
+    for (i = 0; i < v.bars.length; i++) barBottom = Math.max(barBottom, v.bars[i].y + v.bars[i].h);
+    if (!(barBottom > 0)) barBottom = v.h;
+
+    var hasText = v.texts.length > 0;
+    var textFrac = hasText ? Math.min(0.30, (v.h - barBottom) / v.h) : 0;
+    var textH = h * textFrac;
+    var barH = h - textH;
+    var kyBar = barH / barBottom;
+
     for (i = 0; i < v.bars.length; i++) {
       b = v.bars[i];
       if (b.w < narrow) narrow = b.w;
-      out.push({ kind: 'fill', x: x + b.x * kx, y: y + b.y * ky, w: b.w * kx, h: b.h * ky });
+      out.push({ kind: 'fill', x: x + b.x * kx, y: y + b.y * kyBar, w: b.w * kx, h: b.h * kyBar });
     }
-    for (i = 0; i < v.texts.length; i++) {
-      b = v.texts[i];
-      out.push({
-        kind: 'text', text: b.text, x: x + b.x * kx, y: y + b.y * ky,
-        size: Math.min(b.size * kx, h * 0.22), mono: true,
-        align: b.anchor === 'start' ? 'left' : (b.anchor === 'end' ? 'right' : 'center')
-      });
+    if (hasText && textH > 0.3) {
+      var fs = Math.min(textH * 0.78, v.texts[0].size * kx);
+      var base = y + barH + textH * 0.93;          // leaves ~15% of the band clear of the bars
+      for (i = 0; i < v.texts.length; i++) {
+        b = v.texts[i];
+        out.push({
+          kind: 'text', text: b.text, x: x + b.x * kx, y: base, size: fs, mono: true,
+          align: b.anchor === 'start' ? 'left' : (b.anchor === 'end' ? 'right' : 'center')
+        });
+      }
     }
     return { prims: out, moduleMM: narrow === Infinity ? 0 : narrow * kx };
   }
