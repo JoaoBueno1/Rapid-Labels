@@ -101,20 +101,64 @@
 
   // ── Barcode ─────────────────────────────────────────────────────────────
   var BC_OPTS = { height: 140, width: 2, displayValue: true, fontSize: 30, margin: 6, textMargin: 2 };
-  function looksEan13(v) { return /^\d{12,13}$/.test(String(v == null ? '' : v).trim()); }
+  // Symbology per situation — the same rule the existing barcode feature
+  // (multi-label.js) already prints with, so a code scanned off a sheet label
+  // matches a code scanned off the table print.
+  //   · 13 digits starting with 0 -> CODE128, NOT EAN13: a scanner reads that as
+  //     UPC-A and drops the leading zero, but Cin7 needs the exact 13 digits.
+  //   · 14 digits -> ITF14 (the carton GTIN-14).
   function bcFormat(value, fmt) {
-    return (fmt === 'auto' || !fmt) ? (looksEan13(value) ? 'EAN13' : 'CODE128') : fmt;
+    if (fmt && fmt !== 'auto') return fmt;
+    var v = String(value == null ? '' : value).trim();
+    if (!/^[0-9]+$/.test(v)) return 'CODE128';
+    if (v.length === 13 && v.charAt(0) === '0') return 'CODE128';
+    if (v.length === 14) return 'ITF14';
+    if (v.length === 13) return 'EAN13';
+    if (v.length === 12) return 'UPC';
+    if (v.length === 8) return 'EAN8';
+    return 'CODE128';
   }
 
   // What actually gets encoded. Cin7 leaves ~70% of the catalogue with an empty
   // or literal "0" barcode, and "0" is truthy — so the naive `barcode || code`
   // printed a perfectly scannable CODE128 meaning "0" on thousands of different
   // products. That is worse than a blank space, because it looks legitimate.
-  // Anything empty or all-zeros falls back to the SKU, which is unique.
-  function bcValue(cell) {
-    var v = String((cell && cell.barcode) == null ? '' : cell.barcode).trim();
-    if (!v || /^0+$/.test(v)) v = String((cell && cell.code) == null ? '' : cell.code).trim();
-    return v;
+  //
+  // `order` lets a template choose what to fall back to. On a 38 mm ticket an
+  // 18-character SKU in CODE128 needs ~230 modules and lands near 0.15 mm per
+  // module — too narrow to scan reliably — while the 5-digit 5DC fits with room
+  // to spare, so that template asks for the 5DC first.
+  var DEFAULT_ORDER = ['barcode', 'code', 'sku', 'dc5'];
+  function usable(v) { v = String(v == null ? '' : v).trim(); return (!v || /^0+$/.test(v)) ? '' : v; }
+  function bcValue(cell, order) {
+    if (!cell) return '';
+    var keys = order || DEFAULT_ORDER;
+    for (var i = 0; i < keys.length; i++) {
+      var v = usable(cell[keys[i]]);
+      if (v) return v;
+    }
+    return '';
+  }
+
+  // Narrowest bar that still scans dependably in a warehouse. Below this the
+  // symbol depends on a high-resolution scanner and a perfect print.
+  var MIN_MODULE_MM = 0.25;
+
+  // The value and symbology a recipe will actually encode for a cell. Both the
+  // renderer and the quality check call this, so what is measured is always
+  // exactly what gets printed.
+  //
+  // GTIN symbology detection applies to a real product barcode only. A 5DC or a
+  // SKU is an internal code, not a GTIN: an 8-digit 5DC encoded as EAN-8 would
+  // come back from the scanner with a check digit appended — no longer the
+  // number printed above it. Internal codes are always CODE128.
+  function effectiveBarcode(cell, recipe) {
+    if (!cell) return { value: '', fmt: 'CODE128' };
+    if (cell.type === 'barcode') return { value: usable(cell.value), fmt: cell.fmt || 'auto' };
+    var real = usable(cell.barcode), code;
+    if (cell.type === 'plabel') code = bcValue(cell, ['code', 'sku', 'dc5']);
+    else code = bcValue(cell, recipe === 'code5dc' ? ['dc5', 'sku', 'code'] : ['sku', 'dc5', 'code']);
+    return { value: real || code, fmt: real ? (cell.fmt || 'auto') : 'CODE128' };
   }
 
   // A barcode drawn as a bitmap is only as good as its resolution: at the size
@@ -242,11 +286,172 @@
     return { prims: out, w: w, h: h };
   }
 
+  // Fill a rectangle EXACTLY with a barcode, stretching width and height
+  // independently. A barcode is a row of vertical bars: only the horizontal
+  // module ratios carry data, so squashing it vertically costs nothing while
+  // using the full width buys the widest possible module — which is precisely
+  // what decides whether a small ticket scans. (barcodeFit above keeps the
+  // natural proportions; use it only where the look matters more than the read.)
+  function barcodeFill(value, fmt, x, y, w, h) {
+    var none = { prims: [], moduleMM: 0 };
+    if (!(w > 0) || !(h > 0)) return none;
+    var v = barcodeVector(value, fmt);
+    if (!v) {                                            // raster fallback
+      var c = barcodeCanvas(value, fmt);
+      return c ? { prims: [{ kind: 'image', img: c, x: x, y: y, w: w, h: h }], moduleMM: 0 } : none;
+    }
+    var kx = w / v.w, ky = h / v.h, out = [], i, b, narrow = Infinity;
+    for (i = 0; i < v.bars.length; i++) {
+      b = v.bars[i];
+      if (b.w < narrow) narrow = b.w;
+      out.push({ kind: 'fill', x: x + b.x * kx, y: y + b.y * ky, w: b.w * kx, h: b.h * ky });
+    }
+    for (i = 0; i < v.texts.length; i++) {
+      b = v.texts[i];
+      out.push({
+        kind: 'text', text: b.text, x: x + b.x * kx, y: y + b.y * ky,
+        size: Math.min(b.size * kx, h * 0.22), mono: true,
+        align: b.anchor === 'start' ? 'left' : (b.anchor === 'end' ? 'right' : 'center')
+      });
+    }
+    return { prims: out, moduleMM: narrow === Infinity ? 0 : narrow * kx };
+  }
+
   // ── Layout: cell + rectangle (mm) → primitives (mm) ─────────────────────
-  // Primitives: {kind:'text', x, y(baseline), size, bold, align, text}
+  // Primitives: {kind:'text', x, y(baseline), size, bold, align, text, mono}
+  //             {kind:'fill',  x, y, w, h}                — solid black rectangle
   //             {kind:'image', img, url, x, y, w, h}
-  //             {kind:'rect', x, y, w, h, r, lw}
-  function layout(cell, W, H) {
+  //             {kind:'rect',  x, y, w, h, r, lw}         — stroked outline
+  //
+  // A sheet is not a generic canvas: a 38 mm price ticket and a 68 mm product
+  // sticker want different content laid out differently. The template says which
+  // RECIPE its Product cells use (opts.productRecipe); everything else follows
+  // from the cell type.
+  function layout(cell, W, H, opts) {
+    if (!cell || !cell.type || !(W > 0) || !(H > 0)) return [];
+    switch (cell.type) {
+      case 'plabel':  return layoutBrandLabel(cell, W, H);
+      case 'product': return (opts && opts.productRecipe === 'code5dc')
+                        ? layoutCode5dc(cell, W, H)
+                        : layoutProductStack(cell, W, H);
+      case 'barcode': return layoutBarcodeCell(cell, W, H);
+      case 'text':    return layoutTextCell(cell, W, H);
+      default:        return [];
+    }
+  }
+
+  // ── Recipe: 5DC over its barcode ────────────────────────────────────────
+  // The whole job of a shelf/price ticket is: a human reads the 5DC, a scanner
+  // reads the bars. Nothing else earns its space at 38 × 21 mm, so nothing else
+  // is drawn — the two elements simply split the label between them.
+  var R5 = {
+    pad:       0.055,   // × min(W,H)
+    codeH:     0.30,    // × ih   em size of the 5DC
+    codeMinMM: 2.0,
+    gap:       0.05,    // × ih
+    bcMinH:    0.40     // × ih   the bars never give up more than this
+  };
+  function layoutCode5dc(cell, W, H) {
+    var out = [];
+    var pad = Math.min(W, H) * R5.pad;
+    var iw = W - 2 * pad, ih = H - 2 * pad, cx = W / 2;
+    if (iw <= 0 || ih <= 0) return out;
+
+    // The printed line and the bars must agree: some products carry a 5DC of
+    // literal "0", and showing "0" over a barcode encoding the SKU is a ticket
+    // that lies. The human-readable line is resolved with the same precedence
+    // the encoder uses. (5DC before SKU: at 38 mm a long SKU would not scan.)
+    var code = bcValue(cell, ['dc5', 'sku', 'code']);
+    var eb = effectiveBarcode(cell, 'code5dc'), value = eb.value, vfmt = eb.fmt;
+
+    var codeH = 0, gap = 0;
+    if (code) {
+      codeH = fitSize(code, iw, ih * R5.codeH, true, R5.codeMinMM);
+      gap = value ? ih * R5.gap : 0;
+      if (value && ih - codeH - gap < ih * R5.bcMinH) {   // bars win ties
+        codeH = Math.max(R5.codeMinMM, ih * (1 - R5.bcMinH - R5.gap));
+        codeH = fitSize(code, iw, codeH, true, R5.codeMinMM);
+        gap = ih * R5.gap;
+      }
+      out.push({ kind: 'text', text: code, x: cx, y: pad + codeH, size: codeH, bold: true, align: 'center' });
+    }
+    if (value) {
+      var by = pad + codeH + gap, bh = ih - codeH - gap;
+      if (bh > 0.5) {
+        var bc = barcodeFill(value, vfmt, pad, by, iw, bh);
+        for (var i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+      }
+    }
+    return out;
+  }
+
+  // ── Recipe: name + 5DC + barcode (roomier sheets) ───────────────────────
+  function layoutProductStack(cell, W, H) {
+    var out = [];
+    var pad = Math.max(1.0, Math.min(2.0, Math.min(W, H) * 0.05));
+    var iw = W - 2 * pad, ih = H - 2 * pad, cx = W / 2;
+    if (iw <= 0 || ih <= 0) return out;
+
+    var eb = effectiveBarcode(cell, 'stack'), value = eb.value;
+    var rows = [], i;
+    if (cell.name && (ih >= 16 || (ih >= 10 && iw >= 55))) {
+      var nfs = Math.max(1.8, Math.min(3.2, ih * 0.11));
+      var maxLines = ih >= 16 ? 2 : 1;
+      wrap(cell.name, iw, nfs).slice(0, maxLines).forEach(function (ln) { rows.push({ t: ln, fs: nfs, b: false }); });
+    }
+    var code = String(cell.dc5 || cell.sku || '').trim();
+    if (code && ih >= 6) rows.push({ t: code, fs: Math.max(2.4, Math.min(4.6, ih * 0.17)), b: true });
+
+    var lead = 1.12;
+    var textH = rows.reduce(function (s, r) { return s + r.fs * lead; }, 0);
+    var gap = rows.length && value ? Math.max(0.6, Math.min(1.6, ih * 0.04)) : 0;
+    var bcH = 0;
+    if (value) {
+      bcH = ih - textH - gap;
+      if (bcH < 4) { rows = []; textH = 0; gap = 0; bcH = ih; }     // too tight -> bars only
+    }
+    var cy = pad + Math.max(0, (ih - (textH + gap + bcH)) / 2);
+    for (i = 0; i < rows.length; i++) {
+      cy += rows[i].fs;
+      out.push({ kind: 'text', text: rows[i].t, x: cx, y: cy, size: rows[i].fs, bold: rows[i].b, align: 'center' });
+      cy += rows[i].fs * (lead - 1);
+    }
+    if (bcH > 0.5) {
+      cy += gap;
+      var bc = barcodeFill(value, eb.fmt, pad, cy, iw, bcH);
+      for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+    } else if (value) {
+      out.push({ kind: 'text', text: value, x: cx, y: H / 2, size: 2.8, align: 'center' });
+    }
+    return out;
+  }
+
+  // ── Recipe: a barcode on its own ────────────────────────────────────────
+  function layoutBarcodeCell(cell, W, H) {
+    var eb = effectiveBarcode(cell);
+    if (!eb.value) return [];
+    var pad = Math.max(1.0, Math.min(2.0, Math.min(W, H) * 0.05));
+    return barcodeFill(eb.value, eb.fmt, pad, pad, W - 2 * pad, H - 2 * pad).prims;
+  }
+
+  // ── Recipe: free text ───────────────────────────────────────────────────
+  function layoutTextCell(cell, W, H) {
+    var out = [];
+    var pad = Math.max(1.0, Math.min(2.0, Math.min(W, H) * 0.06));
+    var iw = W - 2 * pad, ih = H - 2 * pad;
+    if (iw <= 0 || ih <= 0) return out;
+    var blk = fitBlock(cell.text || '', iw, ih, Math.min(4.6, ih * 0.5), 1.4, 1.15);
+    var lead = blk.size * 1.15, total = blk.lines.length * lead;
+    var cy = pad + Math.max(0, (ih - total) / 2);
+    for (var i = 0; i < blk.lines.length; i++) {
+      cy += blk.size;
+      out.push({ kind: 'text', text: blk.lines[i], x: W / 2, y: cy, size: blk.size, align: 'center' });
+      cy += lead - blk.size;
+    }
+    return out;
+  }
+
+  function layoutBrandLabel(cell, W, H) {
     var A = window.LABEL_ASSETS || {}, S = SPEC, out = [];
     if (!cell || !(W > 0) || !(H > 0)) return out;
 
@@ -262,7 +467,8 @@
 
     // Bottom band — barcode on the right, compliance strip on the left.
     var bcBoxW = iw * S.bcW, bcBoxH = av * S.bcMaxH;
-    var bc = barcodeFit(bcValue(cell), cell.fmt || 'auto', W - pad - bcBoxW, bot - bcBoxH, bcBoxW, bcBoxH);
+    var ebL = effectiveBarcode(cell);
+    var bc = barcodeFit(ebL.value, ebL.fmt, W - pad - bcBoxW, bot - bcBoxH, bcBoxW, bcBoxH);
     var bcW = bc.w, bcH = bc.h;
     if (bcH > 0) {
       // barcodeFit centres inside the box; pin it to the bottom-right corner.
@@ -360,14 +566,14 @@
       }
     }
   }
-  function toCanvas(cell, W, H, pxPerMM) {
+  function toCanvas(cell, W, H, pxPerMM, opts) {
     var s = pxPerMM || (300 / 25.4);
     var cv = document.createElement('canvas');
     cv.width = Math.max(4, Math.round(W * s));
     cv.height = Math.max(4, Math.round(H * s));
     var ctx = cv.getContext('2d');
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
-    paint(ctx, layout(cell, W, H), s);
+    paint(ctx, layout(cell, W, H, opts), s);
     return cv;
   }
 
@@ -382,8 +588,8 @@
     if (im.toDataURL) { try { im._lrURL = im.toDataURL('image/png'); return im._lrURL; } catch (e) { return null; } }
     return null;
   }
-  function toPdf(doc, cell, ox, oy, W, H) {
-    drawPdf(doc, layout(cell, W, H), ox, oy);
+  function toPdf(doc, cell, ox, oy, W, H, opts) {
+    drawPdf(doc, layout(cell, W, H, opts), ox, oy);
   }
   function drawPdf(doc, prims, ox, oy) {
     ox = ox || 0; oy = oy || 0;
@@ -408,15 +614,56 @@
     }
   }
 
+  // ── Print-quality check ──────────────────────────────────────────────────
+  // Answers the only question that matters about a printed barcode: will it
+  // scan? Returns the narrowest bar in millimetres for the given box, so the
+  // editor can say so before a sheet is wasted.
+  function scanQuality(value, fmt, boxW, boxH) {
+    var v = String(value == null ? '' : value).trim();
+    if (!v) return { ok: false, empty: true, moduleMM: 0, minMM: MIN_MODULE_MM, format: '', value: '' };
+    var bc = barcodeFill(v, fmt, 0, 0, boxW, boxH);
+    return {
+      ok: bc.moduleMM >= MIN_MODULE_MM,
+      empty: false,
+      moduleMM: bc.moduleMM,
+      minMM: MIN_MODULE_MM,
+      format: bcFormat(v, fmt),
+      value: v
+    };
+  }
+  // Same question, asked about a cell on a given template.
+  function cellScan(cell, W, H, recipe) {
+    if (!cell || cell.type === 'text') return { ok: true, empty: true, moduleMM: 0, minMM: MIN_MODULE_MM, format: '', value: '' };
+    var eb = effectiveBarcode(cell, recipe);
+    var box = barcodeBox(recipe, W, H);
+    return scanQuality(eb.value, eb.fmt, box.w, box.h);
+  }
+  // The barcode box a recipe would give this label — used by the check above.
+  function barcodeBox(recipe, W, H) {
+    if (recipe === 'code5dc') {
+      var pad = Math.min(W, H) * R5.pad, ih = H - 2 * pad;
+      return { w: W - 2 * pad, h: ih * (1 - R5.codeH - R5.gap) };
+    }
+    var p2 = Math.max(1.0, Math.min(2.0, Math.min(W, H) * 0.05));
+    return { w: W - 2 * p2, h: (H - 2 * p2) * 0.5 };
+  }
+
   window.LabelRender = {
     SPEC: SPEC,
+    MIN_MODULE_MM: MIN_MODULE_MM,
+    scanQuality: scanQuality,
+    cellScan: cellScan,
+    barcodeBox: barcodeBox,
+    effectiveBarcode: effectiveBarcode,
     layout: layout,
     toCanvas: toCanvas,
     toPdf: toPdf,
     drawPdf: drawPdf,
     barcodeFit: barcodeFit,
+    barcodeFill: barcodeFill,
     barcodeAspect: barcodeAspect,
     bcValue: bcValue,
+    usable: usable,
     bcFormat: bcFormat,
     barcodeVector: barcodeVector,
     barcodeCanvas: barcodeCanvas,

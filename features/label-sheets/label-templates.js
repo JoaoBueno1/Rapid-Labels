@@ -31,17 +31,32 @@
     { id:'p6870', avery:'L7073', code:null,    up:12, cols:3, rows:4,  labelW:68.0,  labelH:70.0,  marginTop:8.5,   marginLeft:5.2,  pitchX:68.0,  pitchY:70.0, radius:3.0, shape:'rect' }
   ];
 
-  var NAMES = {
-    l7651: 'Small — price / barcode',
-    l7160: 'Product / address',
-    l7159: 'Product',
-    l7163: 'Shipping',
-    l7164: 'Medium',
-    l7173: 'Large',
-    l7165: 'Large',
-    full:  'Full sheet',
-    p6870: 'Product label (68×70)'
+  // ── What each sheet IS FOR, and what it may carry ─────────────────────────
+  // A sheet is not a blank canvas. A 38 mm price ticket and a 68 mm product
+  // sticker serve different jobs, so each template declares its purpose, the
+  // exact contents that make sense on it (`allow`, ordered — the first is what
+  // the editor opens on) and which recipe its Product cells use.
+  // `tuned` marks the templates whose format has been settled with the operator;
+  // the rest still run on sensible defaults and are pending their own pass.
+  var CAPS = {
+    l7651: {
+      name: 'Small — price / barcode',
+      purpose: 'Shelf tickets and price labels: the 5DC to read, the barcode to scan.',
+      allow: ['product', 'barcode', 'text'],
+      productRecipe: 'code5dc',
+      tuned: true
+    },
+    l7160: { name: 'Product / address', purpose: 'Product and address labels.', allow: ['product', 'barcode', 'text'], productRecipe: 'stack' },
+    l7159: { name: 'Product',           purpose: 'Product labels.',              allow: ['product', 'barcode', 'text'], productRecipe: 'stack' },
+    l7163: { name: 'Shipping',          purpose: 'Shipping and carton labels.',  allow: ['product', 'barcode', 'text'], productRecipe: 'stack' },
+    l7164: { name: 'Medium',            purpose: 'Medium labels.',               allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },
+    l7173: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },
+    l7165: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },
+    full:  { name: 'Full sheet',        purpose: 'One label filling the whole A4.', allow: ['plabel', 'product', 'barcode', 'text'], productRecipe: 'stack' },
+    p6870: { name: 'Product label (68×70)', purpose: 'The Rapid LED product sticker, straight from Cin7.', allow: ['plabel', 'product', 'barcode', 'text'], productRecipe: 'stack' }
   };
+  var DEFAULT_CAPS = { name: '', purpose: '', allow: ['product', 'barcode', 'text'], productRecipe: 'stack', tuned: false };
+  function caps(id) { return Object.assign({}, DEFAULT_CAPS, CAPS[id] || {}); }
 
   // ── Self-check: geometry must tile within A4 (non-negative right/bottom margin) ──
   function validate(t) {
@@ -56,38 +71,13 @@
     return { ok: ok, rightM: rightM, bottomM: bottomM };
   }
 
-  // ── Per-template calibration in localStorage ──
-  function calibKey(id) { return 'lblsheet_calib_' + id; }
-  var ZERO = { offsetX: 0, offsetY: 0, pitchXAdj: 0, pitchYAdj: 0 };
-  function getCalib(id) {
-    try { return Object.assign({}, ZERO, JSON.parse(localStorage.getItem(calibKey(id)) || '{}')); }
-    catch (e) { return Object.assign({}, ZERO); }
-  }
-  function setCalib(id, c) {
-    try { localStorage.setItem(calibKey(id), JSON.stringify(Object.assign({}, ZERO, c))); } catch (e) {}
-  }
-  function isCalibrated(id) {
-    var c = getCalib(id);
-    return c.offsetX || c.offsetY || c.pitchXAdj || c.pitchYAdj ? true : false;
-  }
-
-  // ── Effective (calibrated) geometry ──
-  function effective(t) {
-    var c = getCalib(t.id);
-    return {
-      startX: t.marginLeft + c.offsetX,
-      startY: t.marginTop + c.offsetY,
-      pitchX: t.pitchX + c.pitchXAdj,
-      pitchY: t.pitchY + c.pitchYAdj,
-      labelW: t.labelW, labelH: t.labelH, radius: t.radius,
-      cols: t.cols, rows: t.rows
-    };
-  }
-
-  // Top-left position (mm) of cell at row r, col c — CALIBRATED.
+  // Top-left position (mm) of the cell at row r, col c.
+  // This software serves one company on one known set of Celcast sheets, so the
+  // geometry above is the answer — no per-operator calibration step, nothing to
+  // get wrong before the first print. What guarantees alignment is printing the
+  // PDF at 100% / Actual size.
   function cellXY(t, r, c) {
-    var e = effective(t);
-    return { x: e.startX + c * e.pitchX, y: e.startY + r * e.pitchY, w: t.labelW, h: t.labelH };
+    return { x: t.marginLeft + c * t.pitchX, y: t.marginTop + r * t.pitchY, w: t.labelW, h: t.labelH };
   }
 
   // ── Accurate inline-SVG mini-map of the grid (nominal layout, for the picker) ──
@@ -112,10 +102,17 @@
   }
 
   function meta(t) {
+    var c = caps(t.id);
     return {
       id: t.id,
-      name: NAMES[t.id] || t.avery,
+      name: c.name || t.avery,
+      purpose: c.purpose,
+      allow: c.allow.slice(),
+      productRecipe: c.productRecipe,
+      tuned: !!c.tuned,
       up: t.up,
+      labelW: t.labelW,
+      labelH: t.labelH,
       size: t.labelW + ' × ' + t.labelH + ' mm',
       grid: t.cols + ' × ' + t.rows,
       avery: t.avery,
@@ -135,11 +132,8 @@
     list: function () { return TEMPLATES.slice(); },
     byId: function (id) { return TEMPLATES.filter(function (t) { return t.id === id; })[0] || null; },
     validate: validate,
-    effective: effective,
     cellXY: cellXY,
-    getCalib: getCalib,
-    setCalib: setCalib,
-    isCalibrated: isCalibrated,
+    caps: caps,
     svgPreview: svgPreview,
     meta: meta,
     A4_W: A4_W, A4_H: A4_H
