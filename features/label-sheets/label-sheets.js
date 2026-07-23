@@ -437,65 +437,71 @@
   // label rectangle. Reproduces the Rapid LED product label from live data.
   function renderProductLabelCell(doc, cell, x, y, w, h) {
     var A = window.LABEL_ASSETS || {};
-    var pad = clamp(Math.min(w, h) * 0.045, 1.4, 3);
+    // Everything is a PROPORTION of the label size, so the whole label scales as
+    // one unit — a bigger sticker shows a proportionally bigger logo/code/barcode
+    // (fixes tiny-barcode-on-large-label). Fonts derive their pt from a target mm
+    // height via mm2pt, so they grow/shrink with the label instead of hitting caps.
+    var mm2pt = function (mm) { return mm / PT2MM; };
+    var pad = h * 0.035;
     var ix = x + pad, iw = w - 2 * pad, top = y + pad, bot = y + h - pad, cx = x + w / 2;
+    var av = h - 2 * pad;
 
     // --- bottom band: compliance symbols (left) + generated barcode (right) ---
-    var bandH = clamp(h * 0.16, 8, 15), bandBottom = bot;
+    var bandH = av * 0.19;
     var bcVal = cell.barcode || cell.code;
     var bc = bcVal ? barcodeDataUrl(bcVal, cell.fmt || 'auto') : null;
     var bcW = 0;
     if (bc) {
-      var bcAsp = bc.w / bc.h, bcH = bandH, bw = bcH * bcAsp, maxW = iw * 0.52;
+      var bcAsp = bc.w / bc.h, bcH = bandH, bw = bcH * bcAsp, maxW = iw * 0.5;
       if (bw > maxW) { bw = maxW; bcH = bw / bcAsp; }
       bcW = bw;
-      doc.addImage(bc.url, 'PNG', x + w - pad - bw, bandBottom - bcH, bw, bcH);
+      doc.addImage(bc.url, 'PNG', x + w - pad - bw, bot - bcH, bw, bcH);
     }
     if (A.symbols) {
-      var syAsp = A.symbols.w / A.symbols.h, syH = bandH * 0.72, syW = syH * syAsp, maxSy = iw - bcW - 2;
+      var syAsp = A.symbols.w / A.symbols.h, syH = bandH * 0.6, syW = syH * syAsp, maxSy = Math.max(0, iw - bcW - iw * 0.04);
       if (syW > maxSy) { syW = maxSy; syH = syW / syAsp; }
-      doc.addImage(A.symbols.url, 'PNG', ix, bandBottom - syH, syW, syH);
+      doc.addImage(A.symbols.url, 'PNG', ix, bot - syH, syW, syH);
     }
-    var bandTop = bandBottom - bandH;
+    var contentBottom = bot - bandH - av * 0.02;
 
     // --- top: logo (centered) ---
     var cy = top;
     if (A.logo) {
-      var lgAsp = A.logo.w / A.logo.h, lgH = clamp(h * 0.14, 6.5, 13), lgW = lgH * lgAsp;
-      if (lgW > iw * 0.72) { lgW = iw * 0.72; lgH = lgW / lgAsp; }
+      var lgAsp = A.logo.w / A.logo.h, lgH = av * 0.17, lgW = lgH * lgAsp;
+      if (lgW > iw * 0.75) { lgW = iw * 0.75; lgH = lgW / lgAsp; }
       doc.addImage(A.logo.url, 'PNG', cx - lgW / 2, cy, lgW, lgH);
-      cy += lgH + clamp(h * 0.02, 0.8, 2.2);
+      cy += lgH + av * 0.02;
     }
 
     // --- code (bold, shrink-to-fit width) ---
     if (cell.code) {
-      var cfs = clamp(h * 0.085, 9, 18);
+      var cfs = mm2pt(av * 0.11);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(cfs);
-      while (cfs > 7 && doc.getTextWidth(String(cell.code)) > iw) { cfs -= 0.5; doc.setFontSize(cfs); }
+      while (cfs > 6 && doc.getTextWidth(String(cell.code)) > iw) { cfs -= 0.5; doc.setFontSize(cfs); }
       cy += cfs * PT2MM;
       doc.text(String(cell.code), cx, cy, { align: 'center' });
-      cy += clamp(h * 0.012, 0.5, 1.4);
+      cy += av * 0.012;
     }
 
     // --- description (medium, up to 2 wrapped lines) ---
     if (cell.desc) {
-      var dfs = clamp(h * 0.055, 7, 12);
+      var dfs = mm2pt(av * 0.052);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(dfs);
-      var dlines = doc.splitTextToSize(String(cell.desc), iw).slice(0, 2);
-      for (var i = 0; i < dlines.length; i++) { cy += dfs * PT2MM; doc.text(dlines[i], cx, cy, { align: 'center' }); cy += dfs * PT2MM * 0.12; }
-      cy += clamp(h * 0.012, 0.4, 1.2);
+      var dl = doc.splitTextToSize(String(cell.desc), iw).slice(0, 2);
+      for (var i = 0; i < dl.length; i++) { cy += dfs * PT2MM; doc.text(dl[i], cx, cy, { align: 'center' }); cy += dfs * PT2MM * 0.15; }
+      cy += av * 0.01;
     }
 
     // --- spec lines (small, centered, fit remaining space above the band) ---
     var lines = (cell.lines || []).map(function (s) { return String(s || '').trim(); }).filter(Boolean);
-    var availH = bandTop - cy - 1;
-    if (lines.length && availH > 3) {
-      var lfs = clamp(h * 0.045, 6, 10);
+    var availLines = contentBottom - cy;
+    if (lines.length && availLines > 2) {
+      var lfs = mm2pt(av * 0.042);
       doc.setFont('helvetica', 'normal');
       var wrapAll = function (fs) { doc.setFontSize(fs); var a = []; lines.forEach(function (ln) { doc.splitTextToSize(ln, iw).forEach(function (s) { a.push(s); }); }); return a; };
       var rows = wrapAll(lfs);
-      while (lfs > 5.5 && rows.length * lfs * PT2MM * 1.16 > availH) { lfs -= 0.5; rows = wrapAll(lfs); }
-      var lh = lfs * PT2MM * 1.16, ly = cy + Math.max(0, (availH - rows.length * lh) / 2);
+      while (lfs > 5 && rows.length * lfs * PT2MM * 1.15 > availLines) { lfs -= 0.5; rows = wrapAll(lfs); }
+      var lh = lfs * PT2MM * 1.15, ly = cy + Math.max(0, (availLines - rows.length * lh) / 2);
       for (var j = 0; j < rows.length; j++) { ly += lfs * PT2MM; doc.text(rows[j], cx, ly, { align: 'center' }); ly += lh - lfs * PT2MM; }
     }
   }
