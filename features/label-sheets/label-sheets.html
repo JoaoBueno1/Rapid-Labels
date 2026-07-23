@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="label-sheets.css?v=20260723b" />
+  <link rel="stylesheet" href="label-sheets.css?v=20260723c" />
 </head>
 <body>
   <header class="ls-header">
@@ -40,7 +40,18 @@
         <span class="ls-calib-pill off" id="lsCalibPill">Not calibrated</span>
         <div class="grow"></div>
         <button class="ls-btn" onclick="LS.openFillAll()">Fill all…</button>
+        <button class="ls-btn" id="lsSelectToggle" onclick="LS.toggleSelectMode()">Select…</button>
         <button class="ls-btn" onclick="LS.clearAll()">Clear</button>
+      </div>
+
+      <div class="ls-select-bar" id="lsSelectBar" style="display:none;">
+        <span class="ls-sel-count" id="lsSelCount">0 selected</span>
+        <button class="ls-btn ls-btn-sm" onclick="LS.selectAll()">Select all</button>
+        <button class="ls-btn ls-btn-sm" onclick="LS.selectNone()">None</button>
+        <div class="grow"></div>
+        <button class="ls-btn ls-btn-sm ls-btn-primary" onclick="LS.openFillSelected()">Fill selected…</button>
+        <button class="ls-btn ls-btn-sm" onclick="LS.clearSelected()">Clear selected</button>
+        <button class="ls-btn ls-btn-sm ls-btn-ghost" onclick="LS.toggleSelectMode()">Done</button>
       </div>
 
       <div class="ls-editor-cols">
@@ -182,6 +193,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="label-templates.js?v=20260723b"></script>
-  <script src="label-sheets.js?v=20260723b"></script>
+  <script src="label-sheets.js?v=20260723c"></script>
 </body>
 </html>

@@ -12,6 +12,8 @@
     cells: [],           // per-position content or null
     products: null,      // cin7_mirror.products cache
     _results: [],        // current product-search matches
+    selectMode: false,   // multi-select mode on/off
+    selected: new Set(), // selected cell indices (multi-select)
     editor: { mode: 'cell', index: 0, type: 'product', product: null }
   };
   window.LS = LS;
@@ -48,6 +50,9 @@
     if (!t || !(t._fit && t._fit.ok)) { alert('This model failed the A4-fit check and is disabled.'); return; }
     LS.tpl = t;
     LS.cells = new Array(t.cols * t.rows).fill(null);
+    LS.selectMode = false; LS.selected.clear();
+    var sb = el('lsSelectBar'); if (sb) sb.style.display = 'none';
+    var stg = el('lsSelectToggle'); if (stg) stg.classList.remove('active');
     var m = window.LabelTemplates.meta(t);
     el('lsEdName').textContent = m.name;
     el('lsEdMeta').textContent = m.size + ' · grid ' + m.grid + ' · ' + m.up + ' per sheet · Avery ' + m.avery + (m.code ? ' · Celcast ' + m.code : '');
@@ -78,6 +83,7 @@
     sheet.style.height = (window.LabelTemplates.A4_H * scale) + 'px';
 
     var start = Math.max(1, intVal('lsStart', 1));
+    var showName = t.labelH >= 30;                          // preview mirrors the adaptive PDF layout
     var total = t.cols * t.rows, html = '';
     for (var p = 0; p < total; p++) {
       var r = Math.floor(p / t.cols), c = p % t.cols;
@@ -90,15 +96,18 @@
       if (skipped) { inner = ''; }
       else if (!cell || cell.type === 'blank') { inner = '<span class="ls-cell-empty">+</span>'; }
       else if (cell.type === 'product') {
-        inner = '<span class="ls-cell-5dc">' + esc(cell.dc5 || cell.sku || '') + '</span>' +
-          (h > 40 ? '<span class="ls-cell-sku">' + esc(cell.sku || '') + '</span>' : '') +
+        inner = (showName && cell.name ? '<span class="ls-cell-name">' + esc(String(cell.name).slice(0, 46)) + '</span>' : '') +
+          '<span class="ls-cell-5dc">' + esc(cell.dc5 || cell.sku || '') + '</span>' +
           '<span class="ls-cell-bc">▮▮▮</span>';
       }
       else if (cell.type === 'text') { inner = '<span class="ls-cell-txt">' + esc((cell.text || '').slice(0, 44)) + '</span>'; }
       else if (cell.type === 'barcode') { inner = '<span class="ls-cell-bc">▮▮ ' + esc(String(cell.value || '').slice(0, 14)) + '</span>'; }
 
-      var cls = 'ls-cell' + (skipped ? ' skipped' : '') + (cell && cell.type && cell.type !== 'blank' ? ' filled' : '');
-      var click = skipped ? '' : ' onclick="LS.openCell(' + p + ')"';
+      var isSel = LS.selectMode && LS.selected.has(p);
+      var cls = 'ls-cell' + (skipped ? ' skipped' : '') +
+        (cell && cell.type && cell.type !== 'blank' ? ' filled' : '') +
+        (LS.selectMode && !skipped ? ' selectable' : '') + (isSel ? ' selected' : '');
+      var click = skipped ? '' : (LS.selectMode ? ' onclick="LS.toggleSelect(' + p + ')"' : ' onclick="LS.openCell(' + p + ')"');
       html += '<div class="' + cls + '" style="left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;width:' + w.toFixed(1) + 'px;height:' + h.toFixed(1) + 'px;"' + click + '>' +
         '<span class="ls-cell-num">' + (p + 1) + '</span>' + inner + '</div>';
     }
@@ -228,6 +237,8 @@
     if (LS.editor.mode === 'all') {
       var start = Math.max(1, intVal('lsStart', 1));
       for (var p = start - 1; p < LS.tpl.cols * LS.tpl.rows; p++) LS.cells[p] = cell ? Object.assign({}, cell) : null;
+    } else if (LS.editor.mode === 'selected') {
+      LS.selected.forEach(function (p) { LS.cells[p] = cell ? Object.assign({}, cell) : null; });
     } else {
       LS.cells[LS.editor.index] = cell ? Object.assign({}, cell) : null;
     }
@@ -239,6 +250,43 @@
     if (!LS.tpl) return;
     if (!confirm('Clear all labels on this sheet?')) return;
     LS.cells = new Array(LS.tpl.cols * LS.tpl.rows).fill(null);
+    renderSheet();
+  }
+
+  // ═══ Multi-select (for models with many labels) ═══
+  function toggleSelectMode() {
+    LS.selectMode = !LS.selectMode;
+    if (!LS.selectMode) LS.selected.clear();
+    el('lsSelectBar').style.display = LS.selectMode ? 'flex' : 'none';
+    el('lsSelectToggle').classList.toggle('active', LS.selectMode);
+    updateSelCount();
+    renderSheet();
+  }
+  function toggleSelect(p) {
+    if (LS.selected.has(p)) LS.selected.delete(p); else LS.selected.add(p);
+    updateSelCount();
+    renderSheet();
+  }
+  function selectAll() {
+    if (!LS.tpl) return;
+    var start = Math.max(1, intVal('lsStart', 1)), total = LS.tpl.cols * LS.tpl.rows;
+    LS.selected.clear();
+    for (var p = start - 1; p < total; p++) LS.selected.add(p);
+    updateSelCount(); renderSheet();
+  }
+  function selectNone() { LS.selected.clear(); updateSelCount(); renderSheet(); }
+  function updateSelCount() { var e = el('lsSelCount'); if (e) e.textContent = LS.selected.size + ' selected'; }
+  function openFillSelected() {
+    if (!LS.selected.size) { alert('Select one or more labels first (click them).'); return; }
+    LS.editor = { mode: 'selected', index: -1, type: 'product', product: null };
+    el('lsCellTitle').textContent = 'Fill ' + LS.selected.size + ' selected label' + (LS.selected.size > 1 ? 's' : '');
+    resetEditorInputs();
+    pickType('product');
+    openModal('lsCellModal');
+  }
+  function clearSelected() {
+    if (!LS.selected.size) return;
+    LS.selected.forEach(function (p) { LS.cells[p] = null; });
     renderSheet();
   }
 
@@ -259,33 +307,73 @@
 
   // ═══ Render one cell into the PDF at exact mm ═══
   var PT2MM = 0.3528;
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
   function renderCellPdf(doc, cell, x, y, w, h) {
-    var pad = 1.4, iy = y + pad, iw = w - 2 * pad, ih = h - 2 * pad;
     if (cell.type === 'text') {
-      var fs = Math.max(6, Math.min(13, ih * 1.6));
+      var pad0 = 1.4, iw0 = w - 2 * pad0;
+      var fs = Math.max(6, Math.min(13, (h - 2 * pad0) * 1.6));
       doc.setFont('helvetica', 'normal'); doc.setFontSize(fs);
-      var lines = doc.splitTextToSize(cell.text || '', iw);
+      var lines = doc.splitTextToSize(cell.text || '', iw0);
       var lh = fs * PT2MM * 1.15, total = lines.length * lh, ty = y + h / 2 - total / 2 + lh * 0.8;
       for (var i = 0; i < lines.length; i++) { doc.text(lines[i], x + w / 2, ty, { align: 'center' }); ty += lh; }
       return;
     }
-    var value = cell.type === 'product' ? (cell.barcode || cell.sku) : cell.value;
-    if (!value) return;
-    var bc = barcodeDataUrl(value, cell.fmt || 'auto');
-    if (!bc) { doc.setFontSize(8); doc.text(String(value), x + w / 2, y + h / 2, { align: 'center' }); return; }
+    if (cell.type === 'product') { renderProductCell(doc, cell, x, y, w, h); return; }
+    renderBarcodeOnly(doc, cell.value, cell.fmt, x, y, w, h);
+  }
 
-    var topH = 0;
-    if (cell.type === 'product' && cell.dc5 && ih > 18) {
-      var tfs = Math.max(7, Math.min(13, ih * 0.7));
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(tfs);
-      doc.text(String(cell.dc5), x + w / 2, iy + tfs * PT2MM, { align: 'center' });
-      topH = tfs * PT2MM + 1.2;
+  // Adaptive product label: stacks [name?] [5DC] [barcode], sized to the square.
+  // Big labels get a 2-line name; medium/wide get 1 line; tiny ones drop the name
+  // (and, if truly cramped, the 5DC) so the barcode always stays scannable.
+  function renderProductCell(doc, cell, x, y, w, h) {
+    var pad = clamp(Math.min(w, h) * 0.05, 1.0, 2.0);
+    var iw = w - 2 * pad, ih = h - 2 * pad, cx = x + w / 2;
+    var value = cell.barcode || cell.sku;
+    var bc = value ? barcodeDataUrl(value, cell.fmt || 'auto') : null;
+
+    var rows = [];
+    if (cell.name && (ih >= 46 || (ih >= 30 && iw >= 55))) {           // Product name
+      var nfs = clamp(ih * 0.11, 6, 10);
+      var maxLines = ih >= 46 ? 2 : 1;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(nfs);
+      doc.splitTextToSize(String(cell.name), iw).slice(0, maxLines).forEach(function (ln) { rows.push({ t: ln, fs: nfs, b: false }); });
     }
-    var availH = ih - topH, availW = iw, asp = bc.w / bc.h;
-    var bw = availW, bh = bw / asp;
-    if (bh > availH) { bh = availH; bw = bh * asp; }
-    var bx = x + (w - bw) / 2, by = y + pad + topH + (availH - bh) / 2;
-    doc.addImage(bc.url, 'PNG', bx, by, bw, bh);
+    if (cell.dc5 && ih >= 16) rows.push({ t: String(cell.dc5), fs: clamp(ih * 0.17, 8, 13), b: true }); // 5DC (bold)
+
+    var lineGap = 1.12;
+    var textH = rows.reduce(function (s, r) { return s + r.fs * PT2MM * lineGap; }, 0);
+    var gap = rows.length && bc ? clamp(ih * 0.04, 0.6, 1.6) : 0;
+
+    var bcW = 0, bcH = 0;
+    if (bc) {
+      var areaH = ih - textH - gap;
+      if (areaH < 5) { rows = []; textH = 0; gap = 0; areaH = ih; }    // too tight -> barcode only
+      var asp = bc.w / bc.h;
+      bcW = iw; bcH = bcW / asp;
+      if (bcH > areaH) { bcH = areaH; bcW = bcH * asp; }
+    }
+
+    var cy = y + pad + Math.max(0, (ih - (textH + gap + bcH)) / 2);     // vertically centered stack
+    for (var i = 0; i < rows.length; i++) {
+      doc.setFont('helvetica', rows[i].b ? 'bold' : 'normal'); doc.setFontSize(rows[i].fs);
+      cy += rows[i].fs * PT2MM;
+      doc.text(rows[i].t, cx, cy, { align: 'center' });
+      cy += rows[i].fs * PT2MM * (lineGap - 1);
+    }
+    if (bc) { cy += gap; doc.addImage(bc.url, 'PNG', x + (w - bcW) / 2, cy, bcW, bcH); }
+    else if (value) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.text(String(value), cx, y + h / 2, { align: 'center' }); }
+  }
+
+  function renderBarcodeOnly(doc, value, fmt, x, y, w, h) {
+    value = value != null ? String(value) : '';
+    if (!value) return;
+    var pad = clamp(Math.min(w, h) * 0.05, 1.0, 2.0), iw = w - 2 * pad, ih = h - 2 * pad;
+    var bc = barcodeDataUrl(value, fmt || 'auto');
+    if (!bc) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.text(value, x + w / 2, y + h / 2, { align: 'center' }); return; }
+    var asp = bc.w / bc.h, bw = iw, bh = bw / asp;
+    if (bh > ih) { bh = ih; bw = bh * asp; }
+    doc.addImage(bc.url, 'PNG', x + (w - bw) / 2, y + (h - bh) / 2, bw, bh);
   }
 
   function drawCrosshairs(doc) {
@@ -436,6 +524,13 @@
   LS.resetCalib = resetCalib;
   LS.closeCalib = closeCalib;
   LS.printOutline = printOutline;
+  LS.toggleSelectMode = toggleSelectMode;
+  LS.toggleSelect = toggleSelect;
+  LS.selectAll = selectAll;
+  LS.selectNone = selectNone;
+  LS.openFillSelected = openFillSelected;
+  LS.clearSelected = clearSelected;
+  LS.renderCellPdf = renderCellPdf;
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
