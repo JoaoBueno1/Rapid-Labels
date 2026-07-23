@@ -46,6 +46,12 @@
     if (type === 'text') return 'Free text';
     return '';
   }
+  // Types whose example teaches nothing on a card. Free text renders the same
+  // way on every sheet — no layout to compare, no size to judge — so nine
+  // identical thumbnails only add noise. It stays fully usable in the editor on
+  // the templates that allow it.
+  var NO_PREVIEW = { text: true };
+
   // Realistic sample content, so an example looks like the real thing.
   var SAMPLES = {
     product: { type: 'product', sku: 'R1021-WH-TRI', name: '8w Dimmable Downlight', dc5: '95908', barcode: '9727435304891', fmt: 'auto' },
@@ -78,7 +84,7 @@
       var minimap = window.LabelTemplates.svgPreview(t, 150, 168);
       var codeTxt = m.code ? 'Celcast ' + m.code : 'Celcast compat.';
 
-      var examples = m.allow.map(function (type) {
+      var examples = m.allow.filter(function (type) { return !NO_PREVIEW[type]; }).map(function (type) {
         var url = cellPreviewURL(SAMPLES[type], m.labelW, m.labelH, { productRecipe: m.productRecipe });
         return '<div class="ls-ex">' +
           '<div class="ls-ex-frame"' + (m.labelW > m.labelH * 1.6 ? ' style="min-height:44px;"' : '') + '>' +

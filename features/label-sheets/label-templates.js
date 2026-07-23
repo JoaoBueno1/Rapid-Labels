@@ -3,14 +3,15 @@
  *
  * ISOLATED feature (features/label-sheets/). Read-only: touches no DB, no Cin7.
  *
- * Geometry = nominal published Avery A4 specs (Celcast uses the same standard
- * A4 die-cut grid). Every template is SELF-CHECKED to tile A4 (210×297 mm) on
+ * Geometry = published Avery A4 specs (Celcast uses the same standard A4
+ * die-cut grid). Every template is SELF-CHECKED to tile A4 (210×297 mm) on
  * load — a broken spec fails loud in the console and is flagged, never rendered
- * silently. These nominal numbers are only the STARTING POINT: the real
- * guarantee of alignment on the operator's actual sheets + printer is the
- * per-template CALIBRATION (start offset + pitch) saved in localStorage. The
- * operator prints the outline, lays the real Celcast sheet on top, and nudges
- * until the die-cut matches. All dimensions are in millimetres.
+ * silently. There is no per-operator calibration: this serves one company on
+ * one known set of sheets, so these numbers are the answer and printing at
+ * 100% / Actual size is what guarantees alignment.
+ *
+ * Each template also declares what it is FOR and what it may carry — see CAPS.
+ * All dimensions are in millimetres.
  */
 (function () {
   'use strict';
@@ -55,11 +56,11 @@
       productRecipe: 'shipping',
       tuned: true
     },
-    l7164: { name: 'Medium',            purpose: 'Medium labels.',               allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },
-    l7173: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },
-    l7165: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },
-    full:  { name: 'Full sheet',        purpose: 'One label filling the whole A4.', allow: ['plabel', 'product', 'barcode', 'text'], productRecipe: 'stack' },
-    p6870: { name: 'Product label (68×70)', purpose: 'The Rapid LED product sticker, straight from Cin7.', allow: ['plabel', 'product', 'barcode', 'text'], productRecipe: 'stack' }
+    l7164: { name: 'Medium',            purpose: 'Medium labels.',               allow: ['product', 'plabel', 'barcode'], productRecipe: 'stack' },
+    l7173: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode'], productRecipe: 'stack' },
+    l7165: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode'], productRecipe: 'stack' },
+    full:  { name: 'Full sheet',        purpose: 'One label filling the whole A4.', allow: ['plabel', 'product', 'barcode'], productRecipe: 'stack' },
+    p6870: { name: 'Product label (68×70)', purpose: 'The Rapid LED product sticker, straight from Cin7.', allow: ['plabel', 'product', 'barcode'], productRecipe: 'stack' }
   };
   var DEFAULT_CAPS = { name: '', purpose: '', allow: ['product', 'barcode', 'text'], productRecipe: 'stack', tuned: false };
   function caps(id) { return Object.assign({}, DEFAULT_CAPS, CAPS[id] || {}); }
