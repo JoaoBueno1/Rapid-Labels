@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="label-sheets.css?v=20260724n" />
+  <link rel="stylesheet" href="label-sheets.css?v=20260724p" />
 </head>
 <body>
   <header class="ls-header">
@@ -74,7 +74,32 @@
               </div>
             </div>
             <button class="ls-btn ls-btn-primary ls-btn-block ls-btn-lg" onclick="LS.generatePdf()">⬇ Generate PDF to print</button>
-            <div class="ls-note" style="margin-top:10px;">When printing, choose <b>Actual size / 100%</b> (no “fit to page”). Load the <b>correct</b> Celcast sheet in the printer.</div>
+            <div class="ls-note" style="margin-top:10px;">When printing, choose <b>Actual size / 100%</b> (never “fit to page”). A browser cannot force this — you must pick it in the print dialog. Load the <b>correct</b> Celcast sheet in the printer.</div>
+          </div>
+
+          <div class="ls-panel-card">
+            <h3>Alignment</h3>
+            <p class="ls-note" style="margin-top:0;">Real printers drift a few mm even at 100%. Print the test on <b>plain paper</b>, lay it over a blank Celcast sheet against the light: the outlines should sit inside the die-cut squares. If the whole grid is shifted, nudge below and reprint — it’s saved per sheet.</p>
+            <button class="ls-btn ls-btn-block" onclick="LS.printAlignmentTest()">🎯 Print alignment test</button>
+            <div style="display:flex;gap:12px;margin-top:12px;">
+              <div style="flex:1;">
+                <label class="ls-label">Offset X (mm) →</label>
+                <input type="number" step="0.5" value="0" id="lsOffX" class="ls-input num" oninput="LS.onCalibInput()" />
+              </div>
+              <div style="flex:1;">
+                <label class="ls-label">Offset Y (mm) ↓</label>
+                <input type="number" step="0.5" value="0" id="lsOffY" class="ls-input num" oninput="LS.onCalibInput()" />
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+              <button class="ls-btn ls-btn-sm" onclick="LS.nudgeCalib(0,-0.5)">↑</button>
+              <button class="ls-btn ls-btn-sm" onclick="LS.nudgeCalib(0,0.5)">↓</button>
+              <button class="ls-btn ls-btn-sm" onclick="LS.nudgeCalib(-0.5,0)">←</button>
+              <button class="ls-btn ls-btn-sm" onclick="LS.nudgeCalib(0.5,0)">→</button>
+              <div class="grow" style="flex:1;"></div>
+              <button class="ls-btn ls-btn-sm ls-btn-ghost" onclick="LS.resetCalib()">Reset</button>
+            </div>
+            <div class="ls-note" id="lsCalibNote" style="margin-top:10px;">Positive X moves labels right, positive Y moves them down. If the top label prints too high, increase Y.</div>
           </div>
 
           <div class="ls-panel-card">
@@ -161,8 +186,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="label-assets.js?v=20260724n"></script>
-  <script src="label-templates.js?v=20260724n"></script>
+  <script src="label-templates.js?v=20260724p"></script>
   <script src="label-render.js?v=20260724n"></script>
-  <script src="label-sheets.js?v=20260724n"></script>
+  <script src="label-sheets.js?v=20260724p"></script>
 </body>
 </html>

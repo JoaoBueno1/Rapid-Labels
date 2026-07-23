@@ -3,9 +3,13 @@
  * pulls products from cin7_mirror.products (same as multi-label), never writes.
  *
  * Print precision: renders a real A4 PDF with every label placed at its exact
- * mm position (jsPDF, unit mm) — no browser print scaling involved. There is no
- * calibration step: the sheets are known, the geometry is fixed, and printing at
- * 100% / Actual size is the whole contract.
+ * mm position (jsPDF, unit mm). The published Avery/Celcast geometry is the
+ * starting point, but a real printer still drifts a few mm (non-printable
+ * border, driver centring), so each sheet keeps a small saved X/Y PRINTER
+ * OFFSET (localStorage, per template) plus an ALIGNMENT TEST print — outlines +
+ * a 100 mm ruler you overlay on a blank sheet to dial it in once. Printing at
+ * 100% / Actual size is still required (a browser cannot force it); the ruler is
+ * how the operator confirms the scale is right.
  *
  * Every pixel on screen and every mark on paper comes from LabelRender, so the
  * picker examples, the sheet preview and the PDF are the same drawing.
@@ -30,6 +34,25 @@
   function el(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function intVal(id, def) { var v = parseInt(el(id) && el(id).value, 10); return isNaN(v) ? def : v; }
+  function numVal(id, def) { var v = parseFloat(el(id) && el(id).value); return isNaN(v) ? def : v; }
+
+  // ── Printer offset (calibration) ──
+  // The one number a real printer forces on us: even at 100% scale a sheet lands
+  // a couple of mm off (unprintable border, driver centring). We save a per-model
+  // X/Y nudge (mm) and add it to every label's position in the PDF, so the
+  // operator dials each Celcast sheet in once and it stays. Screen preview stays
+  // at the true die-cut geometry; the offset only ever touches paper.
+  function calibKey(id) { return 'ls_calib_' + id; }
+  function getCalib(id) {
+    try { var v = JSON.parse(localStorage.getItem(calibKey(id))); if (v && isFinite(v.dx) && isFinite(v.dy)) return { dx: +v.dx, dy: +v.dy }; } catch (e) {}
+    return { dx: 0, dy: 0 };
+  }
+  function setCalib(id, dx, dy) { try { localStorage.setItem(calibKey(id), JSON.stringify({ dx: dx, dy: dy })); } catch (e) {} }
+  // Calibrated top-left of a cell (mm) — used for the PDF and the test print.
+  function cellPosCal(t, r, c) {
+    var pos = window.LabelTemplates.cellXY(t, r, c), cal = getCalib(t.id);
+    return { x: pos.x + cal.dx, y: pos.y + cal.dy, w: pos.w, h: pos.h };
+  }
 
   // What each content type is called and what it does — shown on the model
   // cards so the operator can pick a sheet by what it prints, not by its code.
@@ -81,7 +104,7 @@
     var grid = el('lsModelGrid');
     var cards = window.LabelTemplates.list().map(function (t) {
       var m = window.LabelTemplates.meta(t);
-      var minimap = window.LabelTemplates.svgPreview(t, 150, 168);
+      var minimap = window.LabelTemplates.svgPreview(t, 158, 178);
       var codeTxt = m.code ? 'Celcast ' + m.code : 'Celcast compat.';
 
       var examples = m.allow.filter(function (type) { return !NO_PREVIEW[type]; }).map(function (type) {
@@ -100,8 +123,15 @@
           '<div class="ls-card-preview">' + minimap + '</div>' +
           '<div class="ls-card-id">' +
             '<div class="ls-card-title">' + esc(m.name) + '</div>' +
-            '<div class="ls-card-sub">' + esc(m.size) + ' · grid ' + esc(m.grid) + '</div>' +
-            '<div class="ls-card-facts">' + m.up + ' per sheet · Avery ' + esc(m.avery) + ' · ' + esc(codeTxt) + '</div>' +
+            '<div class="ls-card-size">' + esc(m.size) + '</div>' +
+            '<div class="ls-card-badges">' +
+              '<span class="ls-badge up">' + m.up + ' per sheet</span>' +
+              '<span class="ls-badge">grid ' + esc(m.grid) + '</span>' +
+            '</div>' +
+            '<div class="ls-card-codes">' +
+              '<span class="ls-chip">Avery ' + esc(m.avery) + '</span>' +
+              '<span class="ls-chip code">' + esc(codeTxt) + '</span>' +
+            '</div>' +
             (m.purpose ? '<div class="ls-card-purpose">' + esc(m.purpose) + '</div>' : '') +
           '</div>' +
         '</div>' +
@@ -129,6 +159,7 @@
     el('lsSub').textContent = LS.caps.name + ' — ' + LS.caps.size;
     el('lsModels').style.display = 'none';
     el('lsEditor').style.display = 'block';
+    loadCalibInputs();
     renderSheet();
   }
 
@@ -154,6 +185,19 @@
     var start = Math.max(1, intVal('lsStart', 1));
     var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack' };
     var total = t.cols * t.rows, html = '', badCount = 0;
+
+    // Margin visualisation: draw the page's real margin band around the label
+    // grid so the operator sees exactly where the printable labels sit vs the
+    // sheet edge — the boundary they must respect for alignment.
+    var gridW = (t.cols - 1) * t.pitchX + t.labelW, gridH = (t.rows - 1) * t.pitchY + t.labelH;
+    var mL = t.marginLeft, mT = t.marginTop;
+    var mR = window.LabelTemplates.A4_W - mL - gridW, mB = window.LabelTemplates.A4_H - mT - gridH;
+    html += '<div class="ls-margin-box" style="left:' + (mL * scale).toFixed(1) + 'px;top:' + (mT * scale).toFixed(1) +
+      'px;width:' + (gridW * scale).toFixed(1) + 'px;height:' + (gridH * scale).toFixed(1) + 'px;"></div>';
+    html += '<span class="ls-mdim ls-mdim-t" style="top:' + (Math.max(0, mT * scale / 2 - 7)).toFixed(1) + 'px;">top ' + mT.toFixed(1) + ' mm</span>';
+    html += '<span class="ls-mdim ls-mdim-l" style="left:2px;top:' + (mT * scale + gridH * scale / 2 - 7).toFixed(1) + 'px;">left ' + mL.toFixed(1) + ' mm</span>';
+    html += '<span class="ls-mdim ls-mdim-b" style="bottom:' + (Math.max(0, mB * scale / 2 - 7)).toFixed(1) + 'px;">bottom ' + mB.toFixed(1) + ' mm</span>';
+
     for (var p = 0; p < total; p++) {
       var r = Math.floor(p / t.cols), c = p % t.cols;
       var x = (t.marginLeft + c * t.pitchX) * scale;
@@ -581,6 +625,9 @@
     // compress: the brand images are plain RGB and the vector bars are a long
     // run of rectangles — both deflate to a fraction of their raw size.
     var doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    // Ask viewers to print at actual size (Adobe honours it; harmless elsewhere).
+    // The page is exact A4 (210×297), which is what actually stops Chrome fit-to-page.
+    try { doc.viewerPreferences({ PrintScaling: 'None' }); } catch (e) {}
     var sheets = Math.max(1, intVal('lsSheets', 1));
     var start = Math.max(1, intVal('lsStart', 1));
     var total = t.cols * t.rows;
@@ -593,18 +640,120 @@
         var cell = LS.cells[p];
         if (!cell || !cell.type) continue;
         var r = Math.floor(p / t.cols), c = p % t.cols;
-        var pos = window.LabelTemplates.cellXY(t, r, c);
+        var pos = cellPosCal(t, r, c);          // published geometry + saved printer offset
         window.LabelRender.toPdf(doc, cell, pos.x, pos.y, pos.w, pos.h, opts);
       }
     }
 
-    try {
-      var url = doc.output('bloburl');
-      var win = window.open(url, '_blank');
-      if (!win) doc.save('labels-' + t.id + '.pdf');
-    } catch (e) {
-      doc.save('labels-' + t.id + '.pdf');
+    openPdf(doc, 'labels-' + t.id + '.pdf');
+  }
+
+  function openPdf(doc, name) {
+    try { var url = doc.output('bloburl'); var win = window.open(url, '_blank'); if (!win) doc.save(name); }
+    catch (e) { doc.save(name); }
+  }
+
+  // ── Alignment test print ──
+  // The honest answer to "why is my sheet a few mm off": print THIS on plain
+  // paper at 100%, lay it over a blank Celcast sheet against the light. The
+  // outlines should sit exactly inside the die-cut squares; if the whole grid is
+  // shifted, nudge the X/Y offset and reprint. The 100 mm rulers prove the scale:
+  // if either does not measure 100 mm, the print dialog is not at Actual size.
+  function printAlignmentTest() {
+    var t = LS.tpl; if (!t) return;
+    if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library failed to load. Reload the page.'); return; }
+    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    try { doc.viewerPreferences({ PrintScaling: 'None' }); } catch (e) {}
+    var cal = getCalib(t.id);
+
+    // Each label's die-cut outline (calibrated) + a faint centre crosshair —
+    // overlay a blank Celcast sheet against the light to check the die-cut fit.
+    var total = t.cols * t.rows, p, r, c, pos;
+    for (p = 0; p < total; p++) {
+      r = Math.floor(p / t.cols); c = p % t.cols; pos = cellPosCal(t, r, c);
+      doc.setDrawColor(150); doc.setLineWidth(0.2);
+      if (t.radius > 0) doc.roundedRect(pos.x, pos.y, pos.w, pos.h, t.radius, t.radius, 'S');
+      else doc.rect(pos.x, pos.y, pos.w, pos.h, 'S');
+      var mx = pos.x + pos.w / 2, my = pos.y + pos.h / 2;
+      doc.setDrawColor(205); doc.setLineWidth(0.15);
+      doc.line(mx - 2, my, mx + 2, my); doc.line(mx, my - 2, mx, my + 2);
     }
+
+    // Corner registration crosses at fixed A4 positions.
+    doc.setDrawColor(0); doc.setLineWidth(0.3);
+    [[10, 10], [200, 10], [10, 287], [200, 287]].forEach(function (m) {
+      doc.line(m[0] - 4, m[1], m[0] + 4, m[1]); doc.line(m[0], m[1] - 4, m[0], m[1] + 4);
+    });
+
+    // 100 mm rulers on a clean white band (legible over the grid) — the scale
+    // proof: if either does not measure 100 mm on paper, the print is not at 100%.
+    alignRuler(doc, 55, 18, 100, 'h');
+    alignRuler(doc, 5, 100, 100, 'v');
+
+    // Title band last, on white, so it never fights the outlines.
+    doc.setFillColor(255, 255, 255); doc.rect(27, 1.5, 165, 9.5, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(20);
+    doc.text('RAPID LED — ALIGNMENT TEST', 30, 5.5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(90);
+    doc.text(t.avery + ' · ' + t.labelW + '×' + t.labelH + ' mm · grid ' + t.cols + '×' + t.rows +
+      ' · offset X ' + cal.dx.toFixed(1) + ' Y ' + cal.dy.toFixed(1) + ' mm · PRINT AT 100% / ACTUAL SIZE', 30, 9);
+
+    openPdf(doc, 'align-test-' + t.id + '.pdf');
+  }
+
+  function alignRuler(doc, x, y, len, dir) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+    var i, tk;
+    if (dir === 'h') {
+      doc.setFillColor(255, 255, 255); doc.rect(x - 3, y - 6, len + 8, 9, 'F');
+      doc.setDrawColor(0); doc.setLineWidth(0.25); doc.setTextColor(0);
+      doc.line(x, y, x + len, y);
+      for (i = 0; i <= len; i += 10) { tk = (i % 50 === 0) ? 2.5 : 1.5; doc.line(x + i, y - tk, x + i, y + tk); }
+      doc.text(len + ' mm — must measure exactly ' + len + ' mm at 100% scale', x + 3, y - 3);
+    } else {
+      doc.setFillColor(255, 255, 255); doc.rect(x - 3, y - 12, 6, len + 15, 'F');
+      doc.setDrawColor(0); doc.setLineWidth(0.25); doc.setTextColor(0);
+      doc.line(x, y, x, y + len);
+      for (i = 0; i <= len; i += 10) { tk = (i % 50 === 0) ? 2.5 : 1.5; doc.line(x - tk, y + i, x + tk, y + i); }
+      doc.text(len + ' mm', x + 1, y - 2, { angle: 90 });
+    }
+  }
+
+  // ── Calibration inputs (per-model printer offset) ──
+  function loadCalibInputs() {
+    var t = LS.tpl; if (!t) return;
+    var cal = getCalib(t.id);
+    if (el('lsOffX')) el('lsOffX').value = cal.dx;
+    if (el('lsOffY')) el('lsOffY').value = cal.dy;
+    updateCalibNote();
+  }
+  function onCalibInput() {
+    var t = LS.tpl; if (!t) return;
+    setCalib(t.id, numVal('lsOffX', 0), numVal('lsOffY', 0));
+    updateCalibNote();
+  }
+  function nudgeCalib(ddx, ddy) {
+    var t = LS.tpl; if (!t) return;
+    var cal = getCalib(t.id);
+    var dx = Math.round((cal.dx + ddx) * 10) / 10, dy = Math.round((cal.dy + ddy) * 10) / 10;
+    setCalib(t.id, dx, dy);
+    if (el('lsOffX')) el('lsOffX').value = dx;
+    if (el('lsOffY')) el('lsOffY').value = dy;
+    updateCalibNote();
+  }
+  function resetCalib() {
+    var t = LS.tpl; if (!t) return;
+    setCalib(t.id, 0, 0);
+    if (el('lsOffX')) el('lsOffX').value = 0;
+    if (el('lsOffY')) el('lsOffY').value = 0;
+    updateCalibNote();
+  }
+  function updateCalibNote() {
+    var t = LS.tpl, note = el('lsCalibNote'); if (!t || !note) return;
+    var cal = getCalib(t.id);
+    note.innerHTML = (cal.dx || cal.dy)
+      ? '<b>Saved for this sheet — offset X ' + cal.dx.toFixed(1) + ' mm, Y ' + cal.dy.toFixed(1) + ' mm</b>, applied to every PDF. Reprint the test to confirm.'
+      : 'No offset yet. If the top label prints too high, increase Y; if it prints too far left, increase X.';
   }
 
   // ═══ modal helpers ═══
@@ -755,6 +904,10 @@
   LS.closeCell = closeCell;
   LS.clearAll = clearAll;
   LS.generatePdf = generatePdf;
+  LS.printAlignmentTest = printAlignmentTest;
+  LS.onCalibInput = onCalibInput;
+  LS.nudgeCalib = nudgeCalib;
+  LS.resetCalib = resetCalib;
   LS.toggleSelectMode = toggleSelectMode;
   LS.toggleSelect = toggleSelect;
   LS.selectAll = selectAll;

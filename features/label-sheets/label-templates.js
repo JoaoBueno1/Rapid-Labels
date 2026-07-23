@@ -21,13 +21,17 @@
   // code = Celcast SKU confirmed on AU retailer listings; null = "compatível"
   // (same size/grid, Celcast code not individually verified — matched by size).
   var TEMPLATES = [
-    { id:'l7651', avery:'L7651', code:null,    up:65, cols:5, rows:13, labelW:38.1,  labelH:21.2,  marginTop:10.7,  marginLeft:5.75, pitchX:40.1,  pitchY:21.2, radius:1.0, shape:'rect' },
+    // Geometry verified against Label Planet / Avery / flexilabels + A4 tiling (2026-07-24).
+    // l7651 corrected to genuine Avery (was left 5.75 / pitchX 40.1 = 2.0mm gap → outer
+    // columns ~1mm off). l7159 uses the Australian Celcast 48024 "QuickPeel" die (64 / left
+    // 6.5 / pitchX 66.5), which is the stock Rapid LED actually prints on, not the UK die.
+    { id:'l7651', avery:'L7651', code:null,    up:65, cols:5, rows:13, labelW:38.1,  labelH:21.2,  marginTop:10.7,  marginLeft:4.75, pitchX:40.6,  pitchY:21.2, radius:1.0, shape:'rect' },
     { id:'l7160', avery:'L7160', code:'48021', up:21, cols:3, rows:7,  labelW:63.5,  labelH:38.1,  marginTop:15.15, marginLeft:7.25, pitchX:66.0,  pitchY:38.1, radius:1.5, shape:'rect' },
-    { id:'l7159', avery:'L7159', code:null,    up:24, cols:3, rows:8,  labelW:63.5,  labelH:33.9,  marginTop:12.9,  marginLeft:7.25, pitchX:66.0,  pitchY:33.9, radius:1.5, shape:'rect' },
+    { id:'l7159', avery:'L7159', code:'48024', up:24, cols:3, rows:8,  labelW:64.0,  labelH:33.9,  marginTop:12.9,  marginLeft:6.5,  pitchX:66.5,  pitchY:33.9, radius:1.5, shape:'rect' },
     { id:'l7163', avery:'L7163', code:'48014', up:14, cols:2, rows:7,  labelW:99.1,  labelH:38.1,  marginTop:15.15, marginLeft:4.65, pitchX:101.6, pitchY:38.1, radius:0,   shape:'rect' },
     { id:'l7164', avery:'L7164', code:null,    up:12, cols:3, rows:4,  labelW:63.5,  labelH:72.0,  marginTop:4.5,   marginLeft:7.25, pitchX:66.0,  pitchY:72.0, radius:1.5, shape:'rect' },
     { id:'l7173', avery:'L7173', code:'48010', up:10, cols:2, rows:5,  labelW:99.1,  labelH:57.0,  marginTop:6.0,   marginLeft:4.65, pitchX:101.6, pitchY:57.0, radius:0,   shape:'rect' },
-    { id:'l7165', avery:'L7165', code:null,    up:8,  cols:2, rows:4,  labelW:99.1,  labelH:67.7,  marginTop:13.1,  marginLeft:4.65, pitchX:101.6, pitchY:67.7, radius:0,   shape:'rect' },
+    { id:'l7165', avery:'L7165', code:'48008', up:8,  cols:2, rows:4,  labelW:99.1,  labelH:67.7,  marginTop:13.1,  marginLeft:4.65, pitchX:101.6, pitchY:67.7, radius:0,   shape:'rect' },
     { id:'full',  avery:'—',     code:'48001', up:1,  cols:1, rows:1,  labelW:199.6, labelH:289.1, marginTop:3.95,  marginLeft:5.2,  pitchX:0,     pitchY:0,    radius:0,   shape:'rect' }
   ];
 
