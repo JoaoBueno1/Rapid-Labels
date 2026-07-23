@@ -177,6 +177,7 @@
         el('lsPlCode').value = existing.code || '';
         el('lsPlDesc').value = existing.desc || '';
         el('lsPlLines').value = (existing.lines || []).join('\n');
+        if (el('lsPlBorder')) el('lsPlBorder').checked = !!existing.border;
         el('lsPlBc').innerHTML = 'Barcode: <b>' + esc(existing.barcode || '(uses code)') + '</b> — auto-generated.';
         el('lsPlForm').style.display = 'block';
       }
@@ -201,6 +202,7 @@
     var plr = el('lsPlResults'); if (plr) { plr.style.display = 'none'; plr.innerHTML = ''; }
     var plf = el('lsPlForm'); if (plf) plf.style.display = 'none';
     ['lsPlCode', 'lsPlDesc', 'lsPlLines'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
+    var plb = el('lsPlBorder'); if (plb) plb.checked = false;
     LS.editor.product = null; LS.editor.plProduct = null;
   }
 
@@ -307,7 +309,7 @@
       if (!plCode && !LS.editor.plProduct) { alert('Find a product first.'); return; }
       var plLines = el('lsPlLines').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
       var plBc = (LS.editor.plProduct && LS.editor.plProduct.barcode) || '';
-      cell = { type: 'plabel', code: plCode, desc: el('lsPlDesc').value.trim(), lines: plLines, barcode: plBc, fmt: 'auto' };
+      cell = { type: 'plabel', code: plCode, desc: el('lsPlDesc').value.trim(), lines: plLines, barcode: plBc, border: !!(el('lsPlBorder') && el('lsPlBorder').checked), fmt: 'auto' };
     } else if (type === 'blank') {
       cell = null;
     }
@@ -468,6 +470,13 @@
     var ix = x + pad, iw = w - 2 * pad, top = y + pad, bot = y + h - pad, cx = x + w / 2;
     var av = h - 2 * pad;
 
+    // --- optional full-label border (professional look; never a partial box) ---
+    if (cell.border) {
+      var bi = h * 0.025;
+      doc.setDrawColor(0); doc.setLineWidth(Math.max(0.25, h * 0.005));
+      doc.roundedRect(x + bi, y + bi, w - 2 * bi, h - 2 * bi, h * 0.03, h * 0.03, 'S');
+    }
+
     // --- bottom band: compliance symbols (left) + generated barcode (right) ---
     var bandH = av * 0.19;
     var bcVal = cell.barcode || cell.code;
@@ -482,7 +491,7 @@
     if (A.symbols) {
       var syAsp = A.symbols.w / A.symbols.h, syH = bandH * 0.6, syW = syH * syAsp, maxSy = Math.max(0, iw - bcW - iw * 0.04);
       if (syW > maxSy) { syW = maxSy; syH = syW / syAsp; }
-      doc.addImage(A.symbols.url, 'PNG', ix, bot - syH, syW, syH);
+      doc.addImage(A.symbols.url, A.symbols.type || 'PNG', ix, bot - syH, syW, syH);
     }
     var contentBottom = bot - bandH - av * 0.02;
 
@@ -491,7 +500,7 @@
     if (A.logo) {
       var lgAsp = A.logo.w / A.logo.h, lgH = av * 0.17, lgW = lgH * lgAsp;
       if (lgW > iw * 0.75) { lgW = iw * 0.75; lgH = lgW / lgAsp; }
-      doc.addImage(A.logo.url, 'PNG', cx - lgW / 2, cy, lgW, lgH);
+      doc.addImage(A.logo.url, A.logo.type || 'PNG', cx - lgW / 2, cy, lgW, lgH);
       cy += lgH + av * 0.02;
     }
 
@@ -639,8 +648,30 @@
     })();
   }
 
+  // jsPDF mangles embedded JPEG/PIL-PNG into black side-panels; re-encode each brand
+  // asset through a canvas (like the barcode, which renders clean) -> safe PNG.
+  function normalizeAssets() {
+    if (!window.LABEL_ASSETS) return;
+    ['logo', 'symbols'].forEach(function (k) {
+      var a = window.LABEL_ASSETS[k]; if (!a || !a.url) return;
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var c = document.createElement('canvas');
+          c.width = img.naturalWidth || a.w; c.height = img.naturalHeight || a.h;
+          var ctx = c.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          a.url = c.toDataURL('image/png'); a.type = 'PNG'; a.w = c.width; a.h = c.height;
+        } catch (e) { console.warn('label-sheets: asset normalize failed', k, e); }
+      };
+      img.src = a.url;
+    });
+  }
+
   // ═══ init ═══
   function init() {
+    normalizeAssets();
     renderModels();
     loadProducts();
     var sheetsInput = el('lsSheets');

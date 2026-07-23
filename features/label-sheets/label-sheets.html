@@ -129,6 +129,9 @@
             <input type="text" id="lsPlDesc" class="ls-input" />
             <label class="ls-label" style="margin-top:8px;">Spec lines (one per line)</label>
             <textarea id="lsPlLines" class="ls-input" rows="3" placeholder="IP20 / 3000K&#10;200 – 240VAC / 50-60Hz"></textarea>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:#1a2733;cursor:pointer;">
+              <input type="checkbox" id="lsPlBorder" /> Full border around the label (professional look)
+            </label>
             <div class="ls-note" id="lsPlBc" style="margin-top:8px;">Barcode auto-generated from the product.</div>
           </div>
         </div>
@@ -208,8 +211,8 @@
   <script src="/supabase-config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="label-assets.js?v=20260723d"></script>
+  <script src="label-assets.js?v=20260723h"></script>
   <script src="label-templates.js?v=20260723d"></script>
-  <script src="label-sheets.js?v=20260723f"></script>
+  <script src="label-sheets.js?v=20260723h"></script>
 </body>
 </html>
