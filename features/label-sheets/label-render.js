@@ -24,28 +24,25 @@
   // floors are in mm so a small sheet degrades to "still legible" instead of
   // "technically drawn".
   var SPEC = {
-    pad:         0.035,   // × H   outer padding
-    logoH:       0.17,    // × av
-    logoMaxW:    0.75,    // × iw
-    logoGap:     0.02,    // × av
-    codeH:       0.11,    // × av  starting em size, shrinks to fit the width
+    pad:         0.045,   // × H   outer padding
+    logoH:       0.16,    // × av
+    logoMaxW:    0.70,    // × iw
+    logoGap:     0.035,   // × av
+    codeH:       0.115,   // × av  starting em size, shrinks to fit the width
     codeMinMM:   1.6,
-    codeGap:     0.012,   // × av
-    descH:       0.052,   // × av
+    codeGap:     0.030,   // × av
+    descH:       0.055,   // × av
     descMinMM:   1.2,
-    descLead:    1.12,
-    descFloor:   0.18,    // × av  desc may always claim at least this height
-    descMaxFrac: 0.62,    // × remaining content height
-    descGap:     0.01,    // × av
-    lineH:       0.042,   // × av  spec lines
+    descLead:    1.15,
+    descShare:   0.55,    // × free height, when spec lines follow
+    descGap:     0.035,   // × av
+    lineH:       0.045,   // × av  spec lines
     lineMinMM:   1.2,
-    lineLead:    1.15,
-    bcW:         0.55,    // × iw  barcode width
-    bcMaxH:      0.19,    // × av
-    bcMinBand:   0.10,    // × av  bottom band reserved even with no barcode
-    bandGap:     0.025,   // × av
-    symH:        0.06,    // × av  compliance strip
-    symGap:      0.06,    // × iw  min clearance from the barcode
+    lineLead:    1.20,
+    bandH:       0.20,    // × av  bottom band: symbols + barcode
+    bandGap:     0.030,   // × av  between the content block and the band
+    bcW:         0.58,    // × iw  barcode fills this share of the band
+    symGap:      0.04,    // × iw  clearance between strip and barcode
     borderInset: 0.025,   // × H
     borderW:     0.006,   // × H
     borderR:     0.03,    // × H
@@ -566,8 +563,16 @@
     return out;
   }
 
+  function wrapAllLines(lines, maxWMM, sizeMM) {
+    var acc = [];
+    for (var i = 0; i < lines.length; i++) {
+      wrap(lines[i], maxWMM, sizeMM).forEach(function (x) { acc.push(x); });
+    }
+    return acc;
+  }
+
   function layoutBrandLabel(cell, W, H) {
-    var A = window.LABEL_ASSETS || {}, S = SPEC, out = [];
+    var A = window.LABEL_ASSETS || {}, S = SPEC, out = [], i;
     if (!cell || !(W > 0) || !(H > 0)) return out;
 
     var pad = H * S.pad;
@@ -580,75 +585,91 @@
       out.push({ kind: 'rect', x: bi, y: bi, w: W - 2 * bi, h: H - 2 * bi, r: H * S.borderR, lw: Math.max(0.08, H * S.borderW) });
     }
 
-    // Bottom band — barcode on the right, compliance strip on the left.
-    var bcBoxW = iw * S.bcW, bcBoxH = av * S.bcMaxH;
+    // ── Bottom band: compliance strip left, barcode right ──
+    // The barcode FILLS its half of the band instead of keeping the symbol's
+    // natural proportions. Preserving them meant the height cap decided the
+    // width, so on a wide sheet the code shrank to 14% of the label — the same
+    // small symbol on every size. Only horizontal ratios carry data, so filling
+    // costs nothing and makes the code grow with the sheet.
+    var bandH = av * S.bandH, bandTop = bot - bandH;
+    var bcBoxW = iw * S.bcW;
     var ebL = effectiveBarcode(cell);
-    var bc = barcodeFit(ebL.value, ebL.fmt, W - pad - bcBoxW, bot - bcBoxH, bcBoxW, bcBoxH);
-    var bcW = bc.w, bcH = bc.h;
-    if (bcH > 0) {
-      // barcodeFit centres inside the box; pin it to the bottom-right corner.
-      var dx = (bcBoxW - bcW) / 2, dy = (bcBoxH - bcH) / 2;
-      for (var i2 = 0; i2 < bc.prims.length; i2++) {
-        bc.prims[i2].x += dx; bc.prims[i2].y += dy;
-        out.push(bc.prims[i2]);
-      }
-    }
+    var bc = barcodeFill(ebL.value, ebL.fmt, W - pad - bcBoxW, bandTop, bcBoxW, bandH);
+    for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+
     var sym = A.symbols;
     if (sym && sym.img && sym.img.naturalWidth) {
       var sasp = sym.img.naturalWidth / sym.img.naturalHeight;
-      var sh = av * S.symH, sw = sh * sasp;
-      var room = Math.max(0, iw - bcW - iw * S.symGap);
-      if (sw > room) { sw = room; sh = sw / sasp; }
+      var sw = Math.max(0, iw - bcBoxW - iw * S.symGap), sh = sw / sasp;
+      if (sh > bandH) { sh = bandH; sw = sh * sasp; }
       if (sw > 0.2) out.push({ kind: 'image', img: sym.img, url: sym.url, x: pad, y: bot - sh, w: sw, h: sh });
     }
-    var contentBottom = bot - Math.max(bcH, av * S.bcMinBand) - av * S.bandGap;
 
-    // Top-down content flow.
-    var cy = top;
+    // ── Content block, measured first then centred ──
+    // Sizing every piece before placing any of it lets the whole block sit
+    // centred in the space above the band. Laying it out top-down instead left
+    // the spec line floating in a pool of leftover white, which read as a bug.
+    var contentTop = top, contentBottom = bandTop - av * S.bandGap;
+    var availH = contentBottom - contentTop;
+    if (availH <= 1) return out;
+
+    var blocks = [], blockH = 0;
+
     var logo = A.logo;
     if (logo && logo.img && logo.img.naturalWidth) {
       var lasp = logo.img.naturalWidth / logo.img.naturalHeight;
       var lh = av * S.logoH, lw = lh * lasp;
       if (lw > iw * S.logoMaxW) { lw = iw * S.logoMaxW; lh = lw / lasp; }
-      out.push({ kind: 'image', img: logo.img, url: logo.url, x: cx - lw / 2, y: cy, w: lw, h: lh });
-      cy += lh + av * S.logoGap;
+      blocks.push({ kind: 'logo', img: logo, w: lw, h: lh, gap: av * S.logoGap });
+      blockH += lh + av * S.logoGap;
     }
 
-    if (cell.code) {
+    if (usable(cell.code)) {
       var cs = fitSize(cell.code, iw, av * S.codeH, true, S.codeMinMM);
-      cy += cs;                                        // advance to the baseline
-      out.push({ kind: 'text', text: String(cell.code), x: cx, y: cy, size: cs, bold: true, align: 'center' });
-      cy += av * S.codeGap;
+      blocks.push({ kind: 'line', text: String(cell.code), size: cs, bold: true, gap: av * S.codeGap });
+      blockH += cs + av * S.codeGap;
     }
+
+    var specs = (cell.lines || []).map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean);
+    var free = Math.max(0, availH - blockH);
 
     if (cell.desc) {
-      var maxDescH = Math.max(av * S.descFloor, (contentBottom - cy) * S.descMaxFrac);
-      var d = fitBlock(cell.desc, iw, maxDescH, av * S.descH, S.descMinMM, S.descLead);
-      for (var i = 0; i < d.lines.length; i++) {
-        cy += d.size;
-        out.push({ kind: 'text', text: d.lines[i], x: cx, y: cy, size: d.size, align: 'center' });
-        cy += d.size * (S.descLead - 1);
-      }
-      cy += av * S.descGap;
+      var descRoom = specs.length ? free * S.descShare : free;
+      var d = fitBlock(cell.desc, iw, Math.max(av * 0.12, descRoom), av * S.descH, S.descMinMM, S.descLead);
+      blocks.push({ kind: 'para', lines: d.lines, size: d.size, lead: S.descLead, gap: av * S.descGap });
+      blockH += d.lines.length * d.size * S.descLead + av * S.descGap;
     }
 
-    var specs = (cell.lines || []).map(function (s) { return String(s == null ? '' : s).trim(); }).filter(Boolean);
-    var availL = contentBottom - cy;
-    if (specs.length && availL > 1.5) {
-      var wrapAll = function (size) {
-        var acc = [];
-        specs.forEach(function (ln) { wrap(ln, iw, size).forEach(function (x) { acc.push(x); }); });
-        return acc;
-      };
-      var ls = av * S.lineH, rows = wrapAll(ls);
-      while (ls > S.lineMinMM && rows.length * ls * S.lineLead > availL) { ls -= 0.1; rows = wrapAll(ls); }
-      var lead = ls * S.lineLead;
-      var ly = cy + Math.max(0, (availL - rows.length * lead) / 2);
-      for (var j = 0; j < rows.length; j++) {
-        ly += ls;
-        out.push({ kind: 'text', text: rows[j], x: cx, y: ly, size: ls, align: 'center' });
-        ly += lead - ls;
+    if (specs.length) {
+      var specRoom = Math.max(av * 0.06, availH - blockH);
+      var joined = specs.join('\n');
+      var ls = av * S.lineH, rows = wrapAllLines(specs, iw, ls);
+      while (ls > S.lineMinMM && rows.length * ls * S.lineLead > specRoom) { ls -= 0.1; rows = wrapAllLines(specs, iw, ls); }
+      blocks.push({ kind: 'para', lines: rows, size: ls, lead: S.lineLead, gap: 0 });
+      blockH += rows.length * ls * S.lineLead;
+      void joined;
+    }
+
+    // trailing gap of the last block should not push the centring off
+    if (blocks.length) blockH -= blocks[blocks.length - 1].gap;
+
+    var y = contentTop + Math.max(0, (availH - blockH) / 2);
+    for (i = 0; i < blocks.length; i++) {
+      var bkt = blocks[i];
+      if (bkt.kind === 'logo') {
+        out.push({ kind: 'image', img: bkt.img.img, url: bkt.img.url, x: cx - bkt.w / 2, y: y, w: bkt.w, h: bkt.h });
+        y += bkt.h;
+      } else if (bkt.kind === 'line') {
+        y += bkt.size;
+        out.push({ kind: 'text', text: bkt.text, x: cx, y: y, size: bkt.size, bold: bkt.bold, align: 'center' });
+      } else {
+        for (var j = 0; j < bkt.lines.length; j++) {
+          y += bkt.size;
+          out.push({ kind: 'text', text: bkt.lines[j], x: cx, y: y, size: bkt.size, align: 'center' });
+          y += bkt.size * (bkt.lead - 1);
+        }
       }
+      y += bkt.gap;
     }
 
     return out;
@@ -752,7 +773,7 @@
   function cellScan(cell, W, H, recipe) {
     if (!cell || cell.type === 'text') return { ok: true, empty: true, moduleMM: 0, minMM: MIN_MODULE_MM, format: '', value: '' };
     var eb = effectiveBarcode(cell);
-    var box = barcodeBox(cell.type === 'location' ? 'location' : recipe, W, H);
+    var box = barcodeBox(cell.type === 'location' ? 'location' : (cell.type === 'plabel' ? 'plabel' : recipe), W, H);
     return scanQuality(eb.value, eb.fmt, box.w, box.h);
   }
   // The barcode box a recipe would give this label — used by the check above.
@@ -764,6 +785,10 @@
     if (recipe === 'shipping') {
       var ps = Math.min(SH.pad, Math.min(W, H) * 0.05);
       return { w: (W - 2 * ps) * SH.bcW, h: Math.max(1, (H - ps) - (ps + H * SH.titleH + H * SH.titleGap)) };
+    }
+    if (recipe === 'plabel') {
+      var pb = H * SPEC.pad;
+      return { w: (W - 2 * pb) * SPEC.bcW, h: (H - 2 * pb) * SPEC.bandH };
     }
     if (recipe === 'code5dc') {
       var pad = Math.min(W, H) * R5.pad, ih = H - 2 * pad;

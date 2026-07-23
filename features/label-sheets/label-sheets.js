@@ -40,7 +40,7 @@
       if (recipe === 'shipping') return 'Code on top, 5DC left, barcode right';
       return 'Code, 5DC and barcode';
     }
-    if (type === 'plabel') return 'Full Rapid LED sticker, from Cin7';
+    if (type === 'plabel') return 'Rapid LED sticker';
     if (type === 'location') return 'Bin code — big, barcode, code again';
     if (type === 'barcode') return 'Any code — EAN-13 or CODE128';
     if (type === 'text') return 'Free text';
@@ -58,7 +58,7 @@
     barcode: { type: 'barcode', value: '9727435304891', fmt: 'auto' },
     location: { type: 'location', code: 'MA-G-13-L3' },
     text: { type: 'text', text: 'Rapid LED' },
-    plabel: { type: 'plabel', code: 'R1021-WH-TRI', desc: '8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri', lines: ['200 – 240VAC / 50-60Hz'], barcode: '9727435304891', fmt: 'auto' }
+    plabel: { type: 'plabel', code: 'R1021-WH-TRI', dc5: '95908', desc: '8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri', lines: ['200 – 240VAC / 50-60Hz'], barcode: '9727435304891', fmt: 'auto' }
   };
 
   // ── Rendered preview of one cell (shared by the cards and the sheet) ──
@@ -87,7 +87,7 @@
       var examples = m.allow.filter(function (type) { return !NO_PREVIEW[type]; }).map(function (type) {
         var url = cellPreviewURL(SAMPLES[type], m.labelW, m.labelH, { productRecipe: m.productRecipe });
         return '<div class="ls-ex">' +
-          '<div class="ls-ex-frame"' + (m.labelW > m.labelH * 1.6 ? ' style="min-height:44px;"' : '') + '>' +
+          '<div class="ls-ex-frame"' + (m.labelW > m.labelH * 1.6 ? ' style="min-height:62px;"' : '') + '>' +
             (url ? '<img src="' + url + '" alt="" />' : '<span class="ls-loading">…</span>') +
           '</div>' +
           '<div class="ls-ex-name">' + esc(TYPE_NAME[type] || type) + '</div>' +
@@ -241,15 +241,16 @@
       else if (existing.type === 'barcode') { el('lsBcVal').value = existing.value || ''; el('lsBcFmt').value = existing.fmt || 'auto'; }
       else if (existing.type === 'location') { el('lsLocVal').value = existing.code || ''; }
       else if (existing.type === 'plabel') {
-        LS.editor.plProduct = { sku: existing.code, name: existing.desc, barcode: existing.barcode };
+        LS.editor.plProduct = { sku: existing.sku || existing.code, name: existing.desc, barcode: existing.barcode, attribute1: existing.dc5 };
         el('lsPlCode').value = existing.code || '';
         el('lsPlDesc').value = existing.desc || '';
         el('lsPlLines').value = (existing.lines || []).join('\n');
         if (el('lsPlBorder')) el('lsPlBorder').checked = !!existing.border;
-        plBcNote(existing.barcode, existing.code);
+        plBcNote(existing.barcode, existing.dc5 || existing.code);
         el('lsPlForm').style.display = 'block';
       }
     } else { pickType(defaultType()); }
+    updateModalPreview();
     openModal('lsCellModal');
   }
 
@@ -259,6 +260,7 @@
     el('lsCellTitle').textContent = 'Fill all (from label ' + start + ' to end)';
     resetEditorInputs();
     pickType(preType || defaultType());
+    updateModalPreview();
     openModal('lsCellModal');
   }
 
@@ -284,6 +286,7 @@
     el('lsTypeLocation').style.display = type === 'location' ? 'block' : 'none';
     el('lsTypeText').style.display = type === 'text' ? 'block' : 'none';
     el('lsTypeBarcode').style.display = type === 'barcode' ? 'block' : 'none';
+    updateModalPreview();
   }
 
   function searchProduct(term) {
@@ -310,6 +313,7 @@
     el('lsProdSearch').value = '';
     el('lsProdResults').style.display = 'none';
     showChosen();
+    updateModalPreview();
   }
 
   // What will be encoded on THIS sheet, in what symbology, and whether the bars
@@ -403,6 +407,7 @@
     el('lsLocVal').value = c;
     el('lsLocResults').style.display = 'none';
     locSearch(c);
+    updateModalPreview();
   }
 
   function cleanDesc(name) {
@@ -437,33 +442,73 @@
     if (!el('lsPlLines').value.trim()) el('lsPlLines').value = '200 – 240VAC / 50-60Hz';
     plBcNote(p.barcode, p.sku);
     el('lsPlForm').style.display = 'block';
+    updateModalPreview();
+  }
+
+  // Builds the cell the editor currently describes. `quiet` skips the alerts so
+  // the live preview can call it on every keystroke; applyCell wants them.
+  function buildCell(quiet) {
+    var type = LS.editor.type;
+    if (type === 'product') {
+      if (!LS.editor.product) { if (!quiet) alert('Choose a product — or use Barcode / Text.'); return null; }
+      var pr = LS.editor.product;
+      return { type: 'product', sku: pr.sku, name: pr.name, barcode: pr.barcode, dc5: pr.attribute1, fmt: 'auto' };
+    }
+    if (type === 'text') {
+      var tv = el('lsTextVal').value.trim();
+      if (!tv) { if (!quiet) alert('Type some text.'); return null; }
+      return { type: 'text', text: tv };
+    }
+    if (type === 'barcode') {
+      var bv = el('lsBcVal').value.trim();
+      if (!bv) { if (!quiet) alert('Type the code value.'); return null; }
+      return { type: 'barcode', value: bv, fmt: el('lsBcFmt').value };
+    }
+    if (type === 'location') {
+      var lc = el('lsLocVal').value.trim();
+      if (!lc) { if (!quiet) alert('Type or pick a location code.'); return null; }
+      return { type: 'location', code: lc };
+    }
+    if (type === 'plabel') {
+      var plCode = el('lsPlCode').value.trim();
+      if (!plCode && !LS.editor.plProduct) { if (!quiet) alert('Find a product first.'); return null; }
+      var plLines = el('lsPlLines').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+      var plP = LS.editor.plProduct || {};
+      return { type: 'plabel', code: plCode, desc: el('lsPlDesc').value.trim(), lines: plLines,
+        barcode: plP.barcode || '', dc5: plP.attribute1 || '', sku: plP.sku || plCode,
+        border: !!(el('lsPlBorder') && el('lsPlBorder').checked), fmt: 'auto' };
+    }
+    return null;
+  }
+
+  // ── Live preview inside the editor ──
+  // The sheet behind the modal is too small to judge a label by, so the same
+  // renderer draws it here at a readable size, at the exact proportions of the
+  // sheet in play — what you approve is what prints.
+  function updateModalPreview() {
+    var box = el('lsModalPrev'), meta = el('lsModalPrevMeta');
+    if (!box || !LS.caps) return;
+    var cell = buildCell(true);
+    if (!cell) {
+      box.innerHTML = '<span class="ls-mprev-empty">Fill the fields to see the label</span>';
+      if (meta) meta.textContent = LS.caps.size;
+      return;
+    }
+    var url = cellPreviewURL(cell, LS.caps.labelW, LS.caps.labelH, { productRecipe: LS.caps.productRecipe });
+    box.innerHTML = url
+      ? '<img src="' + url + '" alt="" style="aspect-ratio:' + LS.caps.labelW + '/' + LS.caps.labelH + ';" />'
+      : '<span class="ls-mprev-empty">—</span>';
+    if (meta) {
+      var q = window.LabelRender.cellScan(cell, LS.caps.labelW, LS.caps.labelH, LS.caps.productRecipe);
+      meta.innerHTML = esc(LS.caps.size) + (q.empty ? '' :
+        ' · <span style="color:' + (q.ok ? '#1a8a4a' : '#c0392b') + ';">' +
+        (q.ok ? '✓ scans well' : '⚠ bars too narrow') + ' (' + q.moduleMM.toFixed(2) + ' mm)</span>');
+    }
   }
 
   function applyCell() {
-    var type = LS.editor.type, cell = null;
-    if (type === 'product') {
-      if (!LS.editor.product) { alert('Choose a product — or use Barcode / Text.'); return; }
-      var pr = LS.editor.product;
-      cell = { type: 'product', sku: pr.sku, name: pr.name, barcode: pr.barcode, dc5: pr.attribute1, fmt: 'auto' };
-    } else if (type === 'text') {
-      var tv = el('lsTextVal').value.trim();
-      if (!tv) { alert('Type some text.'); return; }
-      cell = { type: 'text', text: tv };
-    } else if (type === 'barcode') {
-      var bv = el('lsBcVal').value.trim();
-      if (!bv) { alert('Type the code value.'); return; }
-      cell = { type: 'barcode', value: bv, fmt: el('lsBcFmt').value };
-    } else if (type === 'location') {
-      var lc = el('lsLocVal').value.trim();
-      if (!lc) { alert('Type or pick a location code.'); return; }
-      cell = { type: 'location', code: lc };
-    } else if (type === 'plabel') {
-      var plCode = el('lsPlCode').value.trim();
-      if (!plCode && !LS.editor.plProduct) { alert('Find a product first.'); return; }
-      var plLines = el('lsPlLines').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
-      var plBc = (LS.editor.plProduct && LS.editor.plProduct.barcode) || '';
-      cell = { type: 'plabel', code: plCode, desc: el('lsPlDesc').value.trim(), lines: plLines, barcode: plBc, border: !!(el('lsPlBorder') && el('lsPlBorder').checked), fmt: 'auto' };
-    }
+    var cell = buildCell(false);
+    if (!cell && LS.editor.type) return;
     if (LS.editor.mode === 'all') {
       var start = Math.max(1, intVal('lsStart', 1));
       for (var p = start - 1; p < LS.tpl.cols * LS.tpl.rows; p++) LS.cells[p] = cell ? Object.assign({}, cell) : null;
@@ -627,7 +672,13 @@
       clearTimeout(resizeTimer); resizeTimer = setTimeout(renderSheet, 150);
     });
     var m = el('lsCellModal');
-    if (m) m.addEventListener('click', function (ev) { if (ev.target === m) m.classList.remove('open'); });
+    if (m) {
+      m.addEventListener('click', function (ev) { if (ev.target === m) m.classList.remove('open'); });
+      var prevTimer = null;
+      var live = function () { clearTimeout(prevTimer); prevTimer = setTimeout(updateModalPreview, 140); };
+      m.addEventListener('input', live);
+      m.addEventListener('change', live);
+    }
   }
 
   // expose
@@ -654,6 +705,7 @@
   LS.clearSelected = clearSelected;
   LS.locSearch = locSearch;
   LS.locChoose = locChoose;
+  LS.updateModalPreview = updateModalPreview;
   LS.cellPreviewURL = cellPreviewURL;
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

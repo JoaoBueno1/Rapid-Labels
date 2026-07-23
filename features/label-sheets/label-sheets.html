@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="label-sheets.css?v=20260724b" />
+  <link rel="stylesheet" href="label-sheets.css?v=20260724h" />
 </head>
 <body>
   <header class="ls-header">
@@ -97,6 +97,12 @@
       <!-- built from the selected template's capability list -->
       <div class="ls-types" id="lsTypeTabs"></div>
 
+      <!-- what this label will look like on THIS sheet, updated as you type -->
+      <div class="ls-mprev">
+        <div class="ls-mprev-box" id="lsModalPrev"><span class="ls-mprev-empty">Fill the fields to see the label</span></div>
+        <div class="ls-mprev-meta" id="lsModalPrevMeta">—</div>
+      </div>
+
       <div class="ls-type-body">
         <!-- product -->
         <div id="lsTypeProduct">
@@ -161,8 +167,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="label-assets.js?v=20260723l"></script>
-  <script src="label-templates.js?v=20260724f"></script>
-  <script src="label-render.js?v=20260724e"></script>
-  <script src="label-sheets.js?v=20260724f"></script>
+  <script src="label-templates.js?v=20260724h"></script>
+  <script src="label-render.js?v=20260724h"></script>
+  <script src="label-sheets.js?v=20260724i"></script>
 </body>
 </html>
