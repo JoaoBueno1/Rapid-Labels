@@ -28,15 +28,18 @@
   function renderModels() {
     var grid = el('lsModelGrid');
     var A = window.LABEL_ASSETS || {};
-    var logo = A.logo ? A.logo.url : '';
-    // content-first: a dynamic Product-label card that sets its own sheet size
+    var logo = A.logo ? A.logo.url : '', sym = A.symbols ? A.symbols.url : '';
+    // content-first: a Product-label card that previews the real label (logo + code + symbols + barcode)
     var dynCard =
       '<div class="ls-card" onclick="LS.startProductLabel()">' +
-        '<div class="ls-card-preview" style="flex-direction:column;gap:1px;">' +
-          (logo ? '<img src="' + logo + '" alt="" style="max-width:76%;max-height:32px;margin-bottom:3px;" />' : '') +
-          '<div style="font-weight:700;font-size:12px;color:#1a2733;">R####-XX</div>' +
-          '<div style="font-size:7.5px;color:#8a97a2;line-height:1.1;">description · specs</div>' +
-          '<div style="font-size:15px;letter-spacing:-1.5px;color:#1a2733;margin-top:2px;">▮▮▮▮▮</div>' +
+        '<div class="ls-card-preview" style="flex-direction:column;gap:2px;padding:8px 6px;">' +
+          (logo ? '<img src="' + logo + '" alt="" style="max-width:64%;max-height:24px;" />' : '') +
+          '<div style="font-weight:700;font-size:12px;color:#1a2733;">R1021-WH-TRI</div>' +
+          '<div style="font-size:7px;color:#8a97a2;line-height:1.05;">8w Dimmable Downlight, Tri</div>' +
+          '<div style="display:flex;align-items:flex-end;justify-content:center;gap:8px;margin-top:4px;width:100%;">' +
+            (sym ? '<img src="' + sym + '" alt="" style="max-height:11px;max-width:44%;" />' : '') +
+            '<span style="font-size:13px;letter-spacing:-1.5px;color:#1a2733;">▮▮▮</span>' +
+          '</div>' +
         '</div>' +
         '<div class="ls-card-title">Product label</div>' +
         '<div class="ls-card-sub">Rapid LED sticker · 68×70 mm</div>' +
@@ -125,9 +128,10 @@
       else if (cell.type === 'text') { inner = '<span class="ls-cell-txt">' + esc((cell.text || '').slice(0, 44)) + '</span>'; }
       else if (cell.type === 'barcode') { inner = '<span class="ls-cell-bc">▮▮ ' + esc(String(cell.value || '').slice(0, 14)) + '</span>'; }
       else if (cell.type === 'plabel') {
-        inner = '<span class="ls-cell-name" style="color:#0aa5e6;font-weight:700;">RAPID LED</span>' +
+        var plLogo = (window.LABEL_ASSETS && window.LABEL_ASSETS.logo) ? window.LABEL_ASSETS.logo.url : '';
+        inner = (plLogo ? '<img src="' + plLogo + '" alt="" style="max-height:14px;max-width:66%;object-fit:contain;margin-bottom:1px;" />' : '<span class="ls-cell-name" style="color:#0aa5e6;font-weight:700;">RAPID LED</span>') +
           '<span class="ls-cell-5dc">' + esc(cell.code || '') + '</span>' +
-          (showName && cell.desc ? '<span class="ls-cell-name">' + esc(String(cell.desc).slice(0, 38)) + '</span>' : '') +
+          (showName && cell.desc ? '<span class="ls-cell-name">' + esc(String(cell.desc).slice(0, 40)) + '</span>' : '') +
           '<span class="ls-cell-bc">▤▤ ▮▮▮</span>';
       }
 
@@ -261,6 +265,11 @@
   }
 
   // ── Product-label form: product search + auto-fill ──
+  function cleanDesc(name) {
+    // the label description is cleaner than the raw Cin7 name: drop the "(3000K…)"
+    // tail and any "-Carton10" suffix, tidy trailing punctuation.
+    return String(name || '').split('(')[0].replace(/[-–]\s*Carton\s*\d+\s*$/i, '').trim().replace(/[,;]\s*$/, '');
+  }
   function plSearch(term) {
     term = (term || '').trim().toLowerCase();
     var box = el('lsPlResults');
@@ -284,7 +293,7 @@
     el('lsPlSearch').value = '';
     el('lsPlResults').style.display = 'none';
     el('lsPlCode').value = p.sku || '';
-    el('lsPlDesc').value = p.name || '';
+    el('lsPlDesc').value = cleanDesc(p.name);
     if (!el('lsPlLines').value.trim()) el('lsPlLines').value = '200 – 240VAC / 50-60Hz';
     el('lsPlBc').innerHTML = 'Barcode: <b>' + esc(p.barcode || '(uses code)') + '</b> — auto-generated (baked-in one is dropped).';
     el('lsPlForm').style.display = 'block';
@@ -514,12 +523,15 @@
       cy += av * 0.012;
     }
 
-    // --- description (medium, up to 2 wrapped lines) ---
+    // --- description (medium; auto-fit so the FULL text shows, never hard-cut) ---
     if (cell.desc) {
+      var maxDescH = Math.max(av * 0.18, (contentBottom - cy) * 0.62);
       var dfs = mm2pt(av * 0.052);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(dfs);
-      var dl = doc.splitTextToSize(String(cell.desc), iw).slice(0, 2);
-      for (var i = 0; i < dl.length; i++) { cy += dfs * PT2MM; doc.text(dl[i], cx, cy, { align: 'center' }); cy += dfs * PT2MM * 0.15; }
+      doc.setFont('helvetica', 'normal');
+      var dwrap = function (fs) { doc.setFontSize(fs); return doc.splitTextToSize(String(cell.desc), iw); };
+      var dl = dwrap(dfs);
+      while (dfs > 5 && dl.length * dfs * PT2MM * 1.12 > maxDescH) { dfs -= 0.5; dl = dwrap(dfs); }
+      for (var i = 0; i < dl.length; i++) { cy += dfs * PT2MM; doc.text(dl[i], cx, cy, { align: 'center' }); cy += dfs * PT2MM * 0.12; }
       cy += av * 0.01;
     }
 
