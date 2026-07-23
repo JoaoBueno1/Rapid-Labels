@@ -31,14 +31,14 @@
   ];
 
   var NAMES = {
-    l7651: 'Pequena — preço / barcode',
-    l7160: 'Produto / endereço',
-    l7159: 'Produto',
-    l7163: 'Envio',
-    l7164: 'Média',
-    l7173: 'Grande',
-    l7165: 'Grande',
-    full:  'Folha inteira'
+    l7651: 'Small — price / barcode',
+    l7160: 'Product / address',
+    l7159: 'Product',
+    l7163: 'Shipping',
+    l7164: 'Medium',
+    l7173: 'Large',
+    l7165: 'Large',
+    full:  'Full sheet'
   };
 
   // ── Self-check: geometry must tile within A4 (non-negative right/bottom margin) ──

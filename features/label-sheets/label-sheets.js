@@ -34,9 +34,9 @@
       return '<div class="ls-card' + (m.fits ? '' : ' bad') + '" onclick="LS.selectModel(\'' + t.id + '\')">' +
         '<div class="ls-card-preview">' + prev + '</div>' +
         '<div class="ls-card-title">' + esc(m.name) + '</div>' +
-        '<div class="ls-card-sub">' + esc(m.size) + ' · grade ' + esc(m.grid) + '</div>' +
+        '<div class="ls-card-sub">' + esc(m.size) + ' · grid ' + esc(m.grid) + '</div>' +
         '<div class="ls-badges">' +
-          '<span class="ls-badge up">' + m.up + ' por folha</span>' +
+          '<span class="ls-badge up">' + m.up + ' per sheet</span>' +
           '<span class="ls-badge">Avery ' + esc(m.avery) + '</span>' +
           codeBadge +
         '</div></div>';
@@ -45,12 +45,12 @@
 
   function selectModel(id) {
     var t = window.LabelTemplates.byId(id);
-    if (!t || !(t._fit && t._fit.ok)) { alert('Este modelo não passou na verificação de encaixe A4 e está desabilitado.'); return; }
+    if (!t || !(t._fit && t._fit.ok)) { alert('This model failed the A4-fit check and is disabled.'); return; }
     LS.tpl = t;
     LS.cells = new Array(t.cols * t.rows).fill(null);
     var m = window.LabelTemplates.meta(t);
     el('lsEdName').textContent = m.name;
-    el('lsEdMeta').textContent = m.size + ' · grade ' + m.grid + ' · ' + m.up + ' por folha · Avery ' + m.avery + (m.code ? ' · Celcast ' + m.code : '');
+    el('lsEdMeta').textContent = m.size + ' · grid ' + m.grid + ' · ' + m.up + ' per sheet · Avery ' + m.avery + (m.code ? ' · Celcast ' + m.code : '');
     el('lsStart').value = 1;
     el('lsStart').max = t.cols * t.rows;
     el('lsSub').textContent = m.name + ' — ' + m.size;
@@ -63,7 +63,7 @@
   function backToModels() {
     el('lsEditor').style.display = 'none';
     el('lsModels').style.display = 'block';
-    el('lsSub').textContent = 'Folhas de etiqueta Celcast · escolha um modelo';
+    el('lsSub').textContent = 'Celcast label sheets · choose a model';
   }
 
   // ═══ STEP 2 — visual sheet ═══
@@ -119,15 +119,15 @@
     }
     var totalLabels = first + rest * (sheets - 1);
     el('lsSummary').innerHTML =
-      '<b>' + filled + '</b> de ' + total + ' etiquetas preenchidas<br>' +
-      'Folha 1 começa na etiqueta <b>' + start + '</b>' + (start > 1 ? ' <span style="color:#8a97a2">(as ' + (start - 1) + ' primeiras já usadas)</span>' : '') + '<br>' +
-      'Folhas: <b>' + sheets + '</b> · total a imprimir: <b>' + totalLabels + '</b> etiquetas';
+      '<b>' + filled + '</b> of ' + total + ' labels filled<br>' +
+      'Sheet 1 starts at label <b>' + start + '</b>' + (start > 1 ? ' <span style="color:#8a97a2">(first ' + (start - 1) + ' already used)</span>' : '') + '<br>' +
+      'Sheets: <b>' + sheets + '</b> · total to print: <b>' + totalLabels + '</b> labels';
   }
 
   // ═══ Cell editor ═══
   function openCell(index) {
     LS.editor = { mode: 'cell', index: index, type: 'product', product: null };
-    el('lsCellTitle').textContent = 'Etiqueta ' + (index + 1);
+    el('lsCellTitle').textContent = 'Label ' + (index + 1);
     var existing = LS.cells[index];
     resetEditorInputs();
     if (existing) {
@@ -142,7 +142,7 @@
   function openFillAll() {
     var start = Math.max(1, intVal('lsStart', 1));
     LS.editor = { mode: 'all', index: -1, type: 'product', product: null };
-    el('lsCellTitle').textContent = 'Preencher todas (da etiqueta ' + start + ' ao fim)';
+    el('lsCellTitle').textContent = 'Fill all (from label ' + start + ' to end)';
     resetEditorInputs();
     pickType('product');
     openModal('lsCellModal');
@@ -169,7 +169,7 @@
     term = (term || '').trim().toLowerCase();
     var box = el('lsProdResults');
     if (term.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
-    if (!LS.products) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Carregando produtos…</span></div>'; return; }
+    if (!LS.products) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Loading products…</span></div>'; return; }
     LS._results = LS.products.filter(function (p) {
       return ((p.attribute1 || '').toLowerCase().indexOf(term) >= 0) ||
              ((p.sku || '').toLowerCase().indexOf(term) >= 0) ||
@@ -177,7 +177,7 @@
     }).slice(0, 40);
     if (!LS._results.length) {
       box.style.display = 'block';
-      box.innerHTML = '<div class="ls-result"><span class="rname">Nada encontrado — você ainda pode usar Texto ou Barcode.</span></div>';
+      box.innerHTML = '<div class="ls-result"><span class="rname">Nothing found — you can still use Text or Barcode.</span></div>';
       return;
     }
     box.innerHTML = LS._results.map(function (p, i) {
@@ -204,23 +204,23 @@
       '<div style="padding:10px 12px;background:#eef6fb;border-radius:8px;">' +
         '<b>' + esc(p.attribute1 || '') + '</b> — ' + esc(p.sku || '') + '<br>' +
         '<span style="color:#5b6b78;font-size:12px;">' + esc((p.name || '').slice(0, 60)) + '</span><br>' +
-        '<span style="color:#8a97a2;font-size:11.5px;">barcode: ' + esc(p.barcode || '(usa SKU)') + '</span>' +
+        '<span style="color:#8a97a2;font-size:11.5px;">barcode: ' + esc(p.barcode || '(uses SKU)') + '</span>' +
       '</div>';
   }
 
   function applyCell() {
     var type = LS.editor.type, cell = null;
     if (type === 'product') {
-      if (!LS.editor.product) { alert('Escolha um produto — ou use Texto/Barcode.'); return; }
+      if (!LS.editor.product) { alert('Choose a product — or use Text/Barcode.'); return; }
       var pr = LS.editor.product;
       cell = { type: 'product', sku: pr.sku, name: pr.name, barcode: pr.barcode, dc5: pr.attribute1, fmt: 'auto' };
     } else if (type === 'text') {
       var tv = el('lsTextVal').value.trim();
-      if (!tv) { alert('Digite um texto.'); return; }
+      if (!tv) { alert('Type some text.'); return; }
       cell = { type: 'text', text: tv };
     } else if (type === 'barcode') {
       var bv = el('lsBcVal').value.trim();
-      if (!bv) { alert('Digite o valor do código.'); return; }
+      if (!bv) { alert('Type the code value.'); return; }
       cell = { type: 'barcode', value: bv, fmt: el('lsBcFmt').value };
     } else if (type === 'blank') {
       cell = null;
@@ -237,7 +237,7 @@
 
   function clearAll() {
     if (!LS.tpl) return;
-    if (!confirm('Limpar todas as etiquetas desta folha?')) return;
+    if (!confirm('Clear all labels on this sheet?')) return;
     LS.cells = new Array(LS.tpl.cols * LS.tpl.rows).fill(null);
     renderSheet();
   }
@@ -293,13 +293,13 @@
     doc.setDrawColor(0); doc.setLineWidth(0.2);
     pts.forEach(function (p) { doc.line(p[0] - 4, p[1], p[0] + 4, p[1]); doc.line(p[0], p[1] - 4, p[0], p[1] + 4); });
     doc.setFontSize(6); doc.setTextColor(120);
-    doc.text('Marcas a 10 mm da borda — imprima em 100% / Tamanho real (sem ajustar a pagina)', 105, 293, { align: 'center' });
+    doc.text('Marks 10 mm from edge — print at 100% / Actual size (no page scaling)', 105, 293, { align: 'center' });
   }
 
   // ═══ Generate PDF (real print or calibration outline) ═══
   function generatePdf(testOutline) {
     var t = LS.tpl; if (!t) return;
-    if (!window.jspdf || !window.jspdf.jsPDF) { alert('Biblioteca de PDF não carregou. Recarregue a página.'); return; }
+    if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library failed to load. Reload the page.'); return; }
     var doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     var sheets = testOutline ? 1 : Math.max(1, intVal('lsSheets', 1));
     var start = Math.max(1, intVal('lsStart', 1));
@@ -330,9 +330,9 @@
     try {
       var url = doc.output('bloburl');
       var win = window.open(url, '_blank');
-      if (!win) doc.save((testOutline ? 'calibracao-' : 'etiquetas-') + t.id + '.pdf');
+      if (!win) doc.save((testOutline ? 'calibration-' : 'labels-') + t.id + '.pdf');
     } catch (e) {
-      doc.save((testOutline ? 'calibracao-' : 'etiquetas-') + t.id + '.pdf');
+      doc.save((testOutline ? 'calibration-' : 'labels-') + t.id + '.pdf');
     }
   }
 
@@ -342,7 +342,7 @@
     ['lsCalibPill', 'lsCalibPill2'].forEach(function (id) {
       var e = el(id); if (!e) return;
       e.className = 'ls-calib-pill ' + (on ? 'on' : 'off');
-      e.textContent = on ? 'Calibrado' : (id === 'lsCalibPill2' ? 'off' : 'Não calibrado');
+      e.textContent = on ? 'Calibrated' : (id === 'lsCalibPill2' ? 'off' : 'Not calibrated');
     });
   }
   function openCalib() {
