@@ -22,7 +22,6 @@
   function el(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function intVal(id, def) { var v = parseInt(el(id) && el(id).value, 10); return isNaN(v) ? def : v; }
-  function looksEan13(v) { return /^\d{12,13}$/.test(String(v == null ? '' : v).trim()); }
 
   // ═══ STEP 1 — model picker ═══
   function renderModels() {
@@ -175,7 +174,7 @@
         el('lsPlDesc').value = existing.desc || '';
         el('lsPlLines').value = (existing.lines || []).join('\n');
         if (el('lsPlBorder')) el('lsPlBorder').checked = !!existing.border;
-        el('lsPlBc').innerHTML = 'Barcode: <b>' + esc(existing.barcode || '(uses code)') + '</b> — auto-generated.';
+        plBcNote(existing.barcode, existing.code);
         el('lsPlForm').style.display = 'block';
       }
     } else { pickType('product'); }
@@ -258,6 +257,18 @@
   }
 
   // ── Product-label form: product search + auto-fill ──
+  // Tell the operator the code that will actually be encoded — most of the
+  // catalogue has no barcode in Cin7 and silently falls back to the SKU.
+  function plBcNote(barcode, code) {
+    var e = el('lsPlBc'); if (!e) return;
+    var raw = String(barcode == null ? '' : barcode).trim();
+    var eff = window.LabelRender.bcValue({ barcode: raw, code: code });
+    if (!eff) { e.innerHTML = '<b>No barcode</b> — no barcode and no code, nothing will be printed.'; return; }
+    var fellBack = !raw || /^0+$/.test(raw);
+    e.innerHTML = 'Barcode: <b>' + esc(eff) + '</b> · ' + esc(window.LabelRender.bcFormat(eff, 'auto')) +
+      (fellBack ? ' — <span style="color:#b45309;">no barcode in Cin7, using the code instead</span>' : '');
+  }
+
   function cleanDesc(name) {
     // the label description is cleaner than the raw Cin7 name: drop the "(3000K…)"
     // tail and any "-Carton10" suffix, tidy trailing punctuation.
@@ -288,7 +299,7 @@
     el('lsPlCode').value = p.sku || '';
     el('lsPlDesc').value = cleanDesc(p.name);
     if (!el('lsPlLines').value.trim()) el('lsPlLines').value = '200 – 240VAC / 50-60Hz';
-    el('lsPlBc').innerHTML = 'Barcode: <b>' + esc(p.barcode || '(uses code)') + '</b> — auto-generated (baked-in one is dropped).';
+    plBcNote(p.barcode, p.sku);
     el('lsPlForm').style.display = 'block';
   }
 
@@ -371,22 +382,10 @@
     renderSheet();
   }
 
-  // ═══ Barcode → dataURL (for exact-mm PDF placement) ═══
-  function barcodeDataUrl(value, fmt) {
-    value = String(value == null ? '' : value).trim();
-    if (!value) return null;
-    var format = fmt === 'auto' || !fmt ? (looksEan13(value) ? 'EAN13' : 'CODE128') : fmt;
-    var canvas = document.createElement('canvas');
-    try {
-      JsBarcode(canvas, value, { format: format, height: 130, width: 2, displayValue: true, fontSize: 28, margin: 6, textMargin: 2 });
-    } catch (e) {
-      try { JsBarcode(canvas, value, { format: 'CODE128', height: 130, width: 2, displayValue: true, fontSize: 28, margin: 6, textMargin: 2 }); }
-      catch (e2) { return null; }
-    }
-    return { url: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height };
-  }
-
   // ═══ Render one cell into the PDF at exact mm ═══
+  // Every barcode on the sheet — plain Barcode cells, Product cells and the
+  // Product label — goes through LabelRender's vector bars, so one sheet never
+  // mixes crisp and resampled codes.
   var PT2MM = 0.3528;
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
@@ -411,8 +410,8 @@
   function renderProductCell(doc, cell, x, y, w, h) {
     var pad = clamp(Math.min(w, h) * 0.05, 1.0, 2.0);
     var iw = w - 2 * pad, ih = h - 2 * pad, cx = x + w / 2;
-    var value = cell.barcode || cell.sku;
-    var bc = value ? barcodeDataUrl(value, cell.fmt || 'auto') : null;
+    var value = window.LabelRender.bcValue({ barcode: cell.barcode, code: cell.sku });
+    var asp = value ? window.LabelRender.barcodeAspect(value, cell.fmt || 'auto') : 0;
 
     var rows = [];
     if (cell.name && (ih >= 46 || (ih >= 30 && iw >= 55))) {           // Product name
@@ -425,13 +424,12 @@
 
     var lineGap = 1.12;
     var textH = rows.reduce(function (s, r) { return s + r.fs * PT2MM * lineGap; }, 0);
-    var gap = rows.length && bc ? clamp(ih * 0.04, 0.6, 1.6) : 0;
+    var gap = rows.length && asp ? clamp(ih * 0.04, 0.6, 1.6) : 0;
 
     var bcW = 0, bcH = 0;
-    if (bc) {
+    if (asp) {
       var areaH = ih - textH - gap;
       if (areaH < 5) { rows = []; textH = 0; gap = 0; areaH = ih; }    // too tight -> barcode only
-      var asp = bc.w / bc.h;
       bcW = iw; bcH = bcW / asp;
       if (bcH > areaH) { bcH = areaH; bcW = bcH * asp; }
     }
@@ -443,98 +441,46 @@
       doc.text(rows[i].t, cx, cy, { align: 'center' });
       cy += rows[i].fs * PT2MM * (lineGap - 1);
     }
-    if (bc) { cy += gap; doc.addImage(bc.url, 'PNG', x + (w - bcW) / 2, cy, bcW, bcH); }
-    else if (value) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.text(String(value), cx, y + h / 2, { align: 'center' }); }
+    if (bcH) {
+      cy += gap;
+      var fit = window.LabelRender.barcodeFit(value, cell.fmt || 'auto', x + (w - bcW) / 2, cy, bcW, bcH);
+      window.LabelRender.drawPdf(doc, fit.prims);
+    } else if (value) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.text(String(value), cx, y + h / 2, { align: 'center' });
+    }
   }
 
   function renderBarcodeOnly(doc, value, fmt, x, y, w, h) {
-    value = value != null ? String(value) : '';
+    value = value != null ? String(value).trim() : '';
     if (!value) return;
-    var pad = clamp(Math.min(w, h) * 0.05, 1.0, 2.0), iw = w - 2 * pad, ih = h - 2 * pad;
-    var bc = barcodeDataUrl(value, fmt || 'auto');
-    if (!bc) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.text(value, x + w / 2, y + h / 2, { align: 'center' }); return; }
-    var asp = bc.w / bc.h, bw = iw, bh = bw / asp;
-    if (bh > ih) { bh = ih; bw = bh * asp; }
-    doc.addImage(bc.url, 'PNG', x + (w - bw) / 2, y + (h - bh) / 2, bw, bh);
+    var pad = clamp(Math.min(w, h) * 0.05, 1.0, 2.0);
+    var fit = window.LabelRender.barcodeFit(value, fmt || 'auto', x + pad, y + pad, w - 2 * pad, h - 2 * pad);
+    if (!fit.prims.length) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.text(value, x + w / 2, y + h / 2, { align: 'center' });
+      return;
+    }
+    window.LabelRender.drawPdf(doc, fit.prims);
   }
 
   // Dynamic Product label (Phase 2): composes logo + code + description + spec
   // lines + fixed compliance symbol strip + GENERATED barcode, responsive to the
   // label rectangle. Reproduces the Rapid LED product label from live data.
+  //
+  // The layout itself lives in label-render.js and is shared with the preview,
+  // so what you see on the sheet is what jsPDF draws — as VECTOR text plus three
+  // small images, not as one big bitmap per label.
   function renderProductLabelCell(doc, cell, x, y, w, h) {
-    // Render to a canvas (300dpi) and embed as ONE image -> preview and print use the
-    // very same renderer (true WYSIWYG), and jsPDF never touches the brand images.
-    try {
-      var cv = renderProductLabelCanvas(cell, w, h);
-      doc.addImage(cv.toDataURL('image/png'), 'PNG', x, y, w, h);
-    } catch (e) { console.warn('label-sheets: label render failed', e); }
+    try { window.LabelRender.toPdf(doc, cell, x, y, w, h); }
+    catch (e) { console.warn('label-sheets: label render failed', e); }
   }
 
-  // ── Canvas renderer for the Product label (single source of truth) ──
-  function _lblFont(px, bold) { return (bold ? 'bold ' : '') + Math.max(1, px) + 'px Helvetica, Arial, sans-serif'; }
-  function _fitFontPx(ctx, text, maxW, startPx, bold, minPx) {
-    var fs = startPx; ctx.font = _lblFont(fs, bold);
-    while (fs > (minPx || 6) && ctx.measureText(text).width > maxW) { fs -= 1; ctx.font = _lblFont(fs, bold); }
-    return fs;
-  }
-  function _wrapPx(ctx, text, maxW) {
-    var words = String(text || '').split(/\s+/), lines = [], cur = '';
-    for (var i = 0; i < words.length; i++) { var t = cur ? cur + ' ' + words[i] : words[i]; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = words[i]; } else cur = t; }
-    if (cur) lines.push(cur); return lines;
-  }
-  function _roundRectPath(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-  function barcodeCanvas(value, fmt) {
-    value = String(value == null ? '' : value).trim(); if (!value) return null;
-    var format = (fmt === 'auto' || !fmt) ? (looksEan13(value) ? 'EAN13' : 'CODE128') : fmt;
-    var c = document.createElement('canvas');
-    try { JsBarcode(c, value, { format: format, height: 140, width: 2, displayValue: true, fontSize: 30, margin: 6, textMargin: 2 }); }
-    catch (e) { try { JsBarcode(c, value, { format: 'CODE128', height: 140, width: 2, displayValue: true, fontSize: 30, margin: 6, textMargin: 2 }); } catch (e2) { return null; } }
-    return c;
-  }
-  function renderProductLabelCanvas(cell, wMM, hMM, pxPerMM) {
-    var A = window.LABEL_ASSETS || {};
-    var s = pxPerMM || (300 / 25.4);              // print dpi by default
-    var W = Math.max(4, Math.round(wMM * s)), H = Math.max(4, Math.round(hMM * s));
-    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-    var ctx = cv.getContext('2d');
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
-    ctx.textAlign = 'center'; ctx.fillStyle = '#111111';
-    var pad = H * 0.035, iw = W - 2 * pad, top = pad, bot = H - pad, cx = W / 2, av = H - 2 * pad;
-    if (cell.border) { ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, H * 0.006); var bi = H * 0.025; _roundRectPath(ctx, bi, bi, W - 2 * bi, H - 2 * bi, H * 0.03); ctx.stroke(); }
-    // bottom band: SMALL compliance symbols (left) + a good-size, legible barcode (right)
-    var bcVal = cell.barcode || cell.code, bcC = bcVal ? barcodeCanvas(bcVal, cell.fmt || 'auto') : null, bcW = 0, bcH = 0;
-    if (bcC) { var asp = bcC.width / bcC.height, bw = iw * 0.55, bh = bw / asp, mbh = av * 0.19; if (bh > mbh) { bh = mbh; bw = bh * asp; } bcW = bw; bcH = bh; ctx.drawImage(bcC, W - pad - bw, bot - bh, bw, bh); }
-    var symI = A.symbols && A.symbols.img;
-    if (symI && symI.naturalWidth) { var sasp = symI.naturalWidth / symI.naturalHeight, sh = av * 0.06, sw = sh * sasp, gap = iw * 0.06, msy = Math.max(0, iw - bcW - gap); if (sw > msy) { sw = msy; sh = sw / sasp; } ctx.drawImage(symI, pad, bot - sh, sw, sh); }
-    var contentBottom = bot - Math.max(bcH, av * 0.1) - av * 0.025, cy = top;
-    // top: logo (centered)
-    var logoI = A.logo && A.logo.img;
-    if (logoI && logoI.naturalWidth) { var lasp = logoI.naturalWidth / logoI.naturalHeight, lh = av * 0.17, lw = lh * lasp; if (lw > iw * 0.75) { lw = iw * 0.75; lh = lw / lasp; } ctx.drawImage(logoI, cx - lw / 2, cy, lw, lh); cy += lh + av * 0.02; }
-    ctx.fillStyle = '#111111';
-    // code (bold, shrink-to-fit)
-    if (cell.code) { var cfs = _fitFontPx(ctx, String(cell.code), iw, av * 0.11, true, 7); ctx.font = _lblFont(cfs, true); cy += cfs; ctx.fillText(String(cell.code), cx, cy); cy += av * 0.012; }
-    // description (auto-fit, full text)
-    if (cell.desc) {
-      var maxDescH = Math.max(av * 0.18, (contentBottom - cy) * 0.62), dfs = av * 0.052;
-      ctx.font = _lblFont(dfs); var dl = _wrapPx(ctx, cell.desc, iw);
-      while (dfs > 5 && dl.length * dfs * 1.12 > maxDescH) { dfs -= 1; ctx.font = _lblFont(dfs); dl = _wrapPx(ctx, cell.desc, iw); }
-      for (var i = 0; i < dl.length; i++) { cy += dfs; ctx.fillText(dl[i], cx, cy); cy += dfs * 0.12; } cy += av * 0.01;
-    }
-    // spec lines
-    var lines = (cell.lines || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean), availL = contentBottom - cy;
-    if (lines.length && availL > 4) {
-      var lfs = av * 0.042, wrapAll = function (fs) { ctx.font = _lblFont(fs); var a = []; lines.forEach(function (ln) { _wrapPx(ctx, ln, iw).forEach(function (x) { a.push(x); }); }); return a; };
-      var rows = wrapAll(lfs); while (lfs > 6 && rows.length * lfs * 1.15 > availL) { lfs -= 1; rows = wrapAll(lfs); }
-      var lhh = lfs * 1.15, ly = cy + Math.max(0, (availL - rows.length * lhh) / 2);
-      for (var j = 0; j < rows.length; j++) { ly += lfs; ctx.fillText(rows[j], cx, ly); ly += lhh - lfs; }
-    }
-    return cv;
-  }
   function plabelPreviewURL(cell, wMM, hMM) {
     LS._plCache = LS._plCache || {};
     var key = wMM + 'x' + hMM + '|' + (cell.code || '') + '|' + (cell.desc || '') + '|' + (cell.lines || []).join('~') + '|' + (cell.barcode || '') + '|' + (cell.border ? 1 : 0);
     if (LS._plCache[key]) return LS._plCache[key];
-    try { var u = renderProductLabelCanvas(cell, wMM, hMM, 9).toDataURL('image/png'); LS._plCache[key] = u; return u; } catch (e) { return ''; }
+    try { var u = window.LabelRender.toCanvas(cell, wMM, hMM, 9).toDataURL('image/png'); LS._plCache[key] = u; return u; } catch (e) { return ''; }
   }
 
   function drawCrosshairs(doc) {
@@ -549,7 +495,9 @@
   function generatePdf(testOutline) {
     var t = LS.tpl; if (!t) return;
     if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library failed to load. Reload the page.'); return; }
-    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    // compress: the brand images are plain RGB and the vector bars are a long
+    // run of rectangles — both deflate to a fraction of their raw size.
+    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
     var sheets = testOutline ? 1 : Math.max(1, intVal('lsSheets', 1));
     var start = Math.max(1, intVal('lsStart', 1));
     var total = t.cols * t.rows;
