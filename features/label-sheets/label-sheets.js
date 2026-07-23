@@ -27,19 +27,12 @@
   // ═══ STEP 1 — model picker ═══
   function renderModels() {
     var grid = el('lsModelGrid');
-    var A = window.LABEL_ASSETS || {};
-    var logo = A.logo ? A.logo.url : '', sym = A.symbols ? A.symbols.url : '';
-    // content-first: a Product-label card that previews the real label (logo + code + symbols + barcode)
+    var sampleUrl = plabelPreviewURL({ type: 'plabel', code: 'R1021-WH-TRI', desc: '8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri', lines: ['200 – 240VAC / 50-60Hz'], barcode: '9727435304891', fmt: 'auto' }, 68, 70);
+    // content-first: a Product-label card that previews the REAL rendered label
     var dynCard =
       '<div class="ls-card" onclick="LS.startProductLabel()">' +
-        '<div class="ls-card-preview" style="flex-direction:column;gap:2px;padding:8px 6px;">' +
-          (logo ? '<img src="' + logo + '" alt="" style="max-width:64%;max-height:24px;" />' : '') +
-          '<div style="font-weight:700;font-size:12px;color:#1a2733;">R1021-WH-TRI</div>' +
-          '<div style="font-size:7px;color:#8a97a2;line-height:1.05;">8w Dimmable Downlight, Tri</div>' +
-          '<div style="display:flex;align-items:flex-end;justify-content:center;gap:8px;margin-top:4px;width:100%;">' +
-            (sym ? '<img src="' + sym + '" alt="" style="max-height:11px;max-width:44%;" />' : '') +
-            '<span style="font-size:13px;letter-spacing:-1.5px;color:#1a2733;">▮▮▮</span>' +
-          '</div>' +
+        '<div class="ls-card-preview" style="padding:6px;">' +
+          (sampleUrl ? '<img src="' + sampleUrl + '" alt="" style="max-width:100%;max-height:184px;object-fit:contain;" />' : '<span class="ls-loading">…</span>') +
         '</div>' +
         '<div class="ls-card-title">Product label</div>' +
         '<div class="ls-card-sub">Rapid LED sticker · 68×70 mm</div>' +
@@ -75,6 +68,7 @@
     if (!t || !(t._fit && t._fit.ok)) { alert('This model failed the A4-fit check and is disabled.'); return; }
     LS.tpl = t;
     LS.cells = new Array(t.cols * t.rows).fill(null);
+    LS._plCache = {};
     LS.selectMode = false; LS.selected.clear();
     var sb = el('lsSelectBar'); if (sb) sb.style.display = 'none';
     var stg = el('lsSelectToggle'); if (stg) stg.classList.remove('active');
@@ -128,11 +122,10 @@
       else if (cell.type === 'text') { inner = '<span class="ls-cell-txt">' + esc((cell.text || '').slice(0, 44)) + '</span>'; }
       else if (cell.type === 'barcode') { inner = '<span class="ls-cell-bc">▮▮ ' + esc(String(cell.value || '').slice(0, 14)) + '</span>'; }
       else if (cell.type === 'plabel') {
-        var plLogo = (window.LABEL_ASSETS && window.LABEL_ASSETS.logo) ? window.LABEL_ASSETS.logo.url : '';
-        inner = (plLogo ? '<img src="' + plLogo + '" alt="" style="max-height:14px;max-width:66%;object-fit:contain;margin-bottom:1px;" />' : '<span class="ls-cell-name" style="color:#0aa5e6;font-weight:700;">RAPID LED</span>') +
-          '<span class="ls-cell-5dc">' + esc(cell.code || '') + '</span>' +
-          (showName && cell.desc ? '<span class="ls-cell-name">' + esc(String(cell.desc).slice(0, 40)) + '</span>' : '') +
-          '<span class="ls-cell-bc">▤▤ ▮▮▮</span>';
+        var purl = plabelPreviewURL(cell, t.labelW, t.labelH);   // the REAL label, rendered
+        inner = purl
+          ? '<img src="' + purl + '" alt="" style="width:100%;height:100%;object-fit:contain;display:block;" />'
+          : ('<span class="ls-cell-5dc">' + esc(cell.code || '') + '</span>');
       }
 
       var isSel = LS.selectMode && LS.selected.has(p);
@@ -469,84 +462,79 @@
   // lines + fixed compliance symbol strip + GENERATED barcode, responsive to the
   // label rectangle. Reproduces the Rapid LED product label from live data.
   function renderProductLabelCell(doc, cell, x, y, w, h) {
+    // Render to a canvas (300dpi) and embed as ONE image -> preview and print use the
+    // very same renderer (true WYSIWYG), and jsPDF never touches the brand images.
+    try {
+      var cv = renderProductLabelCanvas(cell, w, h);
+      doc.addImage(cv.toDataURL('image/png'), 'PNG', x, y, w, h);
+    } catch (e) { console.warn('label-sheets: label render failed', e); }
+  }
+
+  // ── Canvas renderer for the Product label (single source of truth) ──
+  function _lblFont(px, bold) { return (bold ? 'bold ' : '') + Math.max(1, px) + 'px Helvetica, Arial, sans-serif'; }
+  function _fitFontPx(ctx, text, maxW, startPx, bold, minPx) {
+    var fs = startPx; ctx.font = _lblFont(fs, bold);
+    while (fs > (minPx || 6) && ctx.measureText(text).width > maxW) { fs -= 1; ctx.font = _lblFont(fs, bold); }
+    return fs;
+  }
+  function _wrapPx(ctx, text, maxW) {
+    var words = String(text || '').split(/\s+/), lines = [], cur = '';
+    for (var i = 0; i < words.length; i++) { var t = cur ? cur + ' ' + words[i] : words[i]; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = words[i]; } else cur = t; }
+    if (cur) lines.push(cur); return lines;
+  }
+  function _roundRectPath(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function barcodeCanvas(value, fmt) {
+    value = String(value == null ? '' : value).trim(); if (!value) return null;
+    var format = (fmt === 'auto' || !fmt) ? (looksEan13(value) ? 'EAN13' : 'CODE128') : fmt;
+    var c = document.createElement('canvas');
+    try { JsBarcode(c, value, { format: format, height: 140, width: 2, displayValue: true, fontSize: 30, margin: 6, textMargin: 2 }); }
+    catch (e) { try { JsBarcode(c, value, { format: 'CODE128', height: 140, width: 2, displayValue: true, fontSize: 30, margin: 6, textMargin: 2 }); } catch (e2) { return null; } }
+    return c;
+  }
+  function renderProductLabelCanvas(cell, wMM, hMM, pxPerMM) {
     var A = window.LABEL_ASSETS || {};
-    // Everything is a PROPORTION of the label size, so the whole label scales as
-    // one unit — a bigger sticker shows a proportionally bigger logo/code/barcode
-    // (fixes tiny-barcode-on-large-label). Fonts derive their pt from a target mm
-    // height via mm2pt, so they grow/shrink with the label instead of hitting caps.
-    var mm2pt = function (mm) { return mm / PT2MM; };
-    var pad = h * 0.035;
-    var ix = x + pad, iw = w - 2 * pad, top = y + pad, bot = y + h - pad, cx = x + w / 2;
-    var av = h - 2 * pad;
-
-    // --- optional full-label border (professional look; never a partial box) ---
-    if (cell.border) {
-      var bi = h * 0.025;
-      doc.setDrawColor(0); doc.setLineWidth(Math.max(0.25, h * 0.005));
-      doc.roundedRect(x + bi, y + bi, w - 2 * bi, h - 2 * bi, h * 0.03, h * 0.03, 'S');
-    }
-
-    // --- bottom band: compliance symbols (left) + generated barcode (right) ---
-    var bandH = av * 0.19;
-    var bcVal = cell.barcode || cell.code;
-    var bc = bcVal ? barcodeDataUrl(bcVal, cell.fmt || 'auto') : null;
-    var bcW = 0;
-    if (bc) {
-      var bcAsp = bc.w / bc.h, bcH = bandH, bw = bcH * bcAsp, maxW = iw * 0.5;
-      if (bw > maxW) { bw = maxW; bcH = bw / bcAsp; }
-      bcW = bw;
-      doc.addImage(bc.url, 'PNG', x + w - pad - bw, bot - bcH, bw, bcH);
-    }
-    if (A.symbols) {
-      var syAsp = A.symbols.w / A.symbols.h, syH = bandH * 0.6, syW = syH * syAsp, maxSy = Math.max(0, iw - bcW - iw * 0.04);
-      if (syW > maxSy) { syW = maxSy; syH = syW / syAsp; }
-      doc.addImage(A.symbols.url, A.symbols.type || 'PNG', ix, bot - syH, syW, syH);
-    }
-    var contentBottom = bot - bandH - av * 0.02;
-
-    // --- top: logo (centered) ---
-    var cy = top;
-    if (A.logo) {
-      var lgAsp = A.logo.w / A.logo.h, lgH = av * 0.17, lgW = lgH * lgAsp;
-      if (lgW > iw * 0.75) { lgW = iw * 0.75; lgH = lgW / lgAsp; }
-      doc.addImage(A.logo.url, A.logo.type || 'PNG', cx - lgW / 2, cy, lgW, lgH);
-      cy += lgH + av * 0.02;
-    }
-
-    // --- code (bold, shrink-to-fit width) ---
-    if (cell.code) {
-      var cfs = mm2pt(av * 0.11);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(cfs);
-      while (cfs > 6 && doc.getTextWidth(String(cell.code)) > iw) { cfs -= 0.5; doc.setFontSize(cfs); }
-      cy += cfs * PT2MM;
-      doc.text(String(cell.code), cx, cy, { align: 'center' });
-      cy += av * 0.012;
-    }
-
-    // --- description (medium; auto-fit so the FULL text shows, never hard-cut) ---
+    var s = pxPerMM || (300 / 25.4);              // print dpi by default
+    var W = Math.max(4, Math.round(wMM * s)), H = Math.max(4, Math.round(hMM * s));
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var ctx = cv.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#111111';
+    var pad = H * 0.035, iw = W - 2 * pad, top = pad, bot = H - pad, cx = W / 2, av = H - 2 * pad;
+    if (cell.border) { ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, H * 0.006); var bi = H * 0.025; _roundRectPath(ctx, bi, bi, W - 2 * bi, H - 2 * bi, H * 0.03); ctx.stroke(); }
+    // bottom band: symbols (left) + generated barcode (right)
+    var bandH = av * 0.19, bcVal = cell.barcode || cell.code, bcC = bcVal ? barcodeCanvas(bcVal, cell.fmt || 'auto') : null, bcW = 0;
+    if (bcC) { var asp = bcC.width / bcC.height, bh = bandH, bw = bh * asp, mw = iw * 0.5; if (bw > mw) { bw = mw; bh = bw / asp; } bcW = bw; ctx.drawImage(bcC, W - pad - bw, bot - bh, bw, bh); }
+    var symI = A.symbols && A.symbols.img;
+    if (symI && symI.naturalWidth) { var sasp = symI.naturalWidth / symI.naturalHeight, sh = bandH * 0.6, sw = sh * sasp, msy = Math.max(0, iw - bcW - iw * 0.04); if (sw > msy) { sw = msy; sh = sw / sasp; } ctx.drawImage(symI, pad, bot - sh, sw, sh); }
+    var contentBottom = bot - bandH - av * 0.02, cy = top;
+    // top: logo (centered)
+    var logoI = A.logo && A.logo.img;
+    if (logoI && logoI.naturalWidth) { var lasp = logoI.naturalWidth / logoI.naturalHeight, lh = av * 0.17, lw = lh * lasp; if (lw > iw * 0.75) { lw = iw * 0.75; lh = lw / lasp; } ctx.drawImage(logoI, cx - lw / 2, cy, lw, lh); cy += lh + av * 0.02; }
+    ctx.fillStyle = '#111111';
+    // code (bold, shrink-to-fit)
+    if (cell.code) { var cfs = _fitFontPx(ctx, String(cell.code), iw, av * 0.11, true, 7); ctx.font = _lblFont(cfs, true); cy += cfs; ctx.fillText(String(cell.code), cx, cy); cy += av * 0.012; }
+    // description (auto-fit, full text)
     if (cell.desc) {
-      var maxDescH = Math.max(av * 0.18, (contentBottom - cy) * 0.62);
-      var dfs = mm2pt(av * 0.052);
-      doc.setFont('helvetica', 'normal');
-      var dwrap = function (fs) { doc.setFontSize(fs); return doc.splitTextToSize(String(cell.desc), iw); };
-      var dl = dwrap(dfs);
-      while (dfs > 5 && dl.length * dfs * PT2MM * 1.12 > maxDescH) { dfs -= 0.5; dl = dwrap(dfs); }
-      for (var i = 0; i < dl.length; i++) { cy += dfs * PT2MM; doc.text(dl[i], cx, cy, { align: 'center' }); cy += dfs * PT2MM * 0.12; }
-      cy += av * 0.01;
+      var maxDescH = Math.max(av * 0.18, (contentBottom - cy) * 0.62), dfs = av * 0.052;
+      ctx.font = _lblFont(dfs); var dl = _wrapPx(ctx, cell.desc, iw);
+      while (dfs > 5 && dl.length * dfs * 1.12 > maxDescH) { dfs -= 1; ctx.font = _lblFont(dfs); dl = _wrapPx(ctx, cell.desc, iw); }
+      for (var i = 0; i < dl.length; i++) { cy += dfs; ctx.fillText(dl[i], cx, cy); cy += dfs * 0.12; } cy += av * 0.01;
     }
-
-    // --- spec lines (small, centered, fit remaining space above the band) ---
-    var lines = (cell.lines || []).map(function (s) { return String(s || '').trim(); }).filter(Boolean);
-    var availLines = contentBottom - cy;
-    if (lines.length && availLines > 2) {
-      var lfs = mm2pt(av * 0.042);
-      doc.setFont('helvetica', 'normal');
-      var wrapAll = function (fs) { doc.setFontSize(fs); var a = []; lines.forEach(function (ln) { doc.splitTextToSize(ln, iw).forEach(function (s) { a.push(s); }); }); return a; };
-      var rows = wrapAll(lfs);
-      while (lfs > 5 && rows.length * lfs * PT2MM * 1.15 > availLines) { lfs -= 0.5; rows = wrapAll(lfs); }
-      var lh = lfs * PT2MM * 1.15, ly = cy + Math.max(0, (availLines - rows.length * lh) / 2);
-      for (var j = 0; j < rows.length; j++) { ly += lfs * PT2MM; doc.text(rows[j], cx, ly, { align: 'center' }); ly += lh - lfs * PT2MM; }
+    // spec lines
+    var lines = (cell.lines || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean), availL = contentBottom - cy;
+    if (lines.length && availL > 4) {
+      var lfs = av * 0.042, wrapAll = function (fs) { ctx.font = _lblFont(fs); var a = []; lines.forEach(function (ln) { _wrapPx(ctx, ln, iw).forEach(function (x) { a.push(x); }); }); return a; };
+      var rows = wrapAll(lfs); while (lfs > 6 && rows.length * lfs * 1.15 > availL) { lfs -= 1; rows = wrapAll(lfs); }
+      var lhh = lfs * 1.15, ly = cy + Math.max(0, (availL - rows.length * lhh) / 2);
+      for (var j = 0; j < rows.length; j++) { ly += lfs; ctx.fillText(rows[j], cx, ly); ly += lhh - lfs; }
     }
+    return cv;
+  }
+  function plabelPreviewURL(cell, wMM, hMM) {
+    LS._plCache = LS._plCache || {};
+    var key = wMM + 'x' + hMM + '|' + (cell.code || '') + '|' + (cell.desc || '') + '|' + (cell.lines || []).join('~') + '|' + (cell.barcode || '') + '|' + (cell.border ? 1 : 0);
+    if (LS._plCache[key]) return LS._plCache[key];
+    try { var u = renderProductLabelCanvas(cell, wMM, hMM, 4.5).toDataURL('image/png'); LS._plCache[key] = u; return u; } catch (e) { return ''; }
   }
 
   function drawCrosshairs(doc) {
@@ -664,10 +652,16 @@
   // asset through a canvas (like the barcode, which renders clean) -> safe PNG.
   function normalizeAssets() {
     if (!window.LABEL_ASSETS) return;
+    var pending = 0, done = function () {
+      pending--;
+      if (pending <= 0) { LS._plCache = {}; if (el('lsEditor') && el('lsEditor').style.display === 'block') renderSheet(); else renderModels(); }
+    };
     ['logo', 'symbols'].forEach(function (k) {
       var a = window.LABEL_ASSETS[k]; if (!a || !a.url) return;
+      pending++;
       var img = new Image();
       img.onload = function () {
+        a.img = img;   // keep the loaded Image for canvas drawImage (preview + print)
         try {
           var c = document.createElement('canvas');
           c.width = img.naturalWidth || a.w; c.height = img.naturalHeight || a.h;
@@ -675,8 +669,10 @@
           ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
           ctx.drawImage(img, 0, 0, c.width, c.height);
           a.url = c.toDataURL('image/png'); a.type = 'PNG'; a.w = c.width; a.h = c.height;
-        } catch (e) { console.warn('label-sheets: asset normalize failed', k, e); }
+        } catch (e) {}
+        done();
       };
+      img.onerror = done;
       img.src = a.url;
     });
   }
