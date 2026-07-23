@@ -124,10 +124,6 @@
   // printed a perfectly scannable CODE128 meaning "0" on thousands of different
   // products. That is worse than a blank space, because it looks legitimate.
   //
-  // `order` lets a template choose what to fall back to. On a 38 mm ticket an
-  // 18-character SKU in CODE128 needs ~230 modules and lands near 0.15 mm per
-  // module — too narrow to scan reliably — while the 5-digit 5DC fits with room
-  // to spare, so that template asks for the 5DC first.
   var DEFAULT_ORDER = ['barcode', 'code', 'sku', 'dc5'];
   function usable(v) { v = String(v == null ? '' : v).trim(); return (!v || /^0+$/.test(v)) ? '' : v; }
   function bcValue(cell, order) {
@@ -144,21 +140,30 @@
   // symbol depends on a high-resolution scanner and a perfect print.
   var MIN_MODULE_MM = 0.25;
 
-  // The value and symbology a recipe will actually encode for a cell. Both the
-  // renderer and the quality check call this, so what is measured is always
-  // exactly what gets printed.
+  // The value and symbology actually encoded for a cell. Both the renderer and
+  // the quality check call this, so what is measured is always exactly what
+  // gets printed.
   //
   // GTIN symbology detection applies to a real product barcode only. A 5DC or a
   // SKU is an internal code, not a GTIN: an 8-digit 5DC encoded as EAN-8 would
   // come back from the scanner with a check digit appended — no longer the
   // number printed above it. Internal codes are always CODE128.
-  function effectiveBarcode(cell, recipe) {
+  //
+  // With no product barcode the fallback is the 5DC, on EVERY template — so one
+  // product scans to one value whichever sheet it was printed on. The SKU would
+  // be unique where the 5DC is not (657 codes are shared, almost all of them a
+  // product and its carton), but an 18-character SKU in CODE128 needs ~230
+  // modules: 0.15 mm per bar on a 38 mm ticket and 0.25 mm on a 63.5 mm one,
+  // which took 28% of the catalogue below the scan threshold. Of the shared
+  // 5DCs only 18 groups have more than one member lacking a real barcode, and
+  // that ambiguity is already on the label — the 5DC is printed either way.
+  var FALLBACK_ORDER = ['dc5', 'sku', 'code'];
+  function effectiveBarcode(cell) {
     if (!cell) return { value: '', fmt: 'CODE128' };
     if (cell.type === 'barcode') return { value: usable(cell.value), fmt: cell.fmt || 'auto' };
-    var real = usable(cell.barcode), code;
-    if (cell.type === 'plabel') code = bcValue(cell, ['code', 'sku', 'dc5']);
-    else code = bcValue(cell, recipe === 'code5dc' ? ['dc5', 'sku', 'code'] : ['sku', 'dc5', 'code']);
-    return { value: real || code, fmt: real ? (cell.fmt || 'auto') : 'CODE128' };
+    var real = usable(cell.barcode);
+    if (real) return { value: real, fmt: cell.fmt || 'auto' };
+    return { value: bcValue(cell, FALLBACK_ORDER), fmt: 'CODE128' };
   }
 
   // A barcode drawn as a bitmap is only as good as its resolution: at the size
@@ -361,8 +366,8 @@
     // literal "0", and showing "0" over a barcode encoding the SKU is a ticket
     // that lies. The human-readable line is resolved with the same precedence
     // the encoder uses. (5DC before SKU: at 38 mm a long SKU would not scan.)
-    var code = bcValue(cell, ['dc5', 'sku', 'code']);
-    var eb = effectiveBarcode(cell, 'code5dc'), value = eb.value, vfmt = eb.fmt;
+    var code = bcValue(cell, FALLBACK_ORDER);
+    var eb = effectiveBarcode(cell), value = eb.value, vfmt = eb.fmt;
 
     var codeH = 0, gap = 0;
     if (code) {
@@ -406,7 +411,7 @@
     var iw = W - 2 * pad, ih = H - 2 * pad, cx = W / 2;
     if (iw <= 0 || ih <= 0) return out;
 
-    var eb = effectiveBarcode(cell, 'stack'), value = eb.value;
+    var eb = effectiveBarcode(cell), value = eb.value;
     var sku = usable(cell.sku) || usable(cell.code);
     var dc5 = usable(cell.dc5);
 
@@ -647,7 +652,7 @@
   // Same question, asked about a cell on a given template.
   function cellScan(cell, W, H, recipe) {
     if (!cell || cell.type === 'text') return { ok: true, empty: true, moduleMM: 0, minMM: MIN_MODULE_MM, format: '', value: '' };
-    var eb = effectiveBarcode(cell, recipe);
+    var eb = effectiveBarcode(cell);
     var box = barcodeBox(recipe, W, H);
     return scanQuality(eb.value, eb.fmt, box.w, box.h);
   }
