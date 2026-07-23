@@ -153,9 +153,14 @@ body{
 .ls-modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;}
 
 /* Type tabs in cell editor */
-.ls-types{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
-.ls-type{flex:1;min-width:70px;text-align:center;padding:8px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;cursor:pointer;background:#fff;color:var(--muted);font-weight:500;}
-.ls-type.active{border-color:var(--cyan);background:#eef6fb;color:var(--cyan-d);}
+.ls-types{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.ls-type{flex:1 1 0;min-width:88px;text-align:center;padding:8px 6px;border:1px solid var(--border);border-radius:10px;cursor:pointer;background:#fff;transition:border-color .12s,background .12s,box-shadow .12s;}
+.ls-type:hover{border-color:#b7c4cf;}
+.ls-type.active{border-color:var(--cyan);background:#eef6fb;box-shadow:0 0 0 2px rgba(10,165,230,.16);}
+.ls-type-ex{display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border-l);border-radius:6px;padding:3px;height:66px;overflow:hidden;margin-bottom:6px;}
+.ls-type-ex img{max-width:100%;max-height:60px;object-fit:contain;display:block;}
+.ls-type-name{font-size:12px;font-weight:600;color:var(--muted);}
+.ls-type.active .ls-type-name{color:var(--cyan-d);}
 .ls-type-body{min-height:60px;}
 
 /* Product search results */

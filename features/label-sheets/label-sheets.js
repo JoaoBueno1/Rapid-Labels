@@ -219,9 +219,18 @@
   // never offers the full product sticker, because it could not carry it.
   function renderTypeTabs(active) {
     var allow = (LS.caps && LS.caps.allow) || ['product', 'barcode', 'text'];
+    var recipe = (LS.caps && LS.caps.productRecipe) || 'stack';
+    var w = (LS.caps && LS.caps.labelW) || 63.5, h = (LS.caps && LS.caps.labelH) || 38.1;
     el('lsTypeTabs').innerHTML = allow.map(function (ty) {
+      // Each option shows a real example of what THAT type prints on this sheet
+      // (same sample product for all), so the operator picks the model by sight,
+      // not just by the button name.
+      var url = cellPreviewURL(SAMPLES[ty], w, h, { productRecipe: recipe });
+      var thumb = url ? '<img src="' + url + '" alt="" />' : '<span class="ls-loading">…</span>';
       return '<div class="ls-type' + (ty === active ? ' active' : '') + '" data-type="' + ty + '" onclick="LS.pickType(\'' + ty + '\')">' +
-        esc(TYPE_NAME[ty] || ty) + '</div>';
+        '<div class="ls-type-ex">' + thumb + '</div>' +
+        '<div class="ls-type-name">' + esc(TYPE_NAME[ty] || ty) + '</div>' +
+      '</div>';
     }).join('');
   }
   function defaultType() {
