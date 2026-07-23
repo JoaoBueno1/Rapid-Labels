@@ -27,22 +27,44 @@
   // ═══ STEP 1 — model picker ═══
   function renderModels() {
     var grid = el('lsModelGrid');
-    grid.innerHTML = window.LabelTemplates.list().map(function (t) {
+    var A = window.LABEL_ASSETS || {};
+    var logo = A.logo ? A.logo.url : '';
+    // content-first: a dynamic Product-label card that sets its own sheet size
+    var dynCard =
+      '<div class="ls-card" onclick="LS.startProductLabel()">' +
+        '<div class="ls-card-preview" style="flex-direction:column;gap:1px;">' +
+          (logo ? '<img src="' + logo + '" alt="" style="max-width:76%;max-height:32px;margin-bottom:3px;" />' : '') +
+          '<div style="font-weight:700;font-size:12px;color:#1a2733;">R####-XX</div>' +
+          '<div style="font-size:7.5px;color:#8a97a2;line-height:1.1;">description · specs</div>' +
+          '<div style="font-size:15px;letter-spacing:-1.5px;color:#1a2733;margin-top:2px;">▮▮▮▮▮</div>' +
+        '</div>' +
+        '<div class="ls-card-title">Product label</div>' +
+        '<div class="ls-card-sub">Rapid LED sticker · 68×70 mm</div>' +
+        '<div class="ls-badges"><span class="ls-badge up">12 per sheet</span><span class="ls-badge">auto barcode</span><span class="ls-badge code">from Cin7</span></div>' +
+      '</div>';
+    var formatCards = window.LabelTemplates.list().filter(function (t) { return t.id !== 'p6870'; }).map(function (t) {
       var m = window.LabelTemplates.meta(t);
       var prev = window.LabelTemplates.svgPreview(t, 178, 196);
-      var codeBadge = m.code
-        ? '<span class="ls-badge code">Celcast ' + m.code + '</span>'
-        : '<span class="ls-badge code">Celcast compat.</span>';
+      var codeBadge = m.code ? '<span class="ls-badge code">Celcast ' + m.code + '</span>' : '<span class="ls-badge code">Celcast compat.</span>';
       return '<div class="ls-card' + (m.fits ? '' : ' bad') + '" onclick="LS.selectModel(\'' + t.id + '\')">' +
         '<div class="ls-card-preview">' + prev + '</div>' +
         '<div class="ls-card-title">' + esc(m.name) + '</div>' +
         '<div class="ls-card-sub">' + esc(m.size) + ' · grid ' + esc(m.grid) + '</div>' +
         '<div class="ls-badges">' +
           '<span class="ls-badge up">' + m.up + ' per sheet</span>' +
-          '<span class="ls-badge">Avery ' + esc(m.avery) + '</span>' +
-          codeBadge +
+          '<span class="ls-badge">Avery ' + esc(m.avery) + '</span>' + codeBadge +
         '</div></div>';
     }).join('');
+    grid.innerHTML =
+      '<div class="ls-sec">Product labels <span>— pick a product, the sheet size is set for you</span></div>' +
+      '<div class="ls-models">' + dynCard + '</div>' +
+      '<div class="ls-sec">Blank sheets <span>— pick a Celcast/Avery size and fill it yourself</span></div>' +
+      '<div class="ls-models">' + formatCards + '</div>';
+  }
+  // content-first entry: jump straight into the Product label on its correct sheet
+  function startProductLabel() {
+    selectModel('p6870');
+    openFillAll('plabel');
   }
 
   function selectModel(id) {
@@ -162,12 +184,12 @@
     openModal('lsCellModal');
   }
 
-  function openFillAll() {
+  function openFillAll(preType) {
     var start = Math.max(1, intVal('lsStart', 1));
-    LS.editor = { mode: 'all', index: -1, type: 'product', product: null };
+    LS.editor = { mode: 'all', index: -1, type: preType || 'product', product: null };
     el('lsCellTitle').textContent = 'Fill all (from label ' + start + ' to end)';
     resetEditorInputs();
-    pickType('product');
+    pickType(preType || 'product');
     openModal('lsCellModal');
   }
 
@@ -637,6 +659,7 @@
 
   // expose
   LS.selectModel = selectModel;
+  LS.startProductLabel = startProductLabel;
   LS.backToModels = backToModels;
   LS.renderSheet = renderSheet;
   LS.updateSummary = updateSummary;

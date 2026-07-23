@@ -26,6 +26,10 @@ body{
 .ls-main{max-width:1280px;margin:0 auto;padding:20px;}
 .ls-h2{font-size:15px;font-weight:600;color:var(--cyan-d);margin:0 0 12px;}
 .ls-hint{color:var(--muted);font-size:12.5px;margin:0 0 16px;}
+.ls-sec{font-size:13px;font-weight:600;color:var(--cyan-d);margin:20px 0 12px;}
+.ls-sec:first-of-type{margin-top:4px;}
+.ls-sec span{color:var(--faint);font-weight:400;font-size:12px;}
+.ls-models{margin-bottom:6px;}
 
 /* ── Step 1: model picker ── */
 .ls-models{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;}
