@@ -39,7 +39,7 @@
     lineH:       0.045,   // × av  spec lines
     lineMinMM:   1.2,
     lineLead:    1.20,
-    bandH:       0.20,    // × av  bottom band: symbols + barcode
+    bandH:       0.23,    // × av  bottom band: symbols + barcode
     bandGap:     0.030,   // × av  between the content block and the band
     bcW:         0.58,    // × iw  barcode fills this share of the band
     symGap:      0.04,    // × iw  clearance between strip and barcode
@@ -316,8 +316,11 @@
     for (i = 0; i < v.bars.length; i++) barBottom = Math.max(barBottom, v.bars[i].y + v.bars[i].h);
     if (!(barBottom > 0)) barBottom = v.h;
 
+    // JsBarcode leaves ~21% of its height for the digits, which on a short band
+    // renders them near-illegible. Bar HEIGHT carries no data — only the widths
+    // do — so the digits may take a bigger share than the symbol shipped with.
     var hasText = v.texts.length > 0;
-    var textFrac = hasText ? Math.min(0.30, (v.h - barBottom) / v.h) : 0;
+    var textFrac = hasText ? Math.max(0.28, Math.min(0.34, (v.h - barBottom) / v.h)) : 0;
     var textH = h * textFrac;
     var barH = h - textH;
     var kyBar = barH / barBottom;
@@ -328,8 +331,8 @@
       out.push({ kind: 'fill', x: x + b.x * kx, y: y + b.y * kyBar, w: b.w * kx, h: b.h * kyBar });
     }
     if (hasText && textH > 0.3) {
-      var fs = Math.min(textH * 0.78, v.texts[0].size * kx);
-      var base = y + barH + textH * 0.93;          // leaves ~15% of the band clear of the bars
+      var fs = Math.min(textH * 0.80, v.texts[0].size * kx);
+      var base = y + barH + textH * 0.92;          // ~12% of the band stays clear of the bars
       for (i = 0; i < v.texts.length; i++) {
         b = v.texts[i];
         out.push({
@@ -591,6 +594,15 @@
     return acc;
   }
 
+  // Brand assets arrive as an <img> and are replaced by a trimmed <canvas>
+  // once normalised, so read whichever pair of dimensions is present.
+  function assetDims(a) {
+    var im = a && a.img;
+    if (!im) return null;
+    var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+    return (w > 0 && h > 0) ? { w: w, h: h } : null;
+  }
+
   function layoutBrandLabel(cell, W, H) {
     var A = window.LABEL_ASSETS || {}, S = SPEC, out = [], i;
     if (!cell || !(W > 0) || !(H > 0)) return out;
@@ -617,9 +629,9 @@
     var bc = barcodeFill(ebL.value, ebL.fmt, W - pad - bcBoxW, bandTop, bcBoxW, bandH);
     for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
 
-    var sym = A.symbols;
-    if (sym && sym.img && sym.img.naturalWidth) {
-      var sasp = sym.img.naturalWidth / sym.img.naturalHeight;
+    var sym = A.symbols, symD = assetDims(sym);
+    if (symD) {
+      var sasp = symD.w / symD.h;
       var sw = Math.max(0, iw - bcBoxW - iw * S.symGap), sh = sw / sasp;
       if (sh > bandH) { sh = bandH; sw = sh * sasp; }
       if (sw > 0.2) out.push({ kind: 'image', img: sym.img, url: sym.url, x: pad, y: bot - sh, w: sw, h: sh });
@@ -635,9 +647,9 @@
 
     var blocks = [], blockH = 0;
 
-    var logo = A.logo;
-    if (logo && logo.img && logo.img.naturalWidth) {
-      var lasp = logo.img.naturalWidth / logo.img.naturalHeight;
+    var logo = A.logo, logoD = assetDims(logo);
+    if (logoD) {
+      var lasp = logoD.w / logoD.h;
       var lh = av * S.logoH, lw = lh * lasp;
       if (lw > iw * S.logoMaxW) { lw = iw * S.logoMaxW; lh = lw / lasp; }
       blocks.push({ kind: 'logo', img: logo, w: lw, h: lh, gap: av * S.logoGap });

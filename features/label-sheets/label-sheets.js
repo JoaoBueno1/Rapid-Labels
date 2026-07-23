@@ -626,8 +626,57 @@
     })();
   }
 
-  // jsPDF mangles embedded JPEG/PIL-PNG into black side-panels; re-encode each brand
-  // asset through a canvas (like the barcode, which renders clean) -> safe PNG.
+  // Brand assets: re-encode and TRIM.
+  //
+  // Re-encode because jsPDF mangles embedded JPEG/PIL-PNG into black side
+  // panels; pushing each asset through a canvas (like the barcode, which comes
+  // out clean) yields a safe PNG.
+  //
+  // Trim because both crops ship with a wide white border — 13 px around a
+  // 216×92 logo is 14% of its height spent on nothing. Drawn into a box sized
+  // for the artwork, that padding shrinks the visible mark and reads as a badly
+  // placed, undersized logo. Cropping to the ink lets it fill the space it was
+  // given.
+  function trimToInk(img) {
+    var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if (!(w > 0) || !(h > 0)) return null;
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+
+    var d;
+    try { d = ctx.getImageData(0, 0, w, h).data; } catch (e) { return c; }
+    var INK = 245, x, y, i;
+    var minX = w, minY = h, maxX = -1, maxY = -1;
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        i = (y * w + x) * 4;
+        if ((d[i] + d[i + 1] + d[i + 2]) / 3 < INK) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) return c;                       // blank image, keep as-is
+
+    // a hair of padding so the ink never sits flush against the edge
+    var pad = Math.max(1, Math.round(Math.max(maxX - minX, maxY - minY) * 0.02));
+    minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+    maxX = Math.min(w - 1, maxX + pad); maxY = Math.min(h - 1, maxY + pad);
+
+    var tw = maxX - minX + 1, th = maxY - minY + 1;
+    var t = document.createElement('canvas');
+    t.width = tw; t.height = th;
+    var tctx = t.getContext('2d');
+    tctx.fillStyle = '#ffffff'; tctx.fillRect(0, 0, tw, th);
+    tctx.drawImage(c, minX, minY, tw, th, 0, 0, tw, th);
+    return t;
+  }
+
   function normalizeAssets() {
     if (!window.LABEL_ASSETS) return;
     var pending = 0, done = function () {
@@ -642,15 +691,15 @@
       pending++;
       var img = new Image();
       img.onload = function () {
-        a.img = img;   // keep the loaded Image for canvas drawImage (preview + print)
+        a.img = img;
         try {
-          var c = document.createElement('canvas');
-          c.width = img.naturalWidth || a.w; c.height = img.naturalHeight || a.h;
-          var ctx = c.getContext('2d');
-          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
-          ctx.drawImage(img, 0, 0, c.width, c.height);
-          a.url = c.toDataURL('image/png'); a.type = 'PNG'; a.w = c.width; a.h = c.height;
-        } catch (e) {}
+          var t = trimToInk(img);
+          if (t) {
+            a.img = t;                            // canvas draws fine on canvas
+            a.url = t.toDataURL('image/png');     // and this is what jsPDF embeds
+            a.type = 'PNG'; a.w = t.width; a.h = t.height;
+          }
+        } catch (e) { console.warn('label-sheets: asset trim failed for ' + k, e); }
         done();
       };
       img.onerror = done;
