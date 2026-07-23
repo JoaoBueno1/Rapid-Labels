@@ -35,7 +35,7 @@
   // cards so the operator can pick a sheet by what it prints, not by its code.
   var TYPE_NAME = { product: 'Product', plabel: 'Product label', barcode: 'Barcode', text: 'Text' };
   function typeHint(type, recipe) {
-    if (type === 'product') return recipe === 'code5dc' ? '5DC + barcode, from a product' : 'Name, 5DC and barcode';
+    if (type === 'product') return recipe === 'code5dc' ? '5DC + barcode, from a product' : 'Code, 5DC and barcode';
     if (type === 'plabel') return 'Full Rapid LED sticker, from Cin7';
     if (type === 'barcode') return 'Any code — EAN-13 or CODE128';
     if (type === 'text') return 'Free text';
@@ -43,7 +43,7 @@
   }
   // Realistic sample content, so an example looks like the real thing.
   var SAMPLES = {
-    product: { type: 'product', sku: 'R1051-WH', name: '8w Dimmable Downlight', dc5: '95908', barcode: '9727435304891', fmt: 'auto' },
+    product: { type: 'product', sku: 'R1021-WH-TRI', name: '8w Dimmable Downlight', dc5: '95908', barcode: '9727435304891', fmt: 'auto' },
     barcode: { type: 'barcode', value: '9727435304891', fmt: 'auto' },
     text: { type: 'text', text: 'Rapid LED' },
     plabel: { type: 'plabel', code: 'R1021-WH-TRI', desc: '8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri', lines: ['200 – 240VAC / 50-60Hz'], barcode: '9727435304891', fmt: 'auto' }

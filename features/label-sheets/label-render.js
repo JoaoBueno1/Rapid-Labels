@@ -385,26 +385,39 @@
     return out;
   }
 
-  // ── Recipe: name + 5DC + barcode (roomier sheets) ───────────────────────
+  // ── Recipe: SKU + 5DC + barcode (roomier sheets) ────────────────────────
+  // No product description. On a warehouse label the code IS the identity —
+  // R1021-WH-TRI says exactly which variant this is, while a wrapped marketing
+  // name only eats the room the 5DC and the bars need. Same order as the
+  // existing barcode print: the code on top, the 5DC big under it, bars below.
+  var RS = {
+    pad:      0.05,   // × min(W,H), clamped to 1–2 mm
+    skuH:     0.13,   // × ih
+    skuMinMM: 1.6,
+    dc5H:     0.20,   // × ih
+    dc5MinMM: 2.4,
+    lead:     1.12,
+    gap:      0.04    // × ih, between the text block and the bars
+  };
+  function stackPad(W, H) { return Math.max(1.0, Math.min(2.0, Math.min(W, H) * RS.pad)); }
   function layoutProductStack(cell, W, H) {
     var out = [];
-    var pad = Math.max(1.0, Math.min(2.0, Math.min(W, H) * 0.05));
+    var pad = stackPad(W, H);
     var iw = W - 2 * pad, ih = H - 2 * pad, cx = W / 2;
     if (iw <= 0 || ih <= 0) return out;
 
     var eb = effectiveBarcode(cell, 'stack'), value = eb.value;
-    var rows = [], i;
-    if (cell.name && (ih >= 16 || (ih >= 10 && iw >= 55))) {
-      var nfs = Math.max(1.8, Math.min(3.2, ih * 0.11));
-      var maxLines = ih >= 16 ? 2 : 1;
-      wrap(cell.name, iw, nfs).slice(0, maxLines).forEach(function (ln) { rows.push({ t: ln, fs: nfs, b: false }); });
-    }
-    var code = String(cell.dc5 || cell.sku || '').trim();
-    if (code && ih >= 6) rows.push({ t: code, fs: Math.max(2.4, Math.min(4.6, ih * 0.17)), b: true });
+    var sku = usable(cell.sku) || usable(cell.code);
+    var dc5 = usable(cell.dc5);
 
-    var lead = 1.12;
-    var textH = rows.reduce(function (s, r) { return s + r.fs * lead; }, 0);
-    var gap = rows.length && value ? Math.max(0.6, Math.min(1.6, ih * 0.04)) : 0;
+    // Codes never wrap — a code broken across two lines cannot be read back.
+    // They shrink to fit the width instead.
+    var rows = [], i;
+    if (sku && ih >= 10) rows.push({ t: sku, fs: fitSize(sku, iw, ih * RS.skuH, false, RS.skuMinMM), b: false });
+    if (dc5 && ih >= 6) rows.push({ t: dc5, fs: fitSize(dc5, iw, ih * RS.dc5H, true, RS.dc5MinMM), b: true });
+
+    var textH = rows.reduce(function (s, r) { return s + r.fs * RS.lead; }, 0);
+    var gap = rows.length && value ? Math.max(0.6, Math.min(1.6, ih * RS.gap)) : 0;
     var bcH = 0;
     if (value) {
       bcH = ih - textH - gap;
@@ -414,7 +427,7 @@
     for (i = 0; i < rows.length; i++) {
       cy += rows[i].fs;
       out.push({ kind: 'text', text: rows[i].t, x: cx, y: cy, size: rows[i].fs, bold: rows[i].b, align: 'center' });
-      cy += rows[i].fs * (lead - 1);
+      cy += rows[i].fs * (RS.lead - 1);
     }
     if (bcH > 0.5) {
       cy += gap;
@@ -644,8 +657,9 @@
       var pad = Math.min(W, H) * R5.pad, ih = H - 2 * pad;
       return { w: W - 2 * pad, h: ih * (1 - R5.codeH - R5.gap) };
     }
-    var p2 = Math.max(1.0, Math.min(2.0, Math.min(W, H) * 0.05));
-    return { w: W - 2 * p2, h: (H - 2 * p2) * 0.5 };
+    var p2 = stackPad(W, H), ih2 = H - 2 * p2;
+    var textH = ih2 * (RS.skuH + RS.dc5H) * RS.lead;
+    return { w: W - 2 * p2, h: Math.max(1, ih2 - textH - ih2 * RS.gap) };
   }
 
   window.LabelRender = {
