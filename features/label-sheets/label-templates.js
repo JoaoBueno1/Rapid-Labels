@@ -27,7 +27,8 @@
     { id:'l7164', avery:'L7164', code:null,    up:12, cols:3, rows:4,  labelW:63.5,  labelH:72.0,  marginTop:4.5,   marginLeft:7.25, pitchX:66.0,  pitchY:72.0, radius:1.5, shape:'rect' },
     { id:'l7173', avery:'L7173', code:'48010', up:10, cols:2, rows:5,  labelW:99.1,  labelH:57.0,  marginTop:6.0,   marginLeft:4.65, pitchX:101.6, pitchY:57.0, radius:0,   shape:'rect' },
     { id:'l7165', avery:'L7165', code:null,    up:8,  cols:2, rows:4,  labelW:99.1,  labelH:67.7,  marginTop:13.1,  marginLeft:4.65, pitchX:101.6, pitchY:67.7, radius:0,   shape:'rect' },
-    { id:'full',  avery:'—',     code:'48001', up:1,  cols:1, rows:1,  labelW:199.6, labelH:289.1, marginTop:3.95,  marginLeft:5.2,  pitchX:0,     pitchY:0,    radius:0,   shape:'rect' }
+    { id:'full',  avery:'—',     code:'48001', up:1,  cols:1, rows:1,  labelW:199.6, labelH:289.1, marginTop:3.95,  marginLeft:5.2,  pitchX:0,     pitchY:0,    radius:0,   shape:'rect' },
+    { id:'p6870', avery:'L7073', code:null,    up:12, cols:3, rows:4,  labelW:68.0,  labelH:70.0,  marginTop:8.5,   marginLeft:5.2,  pitchX:68.0,  pitchY:70.0, radius:3.0, shape:'rect' }
   ];
 
   var NAMES = {
@@ -38,7 +39,8 @@
     l7164: 'Medium',
     l7173: 'Large',
     l7165: 'Large',
-    full:  'Full sheet'
+    full:  'Full sheet',
+    p6870: 'Product label (68×70)'
   };
 
   // ── Self-check: geometry must tile within A4 (non-negative right/bottom margin) ──

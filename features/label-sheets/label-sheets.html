@@ -103,6 +103,7 @@
 
       <div class="ls-types" id="lsTypeTabs">
         <div class="ls-type active" data-type="product" onclick="LS.pickType('product')">Product</div>
+        <div class="ls-type" data-type="plabel" onclick="LS.pickType('plabel')">Product label</div>
         <div class="ls-type" data-type="text" onclick="LS.pickType('text')">Text</div>
         <div class="ls-type" data-type="barcode" onclick="LS.pickType('barcode')">Barcode</div>
         <div class="ls-type" data-type="blank" onclick="LS.pickType('blank')">Blank</div>
@@ -115,6 +116,21 @@
           <input type="text" id="lsProdSearch" class="ls-input" placeholder="e.g. 5DC, SKU…" autocomplete="off" oninput="LS.searchProduct(this.value)" />
           <div class="ls-results" id="lsProdResults" style="display:none;"></div>
           <div id="lsProdChosen" style="display:none;margin-top:10px;font-size:13px;"></div>
+        </div>
+        <!-- product label (dynamic design) -->
+        <div id="lsTypeProductLabel" style="display:none;">
+          <label class="ls-label">Find product (5DC, SKU or name)</label>
+          <input type="text" id="lsPlSearch" class="ls-input" placeholder="e.g. R1051, 5DC…" autocomplete="off" oninput="LS.plSearch(this.value)" />
+          <div class="ls-results" id="lsPlResults" style="display:none;"></div>
+          <div id="lsPlForm" style="display:none;margin-top:10px;">
+            <label class="ls-label">Code</label>
+            <input type="text" id="lsPlCode" class="ls-input" />
+            <label class="ls-label" style="margin-top:8px;">Description</label>
+            <input type="text" id="lsPlDesc" class="ls-input" />
+            <label class="ls-label" style="margin-top:8px;">Spec lines (one per line)</label>
+            <textarea id="lsPlLines" class="ls-input" rows="3" placeholder="IP20 / 3000K&#10;200 – 240VAC / 50-60Hz"></textarea>
+            <div class="ls-note" id="lsPlBc" style="margin-top:8px;">Barcode auto-generated from the product.</div>
+          </div>
         </div>
         <!-- text -->
         <div id="lsTypeText" style="display:none;">
@@ -192,7 +208,8 @@
   <script src="/supabase-config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="label-templates.js?v=20260723b"></script>
-  <script src="label-sheets.js?v=20260723c"></script>
+  <script src="label-assets.js?v=20260723d"></script>
+  <script src="label-templates.js?v=20260723d"></script>
+  <script src="label-sheets.js?v=20260723d"></script>
 </body>
 </html>
