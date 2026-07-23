@@ -33,10 +33,15 @@
 
   // What each content type is called and what it does — shown on the model
   // cards so the operator can pick a sheet by what it prints, not by its code.
-  var TYPE_NAME = { product: 'Product', plabel: 'Product label', barcode: 'Barcode', text: 'Text' };
+  var TYPE_NAME = { product: 'Product', plabel: 'Product label', location: 'Location', barcode: 'Barcode', text: 'Text' };
   function typeHint(type, recipe) {
-    if (type === 'product') return recipe === 'code5dc' ? '5DC + barcode, from a product' : 'Code, 5DC and barcode';
+    if (type === 'product') {
+      if (recipe === 'code5dc') return '5DC + barcode, from a product';
+      if (recipe === 'shipping') return 'Code on top, 5DC left, barcode right';
+      return 'Code, 5DC and barcode';
+    }
     if (type === 'plabel') return 'Full Rapid LED sticker, from Cin7';
+    if (type === 'location') return 'Bin code — big, barcode, code again';
     if (type === 'barcode') return 'Any code — EAN-13 or CODE128';
     if (type === 'text') return 'Free text';
     return '';
@@ -45,6 +50,7 @@
   var SAMPLES = {
     product: { type: 'product', sku: 'R1021-WH-TRI', name: '8w Dimmable Downlight', dc5: '95908', barcode: '9727435304891', fmt: 'auto' },
     barcode: { type: 'barcode', value: '9727435304891', fmt: 'auto' },
+    location: { type: 'location', code: 'MA-G-13-L3' },
     text: { type: 'text', text: 'Rapid LED' },
     plabel: { type: 'plabel', code: 'R1021-WH-TRI', desc: '8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri', lines: ['200 – 240VAC / 50-60Hz'], barcode: '9727435304891', fmt: 'auto' }
   };
@@ -227,6 +233,7 @@
       if (existing.type === 'product') { LS.editor.product = { sku: existing.sku, name: existing.name, barcode: existing.barcode, attribute1: existing.dc5 }; showChosen(); }
       else if (existing.type === 'text') { el('lsTextVal').value = existing.text || ''; }
       else if (existing.type === 'barcode') { el('lsBcVal').value = existing.value || ''; el('lsBcFmt').value = existing.fmt || 'auto'; }
+      else if (existing.type === 'location') { el('lsLocVal').value = existing.code || ''; }
       else if (existing.type === 'plabel') {
         LS.editor.plProduct = { sku: existing.code, name: existing.desc, barcode: existing.barcode };
         el('lsPlCode').value = existing.code || '';
@@ -253,6 +260,8 @@
     el('lsProdSearch').value = ''; el('lsProdResults').style.display = 'none'; el('lsProdResults').innerHTML = '';
     el('lsProdChosen').style.display = 'none'; el('lsProdChosen').innerHTML = '';
     el('lsTextVal').value = ''; el('lsBcVal').value = ''; el('lsBcFmt').value = 'auto';
+    var lv = el('lsLocVal'); if (lv) lv.value = '';
+    var lr = el('lsLocResults'); if (lr) { lr.style.display = 'none'; lr.innerHTML = ''; }
     var pls = el('lsPlSearch'); if (pls) pls.value = '';
     var plr = el('lsPlResults'); if (plr) { plr.style.display = 'none'; plr.innerHTML = ''; }
     var plf = el('lsPlForm'); if (plf) plf.style.display = 'none';
@@ -266,6 +275,7 @@
     renderTypeTabs(type);
     el('lsTypeProduct').style.display = type === 'product' ? 'block' : 'none';
     el('lsTypeProductLabel').style.display = type === 'plabel' ? 'block' : 'none';
+    el('lsTypeLocation').style.display = type === 'location' ? 'block' : 'none';
     el('lsTypeText').style.display = type === 'text' ? 'block' : 'none';
     el('lsTypeBarcode').style.display = type === 'barcode' ? 'block' : 'none';
   }
@@ -338,6 +348,57 @@
     e.innerHTML = bcStatusHtml({ barcode: barcode, code: code, fmt: 'auto' });
   }
 
+  // ── Locations ──
+  // Codes come from the public Locations table (the same source the existing
+  // barcode print validates against). Typing is not restricted to it: a bin
+  // that is not registered yet still needs a label.
+  function loadLocations() {
+    (async function () {
+      try {
+        if (window.supabaseReady) { try { await window.supabaseReady; } catch (e) {} }
+        var sb = window.supabase;
+        if (!sb || !sb.from) return;
+        var all = [], from = 0, size = 1000;
+        while (true) {
+          var res = await sb.from('Locations').select('code').range(from, from + size - 1);
+          if (res.error) { console.warn('label-sheets: locations error', res.error.message); break; }
+          var rows = res.data || [];
+          all = all.concat(rows.map(function (r) { return String(r.code || '').trim(); }).filter(Boolean));
+          if (rows.length < size) break;
+          from += size;
+          if (from > 20000) break;
+        }
+        LS.locations = all;
+        console.log('label-sheets: loaded ' + all.length + ' locations');
+      } catch (e) { console.warn('label-sheets: loadLocations failed', e); }
+    })();
+  }
+
+  function locSearch(term) {
+    term = (term || '').trim().toLowerCase();
+    var box = el('lsLocResults'), note = el('lsLocNote');
+    if (term.length < 2) { box.style.display = 'none'; box.innerHTML = ''; if (note) note.textContent = 'Prints the code big, the barcode, and the code again underneath.'; return; }
+    if (!LS.locations) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Loading locations…</span></div>'; return; }
+    LS._locResults = LS.locations.filter(function (c) { return c.toLowerCase().indexOf(term) >= 0; }).slice(0, 40);
+    var exact = LS.locations.some(function (c) { return c.toLowerCase() === term; });
+    if (note) {
+      note.innerHTML = exact
+        ? '<span style="color:#1a8a4a;">✓ registered location</span>'
+        : '<span style="color:#b45309;">not in the Locations table — it will still print</span>';
+    }
+    if (!LS._locResults.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.innerHTML = LS._locResults.map(function (c, i) {
+      return '<div class="ls-result" onclick="LS.locChoose(' + i + ')"><span class="r5dc">' + esc(c) + '</span></div>';
+    }).join('');
+    box.style.display = 'block';
+  }
+  function locChoose(i) {
+    var c = LS._locResults[i]; if (!c) return;
+    el('lsLocVal').value = c;
+    el('lsLocResults').style.display = 'none';
+    locSearch(c);
+  }
+
   function cleanDesc(name) {
     // the label description is cleaner than the raw Cin7 name: drop the "(3000K…)"
     // tail and any "-Carton10" suffix, tidy trailing punctuation.
@@ -386,6 +447,10 @@
       var bv = el('lsBcVal').value.trim();
       if (!bv) { alert('Type the code value.'); return; }
       cell = { type: 'barcode', value: bv, fmt: el('lsBcFmt').value };
+    } else if (type === 'location') {
+      var lc = el('lsLocVal').value.trim();
+      if (!lc) { alert('Type or pick a location code.'); return; }
+      cell = { type: 'location', code: lc };
     } else if (type === 'plabel') {
       var plCode = el('lsPlCode').value.trim();
       if (!plCode && !LS.editor.plProduct) { alert('Find a product first.'); return; }
@@ -547,6 +612,7 @@
     normalizeAssets();
     renderModels();
     loadProducts();
+    loadLocations();
     var sheetsInput = el('lsSheets');
     if (sheetsInput) sheetsInput.addEventListener('input', updateSummary);
     var resizeTimer = null;
@@ -580,6 +646,8 @@
   LS.selectNone = selectNone;
   LS.openFillSelected = openFillSelected;
   LS.clearSelected = clearSelected;
+  LS.locSearch = locSearch;
+  LS.locChoose = locChoose;
   LS.cellPreviewURL = cellPreviewURL;
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

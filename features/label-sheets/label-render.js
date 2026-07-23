@@ -161,6 +161,7 @@
   function effectiveBarcode(cell) {
     if (!cell) return { value: '', fmt: 'CODE128' };
     if (cell.type === 'barcode') return { value: usable(cell.value), fmt: cell.fmt || 'auto' };
+    if (cell.type === 'location') return { value: usable(cell.code) || usable(cell.value), fmt: 'CODE128' };
     var real = usable(cell.barcode);
     if (real) return { value: real, fmt: cell.fmt || 'auto' };
     return { value: bcValue(cell, FALLBACK_ORDER), fmt: 'CODE128' };
@@ -185,16 +186,17 @@
     }
     return { dx: dx, dy: dy };
   }
-  function barcodeVector(value, fmt) {
+  function barcodeVector(value, fmt, noText) {
     value = String(value == null ? '' : value).trim();
     if (!value || typeof JsBarcode === 'undefined') return null;
-    var key = value + '|' + (fmt || 'auto');
+    var key = value + '|' + (fmt || 'auto') + (noText ? '|nt' : '');
     if (key in _bcVec) return _bcVec[key];
     var res = null;
     try {
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      try { JsBarcode(svg, value, Object.assign({ format: bcFormat(value, fmt) }, BC_OPTS)); }
-      catch (e) { JsBarcode(svg, value, Object.assign({ format: 'CODE128' }, BC_OPTS)); }
+      var opt = noText ? Object.assign({}, BC_OPTS, { displayValue: false }) : BC_OPTS;
+      try { JsBarcode(svg, value, Object.assign({ format: bcFormat(value, fmt) }, opt)); }
+      catch (e) { JsBarcode(svg, value, Object.assign({ format: 'CODE128' }, opt)); }
 
       var W = parseFloat(svg.getAttribute('width')), H = parseFloat(svg.getAttribute('height'));
       if (!(W > 0) || !(H > 0)) throw new Error('barcode svg has no size');
@@ -297,10 +299,10 @@
   // using the full width buys the widest possible module — which is precisely
   // what decides whether a small ticket scans. (barcodeFit above keeps the
   // natural proportions; use it only where the look matters more than the read.)
-  function barcodeFill(value, fmt, x, y, w, h) {
+  function barcodeFill(value, fmt, x, y, w, h, noText) {
     var none = { prims: [], moduleMM: 0 };
     if (!(w > 0) || !(h > 0)) return none;
-    var v = barcodeVector(value, fmt);
+    var v = barcodeVector(value, fmt, noText);
     if (!v) {                                            // raster fallback
       var c = barcodeCanvas(value, fmt);
       return c ? { prims: [{ kind: 'image', img: c, x: x, y: y, w: w, h: h }], moduleMM: 0 } : none;
@@ -335,13 +337,12 @@
   function layout(cell, W, H, opts) {
     if (!cell || !cell.type || !(W > 0) || !(H > 0)) return [];
     switch (cell.type) {
-      case 'plabel':  return layoutBrandLabel(cell, W, H);
-      case 'product': return (opts && opts.productRecipe === 'code5dc')
-                        ? layoutCode5dc(cell, W, H)
-                        : layoutProductStack(cell, W, H);
-      case 'barcode': return layoutBarcodeCell(cell, W, H);
-      case 'text':    return layoutTextCell(cell, W, H);
-      default:        return [];
+      case 'plabel':   return layoutBrandLabel(cell, W, H);
+      case 'location': return layoutLocation(cell, W, H);
+      case 'product':  return PRODUCT_RECIPES[(opts && opts.productRecipe) || 'stack'](cell, W, H);
+      case 'barcode':  return layoutBarcodeCell(cell, W, H);
+      case 'text':     return layoutTextCell(cell, W, H);
+      default:         return [];
     }
   }
 
@@ -387,6 +388,102 @@
         for (var i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
       }
     }
+    return out;
+  }
+
+  // ── Recipe: shipping — code on top, 5DC left, barcode right ─────────────
+  // This is the layout the existing barcode print already uses, and the sheet it
+  // targets (99.1 × 38.1) is within a millimetre of that print's 100 × 40 mm
+  // section, so the proportions carry over directly: code centred on top, the
+  // 5DC large on the left for the human, the bars taking the whole right side.
+  var SH = {
+    pad:        1.0,     // mm
+    titleH:     0.17,    // × H
+    titleMinMM: 2.0,
+    titleGap:   0.05,    // × H
+    dc5H:       0.24,    // × H
+    dc5MinMM:   3.0,
+    bcW:        0.60,    // × iw
+    colGap:     0.02     // × iw
+  };
+  function layoutShipping(cell, W, H) {
+    var out = [];
+    var pad = Math.min(SH.pad, Math.min(W, H) * 0.05);
+    var iw = W - 2 * pad, ih = H - 2 * pad;
+    if (iw <= 0 || ih <= 0) return out;
+
+    var eb = effectiveBarcode(cell), value = eb.value;
+    var title = usable(cell.sku) || usable(cell.code);
+    var dc5 = usable(cell.dc5);
+
+    var y = pad, titleFs = 0;
+    if (title) {
+      titleFs = fitSize(title, iw, H * SH.titleH, false, SH.titleMinMM);
+      y += titleFs;
+      out.push({ kind: 'text', text: title, x: W / 2, y: y, size: titleFs, align: 'center' });
+      y += H * SH.titleGap;
+    }
+
+    var rowTop = y, rowH = (H - pad) - rowTop;
+    if (rowH <= 0.5) return out;
+
+    var bcWmm = iw * SH.bcW;
+    if (value) {
+      var bc = barcodeFill(value, eb.fmt, W - pad - bcWmm, rowTop, bcWmm, rowH);
+      for (var i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+    }
+    if (dc5) {
+      var colW = Math.max(2, iw - (value ? bcWmm + iw * SH.colGap : 0));
+      var fs = fitSize(dc5, colW, Math.min(H * SH.dc5H, rowH * 0.9), true, SH.dc5MinMM);
+      // cap height is roughly 0.7em, so half of it centres the line on the row
+      out.push({ kind: 'text', text: dc5, x: pad, y: rowTop + rowH / 2 + fs * 0.35, size: fs, bold: true, align: 'left' });
+    }
+    return out;
+  }
+
+  // ── Recipe: location ────────────────────────────────────────────────────
+  // Mirrors the existing location print: the code large above, the bars in the
+  // middle with NO human-readable line of their own, and the code again small
+  // underneath. Always CODE128 — a bin code is not a GTIN.
+  var LOC = {
+    pad:       1.0,     // mm
+    topH:      0.235,   // × H
+    topMinMM:  3.0,
+    gap1:      0.025,   // × H
+    bcH:       0.62,    // × H
+    gap2:      0.015,   // × H
+    botH:      0.095,   // × H
+    botMinMM:  1.6,
+    bcW:       0.94     // × iw
+  };
+  function layoutLocation(cell, W, H) {
+    var out = [];
+    var code = usable(cell.code) || usable(cell.value);
+    if (!code) return out;
+    var pad = Math.min(LOC.pad, Math.min(W, H) * 0.05);
+    var iw = W - 2 * pad;
+    if (iw <= 0 || H - 2 * pad <= 0) return out;
+
+    var bcWmm = iw * LOC.bcW, bx = pad + (iw - bcWmm) / 2;
+
+    var topFs = fitSize(code, bcWmm, H * LOC.topH, true, LOC.topMinMM);
+    var botFs = fitSize(code, iw, H * LOC.botH, false, LOC.botMinMM);
+    var bcHmm = H * LOC.bcH;
+    // if the pieces overflow the label, the bars give way first — the code is
+    // still readable by eye, and a squashed symbol still scans.
+    var total = topFs + H * LOC.gap1 + bcHmm + H * LOC.gap2 + botFs;
+    var room = H - 2 * pad;
+    if (total > room) bcHmm = Math.max(2, bcHmm - (total - room));
+
+    var y = pad + topFs;
+    out.push({ kind: 'text', text: code, x: bx, y: y, size: topFs, bold: true, align: 'left' });
+    y += H * LOC.gap1;
+
+    var bc = barcodeFill(code, 'CODE128', bx, y, bcWmm, bcHmm, true);   // no HRI line
+    for (var i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+    y += bcHmm + H * LOC.gap2 + botFs;
+
+    out.push({ kind: 'text', text: code, x: W / 2, y: y, size: botFs, align: 'center' });
     return out;
   }
 
@@ -557,6 +654,8 @@
     return out;
   }
 
+  var PRODUCT_RECIPES = { code5dc: layoutCode5dc, shipping: layoutShipping, stack: layoutProductStack };
+
   // ── Backend A — canvas (on-screen preview) ──────────────────────────────
   function roundRectPath(ctx, x, y, w, h, r) {
     ctx.beginPath(); ctx.moveTo(x + r, y);
@@ -653,11 +752,19 @@
   function cellScan(cell, W, H, recipe) {
     if (!cell || cell.type === 'text') return { ok: true, empty: true, moduleMM: 0, minMM: MIN_MODULE_MM, format: '', value: '' };
     var eb = effectiveBarcode(cell);
-    var box = barcodeBox(recipe, W, H);
+    var box = barcodeBox(cell.type === 'location' ? 'location' : recipe, W, H);
     return scanQuality(eb.value, eb.fmt, box.w, box.h);
   }
   // The barcode box a recipe would give this label — used by the check above.
   function barcodeBox(recipe, W, H) {
+    if (recipe === 'location') {
+      var pl = Math.min(LOC.pad, Math.min(W, H) * 0.05);
+      return { w: (W - 2 * pl) * LOC.bcW, h: H * LOC.bcH };
+    }
+    if (recipe === 'shipping') {
+      var ps = Math.min(SH.pad, Math.min(W, H) * 0.05);
+      return { w: (W - 2 * ps) * SH.bcW, h: Math.max(1, (H - ps) - (ps + H * SH.titleH + H * SH.titleGap)) };
+    }
     if (recipe === 'code5dc') {
       var pad = Math.min(W, H) * R5.pad, ih = H - 2 * pad;
       return { w: W - 2 * pad, h: ih * (1 - R5.codeH - R5.gap) };

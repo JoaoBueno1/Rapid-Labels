@@ -48,7 +48,13 @@
     },
     l7160: { name: 'Product / address', purpose: 'Product and address labels.', allow: ['product', 'barcode', 'text'], productRecipe: 'stack' },
     l7159: { name: 'Product',           purpose: 'Product labels.',              allow: ['product', 'barcode', 'text'], productRecipe: 'stack' },
-    l7163: { name: 'Shipping',          purpose: 'Shipping and carton labels.',  allow: ['product', 'barcode', 'text'], productRecipe: 'stack' },
+    l7163: {
+      name: 'Shipping',
+      purpose: 'Warehouse labels in the same format as the barcode print: code on top, 5DC left, barcode right. Also prints bin locations.',
+      allow: ['product', 'location', 'barcode', 'text'],
+      productRecipe: 'shipping',
+      tuned: true
+    },
     l7164: { name: 'Medium',            purpose: 'Medium labels.',               allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },
     l7173: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },
     l7165: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode', 'text'], productRecipe: 'stack' },

@@ -123,6 +123,13 @@
             <div class="ls-note" id="lsPlBc" style="margin-top:8px;">Barcode auto-generated from the product.</div>
           </div>
         </div>
+        <!-- location (bin code from the Locations table, free typing allowed) -->
+        <div id="lsTypeLocation" style="display:none;">
+          <label class="ls-label">Location code</label>
+          <input type="text" id="lsLocVal" class="ls-input" placeholder="e.g. MA-G-13-L3" autocomplete="off" oninput="LS.locSearch(this.value)" />
+          <div class="ls-results" id="lsLocResults" style="display:none;"></div>
+          <div class="ls-note" id="lsLocNote" style="margin-top:8px;">Prints the code big, the barcode, and the code again underneath.</div>
+        </div>
         <!-- text -->
         <div id="lsTypeText" style="display:none;">
           <label class="ls-label">Text (free type)</label>
@@ -155,7 +162,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="label-assets.js?v=20260723l"></script>
   <script src="label-templates.js?v=20260724a"></script>
-  <script src="label-render.js?v=20260724d"></script>
-  <script src="label-sheets.js?v=20260724d"></script>
+  <script src="label-render.js?v=20260724e"></script>
+  <script src="label-sheets.js?v=20260724e"></script>
 </body>
 </html>
