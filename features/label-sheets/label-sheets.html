@@ -74,12 +74,12 @@
               </div>
             </div>
             <button class="ls-btn ls-btn-primary ls-btn-block ls-btn-lg" onclick="LS.generatePdf()">⬇ Generate PDF to print</button>
-            <div class="ls-note" style="margin-top:10px;">When printing, choose <b>Actual size / 100%</b> (never “fit to page”). A browser cannot force this — you must pick it in the print dialog. Load the <b>correct</b> Celcast sheet in the printer.</div>
+            <div class="ls-note" style="margin-top:10px;"><b>That's the whole trick:</b> in the print dialog set <b>Scale = Actual size / 100%</b> — never “Fit to page”, which shrinks it (often to ~96%) and then nothing lines up. At 100% these sheets align on their own. Load the correct Celcast sheet.</div>
           </div>
 
           <div class="ls-panel-card">
-            <h3>Alignment</h3>
-            <p class="ls-note" style="margin-top:0;">Real printers drift a few mm even at 100%. Print the test on <b>plain paper</b>, lay it over a blank Celcast sheet against the light: the outlines should sit inside the die-cut squares. If the whole grid is shifted, nudge below and reprint — it’s saved per sheet.</p>
+            <h3>Alignment <span style="font-weight:400;color:var(--faint);font-size:12px;">— optional</span></h3>
+            <p class="ls-note" style="margin-top:0;"><b>Only if labels come out visibly shifted after printing at 100%.</b> The content is inset inside each label, so a 1–2 mm drift never shows — most printers are fine at Actual size. To nudge: print the test on <b>plain paper</b>, lay it over a blank sheet against the light, then shift with the offset below (saved per sheet).</p>
             <button class="ls-btn ls-btn-block" onclick="LS.printAlignmentTest()">🎯 Print alignment test</button>
             <div style="display:flex;gap:12px;margin-top:12px;">
               <div style="flex:1;">
