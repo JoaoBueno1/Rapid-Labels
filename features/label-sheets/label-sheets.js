@@ -685,18 +685,21 @@
       doc.line(m[0] - 4, m[1], m[0] + 4, m[1]); doc.line(m[0], m[1] - 4, m[0], m[1] + 4);
     });
 
-    // 100 mm rulers on a clean white band (legible over the grid) — the scale
-    // proof: if either does not measure 100 mm on paper, the print is not at 100%.
-    alignRuler(doc, 55, 18, 100, 'h');
-    alignRuler(doc, 5, 100, 100, 'v');
+    // 100 mm rulers on a clean white band (legible over the grid). Kept clear of
+    // the top ~10 mm so a printer's non-printable top border cannot clip them —
+    // the scale proof: if either does not measure 100 mm, the print is not 100%.
+    alignRuler(doc, 55, 27, 100, 'h');
+    alignRuler(doc, 5, 105, 100, 'v');
 
-    // Title band last, on white, so it never fights the outlines.
-    doc.setFillColor(255, 255, 255); doc.rect(27, 1.5, 165, 9.5, 'F');
+    // Title band, on white, kept below the top ~10 mm. A raw (uncalibrated) print
+    // can shift up a few mm, so putting the header at ~15 mm stops it being
+    // clipped by the printer's non-printable top border.
+    doc.setFillColor(255, 255, 255); doc.rect(27, 10.5, 168, 10, 'F');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(20);
-    doc.text('RAPID LED — ALIGNMENT TEST', 30, 5.5);
+    doc.text('RAPID LED — ALIGNMENT TEST', 30, 14.5);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(90);
     doc.text(t.avery + ' · ' + t.labelW + '×' + t.labelH + ' mm · grid ' + t.cols + '×' + t.rows +
-      ' · offset X ' + cal.dx.toFixed(1) + ' Y ' + cal.dy.toFixed(1) + ' mm · PRINT AT 100% / ACTUAL SIZE', 30, 9);
+      ' · offset X ' + cal.dx.toFixed(1) + ' Y ' + cal.dy.toFixed(1) + ' mm · PRINT AT 100% / ACTUAL SIZE', 30, 18);
 
     openPdf(doc, 'align-test-' + t.id + '.pdf');
   }
