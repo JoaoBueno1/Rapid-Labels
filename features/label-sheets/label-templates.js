@@ -31,7 +31,7 @@
     { id:'l7163', avery:'L7163', code:'48014', up:14, cols:2, rows:7,  labelW:99.1,  labelH:38.1,  marginTop:15.15, marginLeft:4.65, pitchX:101.6, pitchY:38.1, radius:0,   shape:'rect' },
     { id:'l7162', avery:'L7162', code:'48016', up:16, cols:2, rows:8,  labelW:99.1,  labelH:33.9,  marginTop:12.9,  marginLeft:4.65, pitchX:101.6, pitchY:33.9, radius:0,   shape:'rect' },
     { id:'l7159', avery:'L7159', code:'48024', up:24, cols:3, rows:8,  labelW:64.0,  labelH:33.9,  marginTop:12.9,  marginLeft:6.5,  pitchX:66.5,  pitchY:33.9, radius:1.5, shape:'rect' },
-    { id:'up33',  avery:'—',     code:'48033', up:33, cols:3, rows:11, labelW:64.0,  labelH:24.3,  marginTop:14.85, marginLeft:6.5,  pitchX:66.5,  pitchY:24.3, radius:1.5, shape:'rect' }
+    { id:'up33',  avery:'L7157', code:'48033', up:33, cols:3, rows:11, labelW:64.0,  labelH:24.3,  marginTop:14.85, marginLeft:6.5,  pitchX:66.5,  pitchY:24.3, radius:1.5, shape:'rect' }
   ];
 
   // ── What each sheet IS FOR, and what it may carry ─────────────────────────
