@@ -120,7 +120,7 @@ body{
 .ls-btn{
   appearance:none;border:1px solid var(--border);background:var(--surface);color:var(--ink);
   padding:8px 14px;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;
-  transition:background .12s,border-color .12s;white-space:nowrap;
+  transition:background .12s,border-color .12s;white-space:nowrap;flex-shrink:0;
 }
 .ls-btn:hover{background:#f2f6fa;border-color:#b7c4cf;}
 .ls-btn-primary{background:var(--cyan);border-color:var(--cyan);color:#fff;}

@@ -154,8 +154,6 @@
     var stg = el('lsSelectToggle'); if (stg) stg.classList.remove('active');
     el('lsEdName').textContent = LS.caps.name;
     el('lsEdMeta').textContent = LS.caps.size + ' · grid ' + LS.caps.grid + ' · ' + LS.caps.up + ' per sheet · Avery ' + LS.caps.avery + (LS.caps.code ? ' · Celcast ' + LS.caps.code : '');
-    el('lsStart').value = 1;
-    el('lsStart').max = t.cols * t.rows;
     el('lsSub').textContent = LS.caps.name + ' — ' + LS.caps.size;
     el('lsModels').style.display = 'none';
     el('lsEditor').style.display = 'block';
@@ -240,20 +238,10 @@
   function updateSummary() {
     var t = LS.tpl; if (!t) return;
     var total = t.cols * t.rows;
-    var start = Math.max(1, intVal('lsStart', 1));
-    var sheets = Math.max(1, intVal('lsSheets', 1));
     var filled = LS.cells.filter(function (c) { return c && c.type; }).length;
-    var first = 0, rest = 0;
-    for (var p = 0; p < total; p++) {
-      var c = LS.cells[p];
-      if (c && c.type) { rest++; if (p >= start - 1) first++; }
-    }
-    var totalLabels = first + rest * (sheets - 1);
     var bad = LS._badCount || 0;
     el('lsSummary').innerHTML =
-      '<b>' + filled + '</b> of ' + total + ' labels filled<br>' +
-      'Sheet 1 starts at label <b>' + start + '</b>' + (start > 1 ? ' <span style="color:#8a97a2">(first ' + (start - 1) + ' already used)</span>' : '') + '<br>' +
-      'Sheets: <b>' + sheets + '</b> · total to print: <b>' + totalLabels + '</b> labels' +
+      '<b>' + filled + '</b> of ' + total + ' labels filled' +
       (bad ? '<br><span style="color:#c0392b;">⚠ <b>' + bad + '</b> label' + (bad > 1 ? 's have' : ' has') +
              ' a barcode too narrow to scan on this sheet — marked in red.</span>' : '');
   }
@@ -308,9 +296,8 @@
   }
 
   function openFillAll(preType) {
-    var start = Math.max(1, intVal('lsStart', 1));
     LS.editor = { mode: 'all', index: -1, type: preType || defaultType(), product: null };
-    el('lsCellTitle').textContent = 'Fill all (from label ' + start + ' to end)';
+    el('lsCellTitle').textContent = 'Fill all labels';
     resetEditorInputs();
     pickType(preType || defaultType());
     updateModalPreview();
@@ -758,15 +745,18 @@
     var cal = getCalib(t.id);
     window.LabelTemplates.list().forEach(function (tpl) { setCalib(tpl.id, cal.dx, cal.dy); });
     var note = el('lsCalibNote');
-    if (note) note.innerHTML = '<b>Offset X ' + cal.dx.toFixed(1) + ' mm, Y ' + cal.dy.toFixed(1) +
-      ' mm applied to ALL sheets.</b> Same printer = same drift, so one calibration covers every model.';
+    if (note) { note.style.display = ''; note.innerHTML = '<b>Offset X ' + cal.dx.toFixed(1) + ' mm, Y ' + cal.dy.toFixed(1) + ' mm applied to ALL sheets.</b>'; }
   }
   function updateCalibNote() {
     var t = LS.tpl, note = el('lsCalibNote'); if (!t || !note) return;
     var cal = getCalib(t.id);
-    note.innerHTML = (cal.dx || cal.dy)
-      ? '<b>Saved for this sheet — offset X ' + cal.dx.toFixed(1) + ' mm, Y ' + cal.dy.toFixed(1) + ' mm</b>, applied to every PDF. Reprint the test to confirm.'
-      : 'No offset yet. If the top label prints too high, increase Y; if it prints too far left, increase X.';
+    if (cal.dx || cal.dy) {
+      note.style.display = '';
+      note.innerHTML = '<b>Saved offset — X ' + cal.dx.toFixed(1) + ' · Y ' + cal.dy.toFixed(1) + ' mm</b>, applied to every PDF.';
+    } else {
+      note.style.display = 'none';
+      note.innerHTML = '';
+    }
   }
 
   // ═══ modal helpers ═══

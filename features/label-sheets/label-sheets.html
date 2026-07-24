@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="label-sheets.css?v=20260724q" />
+  <link rel="stylesheet" href="label-sheets.css?v=20260724s" />
 </head>
 <body>
   <header class="ls-header">
@@ -38,8 +38,8 @@
           <div class="ls-model-meta" id="lsEdMeta">—</div>
         </div>
         <div class="grow"></div>
-        <button class="ls-btn" onclick="LS.openFillAll()">Fill all…</button>
-        <button class="ls-btn" id="lsSelectToggle" onclick="LS.toggleSelectMode()">Select…</button>
+        <button class="ls-btn" onclick="LS.openFillAll()">Fill all</button>
+        <button class="ls-btn" id="lsSelectToggle" onclick="LS.toggleSelectMode()">Select</button>
         <button class="ls-btn" onclick="LS.clearAll()">Clear</button>
       </div>
 
@@ -48,7 +48,7 @@
         <button class="ls-btn ls-btn-sm" onclick="LS.selectAll()">Select all</button>
         <button class="ls-btn ls-btn-sm" onclick="LS.selectNone()">None</button>
         <div class="grow"></div>
-        <button class="ls-btn ls-btn-sm ls-btn-primary" onclick="LS.openFillSelected()">Fill selected…</button>
+        <button class="ls-btn ls-btn-sm ls-btn-primary" onclick="LS.openFillSelected()">Fill selected</button>
         <button class="ls-btn ls-btn-sm" onclick="LS.clearSelected()">Clear selected</button>
         <button class="ls-btn ls-btn-sm ls-btn-ghost" onclick="LS.toggleSelectMode()">Done</button>
       </div>
@@ -63,23 +63,13 @@
         <div class="ls-panel">
           <div class="ls-panel-card">
             <h3>Print</h3>
-            <div style="display:flex;gap:12px;margin-bottom:12px;">
-              <div style="flex:1;">
-                <label class="ls-label">Sheets</label>
-                <input type="number" min="1" max="200" value="1" id="lsSheets" class="ls-input num" />
-              </div>
-              <div style="flex:1;">
-                <label class="ls-label">Start at label</label>
-                <input type="number" min="1" value="1" id="lsStart" class="ls-input num" oninput="LS.renderSheet()" />
-              </div>
-            </div>
             <button class="ls-btn ls-btn-primary ls-btn-block ls-btn-lg" onclick="LS.generatePdf()">⬇ Generate PDF to print</button>
             <div class="ls-note" style="margin-top:10px;"><b>That's the whole trick:</b> in the print dialog set <b>Scale = Actual size / 100%</b> — never “Fit to page”, which shrinks it (often to ~96%) and then nothing lines up. At 100% these sheets align on their own. Load the correct Celcast sheet.</div>
           </div>
 
           <div class="ls-panel-card">
             <h3>Alignment <span style="font-weight:400;color:var(--faint);font-size:12px;">— optional</span></h3>
-            <p class="ls-note" style="margin-top:0;"><b>Only if labels come out visibly shifted after printing at 100%.</b> The content is inset inside each label, so a 1–2 mm drift never shows — most printers are fine at Actual size. To nudge: print the test on <b>plain paper</b>, lay it over a blank sheet against the light, then shift with the offset below (saved per sheet).</p>
+            <p class="ls-note" style="margin-top:0;">Only if labels look shifted after printing at 100%. Print the test, overlay it on a blank sheet, then nudge below.</p>
             <button class="ls-btn ls-btn-block" onclick="LS.printAlignmentTest()">🎯 Print alignment test</button>
             <div style="display:flex;gap:12px;margin-top:12px;">
               <div style="flex:1;">
@@ -100,7 +90,7 @@
               <button class="ls-btn ls-btn-sm ls-btn-ghost" onclick="LS.resetCalib()">Reset</button>
             </div>
             <button class="ls-btn ls-btn-sm ls-btn-block" style="margin-top:8px;" onclick="LS.applyCalibAll()">Apply this offset to all sheets</button>
-            <div class="ls-note" id="lsCalibNote" style="margin-top:10px;">Positive X moves labels right, positive Y moves them down. If the top label prints too high, increase Y.</div>
+            <div class="ls-note" id="lsCalibNote" style="margin-top:10px;display:none;"></div>
           </div>
 
           <div class="ls-panel-card">
@@ -189,6 +179,6 @@
   <script src="label-assets.js?v=20260724n"></script>
   <script src="label-templates.js?v=20260724p"></script>
   <script src="label-render.js?v=20260724n"></script>
-  <script src="label-sheets.js?v=20260724r"></script>
+  <script src="label-sheets.js?v=20260724s"></script>
 </body>
 </html>
