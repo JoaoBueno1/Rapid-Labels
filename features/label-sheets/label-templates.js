@@ -21,18 +21,17 @@
   // code = Celcast SKU confirmed on AU retailer listings; null = "compatível"
   // (same size/grid, Celcast code not individually verified — matched by size).
   var TEMPLATES = [
-    // Geometry verified against Label Planet / Avery / flexilabels + A4 tiling (2026-07-24).
-    // l7651 corrected to genuine Avery (was left 5.75 / pitchX 40.1 = 2.0mm gap → outer
-    // columns ~1mm off). l7159 uses the Australian Celcast 48024 "QuickPeel" die (64 / left
-    // 6.5 / pitchX 66.5), which is the stock Rapid LED actually prints on, not the UK die.
-    { id:'l7651', avery:'L7651', code:null,    up:65, cols:5, rows:13, labelW:38.1,  labelH:21.2,  marginTop:10.7,  marginLeft:4.75, pitchX:40.6,  pitchY:21.2, radius:1.0, shape:'rect' },
-    { id:'l7160', avery:'L7160', code:'48021', up:21, cols:3, rows:7,  labelW:63.5,  labelH:38.1,  marginTop:15.15, marginLeft:7.25, pitchX:66.0,  pitchY:38.1, radius:1.5, shape:'rect' },
-    { id:'l7159', avery:'L7159', code:'48024', up:24, cols:3, rows:8,  labelW:64.0,  labelH:33.9,  marginTop:12.9,  marginLeft:6.5,  pitchX:66.5,  pitchY:33.9, radius:1.5, shape:'rect' },
-    { id:'l7163', avery:'L7163', code:'48014', up:14, cols:2, rows:7,  labelW:99.1,  labelH:38.1,  marginTop:15.15, marginLeft:4.65, pitchX:101.6, pitchY:38.1, radius:0,   shape:'rect' },
-    { id:'l7164', avery:'L7164', code:null,    up:12, cols:3, rows:4,  labelW:63.5,  labelH:72.0,  marginTop:4.5,   marginLeft:7.25, pitchX:66.0,  pitchY:72.0, radius:1.5, shape:'rect' },
-    { id:'l7173', avery:'L7173', code:'48010', up:10, cols:2, rows:5,  labelW:99.1,  labelH:57.0,  marginTop:6.0,   marginLeft:4.65, pitchX:101.6, pitchY:57.0, radius:0,   shape:'rect' },
+    // Only the sheets Rapid LED actually stocks — Celcast codes confirmed on the
+    // physical box (2026-07-24). Geometry verified vs Label Planet / Avery + exact
+    // A4 tiling. The 64-wide 3-across sheets (l7159 24up, up33 33up) use the
+    // Australian Celcast "QuickPeel" die (left 6.5, pitchX 66.5); the 99.1-wide
+    // 2-across family (l7165/l7163/l7162) shares left 4.65 / pitchX 101.6 (4 in).
+    { id:'full',  avery:'L7167', code:'48001', up:1,  cols:1, rows:1,  labelW:199.6, labelH:289.1, marginTop:3.95,  marginLeft:5.2,  pitchX:0,     pitchY:0,    radius:0,   shape:'rect' },
     { id:'l7165', avery:'L7165', code:'48008', up:8,  cols:2, rows:4,  labelW:99.1,  labelH:67.7,  marginTop:13.1,  marginLeft:4.65, pitchX:101.6, pitchY:67.7, radius:0,   shape:'rect' },
-    { id:'full',  avery:'—',     code:'48001', up:1,  cols:1, rows:1,  labelW:199.6, labelH:289.1, marginTop:3.95,  marginLeft:5.2,  pitchX:0,     pitchY:0,    radius:0,   shape:'rect' }
+    { id:'l7163', avery:'L7163', code:'48014', up:14, cols:2, rows:7,  labelW:99.1,  labelH:38.1,  marginTop:15.15, marginLeft:4.65, pitchX:101.6, pitchY:38.1, radius:0,   shape:'rect' },
+    { id:'l7162', avery:'L7162', code:'48016', up:16, cols:2, rows:8,  labelW:99.1,  labelH:33.9,  marginTop:12.9,  marginLeft:4.65, pitchX:101.6, pitchY:33.9, radius:0,   shape:'rect' },
+    { id:'l7159', avery:'L7159', code:'48024', up:24, cols:3, rows:8,  labelW:64.0,  labelH:33.9,  marginTop:12.9,  marginLeft:6.5,  pitchX:66.5,  pitchY:33.9, radius:1.5, shape:'rect' },
+    { id:'up33',  avery:'—',     code:'48033', up:33, cols:3, rows:11, labelW:64.0,  labelH:24.3,  marginTop:14.85, marginLeft:6.5,  pitchX:66.5,  pitchY:24.3, radius:1.5, shape:'rect' }
   ];
 
   // ── What each sheet IS FOR, and what it may carry ─────────────────────────
@@ -43,26 +42,24 @@
   // `tuned` marks the templates whose format has been settled with the operator;
   // the rest still run on sensible defaults and are pending their own pass.
   var CAPS = {
-    l7651: {
-      name: 'Small — price / barcode',
-      purpose: 'Shelf tickets and price labels: the 5DC to read, the barcode to scan.',
-      allow: ['product', 'barcode', 'text'],
-      productRecipe: 'code5dc',
-      tuned: true
-    },
-    l7160: { name: 'Product / address', purpose: 'Product and address labels.', allow: ['product', 'barcode', 'text'], productRecipe: 'stack' },
-    l7159: { name: 'Product',           purpose: 'Product labels.',              allow: ['product', 'barcode', 'text'], productRecipe: 'stack' },
+    full:  { name: 'Full sheet', purpose: 'One Rapid LED sticker filling the whole A4.', allow: ['plabel'], productRecipe: 'stack', tuned: true },
+    l7165: { name: 'Large — product sticker', purpose: 'Rapid LED product stickers and large labels.', allow: ['plabel', 'product', 'barcode'], productRecipe: 'stack', tuned: true },
     l7163: {
       name: 'Shipping',
-      purpose: 'Warehouse labels in the same format as the barcode print: code on top, 5DC left, barcode right. Also prints bin locations.',
+      purpose: 'Warehouse labels: code on top, 5DC left, barcode right. Also prints bin locations.',
       allow: ['product', 'location', 'barcode', 'text'],
       productRecipe: 'shipping',
       tuned: true
     },
-    l7164: { name: 'Medium',            purpose: 'Medium labels.',               allow: ['product', 'plabel', 'barcode'], productRecipe: 'stack' },
-    l7173: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode'], productRecipe: 'stack' },
-    l7165: { name: 'Large',             purpose: 'Large labels.',                allow: ['product', 'plabel', 'barcode'], productRecipe: 'stack' },
-    full:  { name: 'Full sheet', purpose: 'One Rapid LED sticker filling the whole A4.', allow: ['plabel'], productRecipe: 'stack' }
+    l7162: {
+      name: 'Shipping — compact',
+      purpose: 'Same warehouse/barcode format as Shipping, 16 to a sheet. Also prints bin locations.',
+      allow: ['product', 'location', 'barcode', 'text'],
+      productRecipe: 'shipping',
+      tuned: true
+    },
+    l7159: { name: 'Product',           purpose: 'Product labels: code, 5DC and barcode.', allow: ['product', 'barcode', 'text'], productRecipe: 'stack', tuned: true },
+    up33:  { name: 'Small — price / barcode', purpose: 'Shelf tickets and price labels: the 5DC to read, the barcode to scan.', allow: ['product', 'barcode', 'text'], productRecipe: 'code5dc', tuned: true }
   };
   var DEFAULT_CAPS = { name: '', purpose: '', allow: ['product', 'barcode', 'text'], productRecipe: 'stack', tuned: false };
   function caps(id) { return Object.assign({}, DEFAULT_CAPS, CAPS[id] || {}); }
