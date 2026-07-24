@@ -748,6 +748,16 @@
     if (el('lsOffY')) el('lsOffY').value = 0;
     updateCalibNote();
   }
+  // The drift is the printer's (non-printable margin + centring), the same for
+  // every A4 sheet — so one calibration can seed them all.
+  function applyCalibAll() {
+    var t = LS.tpl; if (!t) return;
+    var cal = getCalib(t.id);
+    window.LabelTemplates.list().forEach(function (tpl) { setCalib(tpl.id, cal.dx, cal.dy); });
+    var note = el('lsCalibNote');
+    if (note) note.innerHTML = '<b>Offset X ' + cal.dx.toFixed(1) + ' mm, Y ' + cal.dy.toFixed(1) +
+      ' mm applied to ALL sheets.</b> Same printer = same drift, so one calibration covers every model.';
+  }
   function updateCalibNote() {
     var t = LS.tpl, note = el('lsCalibNote'); if (!t || !note) return;
     var cal = getCalib(t.id);
@@ -908,6 +918,7 @@
   LS.onCalibInput = onCalibInput;
   LS.nudgeCalib = nudgeCalib;
   LS.resetCalib = resetCalib;
+  LS.applyCalibAll = applyCalibAll;
   LS.toggleSelectMode = toggleSelectMode;
   LS.toggleSelect = toggleSelect;
   LS.selectAll = selectAll;

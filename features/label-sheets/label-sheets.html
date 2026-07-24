@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="label-sheets.css?v=20260724p" />
+  <link rel="stylesheet" href="label-sheets.css?v=20260724q" />
 </head>
 <body>
   <header class="ls-header">
@@ -99,6 +99,7 @@
               <div class="grow" style="flex:1;"></div>
               <button class="ls-btn ls-btn-sm ls-btn-ghost" onclick="LS.resetCalib()">Reset</button>
             </div>
+            <button class="ls-btn ls-btn-sm ls-btn-block" style="margin-top:8px;" onclick="LS.applyCalibAll()">Apply this offset to all sheets</button>
             <div class="ls-note" id="lsCalibNote" style="margin-top:10px;">Positive X moves labels right, positive Y moves them down. If the top label prints too high, increase Y.</div>
           </div>
 
@@ -188,6 +189,6 @@
   <script src="label-assets.js?v=20260724n"></script>
   <script src="label-templates.js?v=20260724p"></script>
   <script src="label-render.js?v=20260724n"></script>
-  <script src="label-sheets.js?v=20260724p"></script>
+  <script src="label-sheets.js?v=20260724q"></script>
 </body>
 </html>
