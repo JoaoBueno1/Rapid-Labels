@@ -26,8 +26,8 @@
   var SPEC = {
     pad:         0.045,   // × H   outer padding
     logoH:       0.15,    // × av
-    logoMaxW:    0.68,    // × iw
-    logoGap:     0.050,   // × av  clearance below the logo, above the code
+    logoMaxW:    0.66,    // × iw
+    logoGap:     0.065,   // × av  clearance below the logo, above the code
     codeH:       0.115,   // × av  starting em size, shrinks to fit the width
     codeMinMM:   1.6,
     codeGap:     0.030,   // × av
@@ -43,8 +43,8 @@
     bandGap:     0.030,   // × av  between the content block and the band
     bcW:         0.58,    // × iw  barcode fills this share of the band
     symGap:      0.04,    // × iw  clearance between strip and barcode
-    symMaxW:     0.32,    // × iw  cap the compliance strip's width (small footnote)
-    symMaxH:     0.62,    // × bandH  and its height, so it never crowds the barcode
+    symMaxW:     0.26,    // × iw  cap the compliance strip's width (small footnote)
+    symMaxH:     0.48,    // × bandH  and its height, so it never crowds the barcode
     borderInset: 0.025,   // × H
     borderW:     0.006,   // × H
     borderR:     0.03,    // × H
@@ -619,16 +619,25 @@
       out.push({ kind: 'rect', x: bi, y: bi, w: W - 2 * bi, h: H - 2 * bi, r: H * S.borderR, lw: Math.max(0.08, H * S.borderW) });
     }
 
-    // ── Bottom band: compliance strip left, barcode right ──
+    // ── Bottom band: compliance strip left, 5DC + barcode right ──
     // The barcode FILLS its half of the band instead of keeping the symbol's
     // natural proportions. Preserving them meant the height cap decided the
     // width, so on a wide sheet the code shrank to 14% of the label — the same
     // small symbol on every size. Only horizontal ratios carry data, so filling
     // costs nothing and makes the code grow with the sheet.
     var bandH = av * S.bandH, bandTop = bot - bandH;
-    var bcBoxW = iw * S.bcW;
+    var bcBoxW = iw * S.bcW, bcX = W - pad - bcBoxW;
     var ebL = effectiveBarcode(cell);
-    var bc = barcodeFill(ebL.value, ebL.fmt, W - pad - bcBoxW, bandTop, bcBoxW, bandH);
+
+    // The product's 5DC sits above the barcode when it has one; otherwise the
+    // whole band height is the barcode's (the space stays empty, never a filler).
+    var dc = usable(cell.dc5), dcH = 0;
+    if (dc) {
+      var dcSize = fitSize(String(dc), bcBoxW, Math.min(bandH * 0.30, av * S.lineH * 1.25), true, 1.4);
+      dcH = dcSize * 1.25;
+      out.push({ kind: 'text', text: String(dc), x: bcX + bcBoxW / 2, y: bandTop + dcSize, size: dcSize, bold: true, align: 'center' });
+    }
+    var bc = barcodeFill(ebL.value, ebL.fmt, bcX, bandTop + dcH, bcBoxW, bandH - dcH);
     for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
 
     var sym = A.symbols, symD = assetDims(sym);
