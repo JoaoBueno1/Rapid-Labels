@@ -25,20 +25,20 @@
   // "technically drawn".
   var SPEC = {
     pad:         0.045,   // × H   outer padding
-    logoH:       0.15,    // × av
+    logoH:       0.18,    // × av  (bigger for presence on the sticker)
     logoMaxW:    0.66,    // × iw
-    logoGap:     0.065,   // × av  clearance below the logo, above the code
+    logoGap:     0.080,   // × av  clearance below the logo, above the code
     codeH:       0.115,   // × av  starting em size, shrinks to fit the width
     codeMinMM:   1.6,
-    codeGap:     0.030,   // × av
+    codeGap:     0.050,   // × av
     descH:       0.055,   // × av
     descMinMM:   1.2,
     descLead:    1.15,
     descShare:   0.55,    // × free height, when spec lines follow
-    descGap:     0.035,   // × av
-    lineH:       0.045,   // × av  spec lines
+    descGap:     0.060,   // × av
+    lineH:       0.052,   // × av  spec lines
     lineMinMM:   1.2,
-    lineLead:    1.20,
+    lineLead:    1.30,
     bandH:       0.23,    // × av  bottom band: symbols + barcode
     bandGap:     0.030,   // × av  between the content block and the band
     bcW:         0.58,    // × iw  barcode fills this share of the band
