@@ -25,8 +25,8 @@
   // "technically drawn".
   var SPEC = {
     pad:         0.045,   // × H   outer padding
-    logoH:       0.18,    // × av  (bigger for presence on the sticker)
-    logoMaxW:    0.66,    // × iw
+    logoH:       0.155,   // × av
+    logoMaxW:    0.60,    // × iw
     logoGap:     0.080,   // × av  clearance below the logo, above the code
     codeH:       0.115,   // × av  starting em size, shrinks to fit the width
     codeMinMM:   1.6,
@@ -39,9 +39,9 @@
     lineH:       0.052,   // × av  spec lines
     lineMinMM:   1.2,
     lineLead:    1.30,
-    bandH:       0.23,    // × av  bottom band: symbols + barcode
+    bandH:       0.21,    // × av  bottom band: symbols + barcode
     bandGap:     0.030,   // × av  between the content block and the band
-    bcW:         0.58,    // × iw  barcode fills this share of the band
+    bcW:         0.46,    // × iw  barcode width (kept modest so it isn't stretched)
     symGap:      0.04,    // × iw  clearance between strip and barcode
     symMaxW:     0.22,    // × iw  cap the compliance strip's width (small footnote)
     symMaxH:     0.42,    // × bandH  and its height, so it never crowds the barcode
@@ -638,7 +638,6 @@
     //    ON the bottom frame line (which breaks around them). ──
     var bandH = av * S.bandH, bandTop = bot - bandH;
     var bcBoxW = iw * S.bcW, bcX = W - pad - bcBoxW;
-    var yBot = bot - bandH / 2;                  // bottom frame line
     var ebL = effectiveBarcode(cell);
 
     // The product's 5DC prints above the barcode when it has one (a human
@@ -652,24 +651,26 @@
     var bc = barcodeFill(ebL.value, ebL.fmt, bcX, bandTop + dcH, bcBoxW, bandH - dcH);
     for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
 
-    var symR = fx0;
+    // Compliance strip: bottom-left, BOTTOM-ALIGNED with the barcode so the two
+    // sit on the same baseline (no line is drawn between them — it read as
+    // misaligned).
     var sym = A.symbols, symD = assetDims(sym);
     if (symD) {
       var sasp = symD.w / symD.h;
       var symMaxW = Math.min(iw * S.symMaxW, bcX - pad - iw * S.symGap);
       var sh = Math.min(bandH * S.symMaxH, symMaxW / sasp), sw = sh * sasp;
       if (sw > symMaxW) { sw = symMaxW; sh = sw / sasp; }
-      if (sw > 0.2) { out.push({ kind: 'image', img: sym.img, url: sym.url, x: pad, y: yBot - sh / 2, w: sw, h: sh }); symR = pad + sw; }
+      if (sw > 0.2) out.push({ kind: 'image', img: sym.img, url: sym.url, x: pad, y: bot - sh, w: sw, h: sh });
     }
 
-    // ── The segmented frame ──
+    // ── Frame: the top line runs through the logo and breaks on either side of
+    //    it; the two sides run full height to the bottom. The bottom is left
+    //    open so the compliance strip and barcode read as one aligned row. ──
     var loL = cx - lgW / 2 - brk, loR = cx + lgW / 2 + brk;
     if (loL > fx0 + 0.5) out.push({ kind: 'line', x1: fx0, y1: yTop, x2: loL, y2: yTop, lw: flw });   // top-left
     if (loR < fx1 - 0.5) out.push({ kind: 'line', x1: loR, y1: yTop, x2: fx1, y2: yTop, lw: flw });   // top-right
-    var bL = symR + brk, bR = bcX - brk;
-    if (bR > bL + 0.5) out.push({ kind: 'line', x1: bL, y1: yBot, x2: bR, y2: yBot, lw: flw });        // bottom-middle
-    out.push({ kind: 'line', x1: fx0, y1: yTop, x2: fx0, y2: yBot, lw: flw });                          // left
-    out.push({ kind: 'line', x1: fx1, y1: yTop, x2: fx1, y2: yBot, lw: flw });                          // right
+    out.push({ kind: 'line', x1: fx0, y1: yTop, x2: fx0, y2: bot, lw: flw });                          // left
+    out.push({ kind: 'line', x1: fx1, y1: yTop, x2: fx1, y2: bot, lw: flw });                          // right
 
     // ── Content (code, description, spec lines) centred between logo and band ──
     var contentTop = logoTop + lgH + av * S.logoGap;
