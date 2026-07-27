@@ -162,6 +162,9 @@
     if (!cell) return { value: '', fmt: 'CODE128' };
     if (cell.type === 'barcode') return { value: usable(cell.value), fmt: cell.fmt || 'auto' };
     if (cell.type === 'location') return { value: usable(cell.code) || usable(cell.value), fmt: 'CODE128' };
+    // The warehouse big-label encodes the product CODE (never the EAN), CODE128 —
+    // exactly what the home Search/Custom print does, so it scans into Cin7.
+    if (cell.type === 'biglabel') return { value: usable(cell.code) || usable(cell.sku), fmt: 'CODE128' };
     var real = usable(cell.barcode);
     if (real) return { value: real, fmt: cell.fmt || 'auto' };
     return { value: bcValue(cell, FALLBACK_ORDER), fmt: 'CODE128' };
@@ -363,6 +366,7 @@
       case 'plabel':   return layoutBrandLabel(cell, W, H);
       case 'location': return (opts && opts.zebra) ? layoutZebraLocation(cell, W, H) : layoutLocation(cell, W, H);
       case 'product':  return PRODUCT_RECIPES[(opts && opts.productRecipe) || 'stack'](cell, W, H);
+      case 'biglabel': return layoutBigLabel(cell, W, H);
       case 'barcode':  return layoutBarcodeCell(cell, W, H);
       case 'text':     return layoutTextCell(cell, W, H);
       default:         return [];
@@ -853,7 +857,83 @@
     return out;
   }
 
-  var PRODUCT_RECIPES = { code5dc: layoutCode5dc, shipping: layoutShipping, stack: layoutProductStack, zebraProduct: layoutZebraProduct };
+  // ── Recipe: bigLabel — one giant warehouse label filling an A4/A3 sheet ──
+  // EXACT replica of the home "Search & Print" / "Custom Label" output (app.js
+  // generateLabelHTML): a flex column of three rows — SKU: <5DC> with a bordered
+  // "Product Code" barcode box on the right, the product Code huge in the middle,
+  // QTY: <n> bottom-left and the date bottom-right. Fonts are the home's exact
+  // px values converted to mm (96 CSS dpi) so the print size matches to the
+  // millimetre; A4 vs A3 pick the same two font sets the home uses. The barcode
+  // encodes the product CODE as CODE128 (never the EAN) — the same thing the home
+  // prints, so it scans into Cin7.
+  var BL_PX = 25.4 / 96;
+  var BL_A4 = { lab: 40, date: 42, dc5: 140, dc5ml: 20, code: 90,  codeml: 10, qty: 160, qtyml: 20, bcH: 110, bcW: 300, boxPadT: 6, boxPadR: 12, boxPadB: 8,  boxPadL: 12, boxLab: 12, boxLabMb: 4, boxBorder: 2, boxR: 6 };
+  var BL_A3 = { lab: 80, date: 75, dc5: 180, dc5ml: 30, code: 150, codeml: 15, qty: 200, qtyml: 30, bcH: 150, bcW: 400, boxPadT: 8, boxPadR: 14, boxPadB: 10, boxPadL: 14, boxLab: 15, boxLabMb: 4, boxBorder: 2, boxR: 6 };
+  function layoutBigLabel(cell, W, H) {
+    var out = [], i;
+    var S = (H > 240) ? BL_A3 : BL_A4;              // A3 label ≈ 281 mm tall, A4 ≈ 194
+    function mm(px) { return px * BL_PX; }
+
+    var code = usable(cell.code) || usable(cell.sku);
+    var dc5  = usable(cell.dc5);
+    var qty  = usable(cell.qty);
+    var date = usable(cell.date);
+    var value = code;                               // the "Product Code" box encodes the CODE (CODE128)
+    var labF = mm(S.lab);
+
+    // ── Top row: bordered Product Code box (right) ──
+    var boxW = 0, boxH = 0, boxX = W;
+    if (value) {
+      var innerW = mm(S.bcW);
+      boxW = innerW + mm(S.boxPadL) + mm(S.boxPadR);
+      if (boxW > W * 0.5) { boxW = W * 0.5; innerW = boxW - mm(S.boxPadL) - mm(S.boxPadR); }
+      var capH = mm(S.boxLab);
+      boxH = mm(S.boxPadT) + capH + mm(S.boxLabMb) + mm(S.bcH) + mm(S.boxPadB);
+      boxX = W - boxW;
+      out.push({ kind: 'rect', x: boxX, y: 0, w: boxW, h: boxH, r: mm(S.boxR), lw: mm(S.boxBorder) });
+      out.push({ kind: 'text', text: 'PRODUCT CODE', x: boxX + boxW / 2, y: mm(S.boxPadT) + capH * 0.82, size: capH, bold: true, align: 'center' });
+      var bcY = mm(S.boxPadT) + capH + mm(S.boxLabMb);
+      var bc = barcodeFill(value, 'CODE128', boxX + (boxW - innerW) / 2, bcY, innerW, mm(S.bcH));
+      for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+    }
+
+    // ── Top row: SKU: <5DC> (left), sharing a baseline ──
+    var dcFont = mm(S.dc5);
+    var skuLineH = Math.max(dcFont, boxH);
+    var skuBase = dcFont * 0.80;                    // baseline for a line-height:1 box
+    out.push({ kind: 'text', text: 'SKU:', x: 0, y: skuBase, size: labF, bold: true, align: 'left' });
+    if (dc5) {
+      var dcx = widthMM('SKU:', labF, true) + mm(S.dc5ml);
+      var dcF = Math.min(dcFont, fitSize(dc5, Math.max(10, boxX - dcx - mm(4)), dcFont, true, 4));
+      out.push({ kind: 'text', text: dc5, x: dcx, y: skuBase, size: dcF, bold: true, align: 'left' });
+    }
+
+    // ── Bottom row: QTY: <n> (left) + date (right), margin-top:auto ──
+    var qtyFont = mm(S.qty);
+    var qtyLineTop = H - qtyFont;
+    var qtyBase = H - qtyFont * 0.20;
+    out.push({ kind: 'text', text: 'QTY:', x: 0, y: qtyBase, size: labF, bold: true, align: 'left' });
+    if (qty) {
+      var qx = widthMM('QTY:', labF, true) + mm(S.qtyml);
+      var qF = Math.min(qtyFont, fitSize(qty, W * 0.55, qtyFont, true, 6));
+      out.push({ kind: 'text', text: qty, x: qx, y: qtyBase, size: qF, bold: true, align: 'left' });
+    }
+    if (date) out.push({ kind: 'text', text: date, x: W, y: qtyBase, size: mm(S.date), bold: true, align: 'right' });
+
+    // ── Middle row: Code: <code> centred between the two ──
+    if (code) {
+      var midCy = (skuLineH + qtyLineTop) / 2;
+      var codeFont = mm(S.code);
+      var cx0 = widthMM('Code:', labF, true) + mm(S.codeml);
+      var cF = Math.min(codeFont, fitSize(code, W - cx0 - mm(4), codeFont, true, 6));
+      var cBase = midCy + cF * 0.34;
+      out.push({ kind: 'text', text: 'Code:', x: 0, y: cBase, size: labF, bold: true, align: 'left' });
+      out.push({ kind: 'text', text: code, x: cx0, y: cBase, size: cF, bold: true, align: 'left' });
+    }
+    return out;
+  }
+
+  var PRODUCT_RECIPES = { code5dc: layoutCode5dc, shipping: layoutShipping, stack: layoutProductStack, zebraProduct: layoutZebraProduct, bigLabel: layoutBigLabel };
 
   // ── Backend A — canvas (on-screen preview) ──────────────────────────────
   function roundRectPath(ctx, x, y, w, h, r) {
@@ -963,6 +1043,7 @@
   // The barcode box a recipe would give this label — used by the check above.
   function barcodeBox(recipe, W, H) {
     if (recipe === 'zebraProduct') return { w: 59.7, h: 26.4 };   // fixed home box
+    if (recipe === 'bigLabel') { var pxb = 25.4 / 96; return (H > 240) ? { w: 400 * pxb, h: 150 * pxb } : { w: 300 * pxb, h: 110 * pxb }; }
     if (recipe === 'location') {
       var pl = Math.min(LOC.pad, Math.min(W, H) * 0.05);
       return { w: (W - 2 * pl) * LOC.bcW, h: H * LOC.bcH };

@@ -40,7 +40,13 @@
     { id:'zebra4x6', avery:'—', code:'4×6', up:3, cols:1, rows:3, labelW:100.0, labelH:40.0, marginTop:10.0, marginLeft:0, pitchX:0, pitchY:45.0, radius:0, shape:'rect', family:'zebra', pageW:100, pageH:150, media:'Zebra 4×6 · 100 × 150 mm' },
     // Rapid LED product sticker on the Zebra 4×6 — one per label, or two split.
     { id:'zebraStk1', avery:'—', code:'4×6', up:1, cols:1, rows:1, labelW:96.0, labelH:146.0, marginTop:2.0, marginLeft:2.0, pitchX:0, pitchY:0,    radius:2.0, shape:'rect', family:'zebra', pageW:100, pageH:150, media:'Zebra 4×6 · 1 sticker' },
-    { id:'zebraStk2', avery:'—', code:'4×6', up:2, cols:1, rows:2, labelW:96.0, labelH:72.0,  marginTop:2.0, marginLeft:2.0, pitchX:0, pitchY:74.0, radius:2.0, shape:'rect', family:'zebra', pageW:100, pageH:150, media:'Zebra 4×6 · 2 stickers' }
+    { id:'zebraStk2', avery:'—', code:'4×6', up:2, cols:1, rows:2, labelW:96.0, labelH:72.0,  marginTop:2.0, marginLeft:2.0, pitchX:0, pitchY:74.0, radius:2.0, shape:'rect', family:'zebra', pageW:100, pageH:150, media:'Zebra 4×6 · 2 stickers' },
+
+    // ── Plain A4/A3 sheets (family 'sheet') — the home Search & Print / Custom /
+    // Multi-Label features. One giant warehouse label per sheet (landscape), or a
+    // tabular multi-label. pageW>pageH marks landscape.
+    { id:'a4label', avery:'—', code:'A4', up:1, cols:1, rows:1, labelW:281.0, labelH:194.0, marginTop:8.0, marginLeft:8.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:297, pageH:210, media:'A4 · 297 × 210 mm (landscape)' },
+    { id:'a3label', avery:'—', code:'A3', up:1, cols:1, rows:1, labelW:404.0, labelH:281.0, marginTop:8.0, marginLeft:8.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:420, pageH:297, media:'A3 · 420 × 297 mm (landscape)' }
   ];
 
   // ── What each sheet IS FOR, and what it may carry ─────────────────────────
@@ -71,7 +77,9 @@
     up33:  { name: 'Small — price / barcode', purpose: 'Shelf tickets and price labels: the 5DC to read, the barcode to scan.', allow: ['product', 'barcode', 'text'], productRecipe: 'code5dc', tuned: true },
     zebra4x6: { name: 'Zebra 4×6 — barcodes', purpose: 'Thermal 4×6 label — up to 3 stacked sections: a product (name + 5DC + barcode), a bin location, or a manual code. Same layout as the home Barcodes print.', allow: ['product', 'location', 'barcode'], productRecipe: 'zebraProduct', tuned: true },
     zebraStk1: { name: 'Zebra sticker — whole label', purpose: 'One Rapid LED product sticker filling the 4×6 thermal label.', allow: ['plabel'], productRecipe: 'stack', tuned: true },
-    zebraStk2: { name: 'Zebra sticker — 2 up', purpose: 'Two Rapid LED product stickers on one 4×6 thermal label (split in half).', allow: ['plabel'], productRecipe: 'stack', tuned: true }
+    zebraStk2: { name: 'Zebra sticker — 2 up', purpose: 'Two Rapid LED product stickers on one 4×6 thermal label (split in half).', allow: ['plabel'], productRecipe: 'stack', tuned: true },
+    a4label: { name: 'Warehouse label — A4', purpose: 'One giant warehouse label filling an A4 sheet: SKU, code, barcode, QTY and date.', allow: ['biglabel'], productRecipe: 'bigLabel', tuned: true },
+    a3label: { name: 'Warehouse label — A3', purpose: 'One giant warehouse label filling an A3 sheet: SKU, code, barcode, QTY and date.', allow: ['biglabel'], productRecipe: 'bigLabel', tuned: true }
   };
   var DEFAULT_CAPS = { name: '', purpose: '', allow: ['product', 'barcode', 'text'], productRecipe: 'stack', tuned: false };
   function caps(id) { return Object.assign({}, DEFAULT_CAPS, CAPS[id] || {}); }

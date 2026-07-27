@@ -69,7 +69,17 @@
           <div class="ls-panel-card">
             <h3>Print</h3>
             <button class="ls-btn ls-btn-primary ls-btn-block ls-btn-lg" onclick="LS.generatePdf()">⬇ Generate PDF to print</button>
-            <div class="ls-note" style="margin-top:10px;"><b>That's the whole trick:</b> in the print dialog set <b>Scale = Actual size / 100%</b> — never “Fit to page”, which shrinks it (often to ~96%) and then nothing lines up. At 100% these sheets align on their own. Load the correct Celcast sheet.</div>
+            <div id="lsSheetOpts" style="display:none;margin-top:12px;">
+              <label class="ls-label">Paper size</label>
+              <div style="display:flex;gap:8px;">
+                <button class="ls-btn ls-btn-sm" id="lsPaperA4" onclick="LS.setSheetPaper('A4')" style="flex:1;">A4</button>
+                <button class="ls-btn ls-btn-sm" id="lsPaperA3" onclick="LS.setSheetPaper('A3')" style="flex:1;">A3</button>
+              </div>
+              <label class="ls-label" style="margin-top:10px;">Copies</label>
+              <input type="number" min="1" value="1" id="lsCopies" class="ls-input num" />
+              <div class="ls-note" style="margin-top:10px;">Prints landscape. In the print dialog set <b>Scale = Actual size / 100%</b>. One label per page; <b>Copies</b> repeats it.</div>
+            </div>
+            <div class="ls-note" id="lsCelcastNote" style="margin-top:10px;"><b>That's the whole trick:</b> in the print dialog set <b>Scale = Actual size / 100%</b> — never “Fit to page”, which shrinks it (often to ~96%) and then nothing lines up. At 100% these sheets align on their own. Load the correct Celcast sheet.</div>
           </div>
 
           <div class="ls-panel-card" id="lsAlignCard">
@@ -164,6 +174,33 @@
             <option value="EAN13">EAN-13</option>
           </select>
         </div>
+        <!-- big warehouse label (Search & Print / Custom Label) -->
+        <div id="lsTypeBigLabel" style="display:none;">
+          <label class="ls-label">Search a product (5DC, SKU or name) — or type the fields below</label>
+          <input type="text" id="lsBigSearch" class="ls-input" placeholder="e.g. 95908, R1021…" autocomplete="off" oninput="LS.bigSearch(this.value)" />
+          <div class="ls-results" id="lsBigResults" style="display:none;"></div>
+          <div style="display:flex;gap:12px;margin-top:12px;">
+            <div style="flex:1;">
+              <label class="ls-label">SKU (5DC)</label>
+              <input type="text" id="lsBigDc5" class="ls-input" placeholder="95908" autocomplete="off" />
+            </div>
+            <div style="flex:1.4;">
+              <label class="ls-label">Code</label>
+              <input type="text" id="lsBigCode" class="ls-input" placeholder="R1021-WH-TRI" autocomplete="off" />
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;margin-top:8px;">
+            <div style="flex:1;">
+              <label class="ls-label">QTY</label>
+              <input type="text" id="lsBigQty" class="ls-input" placeholder="50" autocomplete="off" />
+            </div>
+            <div style="flex:1.4;">
+              <label class="ls-label">Date</label>
+              <input type="date" id="lsBigDate" class="ls-input" />
+            </div>
+          </div>
+          <div class="ls-note" id="lsBigBc" style="margin-top:10px;">The barcode encodes the <b>product code</b> (CODE128) — the same as the home Search &amp; Print, so it scans into Cin7.</div>
+        </div>
       </div>
 
       <div class="ls-modal-actions">
@@ -179,8 +216,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="label-assets.js?v=20260727f"></script>
-  <script src="label-templates.js?v=20260728c"></script>
-  <script src="label-render.js?v=20260728b"></script>
-  <script src="label-sheets.js?v=20260728c"></script>
+  <script src="label-templates.js?v=20260728d"></script>
+  <script src="label-render.js?v=20260728c"></script>
+  <script src="label-sheets.js?v=20260728e"></script>
 </body>
 </html>

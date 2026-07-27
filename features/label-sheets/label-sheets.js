@@ -35,6 +35,10 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function intVal(id, def) { var v = parseInt(el(id) && el(id).value, 10); return isNaN(v) ? def : v; }
   function numVal(id, def) { var v = parseFloat(el(id) && el(id).value); return isNaN(v) ? def : v; }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function todayISO() { var d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function fmtDate(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }   // ISO → DD/MM/YYYY
+  function dateToISO(s) { var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '')); return m ? m[3] + '-' + pad2(+m[2]) + '-' + pad2(+m[1]) : ''; }
 
   // ── Printer offset (calibration) ──
   // The one number a real printer forces on us: even at 100% scale a sheet lands
@@ -56,7 +60,7 @@
 
   // What each content type is called and what it does — shown on the model
   // cards so the operator can pick a sheet by what it prints, not by its code.
-  var TYPE_NAME = { product: 'Product', plabel: 'Product label', location: 'Location', barcode: 'Barcode', text: 'Text' };
+  var TYPE_NAME = { product: 'Product', plabel: 'Product label', location: 'Location', barcode: 'Barcode', text: 'Text', biglabel: 'Warehouse label' };
   function typeHint(type, recipe) {
     if (type === 'product') {
       if (recipe === 'code5dc') return '5DC + barcode, from a product';
@@ -67,6 +71,7 @@
     if (type === 'location') return 'Bin code — big, barcode, code again';
     if (type === 'barcode') return 'Any code — EAN-13 or CODE128';
     if (type === 'text') return 'Free text';
+    if (type === 'biglabel') return 'SKU, code, barcode, QTY and date';
     return '';
   }
   // Types whose example teaches nothing on a card. Free text renders the same
@@ -81,7 +86,8 @@
     barcode: { type: 'barcode', value: '9727435304891', fmt: 'auto' },
     location: { type: 'location', code: 'MA-G-13-L3' },
     text: { type: 'text', text: 'Rapid LED' },
-    plabel: { type: 'plabel', code: 'R1021-WH-TRI', dc5: '95908', desc: '8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri', lines: ['200 – 240VAC / 50-60Hz'], barcode: '9727435304891', fmt: 'auto' }
+    plabel: { type: 'plabel', code: 'R1021-WH-TRI', dc5: '95908', desc: '8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri', lines: ['200 – 240VAC / 50-60Hz'], barcode: '9727435304891', fmt: 'auto' },
+    biglabel: { type: 'biglabel', sku: 'R1021-WH-TRI', code: 'R1021-WH-TRI', dc5: '95908', qty: '50', date: '28/07/2026', fmt: 'auto' }
   };
 
   // ── Rendered preview of one cell (shared by the cards and the sheet) ──
@@ -149,6 +155,58 @@
     return zbSvg(out + zbPrinter(), count + ' Rapid LED sticker' + (count > 1 ? 's' : '') + ' on a Zebra 4×6');
   }
 
+  // ── Plain A4/A3 sheet features (family 'sheet') — the home Search & Print,
+  // Custom Label and Multi-Label. One card per feature (not per template): the
+  // A4/A3 size is chosen inside the editor, exactly like the home modals.
+  var SHEET_FEATURES = [
+    { key: 'search', name: 'Search & Print', tpl: 'a4label', mode: 'search',
+      purpose: 'Search a product and print one big warehouse label — SKU, code, barcode, QTY and date.',
+      chip: 'Search a product' },
+    { key: 'custom', name: 'Custom Label', tpl: 'a4label', mode: 'custom',
+      purpose: 'Type everything by hand — the same big warehouse label, no product lookup.',
+      chip: 'Type by hand' }
+  ];
+  function sheetFeature(key) { return SHEET_FEATURES.filter(function (f) { return f.key === key; })[0] || null; }
+
+  // Illustration: a landscape A4/A3 sheet with the REAL rendered big label on it,
+  // so the card shows the actual print (the "example"), framed as a sheet.
+  function sheetImageSVG() {
+    var url = cellPreviewURL(SAMPLES.biglabel, 281, 194, { productRecipe: 'bigLabel' });
+    var pw = 148, ph = Math.round(pw * 194 / 281), px = (158 - pw) / 2, py = (178 - ph) / 2;
+    var s = '<svg width="158" height="178" viewBox="0 0 158 178" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A4/A3 warehouse label sheet">';
+    s += '<rect x="' + (px + 3) + '" y="' + (py + 4) + '" width="' + pw + '" height="' + ph + '" rx="3" fill="#0f172a" opacity="0.10"/>';
+    s += '<rect x="' + px + '" y="' + py + '" width="' + pw + '" height="' + ph + '" rx="3" fill="#ffffff" stroke="#334155" stroke-width="1.4"/>';
+    if (url) s += '<image href="' + url + '" x="' + (px + 4) + '" y="' + (py + 4) + '" width="' + (pw - 8) + '" height="' + (ph - 8) + '" preserveAspectRatio="xMidYMid meet"/>';
+    s += '</svg>';
+    return s;
+  }
+
+  function renderSheetCard(f) {
+    var t = window.LabelTemplates.byId(f.tpl);
+    var m = window.LabelTemplates.meta(t);
+    var preview = sheetImageSVG();
+    var url = cellPreviewURL(SAMPLES.biglabel, m.labelW, m.labelH, { productRecipe: 'bigLabel' });
+    var example = '<div class="ls-ex">' +
+      '<div class="ls-ex-frame" style="min-height:62px;">' + (url ? '<img src="' + url + '" alt="" />' : '<span class="ls-loading">…</span>') + '</div>' +
+      '<div class="ls-ex-name">Warehouse label</div>' +
+      '<div class="ls-ex-hint">SKU, code, barcode, QTY and date</div>' +
+    '</div>';
+    return '<div class="ls-card zebra" onclick="LS.selectSheet(\'' + f.key + '\')">' +
+      '<div class="ls-card-head">' +
+        '<div class="ls-card-preview">' + preview + '</div>' +
+        '<div class="ls-card-id">' +
+          '<div class="ls-card-title">' + esc(f.name) + '</div>' +
+          '<div class="ls-card-size">A4 or A3 · landscape</div>' +
+          '<div class="ls-card-badges"><span class="ls-badge up">1 per sheet</span><span class="ls-badge">A4 / A3</span></div>' +
+          '<div class="ls-card-codes"><span class="ls-chip">' + esc(f.chip) + '</span><span class="ls-chip code">Copies &amp; date</span></div>' +
+          '<div class="ls-card-purpose">' + esc(f.purpose) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="ls-card-prints">Prints</div>' +
+      '<div class="ls-ex-row">' + example + '</div>' +
+    '</div>';
+  }
+
   function renderCard(t) {
     var m = window.LabelTemplates.meta(t);
     var zebra = (m.family === 'zebra');
@@ -195,16 +253,30 @@
 
   function renderModels() {
     var all = window.LabelTemplates.list();
-    var a4 = all.filter(function (t) { return (t.family || 'a4') !== 'zebra'; });
+    var a4 = all.filter(function (t) { return (t.family || 'a4') === 'a4'; });
     var zebra = all.filter(function (t) { return t.family === 'zebra'; });
     function section(title, sub, list) {
       if (!list.length) return '';
       return '<div class="ls-sec">' + esc(title) + (sub ? ' <span>' + esc(sub) + '</span>' : '') + '</div>' +
         '<div class="ls-models">' + list.map(renderCard).join('') + '</div>';
     }
+    function sheetSection() {
+      return '<div class="ls-sec">' + esc('A4 / A3 sheets') + ' <span>' + esc('printed on your normal printer — search or type a big warehouse label') + '</span></div>' +
+        '<div class="ls-models">' + SHEET_FEATURES.map(renderSheetCard).join('') + '</div>';
+    }
     el('lsModelGrid').innerHTML =
       section('Celcast — A4 sheets', 'die-cut label sheets, printed on your normal printer', a4) +
+      sheetSection() +
       section('Zebra — thermal labels', 'single 4×6 labels on the Zebra thermal printer', zebra);
+  }
+
+  // A sheet feature = a base template + an editor mode. Selecting one enters the
+  // editor and opens the fill form straight away (1-up, like the home modal).
+  function selectSheet(key) {
+    var f = sheetFeature(key); if (!f) return;
+    LS._sheetFeature = f;
+    selectModel(f.tpl);
+    openCell(0, f);
   }
 
   function selectModel(id) {
@@ -217,13 +289,19 @@
     var sb = el('lsSelectBar'); if (sb) sb.style.display = 'none';
     var stg = el('lsSelectToggle'); if (stg) stg.classList.remove('active');
     var zebra = LS.caps.family === 'zebra';
+    var sheet = LS.caps.family === 'sheet';
     el('lsEdName').textContent = LS.caps.name;
     el('lsEdMeta').textContent = zebra
       ? (LS.caps.media || LS.caps.size) + ' · ' + LS.caps.grid + ' · up to ' + LS.caps.up + ' sections'
-      : LS.caps.size + ' · grid ' + LS.caps.grid + ' · ' + LS.caps.up + ' per sheet · Avery ' + LS.caps.avery + (LS.caps.code ? ' · Celcast ' + LS.caps.code : '');
-    el('lsSub').textContent = LS.caps.name + ' — ' + (zebra ? (LS.caps.media || LS.caps.size) : LS.caps.size);
-    // Thermal labels don't need die-cut calibration — hide the Alignment card.
-    var ac = el('lsAlignCard'); if (ac) ac.style.display = zebra ? 'none' : '';
+      : sheet
+        ? (LS.caps.media || LS.caps.size)
+        : LS.caps.size + ' · grid ' + LS.caps.grid + ' · ' + LS.caps.up + ' per sheet · Avery ' + LS.caps.avery + (LS.caps.code ? ' · Celcast ' + LS.caps.code : '');
+    el('lsSub').textContent = LS.caps.name + ' — ' + (zebra || sheet ? (LS.caps.media || LS.caps.size) : LS.caps.size);
+    // Thermal + plain-sheet models don't use the Celcast die-cut calibration.
+    var ac = el('lsAlignCard'); if (ac) ac.style.display = (zebra || sheet) ? 'none' : '';
+    var so = el('lsSheetOpts'); if (so) so.style.display = sheet ? 'block' : 'none';
+    var cn = el('lsCelcastNote'); if (cn) cn.style.display = (zebra || sheet) ? 'none' : '';
+    if (sheet) updatePaperSeg(t.id === 'a3label' ? 'A3' : 'A4');
     el('lsModels').style.display = 'none';
     el('lsEditor').style.display = 'block';
     loadCalibInputs();
@@ -257,14 +335,19 @@
     // Margin visualisation: draw the page's real margin band around the label
     // grid so the operator sees exactly where the printable labels sit vs the
     // sheet edge — the boundary they must respect for alignment.
-    var gridW = (t.cols - 1) * t.pitchX + t.labelW, gridH = (t.rows - 1) * t.pitchY + t.labelH;
-    var mL = t.marginLeft, mT = t.marginTop;
-    var mR = PW - mL - gridW, mB = PH - mT - gridH;
-    html += '<div class="ls-margin-box" style="left:' + (mL * scale).toFixed(1) + 'px;top:' + (mT * scale).toFixed(1) +
-      'px;width:' + (gridW * scale).toFixed(1) + 'px;height:' + (gridH * scale).toFixed(1) + 'px;"></div>';
-    html += '<span class="ls-mdim ls-mdim-t" style="top:' + (Math.max(0, mT * scale / 2 - 7)).toFixed(1) + 'px;">top ' + mT.toFixed(1) + ' mm</span>';
-    html += '<span class="ls-mdim ls-mdim-l" style="left:2px;top:' + (mT * scale + gridH * scale / 2 - 7).toFixed(1) + 'px;">left ' + mL.toFixed(1) + ' mm</span>';
-    html += '<span class="ls-mdim ls-mdim-b" style="bottom:' + (Math.max(0, mB * scale / 2 - 7)).toFixed(1) + 'px;">bottom ' + mB.toFixed(1) + ' mm</span>';
+    // The die-cut margin guide is for aligning labels inside a Celcast sheet's
+    // die-cuts — a plain A4/A3 sheet has no die-cuts, and the dimension tags would
+    // just overlap the big label, so skip it there.
+    if ((LS.caps ? LS.caps.family : 'a4') !== 'sheet') {
+      var gridW = (t.cols - 1) * t.pitchX + t.labelW, gridH = (t.rows - 1) * t.pitchY + t.labelH;
+      var mL = t.marginLeft, mT = t.marginTop;
+      var mB = PH - mT - gridH;
+      html += '<div class="ls-margin-box" style="left:' + (mL * scale).toFixed(1) + 'px;top:' + (mT * scale).toFixed(1) +
+        'px;width:' + (gridW * scale).toFixed(1) + 'px;height:' + (gridH * scale).toFixed(1) + 'px;"></div>';
+      html += '<span class="ls-mdim ls-mdim-t" style="top:' + (Math.max(0, mT * scale / 2 - 7)).toFixed(1) + 'px;">top ' + mT.toFixed(1) + ' mm</span>';
+      html += '<span class="ls-mdim ls-mdim-l" style="left:2px;top:' + (mT * scale + gridH * scale / 2 - 7).toFixed(1) + 'px;">left ' + mL.toFixed(1) + ' mm</span>';
+      html += '<span class="ls-mdim ls-mdim-b" style="bottom:' + (Math.max(0, mB * scale / 2 - 7)).toFixed(1) + 'px;">bottom ' + mB.toFixed(1) + ' mm</span>';
+    }
 
     for (var p = 0; p < total; p++) {
       var r = Math.floor(p / t.cols), c = p % t.cols;
@@ -340,9 +423,10 @@
     return allow[0];
   }
 
-  function openCell(index) {
-    LS.editor = { mode: 'cell', index: index, type: defaultType(), product: null };
-    el('lsCellTitle').textContent = 'Label ' + (index + 1);
+  function openCell(index, feat) {
+    LS.editor = { mode: 'cell', index: index, type: defaultType(), product: null, feat: feat || LS._sheetFeature || null };
+    var isSheet = LS.caps && LS.caps.family === 'sheet';
+    el('lsCellTitle').textContent = isSheet ? ((LS.editor.feat && LS.editor.feat.name) || 'Warehouse label') : ('Label ' + (index + 1));
     var existing = LS.cells[index];
     resetEditorInputs();
     if (existing && existing.type) {
@@ -351,6 +435,12 @@
       else if (existing.type === 'text') { el('lsTextVal').value = existing.text || ''; }
       else if (existing.type === 'barcode') { el('lsBcVal').value = existing.value || ''; el('lsBcFmt').value = existing.fmt || 'auto'; }
       else if (existing.type === 'location') { el('lsLocVal').value = existing.code || ''; }
+      else if (existing.type === 'biglabel') {
+        el('lsBigDc5').value = existing.dc5 || '';
+        el('lsBigCode').value = existing.code || existing.sku || '';
+        el('lsBigQty').value = existing.qty || '';
+        el('lsBigDate').value = dateToISO(existing.date);
+      }
       else if (existing.type === 'plabel') {
         LS.editor.plProduct = { sku: existing.sku || existing.code, name: existing.desc, barcode: existing.barcode, attribute1: existing.dc5 };
         el('lsPlCode').value = existing.code || '';
@@ -360,6 +450,7 @@
         el('lsPlForm').style.display = 'block';
       }
     } else { pickType(defaultType()); }
+    if (LS.editor.type === 'biglabel' && !el('lsBigDate').value) el('lsBigDate').value = todayISO();
     updateModalPreview();
     openModal('lsCellModal');
   }
@@ -383,6 +474,8 @@
     var plr = el('lsPlResults'); if (plr) { plr.style.display = 'none'; plr.innerHTML = ''; }
     var plf = el('lsPlForm'); if (plf) plf.style.display = 'none';
     ['lsPlCode', 'lsPlDesc', 'lsPlLines'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
+    ['lsBigSearch', 'lsBigDc5', 'lsBigCode', 'lsBigQty', 'lsBigDate'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
+    var bgr = el('lsBigResults'); if (bgr) { bgr.style.display = 'none'; bgr.innerHTML = ''; }
     LS.editor.product = null; LS.editor.plProduct = null;
   }
 
@@ -394,6 +487,7 @@
     el('lsTypeLocation').style.display = type === 'location' ? 'block' : 'none';
     el('lsTypeText').style.display = type === 'text' ? 'block' : 'none';
     el('lsTypeBarcode').style.display = type === 'barcode' ? 'block' : 'none';
+    var bl = el('lsTypeBigLabel'); if (bl) bl.style.display = type === 'biglabel' ? 'block' : 'none';
     updateModalPreview();
   }
 
@@ -553,6 +647,57 @@
     updateModalPreview();
   }
 
+  // ── Big warehouse label: product search fills the 5DC + code fields ──
+  // (The barcode always encodes the code, so the EAN is not needed here.)
+  function bigSearch(term) {
+    term = (term || '').trim().toLowerCase();
+    var box = el('lsBigResults');
+    if (term.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    if (!LS.products) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Loading products…</span></div>'; return; }
+    LS._bigResults = LS.products.filter(function (p) {
+      return ((p.attribute1 || '').toLowerCase().indexOf(term) >= 0) || ((p.sku || '').toLowerCase().indexOf(term) >= 0) || ((p.name || '').toLowerCase().indexOf(term) >= 0);
+    }).slice(0, 40);
+    if (!LS._bigResults.length) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Nothing found.</span></div>'; return; }
+    box.innerHTML = LS._bigResults.map(function (p, i) {
+      return '<div class="ls-result" onclick="LS.bigChoose(' + i + ')">' +
+        '<span class="r5dc">' + esc(p.attribute1 || '') + '</span>' +
+        '<span class="rsku">' + esc(p.sku || '') + '</span>' +
+        '<span class="rname">' + esc((p.name || '').slice(0, 46)) + '</span></div>';
+    }).join('');
+    box.style.display = 'block';
+  }
+  function bigChoose(i) {
+    var p = LS._bigResults[i]; if (!p) return;
+    el('lsBigDc5').value = p.attribute1 || '';
+    el('lsBigCode').value = p.sku || '';
+    el('lsBigSearch').value = '';
+    el('lsBigResults').style.display = 'none';
+    updateModalPreview();
+  }
+
+  // ── Paper size (A4 ↔ A3) for the big-label features — swaps the base template,
+  // keeping the label content. The two templates share the same recipe.
+  function updatePaperSeg(size) {
+    var a4 = el('lsPaperA4'), a3 = el('lsPaperA3');
+    if (a4) a4.classList.toggle('ls-btn-primary', size === 'A4');
+    if (a3) a3.classList.toggle('ls-btn-primary', size === 'A3');
+  }
+  function setSheetPaper(size) {
+    var id = size === 'A3' ? 'a3label' : 'a4label';
+    var t = window.LabelTemplates.byId(id);
+    if (!t || (LS.tpl && LS.tpl.id === id)) { updatePaperSeg(size); return; }
+    var keep = LS.cells && LS.cells.length ? LS.cells[0] : null;
+    LS.tpl = t;
+    LS.caps = window.LabelTemplates.meta(t);
+    LS.cells = [keep || null];
+    el('lsEdName').textContent = LS.caps.name;
+    el('lsEdMeta').textContent = LS.caps.media || LS.caps.size;
+    el('lsSub').textContent = LS.caps.name + ' — ' + (LS.caps.media || LS.caps.size);
+    updatePaperSeg(size);
+    loadCalibInputs();
+    renderSheet();
+  }
+
   // Builds the cell the editor currently describes. `quiet` skips the alerts so
   // the live preview can call it on every keystroke; applyCell wants them.
   function buildCell(quiet) {
@@ -576,6 +721,12 @@
       var lc = el('lsLocVal').value.trim();
       if (!lc) { if (!quiet) alert('Type or pick a location code.'); return null; }
       return { type: 'location', code: lc };
+    }
+    if (type === 'biglabel') {
+      var bdc = el('lsBigDc5').value.trim(), bcode = el('lsBigCode').value.trim();
+      if (!bcode && !bdc) { if (!quiet) alert('Search a product, or type at least the code.'); return null; }
+      return { type: 'biglabel', sku: bcode, code: bcode, dc5: bdc,
+        qty: el('lsBigQty').value.trim(), date: fmtDate(el('lsBigDate').value), fmt: 'auto' };
     }
     if (type === 'plabel') {
       var plCode = el('lsPlCode').value.trim();
@@ -678,17 +829,21 @@
     if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library failed to load. Reload the page.'); return; }
     // compress: the brand images are plain RGB and the vector bars are a long
     // run of rectangles — both deflate to a fraction of their raw size.
-    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: [window.LabelTemplates.pageW(t), window.LabelTemplates.pageH(t)], orientation: 'portrait', compress: true });
+    var pW = window.LabelTemplates.pageW(t), pH = window.LabelTemplates.pageH(t);
+    var orient = pW > pH ? 'landscape' : 'portrait';    // the plain A4/A3 sheets print landscape
+    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: [pW, pH], orientation: orient, compress: true });
     // Ask viewers to print at actual size (Adobe honours it; harmless elsewhere).
     // The page is exact A4 (210×297), which is what actually stops Chrome fit-to-page.
     try { doc.viewerPreferences({ PrintScaling: 'None' }); } catch (e) {}
-    var sheets = Math.max(1, intVal('lsSheets', 1));
+    // Plain sheets are 1-up: "Copies" repeats the single label; the die-cut sheets
+    // reuse "Sheets" (how many identical A4 pages).
+    var sheets = (LS.caps && LS.caps.family === 'sheet') ? Math.max(1, intVal('lsCopies', 1)) : Math.max(1, intVal('lsSheets', 1));
     var start = Math.max(1, intVal('lsStart', 1));
     var total = t.cols * t.rows;
     var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack', zebra: !!(LS.caps && LS.caps.family === 'zebra') };
 
     for (var s = 0; s < sheets; s++) {
-      if (s > 0) doc.addPage();
+      if (s > 0) doc.addPage([pW, pH], orient);
       for (var p = 0; p < total; p++) {
         if (s === 0 && p < start - 1) continue;            // reuse a partly-used sheet
         var cell = LS.cells[p];
@@ -960,6 +1115,10 @@
 
   // expose
   LS.selectModel = selectModel;
+  LS.selectSheet = selectSheet;
+  LS.setSheetPaper = setSheetPaper;
+  LS.bigSearch = bigSearch;
+  LS.bigChoose = bigChoose;
   LS.backToModels = backToModels;
   LS.renderSheet = renderSheet;
   LS.updateSummary = updateSummary;
