@@ -606,14 +606,84 @@
     return (w > 0 && h > 0) ? { w: w, h: h } : null;
   }
 
+  // Full-sheet variant (Celcast 48001, ~199×289 mm): a poster-style sticker with
+  // EVERYTHING centred and stacked — logo, code, description, specs, the
+  // compliance strip and the 5DC + barcode all centred, code/description kept
+  // modest so the big sheet reads as a balanced composition, not oversized text.
+  function layoutBrandLabelFull(cell, W, H) {
+    var A = window.LABEL_ASSETS || {}, out = [], i, j;
+    var pad = H * 0.05, iw = W - 2 * pad, av = H - 2 * pad, cx = W / 2, top = pad;
+    if (iw <= 0 || av <= 0) return out;
+
+    var bi = H * 0.02, flw = Math.max(0.4, Math.min(1.2, H * 0.0045));
+    out.push({ kind: 'rect', x: bi, y: bi, w: W - 2 * bi, h: H - 2 * bi, r: H * 0.012, lw: flw });
+
+    var ciw = iw * 0.86, ebL = effectiveBarcode(cell);
+    var blocks = [], blockH = 0;
+
+    var logo = A.logo, logoD = assetDims(logo);
+    if (logoD) {
+      var lasp = logoD.w / logoD.h, lh = av * 0.115, lw = lh * lasp;
+      if (lw > ciw * 0.62) { lw = ciw * 0.62; lh = lw / lasp; }
+      blocks.push({ kind: 'logo', img: logo, w: lw, h: lh, gap: av * 0.05 }); blockH += lh + av * 0.05;
+    }
+    if (usable(cell.code)) {
+      var cs = fitSize(cell.code, ciw, av * 0.05, true, 3);
+      blocks.push({ kind: 'line', text: String(cell.code), size: cs, bold: true, gap: av * 0.018 }); blockH += cs + av * 0.018;
+    }
+    if (cell.desc) {
+      var d = fitBlock(cell.desc, ciw, av * 0.13, av * 0.030, 2.5, 1.2);
+      blocks.push({ kind: 'para', lines: d.lines, size: d.size, lead: 1.2, gap: av * 0.03 }); blockH += d.lines.length * d.size * 1.2 + av * 0.03;
+    }
+    var specs = (cell.lines || []).map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean);
+    if (specs.length) {
+      var ls = av * 0.027, rows = wrapAllLines(specs, ciw, ls);
+      blocks.push({ kind: 'para', lines: rows, size: ls, lead: 1.35, gap: av * 0.06 }); blockH += rows.length * ls * 1.35 + av * 0.06;
+    }
+    var sym = A.symbols, symD = assetDims(sym);
+    if (symD) {
+      var sasp = symD.w / symD.h, sw = ciw * 0.55, sh = sw / sasp;
+      if (sh > av * 0.05) { sh = av * 0.05; sw = sh * sasp; }
+      blocks.push({ kind: 'logo', img: sym, w: sw, h: sh, gap: av * 0.055 }); blockH += sh + av * 0.055;
+    }
+    if (usable(cell.dc5)) {
+      var ds = fitSize(String(cell.dc5), ciw * 0.6, av * 0.032, true, 3);
+      blocks.push({ kind: 'line', text: String(cell.dc5), size: ds, bold: true, gap: av * 0.008 }); blockH += ds + av * 0.008;
+    }
+    var bcW = iw * 0.52, bcH = av * 0.08;
+    blocks.push({ kind: 'barcode', w: bcW, h: bcH, gap: 0 }); blockH += bcH;
+
+    var y = top + Math.max(0, (av - blockH) / 2);
+    for (i = 0; i < blocks.length; i++) {
+      var bkt = blocks[i];
+      if (bkt.kind === 'logo') {
+        out.push({ kind: 'image', img: bkt.img.img, url: bkt.img.url, x: cx - bkt.w / 2, y: y, w: bkt.w, h: bkt.h });
+        y += bkt.h;
+      } else if (bkt.kind === 'line') {
+        y += bkt.size;
+        out.push({ kind: 'text', text: bkt.text, x: cx, y: y, size: bkt.size, bold: bkt.bold, align: 'center' });
+      } else if (bkt.kind === 'para') {
+        for (j = 0; j < bkt.lines.length; j++) { y += bkt.size; out.push({ kind: 'text', text: bkt.lines[j], x: cx, y: y, size: bkt.size, align: 'center' }); y += bkt.size * (bkt.lead - 1); }
+      } else if (bkt.kind === 'barcode') {
+        var bc = barcodeFill(ebL.value, ebL.fmt, cx - bkt.w / 2, y, bkt.w, bkt.h);
+        for (j = 0; j < bc.prims.length; j++) out.push(bc.prims[j]);
+        y += bkt.h;
+      }
+      y += bkt.gap;
+    }
+    return out;
+  }
+
   // The Rapid LED product sticker. It ALWAYS carries the "factory" frame: a
   // border whose top line runs through the middle of the logo (breaking on
   // either side of it) and whose bottom line runs through the barcode/compliance
   // strip (breaking around them), so the logo, symbols and barcode look built
-  // into the frame rather than floating inside it.
+  // into the frame rather than floating inside it. The full sheet uses its own
+  // centred, poster-style layout instead (layoutBrandLabelFull).
   function layoutBrandLabel(cell, W, H) {
     var A = window.LABEL_ASSETS || {}, S = SPEC, out = [], i, j;
     if (!cell || !(W > 0) || !(H > 0)) return out;
+    if (H > 150) return layoutBrandLabelFull(cell, W, H);
 
     var pad = H * S.pad;
     var iw = W - 2 * pad, av = H - 2 * pad;
