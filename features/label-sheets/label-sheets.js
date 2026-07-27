@@ -100,61 +100,105 @@
   // Each card answers the two questions the operator actually has: is this the
   // sheet in my hand, and can it print what I need? The A4 minimap answers the
   // first; a rendered example of every allowed content type answers the second.
-  function renderModels() {
-    var grid = el('lsModelGrid');
-    var cards = window.LabelTemplates.list().map(function (t) {
-      var m = window.LabelTemplates.meta(t);
-      var minimap = window.LabelTemplates.svgPreview(t, 158, 178);
-      var codeTxt = m.code ? 'Celcast ' + m.code : 'Celcast compat.';
+  // Inline B&W illustration of a thermal label printer with a 4×6 label coming
+  // out — represents the Zebra family on its card (no external asset, CSP-safe).
+  function zebraImageSVG(boxW, boxH) {
+    function bars(x, y, w, h) {
+      var pat = [2, 1, 1, 3, 1, 2, 1, 1, 2, 3, 1, 1, 2, 1], s = '', bx = x, i = 0;
+      while (bx < x + w - 1) {
+        var bw = pat[i % pat.length];
+        if (i % 2 === 0) s += '<rect x="' + bx.toFixed(1) + '" y="' + y + '" width="' + bw + '" height="' + h + '" fill="#111"/>';
+        bx += bw + 1; i++;
+      }
+      return s;
+    }
+    var lx = 47, lw = 56, sy = [12, 40, 68];   // label x/width and the 3 section tops
+    var lbl = '<rect x="' + lx + '" y="8" width="' + lw + '" height="86" rx="2" fill="#fff" stroke="#334155" stroke-width="1.6"/>';
+    for (var i = 0; i < 3; i++) {
+      lbl += bars(lx + 6, sy[i] + 4, lw - 12, 12);
+      lbl += '<rect x="' + (lx + 6) + '" y="' + (sy[i] + 18) + '" width="' + (lw - 12) + '" height="3" rx="1" fill="#94a3b8"/>';
+      if (i < 2) lbl += '<line x1="' + lx + '" y1="' + (sy[i] + 26) + '" x2="' + (lx + lw) + '" y2="' + (sy[i] + 26) + '" stroke="#e2e8f0" stroke-width="1"/>';
+    }
+    return '<svg width="' + boxW + '" height="' + boxH + '" viewBox="0 0 150 178" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zebra thermal printer">' +
+      lbl +
+      '<rect x="30" y="90" width="90" height="10" rx="2" fill="#1f2937"/>' +          // exit slot
+      '<rect x="14" y="98" width="122" height="66" rx="9" fill="#e2e8f0" stroke="#334155" stroke-width="2.2"/>' +
+      '<rect x="90" y="116" width="32" height="24" rx="3" fill="#fff" stroke="#94a3b8" stroke-width="1.2"/>' +
+      '<circle cx="34" cy="150" r="5" fill="#334155"/><circle cx="50" cy="150" r="5" fill="#94a3b8"/>' +
+      '</svg>';
+  }
 
-      var examples = m.allow.filter(function (type) { return !NO_PREVIEW[type]; }).map(function (type) {
-        var url = cellPreviewURL(SAMPLES[type], m.labelW, m.labelH, { productRecipe: m.productRecipe });
-        return '<div class="ls-ex">' +
-          '<div class="ls-ex-frame"' + (m.labelW > m.labelH * 1.6 ? ' style="min-height:62px;"' : '') + '>' +
-            (url ? '<img src="' + url + '" alt="" />' : '<span class="ls-loading">…</span>') +
-          '</div>' +
-          '<div class="ls-ex-name">' + esc(TYPE_NAME[type] || type) + '</div>' +
-          '<div class="ls-ex-hint">' + esc(typeHint(type, m.productRecipe)) + '</div>' +
-        '</div>';
-      }).join('');
+  function renderCard(t) {
+    var m = window.LabelTemplates.meta(t);
+    var zebra = (m.family === 'zebra');
+    var preview = zebra ? zebraImageSVG(158, 178) : window.LabelTemplates.svgPreview(t, 158, 178);
 
-      return '<div class="ls-card' + (m.fits ? '' : ' bad') + '" onclick="LS.selectModel(\'' + t.id + '\')">' +
-        '<div class="ls-card-head">' +
-          '<div class="ls-card-preview">' + minimap + '</div>' +
-          '<div class="ls-card-id">' +
-            '<div class="ls-card-title">' + esc(m.name) + '</div>' +
-            '<div class="ls-card-size">' + esc(m.size) + '</div>' +
-            '<div class="ls-card-badges">' +
-              '<span class="ls-badge up">' + m.up + ' per sheet</span>' +
-              '<span class="ls-badge">grid ' + esc(m.grid) + '</span>' +
-            '</div>' +
-            '<div class="ls-card-codes">' +
-              '<span class="ls-chip">Avery ' + esc(m.avery) + '</span>' +
-              '<span class="ls-chip code">' + esc(codeTxt) + '</span>' +
-            '</div>' +
-            (m.purpose ? '<div class="ls-card-purpose">' + esc(m.purpose) + '</div>' : '') +
-          '</div>' +
+    var examples = m.allow.filter(function (type) { return !NO_PREVIEW[type]; }).map(function (type) {
+      var url = cellPreviewURL(SAMPLES[type], m.labelW, m.labelH, { productRecipe: m.productRecipe });
+      return '<div class="ls-ex">' +
+        '<div class="ls-ex-frame"' + (m.labelW > m.labelH * 1.6 ? ' style="min-height:62px;"' : '') + '>' +
+          (url ? '<img src="' + url + '" alt="" />' : '<span class="ls-loading">…</span>') +
         '</div>' +
-        '<div class="ls-card-prints">Prints</div>' +
-        '<div class="ls-ex-row">' + examples + '</div>' +
+        '<div class="ls-ex-name">' + esc(TYPE_NAME[type] || type) + '</div>' +
+        '<div class="ls-ex-hint">' + esc(typeHint(type, m.productRecipe)) + '</div>' +
       '</div>';
     }).join('');
 
-    grid.innerHTML = '<div class="ls-models">' + cards + '</div>';
+    var sizeLine = zebra ? esc(m.media || m.size) : esc(m.size);
+    var badges = zebra
+      ? '<span class="ls-badge up">up to ' + m.up + ' sections</span><span class="ls-badge">grid ' + esc(m.grid) + '</span>'
+      : '<span class="ls-badge up">' + m.up + ' per sheet</span><span class="ls-badge">grid ' + esc(m.grid) + '</span>';
+    var chips = zebra
+      ? '<span class="ls-chip">Thermal 4×6</span><span class="ls-chip code">100 × 150 mm</span>'
+      : '<span class="ls-chip">Avery ' + esc(m.avery) + '</span><span class="ls-chip code">' + (m.code ? 'Celcast ' + esc(m.code) : 'Celcast compat.') + '</span>';
+
+    return '<div class="ls-card' + (m.fits ? '' : ' bad') + (zebra ? ' zebra' : '') + '" onclick="LS.selectModel(\'' + t.id + '\')">' +
+      '<div class="ls-card-head">' +
+        '<div class="ls-card-preview">' + preview + '</div>' +
+        '<div class="ls-card-id">' +
+          '<div class="ls-card-title">' + esc(m.name) + '</div>' +
+          '<div class="ls-card-size">' + sizeLine + '</div>' +
+          '<div class="ls-card-badges">' + badges + '</div>' +
+          '<div class="ls-card-codes">' + chips + '</div>' +
+          (m.purpose ? '<div class="ls-card-purpose">' + esc(m.purpose) + '</div>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="ls-card-prints">Prints</div>' +
+      '<div class="ls-ex-row">' + examples + '</div>' +
+    '</div>';
+  }
+
+  function renderModels() {
+    var all = window.LabelTemplates.list();
+    var a4 = all.filter(function (t) { return (t.family || 'a4') !== 'zebra'; });
+    var zebra = all.filter(function (t) { return t.family === 'zebra'; });
+    function section(title, sub, list) {
+      if (!list.length) return '';
+      return '<div class="ls-sec">' + esc(title) + (sub ? ' <span>' + esc(sub) + '</span>' : '') + '</div>' +
+        '<div class="ls-models">' + list.map(renderCard).join('') + '</div>';
+    }
+    el('lsModelGrid').innerHTML =
+      section('Celcast — A4 sheets', 'die-cut label sheets, printed on your normal printer', a4) +
+      section('Zebra — thermal labels', 'single 4×6 labels on the Zebra thermal printer', zebra);
   }
 
   function selectModel(id) {
     var t = window.LabelTemplates.byId(id);
-    if (!t || !(t._fit && t._fit.ok)) { alert('This model failed the A4-fit check and is disabled.'); return; }
+    if (!t || !(t._fit && t._fit.ok)) { alert('This model failed the page-fit check and is disabled.'); return; }
     LS.tpl = t;
     LS.caps = window.LabelTemplates.meta(t);
     LS.cells = new Array(t.cols * t.rows).fill(null);
     LS.selectMode = false; LS.selected.clear();
     var sb = el('lsSelectBar'); if (sb) sb.style.display = 'none';
     var stg = el('lsSelectToggle'); if (stg) stg.classList.remove('active');
+    var zebra = LS.caps.family === 'zebra';
     el('lsEdName').textContent = LS.caps.name;
-    el('lsEdMeta').textContent = LS.caps.size + ' · grid ' + LS.caps.grid + ' · ' + LS.caps.up + ' per sheet · Avery ' + LS.caps.avery + (LS.caps.code ? ' · Celcast ' + LS.caps.code : '');
-    el('lsSub').textContent = LS.caps.name + ' — ' + LS.caps.size;
+    el('lsEdMeta').textContent = zebra
+      ? (LS.caps.media || LS.caps.size) + ' · ' + LS.caps.grid + ' · up to ' + LS.caps.up + ' sections'
+      : LS.caps.size + ' · grid ' + LS.caps.grid + ' · ' + LS.caps.up + ' per sheet · Avery ' + LS.caps.avery + (LS.caps.code ? ' · Celcast ' + LS.caps.code : '');
+    el('lsSub').textContent = LS.caps.name + ' — ' + (zebra ? (LS.caps.media || LS.caps.size) : LS.caps.size);
+    // Thermal labels don't need die-cut calibration — hide the Alignment card.
+    var ac = el('lsAlignCard'); if (ac) ac.style.display = zebra ? 'none' : '';
     el('lsModels').style.display = 'none';
     el('lsEditor').style.display = 'block';
     loadCalibInputs();
@@ -172,13 +216,14 @@
   // true proof of what will come out of the printer.
   function renderSheet() {
     var t = LS.tpl; if (!t) return;
+    var PW = window.LabelTemplates.pageW(t), PH = window.LabelTemplates.pageH(t);
     var sheet = el('lsSheet'), wrap = sheet.parentElement;
     var avail = Math.min((wrap.clientWidth || 520) - 4, 620);
-    var scale = avail / window.LabelTemplates.A4_W;         // px per mm
+    var scale = avail / PW;                                 // px per mm
     var maxH = 760;
-    if (window.LabelTemplates.A4_H * scale > maxH) scale = maxH / window.LabelTemplates.A4_H;
-    sheet.style.width = (window.LabelTemplates.A4_W * scale) + 'px';
-    sheet.style.height = (window.LabelTemplates.A4_H * scale) + 'px';
+    if (PH * scale > maxH) scale = maxH / PH;
+    sheet.style.width = (PW * scale) + 'px';
+    sheet.style.height = (PH * scale) + 'px';
 
     var start = Math.max(1, intVal('lsStart', 1));
     var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack' };
@@ -189,7 +234,7 @@
     // sheet edge — the boundary they must respect for alignment.
     var gridW = (t.cols - 1) * t.pitchX + t.labelW, gridH = (t.rows - 1) * t.pitchY + t.labelH;
     var mL = t.marginLeft, mT = t.marginTop;
-    var mR = window.LabelTemplates.A4_W - mL - gridW, mB = window.LabelTemplates.A4_H - mT - gridH;
+    var mR = PW - mL - gridW, mB = PH - mT - gridH;
     html += '<div class="ls-margin-box" style="left:' + (mL * scale).toFixed(1) + 'px;top:' + (mT * scale).toFixed(1) +
       'px;width:' + (gridW * scale).toFixed(1) + 'px;height:' + (gridH * scale).toFixed(1) + 'px;"></div>';
     html += '<span class="ls-mdim ls-mdim-t" style="top:' + (Math.max(0, mT * scale / 2 - 7)).toFixed(1) + 'px;">top ' + mT.toFixed(1) + ' mm</span>';
@@ -608,7 +653,7 @@
     if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library failed to load. Reload the page.'); return; }
     // compress: the brand images are plain RGB and the vector bars are a long
     // run of rectangles — both deflate to a fraction of their raw size.
-    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: [window.LabelTemplates.pageW(t), window.LabelTemplates.pageH(t)], orientation: 'portrait', compress: true });
     // Ask viewers to print at actual size (Adobe honours it; harmless elsewhere).
     // The page is exact A4 (210×297), which is what actually stops Chrome fit-to-page.
     try { doc.viewerPreferences({ PrintScaling: 'None' }); } catch (e) {}
@@ -646,7 +691,7 @@
   function printAlignmentTest() {
     var t = LS.tpl; if (!t) return;
     if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library failed to load. Reload the page.'); return; }
-    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    var doc = new window.jspdf.jsPDF({ unit: 'mm', format: [window.LabelTemplates.pageW(t), window.LabelTemplates.pageH(t)], orientation: 'portrait' });
     try { doc.viewerPreferences({ PrintScaling: 'None' }); } catch (e) {}
     var cal = getCalib(t.id);
 

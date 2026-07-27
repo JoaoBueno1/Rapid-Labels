@@ -14,7 +14,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="label-sheets.css?v=20260724s" />
+  <link rel="stylesheet" href="label-sheets.css?v=20260728a" />
 </head>
 <body>
   <header class="ls-header">
@@ -72,7 +72,7 @@
             <div class="ls-note" style="margin-top:10px;"><b>That's the whole trick:</b> in the print dialog set <b>Scale = Actual size / 100%</b> — never “Fit to page”, which shrinks it (often to ~96%) and then nothing lines up. At 100% these sheets align on their own. Load the correct Celcast sheet.</div>
           </div>
 
-          <div class="ls-panel-card">
+          <div class="ls-panel-card" id="lsAlignCard">
             <h3>Alignment <span style="font-weight:400;color:var(--faint);font-size:12px;">— optional</span></h3>
             <p class="ls-note" style="margin-top:0;">Only if labels look shifted after printing at 100%. Print the test, overlay it on a blank sheet, then nudge below.</p>
             <button class="ls-btn ls-btn-block" onclick="LS.printAlignmentTest()">🎯 Print alignment test</button>
@@ -179,8 +179,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="label-assets.js?v=20260727f"></script>
-  <script src="label-templates.js?v=20260724t"></script>
+  <script src="label-templates.js?v=20260728a"></script>
   <script src="label-render.js?v=20260727i"></script>
-  <script src="label-sheets.js?v=20260727c"></script>
+  <script src="label-sheets.js?v=20260728a"></script>
 </body>
 </html>
