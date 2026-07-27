@@ -43,8 +43,8 @@
     bandGap:     0.030,   // × av  between the content block and the band
     bcW:         0.58,    // × iw  barcode fills this share of the band
     symGap:      0.04,    // × iw  clearance between strip and barcode
-    symMaxW:     0.26,    // × iw  cap the compliance strip's width (small footnote)
-    symMaxH:     0.48,    // × bandH  and its height, so it never crowds the barcode
+    symMaxW:     0.22,    // × iw  cap the compliance strip's width (small footnote)
+    symMaxH:     0.42,    // × bandH  and its height, so it never crowds the barcode
     borderInset: 0.025,   // × H
     borderW:     0.006,   // × H
     borderR:     0.03,    // × H
@@ -605,8 +605,13 @@
     return (w > 0 && h > 0) ? { w: w, h: h } : null;
   }
 
+  // The Rapid LED product sticker. It ALWAYS carries the "factory" frame: a
+  // border whose top line runs through the middle of the logo (breaking on
+  // either side of it) and whose bottom line runs through the barcode/compliance
+  // strip (breaking around them), so the logo, symbols and barcode look built
+  // into the frame rather than floating inside it.
   function layoutBrandLabel(cell, W, H) {
-    var A = window.LABEL_ASSETS || {}, S = SPEC, out = [], i;
+    var A = window.LABEL_ASSETS || {}, S = SPEC, out = [], i, j;
     if (!cell || !(W > 0) || !(H > 0)) return out;
 
     var pad = H * S.pad;
@@ -614,103 +619,96 @@
     var top = pad, bot = H - pad, cx = W / 2;
     if (iw <= 0 || av <= 0) return out;
 
-    if (cell.border) {
-      var bi = H * S.borderInset;
-      out.push({ kind: 'rect', x: bi, y: bi, w: W - 2 * bi, h: H - 2 * bi, r: H * S.borderR, lw: Math.max(0.08, H * S.borderW) });
-    }
+    var bi = H * S.borderInset;                  // frame inset from the label edge
+    var fx0 = bi, fx1 = W - bi;                  // frame left / right verticals
+    var flw = Math.max(0.15, H * S.borderW);     // frame line weight
+    var brk = av * 0.03;                          // clearance where an element breaks the line
 
-    // ── Bottom band: compliance strip left, 5DC + barcode right ──
-    // The barcode FILLS its half of the band instead of keeping the symbol's
-    // natural proportions. Preserving them meant the height cap decided the
-    // width, so on a wide sheet the code shrank to 14% of the label — the same
-    // small symbol on every size. Only horizontal ratios carry data, so filling
-    // costs nothing and makes the code grow with the sheet.
+    // ── Logo: centred at the top, its vertical centre ON the top frame line ──
+    var logo = A.logo, logoD = assetDims(logo), lgW = 0, lgH = 0;
+    if (logoD) {
+      var lasp = logoD.w / logoD.h;
+      lgH = av * S.logoH; lgW = lgH * lasp;
+      if (lgW > iw * S.logoMaxW) { lgW = iw * S.logoMaxW; lgH = lgW / lasp; }
+    }
+    var logoTop = top, yTop = logoTop + lgH / 2;
+    if (logoD) out.push({ kind: 'image', img: logo.img, url: logo.url, x: cx - lgW / 2, y: logoTop, w: lgW, h: lgH });
+
+    // ── Bottom band: compliance strip left, 5DC + barcode right, both sitting
+    //    ON the bottom frame line (which breaks around them). ──
     var bandH = av * S.bandH, bandTop = bot - bandH;
     var bcBoxW = iw * S.bcW, bcX = W - pad - bcBoxW;
+    var yBot = bot - bandH / 2;                  // bottom frame line
     var ebL = effectiveBarcode(cell);
 
-    // The product's 5DC sits above the barcode when it has one; otherwise the
-    // whole band height is the barcode's (the space stays empty, never a filler).
-    var dc = usable(cell.dc5), dcH = 0;
+    // The product's 5DC prints above the barcode when it has one (a human
+    // reference — the bars themselves encode the product code, see effectiveBarcode).
+    var dc = usable(cell.dc5), dcH = 0, dcSize = 0;
     if (dc) {
-      var dcSize = fitSize(String(dc), bcBoxW, Math.min(bandH * 0.30, av * S.lineH * 1.25), true, 1.4);
-      dcH = dcSize * 1.25;
+      dcSize = fitSize(String(dc), bcBoxW, Math.min(bandH * 0.30, av * S.lineH * 1.25), true, 1.4);
+      dcH = dcSize * 1.3;
       out.push({ kind: 'text', text: String(dc), x: bcX + bcBoxW / 2, y: bandTop + dcSize, size: dcSize, bold: true, align: 'center' });
     }
     var bc = barcodeFill(ebL.value, ebL.fmt, bcX, bandTop + dcH, bcBoxW, bandH - dcH);
     for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
 
+    var symR = fx0;
     var sym = A.symbols, symD = assetDims(sym);
     if (symD) {
       var sasp = symD.w / symD.h;
-      // The compliance strip is a footnote, not a feature: cap both its width
-      // (never past its half of the band) and its height so it sits small in
-      // the bottom-left with clear air before the barcode, whatever the sheet.
-      var symMaxW = Math.min(iw * S.symMaxW, iw - bcBoxW - iw * S.symGap);
+      var symMaxW = Math.min(iw * S.symMaxW, bcX - pad - iw * S.symGap);
       var sh = Math.min(bandH * S.symMaxH, symMaxW / sasp), sw = sh * sasp;
       if (sw > symMaxW) { sw = symMaxW; sh = sw / sasp; }
-      if (sw > 0.2) out.push({ kind: 'image', img: sym.img, url: sym.url, x: pad, y: bot - sh, w: sw, h: sh });
+      if (sw > 0.2) { out.push({ kind: 'image', img: sym.img, url: sym.url, x: pad, y: yBot - sh / 2, w: sw, h: sh }); symR = pad + sw; }
     }
 
-    // ── Content block, measured first then centred ──
-    // Sizing every piece before placing any of it lets the whole block sit
-    // centred in the space above the band. Laying it out top-down instead left
-    // the spec line floating in a pool of leftover white, which read as a bug.
-    var contentTop = top, contentBottom = bandTop - av * S.bandGap;
+    // ── The segmented frame ──
+    var loL = cx - lgW / 2 - brk, loR = cx + lgW / 2 + brk;
+    if (loL > fx0 + 0.5) out.push({ kind: 'line', x1: fx0, y1: yTop, x2: loL, y2: yTop, lw: flw });   // top-left
+    if (loR < fx1 - 0.5) out.push({ kind: 'line', x1: loR, y1: yTop, x2: fx1, y2: yTop, lw: flw });   // top-right
+    var bL = symR + brk, bR = bcX - brk;
+    if (bR > bL + 0.5) out.push({ kind: 'line', x1: bL, y1: yBot, x2: bR, y2: yBot, lw: flw });        // bottom-middle
+    out.push({ kind: 'line', x1: fx0, y1: yTop, x2: fx0, y2: yBot, lw: flw });                          // left
+    out.push({ kind: 'line', x1: fx1, y1: yTop, x2: fx1, y2: yBot, lw: flw });                          // right
+
+    // ── Content (code, description, spec lines) centred between logo and band ──
+    var contentTop = logoTop + lgH + av * S.logoGap;
+    var contentBottom = bandTop - av * S.bandGap;
     var availH = contentBottom - contentTop;
     if (availH <= 1) return out;
 
+    var ciw = iw * 0.92;                          // keep text clear of the verticals
     var blocks = [], blockH = 0;
-
-    var logo = A.logo, logoD = assetDims(logo);
-    if (logoD) {
-      var lasp = logoD.w / logoD.h;
-      var lh = av * S.logoH, lw = lh * lasp;
-      if (lw > iw * S.logoMaxW) { lw = iw * S.logoMaxW; lh = lw / lasp; }
-      blocks.push({ kind: 'logo', img: logo, w: lw, h: lh, gap: av * S.logoGap });
-      blockH += lh + av * S.logoGap;
-    }
-
     if (usable(cell.code)) {
-      var cs = fitSize(cell.code, iw, av * S.codeH, true, S.codeMinMM);
-      blocks.push({ kind: 'line', text: String(cell.code), size: cs, bold: true, gap: av * S.codeGap });
-      blockH += cs + av * S.codeGap;
+      var csz = fitSize(cell.code, ciw, av * S.codeH, true, S.codeMinMM);
+      blocks.push({ kind: 'line', text: String(cell.code), size: csz, bold: true, gap: av * S.codeGap });
+      blockH += csz + av * S.codeGap;
     }
-
     var specs = (cell.lines || []).map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean);
     var free = Math.max(0, availH - blockH);
-
     if (cell.desc) {
       var descRoom = specs.length ? free * S.descShare : free;
-      var d = fitBlock(cell.desc, iw, Math.max(av * 0.12, descRoom), av * S.descH, S.descMinMM, S.descLead);
+      var d = fitBlock(cell.desc, ciw, Math.max(av * 0.12, descRoom), av * S.descH, S.descMinMM, S.descLead);
       blocks.push({ kind: 'para', lines: d.lines, size: d.size, lead: S.descLead, gap: av * S.descGap });
       blockH += d.lines.length * d.size * S.descLead + av * S.descGap;
     }
-
     if (specs.length) {
       var specRoom = Math.max(av * 0.06, availH - blockH);
-      var joined = specs.join('\n');
-      var ls = av * S.lineH, rows = wrapAllLines(specs, iw, ls);
-      while (ls > S.lineMinMM && rows.length * ls * S.lineLead > specRoom) { ls -= 0.1; rows = wrapAllLines(specs, iw, ls); }
+      var ls = av * S.lineH, rows = wrapAllLines(specs, ciw, ls);
+      while (ls > S.lineMinMM && rows.length * ls * S.lineLead > specRoom) { ls -= 0.1; rows = wrapAllLines(specs, ciw, ls); }
       blocks.push({ kind: 'para', lines: rows, size: ls, lead: S.lineLead, gap: 0 });
       blockH += rows.length * ls * S.lineLead;
-      void joined;
     }
-
-    // trailing gap of the last block should not push the centring off
     if (blocks.length) blockH -= blocks[blocks.length - 1].gap;
 
     var y = contentTop + Math.max(0, (availH - blockH) / 2);
     for (i = 0; i < blocks.length; i++) {
       var bkt = blocks[i];
-      if (bkt.kind === 'logo') {
-        out.push({ kind: 'image', img: bkt.img.img, url: bkt.img.url, x: cx - bkt.w / 2, y: y, w: bkt.w, h: bkt.h });
-        y += bkt.h;
-      } else if (bkt.kind === 'line') {
+      if (bkt.kind === 'line') {
         y += bkt.size;
         out.push({ kind: 'text', text: bkt.text, x: cx, y: y, size: bkt.size, bold: bkt.bold, align: 'center' });
       } else {
-        for (var j = 0; j < bkt.lines.length; j++) {
+        for (j = 0; j < bkt.lines.length; j++) {
           y += bkt.size;
           out.push({ kind: 'text', text: bkt.lines[j], x: cx, y: y, size: bkt.size, align: 'center' });
           y += bkt.size * (bkt.lead - 1);
@@ -748,6 +746,9 @@
         ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, p.lw * s);
         roundRectPath(ctx, p.x * s, p.y * s, p.w * s, p.h * s, p.r * s);
         ctx.stroke();
+      } else if (p.kind === 'line') {
+        ctx.strokeStyle = SPEC.ink; ctx.lineWidth = Math.max(1, p.lw * s); ctx.lineCap = 'butt';
+        ctx.beginPath(); ctx.moveTo(p.x1 * s, p.y1 * s); ctx.lineTo(p.x2 * s, p.y2 * s); ctx.stroke();
       }
     }
   }
@@ -795,6 +796,9 @@
         doc.setDrawColor(0); doc.setLineWidth(p.lw);
         if (p.r > 0) doc.roundedRect(ox + p.x, oy + p.y, p.w, p.h, p.r, p.r, 'S');
         else doc.rect(ox + p.x, oy + p.y, p.w, p.h, 'S');
+      } else if (p.kind === 'line') {
+        doc.setDrawColor(17, 17, 17); doc.setLineWidth(p.lw);
+        doc.line(ox + p.x1, oy + p.y1, ox + p.x2, oy + p.y2);
       }
     }
   }
