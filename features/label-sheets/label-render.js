@@ -28,7 +28,7 @@
     logoH:       0.160,   // × av
     logoMaxW:    0.60,    // × iw
     logoGap:     0.075,   // × av  clearance below the logo, above the code
-    logoLineAt:  0.82,    // × logo height  where the top frame line crosses (logo sits ON it)
+    logoLineAt:  0.50,    // × logo height  where the top frame line crosses (centred on the logo)
     codeH:       0.115,   // × av  starting em size, shrinks to fit the width
     codeMinMM:   1.6,
     codeGap:     0.050,   // × av
