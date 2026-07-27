@@ -361,7 +361,7 @@
     if (!cell || !cell.type || !(W > 0) || !(H > 0)) return [];
     switch (cell.type) {
       case 'plabel':   return layoutBrandLabel(cell, W, H);
-      case 'location': return layoutLocation(cell, W, H);
+      case 'location': return (opts && opts.zebra) ? layoutZebraLocation(cell, W, H) : layoutLocation(cell, W, H);
       case 'product':  return PRODUCT_RECIPES[(opts && opts.productRecipe) || 'stack'](cell, W, H);
       case 'barcode':  return layoutBarcodeCell(cell, W, H);
       case 'text':     return layoutTextCell(cell, W, H);
@@ -507,6 +507,52 @@
     y += bcHmm + H * LOC.gap2 + botFs;
 
     out.push({ kind: 'text', text: code, x: W / 2, y: y, size: botFs, align: 'center' });
+    return out;
+  }
+
+  // ── Zebra 4×6 recipes — EXACT replica of the home "Barcodes (3 Sections)" ──
+  // (barcodes_labels.html): fixed mm boxes and px→mm fonts (96 CSS dpi), so the
+  // Zebra label prints the identical, long-tested layout — not an approximation.
+  var Z_PXMM = 25.4 / 96;   // 1 CSS px → mm
+  function layoutZebraProduct(cell, W, H) {
+    var out = [], i, padL = 1.0, padR = 0.5;
+    var eb = effectiveBarcode(cell), value = eb.value;
+    var name = usable(cell.name);
+    var big = usable(cell.dc5) || usable(cell.sku) || usable(cell.code);   // .sku-box content
+    var y = 0;
+    if (name) {                                     // .title 26px, centred, nowrap+ellipsis
+      var tfs = 26 * Z_PXMM, t = name;
+      while (widthMM(t, tfs, false) > W - padL - padR && t.length > 3) t = t.slice(0, -1);
+      if (t !== name) t += '…';
+      y += tfs;
+      out.push({ kind: 'text', text: t, x: W / 2, y: y, size: tfs, align: 'center' });
+      y += 2.0;                                     // margin-bottom 2mm
+    }
+    var rowTop = y, bcW = 59.7, bcH = 26.4;         // .barcode-box 59.7×26.4mm, right-aligned
+    if (value) {
+      var bc = barcodeFill(value, eb.fmt, W - padR - bcW, rowTop, bcW, bcH);
+      for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+    }
+    if (big) {                                      // .sku-box 20×10mm, font 36px, centred in the box
+      var bfs = 36 * Z_PXMM;
+      out.push({ kind: 'text', text: big, x: padL, y: rowTop + 5 + bfs * 0.35, size: bfs, bold: true, align: 'left' });
+    }
+    return out;
+  }
+  function layoutZebraLocation(cell, W, H) {
+    var out = [], i;
+    var code = usable(cell.code) || usable(cell.value);
+    if (!code) return out;
+    var bcW = 91.6, bcH = 26.5, bx = (W - bcW) / 2;   // .loc-barcode-box 91.6×26.5mm, centred
+    var nfs = 36 * Z_PXMM, y = nfs;                   // .loc-name-top 36px, left-aligned within the barcode width
+    out.push({ kind: 'text', text: code, x: bx, y: y, size: nfs, bold: true, align: 'left' });
+    y += 1.0;                                         // margin-bottom 1mm
+    var bc = barcodeFill(code, 'CODE128', bx, y, bcW, bcH, true);   // no HRI (displayValue false)
+    for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+    y += bcH;
+    var cfs = 14 * Z_PXMM;                            // .loc-name caption 14px, centred
+    y += 0.5 + cfs;
+    out.push({ kind: 'text', text: code, x: W / 2, y: y, size: cfs, align: 'center' });
     return out;
   }
 
@@ -807,7 +853,7 @@
     return out;
   }
 
-  var PRODUCT_RECIPES = { code5dc: layoutCode5dc, shipping: layoutShipping, stack: layoutProductStack };
+  var PRODUCT_RECIPES = { code5dc: layoutCode5dc, shipping: layoutShipping, stack: layoutProductStack, zebraProduct: layoutZebraProduct };
 
   // ── Backend A — canvas (on-screen preview) ──────────────────────────────
   function roundRectPath(ctx, x, y, w, h, r) {
@@ -916,6 +962,7 @@
   }
   // The barcode box a recipe would give this label — used by the check above.
   function barcodeBox(recipe, W, H) {
+    if (recipe === 'zebraProduct') return { w: 59.7, h: 26.4 };   // fixed home box
     if (recipe === 'location') {
       var pl = Math.min(LOC.pad, Math.min(W, H) * 0.05);
       return { w: (W - 2 * pl) * LOC.bcW, h: H * LOC.bcH };
