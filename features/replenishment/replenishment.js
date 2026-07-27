@@ -621,27 +621,27 @@
         ? ` <span class="override-badge" title="${kpi.safetyOverrides} safety-override product(s) — Main drained for oversold lines">OVR ${kpi.safetyOverrides}</span>`
         : '';
 
-      // Stacked bar — only renders when there ARE products to send.
-      // Shows ACTUAL breakdown (critical | warning | ok) so you see the
-      // distribution at a glance — not a synthetic "health %" that misleads.
-      const stackedBar = kpi.total > 0 ? `
-        <div class="card-bar-row" title="${kpi.critical} critical · ${kpi.warning} warning · ${kpi.ok} ok">
+      const footerMsg = kpi.totalProducts > 0
+        ? `${kpi.totalProducts} products · ${kpi.totalUnits.toLocaleString()} units to send`
+        : 'Fully stocked — nothing to send';
+
+      // Distribution — one thick, rounded bar showing how this branch's
+      // to-send load splits across critical | warning | ok, plus a clear
+      // dot-labelled legend (the single place the counts live).
+      const dist = kpi.total > 0 ? `
+        <div class="card-dist" title="Of ${kpi.total} products to send — ${kpi.critical} critical, ${kpi.warning} warning, ${kpi.ok} ok">
           <div class="card-bar">
-            ${kpi.critPct > 0 ? `<div class="seg seg-crit" style="width:${kpi.critPct}%"></div>` : ''}
-            ${kpi.warnPct > 0 ? `<div class="seg seg-warn" style="width:${kpi.warnPct}%"></div>` : ''}
-            ${kpi.okPct   > 0 ? `<div class="seg seg-ok"   style="width:${kpi.okPct}%"></div>`   : ''}
+            ${kpi.critPct > 0 ? `<span class="seg seg-crit" style="width:${kpi.critPct}%"></span>` : ''}
+            ${kpi.warnPct > 0 ? `<span class="seg seg-warn" style="width:${kpi.warnPct}%"></span>` : ''}
+            ${kpi.okPct   > 0 ? `<span class="seg seg-ok"   style="width:${kpi.okPct}%"></span>`   : ''}
           </div>
           <div class="card-bar-legend">
-            <span class="lg-crit">${kpi.critical}</span>
-            <span class="lg-warn">${kpi.warning}</span>
-            <span class="lg-ok">${kpi.ok}</span>
+            <span class="lg lg-crit"><i class="lg-dot"></i><b class="lg-num">${kpi.critical}</b><span class="lg-txt">Critical</span></span>
+            <span class="lg lg-warn"><i class="lg-dot"></i><b class="lg-num">${kpi.warning}</b><span class="lg-txt">Warning</span></span>
+            <span class="lg lg-ok"><i class="lg-dot"></i><b class="lg-num">${kpi.ok}</b><span class="lg-txt">OK</span></span>
           </div>
         </div>
       ` : '';
-
-      const footerMsg = kpi.totalProducts > 0
-        ? `${kpi.totalProducts} to send · ${kpi.totalUnits.toLocaleString()} units`
-        : 'Fully stocked';
 
       return `
         <a href="replenishment-branch.html?branch=${b.code}" class="branch-card ${healthClass}">
@@ -653,26 +653,7 @@
             <span class="severity-badge ${severityClass}">${severityLabel}</span>
           </div>
 
-          <div class="card-stats">
-            <div class="card-stat">
-              <span>Products</span>
-              <span class="stat-val">${kpi.totalProducts}</span>
-            </div>
-            <div class="card-stat">
-              <span>Units</span>
-              <span class="stat-val">${kpi.totalUnits.toLocaleString()}</span>
-            </div>
-            <div class="card-stat">
-              <span>Critical</span>
-              <span class="stat-val ${kpi.critical > 0 ? 'crit' : ''}">${kpi.critical}</span>
-            </div>
-            <div class="card-stat">
-              <span>Warning</span>
-              <span class="stat-val ${kpi.warning > 0 ? 'warn' : ''}">${kpi.warning}</span>
-            </div>
-          </div>
-
-          ${stackedBar}
+          ${dist}
 
           <div class="card-footer">
             <span>${footerMsg}</span>

@@ -220,12 +220,12 @@
       text-transform: uppercase;
       letter-spacing: .5px;
     }
-    /* KPI accent strips — semantic but VALUE TEXT stays uniform slate-900.
-       Avoids the "screaming red KPI" effect. Color is a tag, not an alarm. */
-    .kpi-item.critical    { --accent: var(--crit-solid); }
-    .kpi-item.warning-kpi { --accent: var(--warn-solid); }
-    .kpi-item::before { height: 3px; }   /* strip thicker for visibility */
-    .kpi-value { color: var(--text); }   /* uniform across all KPIs */
+    /* No thin accent strips (they read as noise). Instead the two numbers
+       that matter — Critical & Warning — are shown in colour so they pop. */
+    .kpi-item::before { display: none; }
+    .kpi-value { color: var(--text); }
+    .kpi-item.critical .kpi-value    { color: var(--crit-solid); }
+    .kpi-item.warning-kpi .kpi-value { color: var(--warn-solid); }
     .kpi-divider { display: none; }
     @media (max-width: 1100px) { .kpi-bar { grid-template-columns: repeat(2, 1fr); } }
 
@@ -349,15 +349,16 @@
       text-decoration: none;
       color: inherit;
     }
+    /* Left accent bar — ONLY on problem branches, so healthy/stocked cards
+       stay plain white and the eye lands on red/amber first. */
     .branch-card::before {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
-      background: var(--border);
+      top: 0; bottom: 0; left: 0;
+      width: 3px;
+      background: transparent;
       transition: background .12s;
     }
-    .branch-card.health-good::before     { background: var(--ok-solid); }
     .branch-card.health-warning::before  { background: var(--warn-solid); }
     .branch-card.health-critical::before { background: var(--crit-solid); }
     .branch-card:hover {
@@ -384,26 +385,41 @@
       letter-spacing: -.2px;
       margin-top: 2px;
     }
-    .branch-card .card-stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 4px 14px;
-      margin: 4px 0;
-    }
-    .card-stat {
-      font-size: 12.5px;
-      color: var(--text-mute);
+    /* Distribution — one thick, rounded stacked bar (critical | warning | ok)
+       with a dot-labelled legend under it. Thicker + clearer than the old
+       hairline bar; the legend is the single home for the counts. */
+    .branch-card .card-dist { margin: 12px 0 2px; }
+    .card-bar {
+      height: 12px;
+      border-radius: 6px;
+      background: var(--bg-subtle);
+      overflow: hidden;
       display: flex;
-      justify-content: space-between;
-      padding: 3px 0;
+      box-shadow: inset 0 0 0 1px rgba(20,28,42,.05);
     }
-    .card-stat .stat-val {
-      font-weight: 700;
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
+    .card-bar .seg { height: 100%; transition: width .4s ease; }
+    .card-bar .seg + .seg { box-shadow: inset 1px 0 0 rgba(255,255,255,.65); }
+    .card-bar .seg-crit { background: var(--crit-solid); }
+    .card-bar .seg-warn { background: var(--warn-solid); }
+    .card-bar .seg-ok   { background: var(--ok-solid); }
+    .card-bar-legend { display: flex; gap: 18px; margin-top: 11px; }
+    .card-bar-legend .lg { display: inline-flex; align-items: baseline; gap: 6px; }
+    .card-bar-legend .lg .lg-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      align-self: center; flex-shrink: 0;
     }
-    .card-stat .stat-val.crit { color: var(--crit-fg); }
-    .card-stat .stat-val.warn { color: var(--warn-fg); }
+    .card-bar-legend .lg .lg-num {
+      font-size: 15px; font-weight: 700;
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums; letter-spacing: -.2px;
+    }
+    .card-bar-legend .lg .lg-txt {
+      font-size: 10.5px; font-weight: 600; color: var(--text-mute);
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .lg-crit .lg-dot { background: var(--crit-solid); }  .lg-crit .lg-num { color: var(--crit-solid); }
+    .lg-warn .lg-dot { background: var(--warn-solid); }  .lg-warn .lg-num { color: var(--warn-solid); }
+    .lg-ok   .lg-dot { background: var(--ok-solid);   }  .lg-ok   .lg-num { color: var(--text); }
     .card-footer {
       display: flex;
       justify-content: space-between;
@@ -474,39 +490,6 @@
       color: var(--text-mute);
     }
     .severity-badge.sev-stocked::before { background: var(--text-soft); }
-
-    /* Stacked breakdown bar (critical | warning | ok) */
-    .card-bar-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 4px;
-    }
-    .card-bar {
-      flex: 1;
-      height: 6px;
-      border-radius: 3px;
-      background: var(--bg-subtle);
-      overflow: hidden;
-      display: flex;
-    }
-    .card-bar .seg {
-      height: 100%;
-      transition: width .4s ease;
-    }
-    .card-bar .seg-crit { background: var(--crit-solid); }
-    .card-bar .seg-warn { background: var(--warn-solid); }
-    .card-bar .seg-ok   { background: var(--ok-solid); }
-    .card-bar-legend {
-      display: flex;
-      gap: 6px;
-      font-size: 11px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-    }
-    .card-bar-legend .lg-crit { color: var(--crit-fg); }
-    .card-bar-legend .lg-warn { color: var(--warn-fg); }
-    .card-bar-legend .lg-ok   { color: var(--ok-fg); }
 
     /* Status badges */
     .status-badge {
@@ -627,7 +610,7 @@
     }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./replenishment-cb.css?v=20260621" />
+  <link rel="stylesheet" href="./replenishment-theme.css?v=20260727a" />
 </head>
 <body>
   <header class="site-header">
@@ -772,6 +755,6 @@
 
   <script src="../../supabase-config.js"></script>
   <script src="replenishment-config.js?v=20260625b"></script>
-  <script src="replenishment.js?v=20260625b"></script>
+  <script src="replenishment.js?v=20260727b"></script>
 </body>
 </html>

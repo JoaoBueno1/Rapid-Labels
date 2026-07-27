@@ -1,0 +1,145 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Branch Replenishment — Returns design overlay.
+   Loaded AFTER each page's own <style>, so it wins the cascade. Both pages
+   are built on CSS custom properties, so re-pointing the tokens restyles
+   every component (KPIs, cards, table, filters, modals) at once. Class
+   names & HTML structure are untouched → the JS keeps working.
+
+   House style (matches features/returns, container-check, label-sheets,
+   home-returns-theme):
+     bg #f4f6f9 · surface #fff · ink #1a2230 · muted #5b6b86/#7a8aa2/#8a97ab
+     border #e2e7ef/#d3dae6/#eef1f6 · accent #0aa5e6 (hover #0893cc)
+     IBM Plex Sans (body) · IBM Plex Mono (numbers/codes) · radii 7/10/12
+   Replaces the old Container-Builder overlay (cream/black/orange).
+   Revert = re-point the two <link> tags back to replenishment-cb.css.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 1) Re-point the design tokens (base <style> sets several with
+       !important on body, so we must match that to win) ────────────── */
+:root, body {
+  --bg:            #f4f6f9 !important;
+  --bg-card:       #ffffff !important;
+  --bg-soft:       #f7f9fc !important;   /* table headers / alt panels */
+  --bg-subtle:     #eef1f6 !important;
+  --bg-hover:      #f9fbfd !important;
+  --border:        #e2e7ef !important;
+  --border-soft:   #eef1f6 !important;
+  --border-strong: #d3dae6 !important;
+  --text:          #1a2230 !important;
+  --text-mute:     #5b6b86 !important;
+  --text-soft:     #8a97ab !important;
+  --primary:       #0aa5e6 !important;
+  --primary-h:     #0893cc !important;
+  --primary-fg:    #ffffff !important;
+  --focus:         #0aa5e6 !important;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace !important;
+
+  /* keep the semantic scale, only nudge the red/green to the house tones */
+  --crit-fg: #c0392b !important;
+  --ok-fg:   #1b8a4b !important;
+}
+
+html, body { background: #f4f6f9 !important; }
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif !important;
+  color: #1a2230 !important;
+}
+::selection { background: rgba(10, 165, 230, .18); color: #1a2230; }
+
+/* Mono only where it earns its keep: KPI figures + codes. */
+.kpi-value, .prod-code, .branch-code, .loc-cell, .prod-dc,
+.card-stat .stat-val, .sync-card .num { font-family: 'IBM Plex Mono', ui-monospace, monospace !important; }
+.kpi-value, .kpi-label { letter-spacing: -.2px; }
+.kpi-label { text-transform: uppercase; letter-spacing: .05em; }
+
+/* ── 2) Shared site header + footer → clean white, cyan hover ────── */
+.site-header {
+  background: #fff !important;
+  color: #1a2230 !important;
+  border-bottom: 1px solid #e2e7ef !important;
+  box-shadow: 0 1px 0 rgba(20,28,42,.02) !important;
+}
+.site-header .brand { color: #1a2230 !important; font-weight: 600 !important; opacity: 1 !important; }
+.site-header .nav-link,
+.site-header .back-link { color: #5b6b86 !important; opacity: 1 !important; border-color: #e2e7ef !important; }
+.site-header .nav-link:hover,
+.site-header .back-link:hover { background: #eef1f6 !important; color: #0893cc !important; }
+.site-header .nav-link.active { background: #eaf6fd !important; border-color: #cfeafb !important; color: #0893cc !important; }
+.site-footer { background: transparent !important; color: #8a97ab !important; border-top: 1px solid #e2e7ef !important; }
+.site-footer .footer-inner { color: #8a97ab !important; }
+
+/* ── 3) Buttons → Returns: white/ghost with cyan-hover border, cyan
+       primary. (Base already keys off --primary, this refines the feel.) */
+main .btn, main .btn-action, main .pages-btn, main .btn-carton-mode {
+  font-family: inherit !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  border-radius: 7px !important;
+  transition: background .12s, border-color .12s, box-shadow .12s !important;
+}
+main .btn:hover:not(.primary),
+main .btn-action:hover:not(.primary),
+main .btn-carton-mode:hover:not(.active) {
+  border-color: #0aa5e6 !important;
+  background: #fff !important;
+  color: #1a2230 !important;
+}
+main .btn.primary, main .btn-action.primary {
+  background: #0aa5e6 !important;
+  border-color: #0aa5e6 !important;
+  color: #fff !important;
+  box-shadow: 0 1px 2px rgba(10,165,230,.22) !important;
+}
+main .btn.primary:hover, main .btn-action.primary:hover {
+  background: #0893cc !important;
+  border-color: #0893cc !important;
+  color: #fff !important;
+}
+
+/* ── 4) Inputs / selects / focus rings → cyan (override the base blue) */
+main input, main select, main textarea { border-radius: 7px !important; }
+main input:focus, main select:focus, main textarea:focus,
+.search-input:focus, .cover-filter:focus, .opt-input:focus {
+  outline: none !important;
+  border-color: #0aa5e6 !important;
+  box-shadow: 0 0 0 3px rgba(10,165,230,.14) !important;
+}
+main input[type="checkbox"], main input[type="radio"],
+.row-check, .hide-toggle input, .target-option input[type="radio"] {
+  accent-color: #0aa5e6 !important;
+}
+
+/* ── 5) Active filter chip → cyan pill (base uses slate --primary; the
+       token swap already handles it, this just tidies the count badge). */
+.filter-chip.active { background: #0aa5e6 !important; color: #fff !important; }
+.filter-chip.active .chip-count { background: rgba(255,255,255,.24) !important; color: #fff !important; }
+.branch-tab.active { background: #0aa5e6 !important; color: #fff !important; }
+.selection-badge, .status-badge.sent { background: #0aa5e6 !important; }
+.cover-filter.cover-active { border-color: #d97706 !important; }   /* keep amber "cover" cue */
+
+/* ── 6) Cards / table wrappers → soft radius + light borders ─────── */
+.kpi-bar, .kpi-grid, .sync-card, .rules-details, .callout-card,
+.branch-card, .summary-bar, .table-scroll-wrapper, .modal-content,
+.modal-panel, .app-table, .pending-tr-panel, .target-banner {
+  border-radius: 10px !important;
+}
+.branch-card { transition: border-color .12s, box-shadow .12s !important; }
+.branch-card:hover { border-color: #0aa5e6 !important; box-shadow: 0 4px 14px rgba(10,165,230,.10) !important; }
+.callout-card:hover { border-color: #0aa5e6 !important; }
+
+/* Table header → Returns light chrome (base already close; lock it in) */
+#planTable th, .app-table thead th {
+  background: #f7f9fc !important;
+  color: #7a8aa2 !important;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-weight: 600 !important;
+}
+#planTable tbody tr:hover td, .app-table tbody tr:hover { background: #f9fbfd !important; }
+
+/* ── 7) Modals → 12px + cyan-tinted backdrop, matching Returns ───── */
+.modal, .modal-backdrop { background: rgba(20,28,42,.5) !important; }
+.modal-content, .modal-panel { border-radius: 12px !important; box-shadow: 0 20px 60px rgba(20,28,42,.3) !important; }
+
+/* Loading spinner → cyan top */
+.spinner { border-top-color: #0aa5e6 !important; }

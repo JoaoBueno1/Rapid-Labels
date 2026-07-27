@@ -1,0 +1,92 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Pick Anomalies — Returns design overlay (Orders view + chrome).
+   Loaded LAST so it wins. Re-points the logistics.css --log-* tokens to the
+   Returns palette (flips the accent to cyan in one shot) and flattens the
+   gradient/blue chrome of the Orders view into flat white + soft borders.
+   Class names & JS untouched.
+     bg #f4f6f9 · card #fff · ink #1a2230 · muted #5b6b86/#7a8aa2/#8a97ab
+     border #e2e7ef/#d3dae6 · accent #0aa5e6 (hover #0893cc)
+   NOTE: the Analytics tab (.pav2-*) is a separate "reports" design and is
+   intentionally left as-is.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 1) Token re-point (logistics + global accent) ── */
+:root, body {
+  --log-blue:   #0aa5e6 !important;
+  --log-text:   #1a2230 !important;
+  --log-muted:  #7a8aa2 !important;
+  --log-border: #e2e7ef !important;
+  --log-surface:#ffffff !important;
+  --primary-600:#0aa5e6 !important;
+  --primary:    #0aa5e6 !important;
+  --bg:         #f4f6f9 !important;
+}
+
+/* ── 2) Page chrome ── */
+html, body { background: #f4f6f9 !important; }
+body { font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1a2230; }
+.site-header { background: #fff !important; color: #1a2230 !important; border-bottom: 1px solid #e2e7ef !important; box-shadow: 0 1px 0 rgba(20,28,42,.02) !important; }
+.site-header .brand { color: #1a2230 !important; font-weight: 600 !important; opacity: 1 !important; }
+.site-header .nav-link, .site-header .back-link { color: #5b6b86 !important; opacity: 1 !important; border-color: #e2e7ef !important; }
+.site-header .nav-link:hover, .site-header .back-link:hover { background: #eef1f6 !important; color: #0893cc !important; }
+.site-footer { background: transparent !important; color: #8a97ab !important; border-top: 1px solid #e2e7ef !important; }
+.main-container.wide-container { background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
+
+.log-page-title { color: #1a2230; font-weight: 600; font-size: 20px; letter-spacing: -.01em; }
+
+/* ── 3) Cards: flat white, soft border, minimal shadow ── */
+.log-card { box-shadow: none !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+.kpi { box-shadow: none !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+
+/* ── 4) Toolbar → flat white (kill the gradient) ── */
+.pa-toolbar { background: #fff !important; border: 1px solid #e2e7ef !important; box-shadow: none !important; border-radius: 10px !important; }
+
+/* ── 5) Search input → cyan focus (was #4facfe) ── */
+.pa-search-input { border: 1px solid #d3dae6 !important; border-radius: 7px !important; font-weight: 500; }
+.pa-search-input:hover { border-color: #c3ccda !important; }
+.pa-search-input:focus { border-color: #0aa5e6 !important; box-shadow: 0 0 0 3px rgba(10,165,230,.14) !important; }
+
+/* ── 6) Chips → rounded pill, cyan active (token already flips it) ── */
+.chip { border-radius: 999px; }
+.chip.active { background: #0aa5e6 !important; border-color: #0aa5e6 !important; color: #fff !important; box-shadow: none !important; }
+
+/* ── 7) KPI tiles → flat white; keep the coloured values ── */
+#paKpis .kpi { background: #fff !important; }
+#paKpis .kpi .label { color: #7a8aa2 !important; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+#paKpis .kpi .value { color: #1a2230; }
+#kpi-fg .value { color: #0aa5e6 !important; }
+.pa-review-bar-wrap { background: #eef1f6 !important; }
+.pa-review-bar-fill, .pa-review-bar-fill.pa-bar-good { background: #0aa5e6 !important; }
+
+/* ── 8) Sync progress → cyan ── */
+.pa-progress-fill { background: #0aa5e6 !important; }
+
+/* ── 9) Table → Returns light chrome ── */
+.table-wrapper { border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+.app-table thead th {
+  background: #f7f9fc !important; color: #7a8aa2 !important;
+  font-size: 11px !important; font-weight: 600 !important;
+  text-transform: uppercase; letter-spacing: .05em !important; border-bottom: 1px solid #e2e7ef !important;
+}
+.app-table tbody td { border-bottom-color: #eef1f6; color: #1a2230; }
+.app-table tbody tr:hover { background: #f9fbfd !important; }
+
+/* ── 10) Modal → flat header, soft radius ── */
+.pa-modal-header { background: #f7f9fc !important; }
+.pa-modal-title { color: #1a2230 !important; }
+
+/* ── 11) Accent tints that were blue → cyan ── */
+.pa-stock-to { color: #0aa5e6 !important; }
+.pa-top-bar { background: #0aa5e6 !important; }
+.pa-bulk-bar-print { background: #0aa5e6 !important; }
+.pa-bulk-bar-print:hover { background: #0893cc !important; }
+
+/* ── 12) Row status: correct/reviewed rows → clean white (the OK pill
+     already says it). Keep the faint tint ONLY on rows that need attention
+     — anomaly / suspect / FG / mixed — so problems pop out of a calm table. */
+.app-table tbody tr.pa-row-correct,
+.app-table tbody tr.pa-row-reviewed,
+.app-table tbody tr.pa-row-correct td,
+.app-table tbody tr.pa-row-reviewed td { background: transparent !important; }
+.app-table tbody tr.pa-row-correct:hover td,
+.app-table tbody tr.pa-row-reviewed:hover td { background: #f9fbfd !important; }

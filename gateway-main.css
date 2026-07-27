@@ -1,61 +1,77 @@
 /* ─────────────────────────────────────────────────────────────
-   Gateway → Main — Container Builder design overlay.
-   Scoped to .cb-shell; uses .cb-shell-prefixed selectors (and !important
-   where the page uses inline styles) so it restyles the existing DOM into
-   the CB look WITHOUT touching the markup or JS.
+   Gateway → Main — Returns design overlay.
+   Scoped to .cb-shell (kept as the scoping hook — higher specificity than
+   the page's runtime-injected base style, so these win without touching
+   markup or JS). Restyles the CB look into the Returns system:
+   light surface, cyan accent, IBM Plex Sans, soft radii, subtle borders.
+   Tokens: bg #f4f6f9 · card #fff · ink #1a2230 · muted #5b6b86/#7a8aa2
+           border #e2e7ef/#d3dae6 · accent #0aa5e6 (hover #0893cc)
+   Was: Container-Builder (cream/black/orange, sharp, mono).
    ───────────────────────────────────────────────────────────── */
-body { background: #FAF8F5; }
+
+/* ── Page chrome: white header, light body ── */
+html, body { background: #f4f6f9 !important; }
+.site-header { background: #fff !important; color: #1a2230 !important; border-bottom: 1px solid #e2e7ef !important; box-shadow: 0 1px 0 rgba(20,28,42,.02) !important; }
+.site-header .brand { color: #1a2230 !important; font-weight: 600 !important; opacity: 1 !important; }
+.site-header .nav-link, .site-header .back-link { color: #5b6b86 !important; opacity: 1 !important; border-color: #e2e7ef !important; }
+.site-header .nav-link:hover, .site-header .back-link:hover { background: #eef1f6 !important; color: #0893cc !important; }
+.site-footer { background: transparent !important; color: #8a97ab !important; border-top: 1px solid #e2e7ef !important; }
+.site-footer .footer-inner { color: #8a97ab !important; }
+
+/* ── Shell: full-bleed transparent (white surfaces are the cards) ── */
+.main-container.cb-shell {
+  background: #f4f6f9 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
 .cb-shell {
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  color: #1a1a1a; background: #FAF8F5;
+  color: #1a2230;
 }
 
 /* ── Page header / title ── */
-.cb-shell .page-header { border-bottom: 2px solid #1a1a1a; padding-bottom: 14px; margin-bottom: 4px; }
-.cb-shell .page-header h1 { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
-.cb-shell .page-header h1 span { background: #1a1a1a !important; border-radius: 0 !important; font-size: 11px !important; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+.cb-shell .page-header { border-bottom: 2px solid #e2e7ef; padding-bottom: 14px; margin-bottom: 4px; }
+.cb-shell .page-header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 
-/* ── Inputs + buttons ── */
+/* ── Inputs ── */
 .cb-shell input[type="text"], .cb-shell #gwSearch {
-  font-family: inherit; font-size: 13px; border: 1px solid #d4cfc5; border-radius: 0; background: #fff; padding: 7px 10px; color: #1a1a1a;
+  font-family: inherit; font-size: 13px; border: 1px solid #d3dae6; border-radius: 7px; background: #fff; padding: 8px 11px; color: #1a2230;
 }
-.cb-shell input:focus { border-color: #1a1a1a; outline: none; }
+.cb-shell input:focus { border-color: #0aa5e6; outline: none; box-shadow: 0 0 0 3px rgba(10,165,230,.14); }
+
+/* ── Buttons (toolbar) → clean secondary, cyan hover ── */
 .cb-shell .search-btn-small {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
-  border-radius: 0 !important; border: 1px solid #1a1a1a !important; background: #1a1a1a !important; color: #FAF8F5 !important; padding: 7px 12px;
+  font-family: inherit; font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0;
+  border-radius: 7px !important; border: 1px solid #d3dae6 !important; background: #fff !important; color: #1a2230 !important; padding: 8px 13px;
 }
-.cb-shell .search-btn-small:hover { background: #E85D04 !important; border-color: #E85D04 !important; color: #fff !important; }
+.cb-shell .search-btn-small:hover { background: #fff !important; border-color: #0aa5e6 !important; color: #1a2230 !important; }
 
-/* ── Sync status card (inline-styled) ── */
-.cb-shell #syncStatusCard { background: #fff !important; border: 1px solid #d4cfc5 !important; border-radius: 0 !important; }
+/* ── Sync status card ── */
+.cb-shell #syncStatusCard { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
 
-/* ── Nav tabs ── */
+/* ── Nav tabs → cyan underline ── */
 .cb-shell .gw-nav-tab {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: #8a8278; border-bottom: 3px solid transparent;
+  font-family: inherit; font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0;
+  color: #6b7a92; border-bottom: 2px solid transparent;
 }
-.cb-shell .gw-nav-tab:hover { color: #1a1a1a; background: transparent; }
-.cb-shell .gw-nav-tab.active { color: #1a1a1a; border-bottom-color: #E85D04; }
+.cb-shell .gw-nav-tab:hover { color: #1a2230; background: transparent; }
+.cb-shell .gw-nav-tab.active { color: #0aa5e6; border-bottom-color: #0aa5e6; }
 
-/* ── Chips → sharp; keep their semantic colours ── */
-.cb-shell .chip { border-radius: 0 !important; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; }
-.cb-shell .chip.active { box-shadow: none !important; transform: none !important; outline: 2px solid #1a1a1a; outline-offset: -2px; }
-.cb-shell .status-count { border-radius: 0 !important; }
+/* ── Chips: keep the light rounded base + semantic tints; just make the
+     active ring cyan instead of a black outline ── */
+.cb-shell .chip.active { outline: none; box-shadow: 0 0 0 2px rgba(10,165,230,.25); }
 
-/* ── Table → CB look (black header, sharp, mono numbers) ── */
-.cb-shell .table-wrapper { border: 2px solid #1a1a1a; background: #fff; }
+/* ── Table → Returns light chrome (header light, sans, soft borders) ── */
+.cb-shell .table-wrapper { border: 1px solid #e2e7ef; border-radius: 10px; background: #fff; overflow: hidden; }
 .cb-shell #gwTable { font-size: 13px; }
 .cb-shell #gwTable thead th {
-  background: #1a1a1a !important; color: #FAF8F5 !important;
-  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px !important;
-  text-transform: uppercase; letter-spacing: 0.08em; border: none;
+  background: #f7f9fc !important; color: #7a8aa2 !important;
+  font-family: inherit; font-size: 11px !important; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; border: none; border-bottom: 1px solid #e2e7ef;
 }
-.cb-shell #gwTable tbody td { border-top: 1px solid #ece7dc; font-variant-numeric: tabular-nums; }
-.cb-shell #gwTable tbody tr:hover { background: #faf6f0; }
-
-/* ── Weeks badge → sharp ── */
-.cb-shell .weeks-badge { border-radius: 0 !important; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+.cb-shell #gwTable tbody td { border-top: 1px solid #eef1f6; color: #1a2230; font-variant-numeric: tabular-nums; }
+.cb-shell #gwTable tbody tr:hover { background: #f9fbfd; }
 
 /* ── Pagination ── */
-.cb-shell .pages-btn { border-radius: 0 !important; border: 1px solid #d4cfc5 !important; background: #fff !important; color: #1a1a1a !important; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
-.cb-shell .pages-btn:hover { border-color: #1a1a1a !important; }
+.cb-shell .pages-btn { border-radius: 7px !important; border: 1px solid #d3dae6 !important; background: #fff !important; color: #1a2230 !important; font-family: inherit; }
+.cb-shell .pages-btn:hover { border-color: #0aa5e6 !important; }
