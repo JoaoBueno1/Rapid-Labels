@@ -639,14 +639,12 @@
       out.push({ kind: 'text', text: String(cell.dc5), x: cx, y: barcodeTop - av * 0.006, size: ds, bold: true, align: 'center' });
       dcTop = barcodeTop - av * 0.006 - ds;
     }
-    var qs = av * 0.024, qtyY = dcTop - av * 0.012;
-    var qLabel = 'QTY:', qLabelW = widthMM(qLabel, qs, true), qLineW = iw * 0.30, qTotalW = qLabelW + 3 + qLineW, qX = cx - qTotalW / 2;
-    out.push({ kind: 'text', text: qLabel, x: qX, y: qtyY, size: qs, bold: true, align: 'left' });
-    out.push({ kind: 'line', x1: qX + qLabelW + 3, y1: qtyY, x2: qX + qTotalW, y2: qtyY, lw: Math.max(0.3, flw * 0.55) });
-    var bottomTop = qtyY - qs - av * 0.06;   // leaves writing space above the QTY line
 
-    // ── Middle: code, description, spec lines, compliance strip — centred ──
-    var contentTop = logoTop + lgH + av * 0.05, availH = bottomTop - contentTop;
+    // ── Middle: code, description, spec lines, compliance strip — centred in the
+    //    space between the logo and a band reserved above the 5DC for the QTY. ──
+    var qs = av * 0.024;
+    var contentTop = logoTop + lgH + av * 0.05, contentBottom = dcTop - av * 0.15;
+    var availH = contentBottom - contentTop;
     var blocks = [], blockH = 0;
     if (usable(cell.code)) { var cs = fitSize(cell.code, ciw, av * 0.048, true, 3); blocks.push({ kind: 'line', text: String(cell.code), size: cs, bold: true, gap: av * 0.02 }); blockH += cs + av * 0.02; }
     if (cell.desc) { var d = fitBlock(cell.desc, ciw, av * 0.12, av * 0.030, 2.5, 1.2); blocks.push({ kind: 'para', lines: d.lines, size: d.size, lead: 1.2, gap: av * 0.03 }); blockH += d.lines.length * d.size * 1.2 + av * 0.03; }
@@ -655,7 +653,9 @@
     var sym = A.symbols, symD = assetDims(sym);
     if (symD) { var sasp = symD.w / symD.h, sw = ciw * 0.52, sh = sw / sasp; if (sh > av * 0.045) { sh = av * 0.045; sw = sh * sasp; } blocks.push({ kind: 'img', img: sym, w: sw, h: sh, gap: 0 }); blockH += sh; }
     if (blocks.length) blockH -= blocks[blocks.length - 1].gap;
-    var y = contentTop + Math.max(0, (availH - blockH) / 2);
+    // Top-anchored (just below the logo) so the code/description/specs/symbols sit
+    // high and the QTY has a clear gap to sit centred in, above the barcode.
+    var y = contentTop, void0 = availH;
     for (i = 0; i < blocks.length; i++) {
       var bkt = blocks[i];
       if (bkt.kind === 'img') { out.push({ kind: 'image', img: bkt.img.img, url: bkt.img.url, x: cx - bkt.w / 2, y: y, w: bkt.w, h: bkt.h }); y += bkt.h; }
@@ -663,6 +663,14 @@
       else { for (j = 0; j < bkt.lines.length; j++) { y += bkt.size; out.push({ kind: 'text', text: bkt.lines[j], x: cx, y: y, size: bkt.size, align: 'center' }); y += bkt.size * (bkt.lead - 1); } }
       y += bkt.gap;
     }
+    var symBottom = y;   // actual bottom of the centred middle content
+
+    // ── QTY: ___ (always blank) centred in the gap between the middle content
+    //    and the 5DC/barcode, so it isn't crammed against the barcode. ──
+    var qtyY = (symBottom + dcTop) / 2 + qs * 0.4;
+    var qLabel = 'QTY:', qLabelW = widthMM(qLabel, qs, true), qLineW = iw * 0.30, qTotalW = qLabelW + 3 + qLineW, qX = cx - qTotalW / 2;
+    out.push({ kind: 'text', text: qLabel, x: qX, y: qtyY, size: qs, bold: true, align: 'left' });
+    out.push({ kind: 'line', x1: qX + qLabelW + 3, y1: qtyY, x2: qX + qTotalW, y2: qtyY, lw: Math.max(0.3, flw * 0.55) });
 
     // ── Frame (square corners): top line breaks around the logo, bottom line
     //    breaks around the barcode; full side verticals. ──
