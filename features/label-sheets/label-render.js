@@ -148,15 +148,15 @@
   // come back from the scanner with a check digit appended — no longer the
   // number printed above it. Internal codes are always CODE128.
   //
-  // With no product barcode the fallback is the 5DC, on EVERY template — so one
-  // product scans to one value whichever sheet it was printed on. The SKU would
-  // be unique where the 5DC is not (657 codes are shared, almost all of them a
-  // product and its carton), but an 18-character SKU in CODE128 needs ~230
-  // modules: 0.15 mm per bar on a 38 mm ticket and 0.25 mm on a 63.5 mm one,
-  // which took 28% of the catalogue below the scan threshold. Of the shared
-  // 5DCs only 18 groups have more than one member lacking a real barcode, and
-  // that ambiguity is already on the label — the 5DC is printed either way.
-  var FALLBACK_ORDER = ['dc5', 'sku', 'code'];
+  // With no product barcode the fallback is the PRODUCT CODE (SKU), never the
+  // 5DC. This is a hard Cin7 constraint: Cin7 does not recognise a barcode
+  // generated from the 5DC, but it DOES read one generated from the product code
+  // (e.g. R1021-BK-TRI), so a 5DC barcode would simply fail to scan into the
+  // system. A long SKU makes narrower bars — but the editor already flags "bars
+  // too narrow" per sheet, and a scannable-but-tight code beats a wide code Cin7
+  // rejects. The 5DC still PRINTS as a human-readable reference (above the
+  // barcode on the sticker); it is just never what the bars encode.
+  var FALLBACK_ORDER = ['code', 'sku'];
   function effectiveBarcode(cell) {
     if (!cell) return { value: '', fmt: 'CODE128' };
     if (cell.type === 'barcode') return { value: usable(cell.value), fmt: cell.fmt || 'auto' };

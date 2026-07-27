@@ -287,7 +287,7 @@
         el('lsPlDesc').value = existing.desc || '';
         el('lsPlLines').value = (existing.lines || []).join('\n');
         if (el('lsPlBorder')) el('lsPlBorder').checked = !!existing.border;
-        plBcNote(existing.barcode, existing.dc5 || existing.code);
+        plBcNote(existing.barcode, existing.code || existing.sku);
         el('lsPlForm').style.display = 'block';
       }
     } else { pickType(defaultType()); }
@@ -361,15 +361,15 @@
   // operator sees the real answer before printing.
   function bcStatusHtml(cell) {
     var recipe = LS.caps ? LS.caps.productRecipe : 'stack';
-    var order = recipe === 'code5dc' ? ['barcode', 'dc5', 'sku', 'code'] : null;
-    var eff = window.LabelRender.bcValue(cell, order);
-    if (!eff) return '<span style="color:#c0392b;">No barcode and no code — nothing will be printed.</span>';
+    var eb = window.LabelRender.effectiveBarcode(cell);   // same value the label prints
+    var eff = eb.value;
+    if (!eff) return '<span style="color:#c0392b;">No barcode and no product code — nothing will be printed.</span>';
     var raw = String(cell.barcode == null ? '' : cell.barcode).trim();
     var fellBack = !raw || /^0+$/.test(raw);
     var box = window.LabelRender.barcodeBox(recipe, LS.caps.labelW, LS.caps.labelH);
-    var q = window.LabelRender.scanQuality(eff, cell.fmt || 'auto', box.w, box.h);
+    var q = window.LabelRender.scanQuality(eff, eb.fmt || 'auto', box.w, box.h);
     return 'Barcode: <b>' + esc(eff) + '</b> · ' + esc(q.format) +
-      (fellBack ? ' <span style="color:#b45309;">(not in Cin7 — using the ' + (order && eff === String(cell.dc5 || '').trim() ? '5DC' : 'code') + ')</span>' : '') +
+      (fellBack ? ' <span style="color:#b45309;">(no Cin7 barcode — generated from the product code, which Cin7 can read; the 5DC is not used for the bars)</span>' : '') +
       '<br><span style="color:' + (q.ok ? '#1a8a4a' : '#c0392b') + ';">' +
         (q.ok ? '✓ scans well' : '⚠ bars too narrow to scan reliably') +
         ' — ' + q.moduleMM.toFixed(2) + ' mm per bar (min ' + q.minMM + ')</span>';
