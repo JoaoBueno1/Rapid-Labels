@@ -25,9 +25,10 @@
   // "technically drawn".
   var SPEC = {
     pad:         0.045,   // × H   outer padding
-    logoH:       0.155,   // × av
+    logoH:       0.160,   // × av
     logoMaxW:    0.60,    // × iw
-    logoGap:     0.080,   // × av  clearance below the logo, above the code
+    logoGap:     0.075,   // × av  clearance below the logo, above the code
+    logoLineAt:  0.82,    // × logo height  where the top frame line crosses (logo sits ON it)
     codeH:       0.115,   // × av  starting em size, shrinks to fit the width
     codeMinMM:   1.6,
     codeGap:     0.050,   // × av
@@ -39,14 +40,14 @@
     lineH:       0.052,   // × av  spec lines
     lineMinMM:   1.2,
     lineLead:    1.30,
-    bandH:       0.21,    // × av  bottom band: symbols + barcode
+    bandH:       0.23,    // × av  bottom band: symbols + barcode
     bandGap:     0.030,   // × av  between the content block and the band
-    bcW:         0.46,    // × iw  barcode width (kept modest so it isn't stretched)
+    bcW:         0.50,    // × iw  barcode width (balanced — not stretched, bars not thin)
     symGap:      0.04,    // × iw  clearance between strip and barcode
     symMaxW:     0.22,    // × iw  cap the compliance strip's width (small footnote)
     symMaxH:     0.42,    // × bandH  and its height, so it never crowds the barcode
     borderInset: 0.025,   // × H
-    borderW:     0.006,   // × H
+    borderW:     0.011,   // × H  frame line weight (bold enough to read as a frame)
     borderR:     0.03,    // × H
     ink:         '#111111'
   };
@@ -621,7 +622,7 @@
 
     var bi = H * S.borderInset;                  // frame inset from the label edge
     var fx0 = bi, fx1 = W - bi;                  // frame left / right verticals
-    var flw = Math.max(0.15, H * S.borderW);     // frame line weight
+    var flw = Math.max(0.3, Math.min(0.9, H * S.borderW));   // frame line weight (capped so it isn't huge on the full sheet)
     var brk = av * 0.03;                          // clearance where an element breaks the line
 
     // ── Logo: centred at the top, its vertical centre ON the top frame line ──
@@ -631,13 +632,13 @@
       lgH = av * S.logoH; lgW = lgH * lasp;
       if (lgW > iw * S.logoMaxW) { lgW = iw * S.logoMaxW; lgH = lgW / lasp; }
     }
-    var logoTop = top, yTop = logoTop + lgH / 2;
+    var logoTop = top, yTop = logoTop + lgH * (logoD ? S.logoLineAt : 0.5);
     if (logoD) out.push({ kind: 'image', img: logo.img, url: logo.url, x: cx - lgW / 2, y: logoTop, w: lgW, h: lgH });
 
     // ── Bottom band: compliance strip left, 5DC + barcode right, both sitting
     //    ON the bottom frame line (which breaks around them). ──
     var bandH = av * S.bandH, bandTop = bot - bandH;
-    var bcBoxW = iw * S.bcW, bcX = W - pad - bcBoxW;
+    var bcBoxW = iw * S.bcW, bcX = fx1 - bcBoxW;   // barcode right-aligned to the frame side
     var ebL = effectiveBarcode(cell);
 
     // The product's 5DC prints above the barcode when it has one (a human
@@ -648,29 +649,33 @@
       dcH = dcSize * 1.3;
       out.push({ kind: 'text', text: String(dc), x: bcX + bcBoxW / 2, y: bandTop + dcSize, size: dcSize, bold: true, align: 'center' });
     }
-    var bc = barcodeFill(ebL.value, ebL.fmt, bcX, bandTop + dcH, bcBoxW, bandH - dcH);
+    var bcTop = bandTop + dcH, bcHh = bandH - dcH;
+    var yBot = bcTop + bcHh / 2;                    // bottom frame line = the barcode's vertical centre
+    var bc = barcodeFill(ebL.value, ebL.fmt, bcX, bcTop, bcBoxW, bcHh);
     for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
 
-    // Compliance strip: bottom-left, BOTTOM-ALIGNED with the barcode so the two
-    // sit on the same baseline (no line is drawn between them — it read as
-    // misaligned).
+    // Compliance strip: bottom-left (anchored to the frame side), CENTRED on the
+    // same bottom line as the barcode so both sit on it and the line breaks
+    // cleanly around each.
+    var symR = fx0;
     var sym = A.symbols, symD = assetDims(sym);
     if (symD) {
       var sasp = symD.w / symD.h;
-      var symMaxW = Math.min(iw * S.symMaxW, bcX - pad - iw * S.symGap);
+      var symMaxW = Math.min(iw * S.symMaxW, bcX - fx0 - iw * S.symGap);
       var sh = Math.min(bandH * S.symMaxH, symMaxW / sasp), sw = sh * sasp;
       if (sw > symMaxW) { sw = symMaxW; sh = sw / sasp; }
-      if (sw > 0.2) out.push({ kind: 'image', img: sym.img, url: sym.url, x: pad, y: bot - sh, w: sw, h: sh });
+      if (sw > 0.2) { out.push({ kind: 'image', img: sym.img, url: sym.url, x: fx0, y: yBot - sh / 2, w: sw, h: sh }); symR = fx0 + sw; }
     }
 
-    // ── Frame: the top line runs through the logo and breaks on either side of
-    //    it; the two sides run full height to the bottom. The bottom is left
-    //    open so the compliance strip and barcode read as one aligned row. ──
+    // ── Frame: top line breaks around the logo; bottom line breaks around the
+    //    compliance strip (left) and the barcode (right) — both sit ON it. ──
     var loL = cx - lgW / 2 - brk, loR = cx + lgW / 2 + brk;
     if (loL > fx0 + 0.5) out.push({ kind: 'line', x1: fx0, y1: yTop, x2: loL, y2: yTop, lw: flw });   // top-left
     if (loR < fx1 - 0.5) out.push({ kind: 'line', x1: loR, y1: yTop, x2: fx1, y2: yTop, lw: flw });   // top-right
-    out.push({ kind: 'line', x1: fx0, y1: yTop, x2: fx0, y2: bot, lw: flw });                          // left
-    out.push({ kind: 'line', x1: fx1, y1: yTop, x2: fx1, y2: bot, lw: flw });                          // right
+    var bmL = symR + brk, bmR = bcX - brk;
+    if (bmR > bmL + 0.5) out.push({ kind: 'line', x1: bmL, y1: yBot, x2: bmR, y2: yBot, lw: flw });     // bottom-middle
+    out.push({ kind: 'line', x1: fx0, y1: yTop, x2: fx0, y2: yBot, lw: flw });                          // left
+    out.push({ kind: 'line', x1: fx1, y1: yTop, x2: fx1, y2: yBot, lw: flw });                          // right
 
     // ── Content (code, description, spec lines) centred between logo and band ──
     var contentTop = logoTop + lgH + av * S.logoGap;
