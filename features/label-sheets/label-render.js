@@ -606,71 +606,74 @@
     return (w > 0 && h > 0) ? { w: w, h: h } : null;
   }
 
-  // Full-sheet variant (Celcast 48001, ~199×289 mm): a poster-style sticker with
-  // EVERYTHING centred and stacked — logo, code, description, specs, the
-  // compliance strip and the 5DC + barcode all centred, code/description kept
-  // modest so the big sheet reads as a balanced composition, not oversized text.
+  // Full-sheet variant (Celcast 48001, ~199×289 mm). Same "factory" frame idea as
+  // the small sticker but scaled up and centred: logo ON the top line, the
+  // barcode ON the bottom line (both breaking the frame), square corners. The
+  // code/description/specs and the compliance strip sit centred in between, and
+  // an empty QTY: ___ field above the barcode is left blank for hand-writing.
   function layoutBrandLabelFull(cell, W, H) {
     var A = window.LABEL_ASSETS || {}, out = [], i, j;
-    var pad = H * 0.05, iw = W - 2 * pad, av = H - 2 * pad, cx = W / 2, top = pad;
+    var pad = H * 0.05, iw = W - 2 * pad, av = H - 2 * pad, cx = W / 2, top = pad, bot = H - pad;
     if (iw <= 0 || av <= 0) return out;
 
-    var bi = H * 0.02, flw = Math.max(0.4, Math.min(1.2, H * 0.0045));
-    out.push({ kind: 'rect', x: bi, y: bi, w: W - 2 * bi, h: H - 2 * bi, r: H * 0.012, lw: flw });
+    var bi = H * 0.025, fx0 = bi, fx1 = W - bi;
+    var flw = Math.max(0.5, Math.min(1.3, H * 0.005));
+    var brk = av * 0.02, ciw = iw * 0.88;
+    var ebL = effectiveBarcode(cell);
 
-    var ciw = iw * 0.86, ebL = effectiveBarcode(cell);
-    var blocks = [], blockH = 0;
+    // ── Logo: top, centred ON the top frame line ──
+    var logo = A.logo, logoD = assetDims(logo), lgW = 0, lgH = 0;
+    if (logoD) { var lasp = logoD.w / logoD.h; lgH = av * 0.09; lgW = lgH * lasp; if (lgW > iw * 0.5) { lgW = iw * 0.5; lgH = lgW / lasp; } }
+    var logoTop = top, yTop = logoTop + lgH * 0.5;
+    if (logoD) out.push({ kind: 'image', img: logo.img, url: logo.url, x: cx - lgW / 2, y: logoTop, w: lgW, h: lgH });
 
-    var logo = A.logo, logoD = assetDims(logo);
-    if (logoD) {
-      var lasp = logoD.w / logoD.h, lh = av * 0.115, lw = lh * lasp;
-      if (lw > ciw * 0.62) { lw = ciw * 0.62; lh = lw / lasp; }
-      blocks.push({ kind: 'logo', img: logo, w: lw, h: lh, gap: av * 0.05 }); blockH += lh + av * 0.05;
-    }
-    if (usable(cell.code)) {
-      var cs = fitSize(cell.code, ciw, av * 0.05, true, 3);
-      blocks.push({ kind: 'line', text: String(cell.code), size: cs, bold: true, gap: av * 0.018 }); blockH += cs + av * 0.018;
-    }
-    if (cell.desc) {
-      var d = fitBlock(cell.desc, ciw, av * 0.13, av * 0.030, 2.5, 1.2);
-      blocks.push({ kind: 'para', lines: d.lines, size: d.size, lead: 1.2, gap: av * 0.03 }); blockH += d.lines.length * d.size * 1.2 + av * 0.03;
-    }
-    var specs = (cell.lines || []).map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean);
-    if (specs.length) {
-      var ls = av * 0.027, rows = wrapAllLines(specs, ciw, ls);
-      blocks.push({ kind: 'para', lines: rows, size: ls, lead: 1.35, gap: av * 0.06 }); blockH += rows.length * ls * 1.35 + av * 0.06;
-    }
-    var sym = A.symbols, symD = assetDims(sym);
-    if (symD) {
-      var sasp = symD.w / symD.h, sw = ciw * 0.55, sh = sw / sasp;
-      if (sh > av * 0.05) { sh = av * 0.05; sw = sh * sasp; }
-      blocks.push({ kind: 'logo', img: sym, w: sw, h: sh, gap: av * 0.055 }); blockH += sh + av * 0.055;
-    }
+    // ── Bottom group: barcode centred ON the bottom line, 5DC above it, and an
+    //    empty QTY: ___ field above that (always blank, for hand-writing). ──
+    var bcW = iw * 0.5, bcH = av * 0.07, barcodeTop = bot - bcH, yBot = barcodeTop + bcH / 2;
+    var bc = barcodeFill(ebL.value, ebL.fmt, cx - bcW / 2, barcodeTop, bcW, bcH);
+    for (i = 0; i < bc.prims.length; i++) out.push(bc.prims[i]);
+
+    var dcTop = barcodeTop - av * 0.006;
     if (usable(cell.dc5)) {
-      var ds = fitSize(String(cell.dc5), ciw * 0.6, av * 0.032, true, 3);
-      blocks.push({ kind: 'line', text: String(cell.dc5), size: ds, bold: true, gap: av * 0.008 }); blockH += ds + av * 0.008;
+      var ds = fitSize(String(cell.dc5), bcW, av * 0.028, true, 3);
+      out.push({ kind: 'text', text: String(cell.dc5), x: cx, y: barcodeTop - av * 0.006, size: ds, bold: true, align: 'center' });
+      dcTop = barcodeTop - av * 0.006 - ds;
     }
-    var bcW = iw * 0.52, bcH = av * 0.08;
-    blocks.push({ kind: 'barcode', w: bcW, h: bcH, gap: 0 }); blockH += bcH;
+    var qs = av * 0.024, qtyY = dcTop - av * 0.012;
+    var qLabel = 'QTY:', qLabelW = widthMM(qLabel, qs, true), qLineW = iw * 0.30, qTotalW = qLabelW + 3 + qLineW, qX = cx - qTotalW / 2;
+    out.push({ kind: 'text', text: qLabel, x: qX, y: qtyY, size: qs, bold: true, align: 'left' });
+    out.push({ kind: 'line', x1: qX + qLabelW + 3, y1: qtyY, x2: qX + qTotalW, y2: qtyY, lw: Math.max(0.3, flw * 0.55) });
+    var bottomTop = qtyY - qs - av * 0.06;   // leaves writing space above the QTY line
 
-    var y = top + Math.max(0, (av - blockH) / 2);
+    // ── Middle: code, description, spec lines, compliance strip — centred ──
+    var contentTop = logoTop + lgH + av * 0.05, availH = bottomTop - contentTop;
+    var blocks = [], blockH = 0;
+    if (usable(cell.code)) { var cs = fitSize(cell.code, ciw, av * 0.048, true, 3); blocks.push({ kind: 'line', text: String(cell.code), size: cs, bold: true, gap: av * 0.02 }); blockH += cs + av * 0.02; }
+    if (cell.desc) { var d = fitBlock(cell.desc, ciw, av * 0.12, av * 0.030, 2.5, 1.2); blocks.push({ kind: 'para', lines: d.lines, size: d.size, lead: 1.2, gap: av * 0.03 }); blockH += d.lines.length * d.size * 1.2 + av * 0.03; }
+    var specs = (cell.lines || []).map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean);
+    if (specs.length) { var ls = av * 0.026, rows = wrapAllLines(specs, ciw, ls); blocks.push({ kind: 'para', lines: rows, size: ls, lead: 1.35, gap: av * 0.05 }); blockH += rows.length * ls * 1.35 + av * 0.05; }
+    var sym = A.symbols, symD = assetDims(sym);
+    if (symD) { var sasp = symD.w / symD.h, sw = ciw * 0.52, sh = sw / sasp; if (sh > av * 0.045) { sh = av * 0.045; sw = sh * sasp; } blocks.push({ kind: 'img', img: sym, w: sw, h: sh, gap: 0 }); blockH += sh; }
+    if (blocks.length) blockH -= blocks[blocks.length - 1].gap;
+    var y = contentTop + Math.max(0, (availH - blockH) / 2);
     for (i = 0; i < blocks.length; i++) {
       var bkt = blocks[i];
-      if (bkt.kind === 'logo') {
-        out.push({ kind: 'image', img: bkt.img.img, url: bkt.img.url, x: cx - bkt.w / 2, y: y, w: bkt.w, h: bkt.h });
-        y += bkt.h;
-      } else if (bkt.kind === 'line') {
-        y += bkt.size;
-        out.push({ kind: 'text', text: bkt.text, x: cx, y: y, size: bkt.size, bold: bkt.bold, align: 'center' });
-      } else if (bkt.kind === 'para') {
-        for (j = 0; j < bkt.lines.length; j++) { y += bkt.size; out.push({ kind: 'text', text: bkt.lines[j], x: cx, y: y, size: bkt.size, align: 'center' }); y += bkt.size * (bkt.lead - 1); }
-      } else if (bkt.kind === 'barcode') {
-        var bc = barcodeFill(ebL.value, ebL.fmt, cx - bkt.w / 2, y, bkt.w, bkt.h);
-        for (j = 0; j < bc.prims.length; j++) out.push(bc.prims[j]);
-        y += bkt.h;
-      }
+      if (bkt.kind === 'img') { out.push({ kind: 'image', img: bkt.img.img, url: bkt.img.url, x: cx - bkt.w / 2, y: y, w: bkt.w, h: bkt.h }); y += bkt.h; }
+      else if (bkt.kind === 'line') { y += bkt.size; out.push({ kind: 'text', text: bkt.text, x: cx, y: y, size: bkt.size, bold: bkt.bold, align: 'center' }); }
+      else { for (j = 0; j < bkt.lines.length; j++) { y += bkt.size; out.push({ kind: 'text', text: bkt.lines[j], x: cx, y: y, size: bkt.size, align: 'center' }); y += bkt.size * (bkt.lead - 1); } }
       y += bkt.gap;
     }
+
+    // ── Frame (square corners): top line breaks around the logo, bottom line
+    //    breaks around the barcode; full side verticals. ──
+    var loL = cx - lgW / 2 - brk, loR = cx + lgW / 2 + brk;
+    if (loL > fx0 + 0.5) out.push({ kind: 'line', x1: fx0, y1: yTop, x2: loL, y2: yTop, lw: flw });
+    if (loR < fx1 - 0.5) out.push({ kind: 'line', x1: loR, y1: yTop, x2: fx1, y2: yTop, lw: flw });
+    var bL = cx - bcW / 2 - brk, bR = cx + bcW / 2 + brk;
+    if (bL > fx0 + 0.5) out.push({ kind: 'line', x1: fx0, y1: yBot, x2: bL, y2: yBot, lw: flw });
+    if (bR < fx1 - 0.5) out.push({ kind: 'line', x1: bR, y1: yBot, x2: fx1, y2: yBot, lw: flw });
+    out.push({ kind: 'line', x1: fx0, y1: yTop, x2: fx0, y2: yBot, lw: flw });
+    out.push({ kind: 'line', x1: fx1, y1: yTop, x2: fx1, y2: yBot, lw: flw });
     return out;
   }
 
