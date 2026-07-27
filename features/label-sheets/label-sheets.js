@@ -100,41 +100,64 @@
   // Each card answers the two questions the operator actually has: is this the
   // sheet in my hand, and can it print what I need? The A4 minimap answers the
   // first; a rendered example of every allowed content type answers the second.
-  // Inline B&W illustration of a thermal label printer with a 4×6 label coming
-  // out — represents the Zebra family on its card (no external asset, CSP-safe).
-  function zebraImageSVG(boxW, boxH) {
-    function bars(x, y, w, h) {
-      var pat = [2, 1, 1, 3, 1, 2, 1, 1, 2, 3, 1, 1, 2, 1], s = '', bx = x, i = 0;
-      while (bx < x + w - 1) {
-        var bw = pat[i % pat.length];
-        if (i % 2 === 0) s += '<rect x="' + bx.toFixed(1) + '" y="' + y + '" width="' + bw + '" height="' + h + '" fill="#111"/>';
-        bx += bw + 1; i++;
-      }
-      return s;
+  // ── Inline SVGs for the Zebra cards (no external asset, CSP-safe) ──
+  // A thermal printer with a 4×6 label emerging; the label content differs per
+  // model (3 barcode sections, or 1/2 Rapid LED stickers).
+  function zbBars(x, y, w, h) {
+    var pat = [2, 1, 1, 3, 1, 2, 1, 1, 2, 3, 1, 1, 2, 1], s = '', bx = x, i = 0;
+    while (bx < x + w - 1) {
+      var bw = pat[i % pat.length];
+      if (i % 2 === 0) s += '<rect x="' + bx.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw + '" height="' + h.toFixed(1) + '" fill="#111"/>';
+      bx += bw + 1; i++;
     }
-    var lx = 47, lw = 56, sy = [12, 40, 68];   // label x/width and the 3 section tops
+    return s;
+  }
+  function zbPrinter() {
+    return '<rect x="30" y="90" width="90" height="10" rx="2" fill="#1f2937"/>' +
+      '<rect x="14" y="98" width="122" height="66" rx="9" fill="#e2e8f0" stroke="#334155" stroke-width="2.2"/>' +
+      '<rect x="90" y="116" width="32" height="24" rx="3" fill="#fff" stroke="#94a3b8" stroke-width="1.2"/>' +
+      '<circle cx="34" cy="150" r="5" fill="#334155"/><circle cx="50" cy="150" r="5" fill="#94a3b8"/>';
+  }
+  function zbSvg(inner, label) {
+    return '<svg width="158" height="178" viewBox="0 0 150 178" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + label + '">' + inner + '</svg>';
+  }
+  function zebraImageSVG() {          // 4×6 with the 3 barcode sections
+    var lx = 47, lw = 56, sy = [12, 40, 68];
     var lbl = '<rect x="' + lx + '" y="8" width="' + lw + '" height="86" rx="2" fill="#fff" stroke="#334155" stroke-width="1.6"/>';
     for (var i = 0; i < 3; i++) {
-      lbl += bars(lx + 6, sy[i] + 4, lw - 12, 12);
+      lbl += zbBars(lx + 6, sy[i] + 4, lw - 12, 12);
       lbl += '<rect x="' + (lx + 6) + '" y="' + (sy[i] + 18) + '" width="' + (lw - 12) + '" height="3" rx="1" fill="#94a3b8"/>';
       if (i < 2) lbl += '<line x1="' + lx + '" y1="' + (sy[i] + 26) + '" x2="' + (lx + lw) + '" y2="' + (sy[i] + 26) + '" stroke="#e2e8f0" stroke-width="1"/>';
     }
-    return '<svg width="' + boxW + '" height="' + boxH + '" viewBox="0 0 150 178" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zebra thermal printer">' +
-      lbl +
-      '<rect x="30" y="90" width="90" height="10" rx="2" fill="#1f2937"/>' +          // exit slot
-      '<rect x="14" y="98" width="122" height="66" rx="9" fill="#e2e8f0" stroke="#334155" stroke-width="2.2"/>' +
-      '<rect x="90" y="116" width="32" height="24" rx="3" fill="#fff" stroke="#94a3b8" stroke-width="1.2"/>' +
-      '<circle cx="34" cy="150" r="5" fill="#334155"/><circle cx="50" cy="150" r="5" fill="#94a3b8"/>' +
-      '</svg>';
+    return zbSvg(lbl + zbPrinter(), 'Zebra 4×6 — 3 barcode sections');
+  }
+  function zbSticker(x, y, w, h) {    // one mini Rapid LED sticker
+    var cr = Math.min(w, h) * 0.11, cx = x + w * 0.30, cy = y + h * 0.17;
+    return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="1.5" fill="#fff" stroke="#334155" stroke-width="1"/>' +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + cr + '" fill="#0aa5e6" stroke="#111" stroke-width="0.8"/>' +
+      '<text x="' + cx + '" y="' + (cy + cr * 0.55) + '" font-size="' + (cr * 1.35) + '" text-anchor="middle" fill="#fff" font-family="Georgia,serif">R</text>' +
+      '<rect x="' + (x + w * 0.46) + '" y="' + (cy - cr * 0.6) + '" width="' + (w * 0.30) + '" height="2.4" rx="1" fill="#334155"/>' +
+      '<rect x="' + (x + w * 0.46) + '" y="' + (cy + cr * 0.1) + '" width="' + (w * 0.22) + '" height="2.4" rx="1" fill="#334155"/>' +
+      '<rect x="' + (x + w * 0.22) + '" y="' + (y + h * 0.44) + '" width="' + (w * 0.56) + '" height="' + Math.max(2, h * 0.07).toFixed(1) + '" rx="1" fill="#111"/>' +
+      zbBars(x + w * 0.28, y + h * 0.66, w * 0.44, Math.max(6, h * 0.2));
+  }
+  function zebraStickerImageSVG(count) {   // 4×6 with `count` Rapid LED stickers
+    var lx = 47, lw = 56, ly = 8, lh = 86, gap = 3;
+    var out = '<rect x="' + lx + '" y="' + ly + '" width="' + lw + '" height="' + lh + '" rx="2" fill="#fff" stroke="#334155" stroke-width="1.6"/>';
+    var ch = (lh - (count - 1) * gap) / count;
+    for (var i = 0; i < count; i++) out += zbSticker(lx + 3, ly + 3 + i * (ch + gap), lw - 6, ch - 6);
+    return zbSvg(out + zbPrinter(), count + ' Rapid LED sticker' + (count > 1 ? 's' : '') + ' on a Zebra 4×6');
   }
 
   function renderCard(t) {
     var m = window.LabelTemplates.meta(t);
     var zebra = (m.family === 'zebra');
-    var preview = zebra ? zebraImageSVG(158, 178) : window.LabelTemplates.svgPreview(t, 158, 178);
+    var zSticker = zebra && m.allow.length === 1 && m.allow[0] === 'plabel';
+    var preview = !zebra ? window.LabelTemplates.svgPreview(t, 158, 178)
+      : (zSticker ? zebraStickerImageSVG(m.up) : zebraImageSVG());
 
     var examples = m.allow.filter(function (type) { return !NO_PREVIEW[type]; }).map(function (type) {
-      var url = cellPreviewURL(SAMPLES[type], m.labelW, m.labelH, { productRecipe: m.productRecipe });
+      var url = cellPreviewURL(SAMPLES[type], m.labelW, m.labelH, { productRecipe: m.productRecipe, zebra: m.family === 'zebra' });
       return '<div class="ls-ex">' +
         '<div class="ls-ex-frame"' + (m.labelW > m.labelH * 1.6 ? ' style="min-height:62px;"' : '') + '>' +
           (url ? '<img src="' + url + '" alt="" />' : '<span class="ls-loading">…</span>') +
@@ -145,12 +168,14 @@
     }).join('');
 
     var sizeLine = zebra ? esc(m.media || m.size) : esc(m.size);
-    var badges = zebra
-      ? '<span class="ls-badge up">up to ' + m.up + ' sections</span><span class="ls-badge">grid ' + esc(m.grid) + '</span>'
-      : '<span class="ls-badge up">' + m.up + ' per sheet</span><span class="ls-badge">grid ' + esc(m.grid) + '</span>';
-    var chips = zebra
-      ? '<span class="ls-chip">Thermal 4×6</span><span class="ls-chip code">100 × 150 mm</span>'
-      : '<span class="ls-chip">Avery ' + esc(m.avery) + '</span><span class="ls-chip code">' + (m.code ? 'Celcast ' + esc(m.code) : 'Celcast compat.') + '</span>';
+    var badges = !zebra
+      ? '<span class="ls-badge up">' + m.up + ' per sheet</span><span class="ls-badge">grid ' + esc(m.grid) + '</span>'
+      : (zSticker
+          ? '<span class="ls-badge up">' + m.up + ' sticker' + (m.up > 1 ? 's' : '') + '</span><span class="ls-badge">grid ' + esc(m.grid) + '</span>'
+          : '<span class="ls-badge up">up to ' + m.up + ' sections</span><span class="ls-badge">grid ' + esc(m.grid) + '</span>');
+    var chips = !zebra
+      ? '<span class="ls-chip">Avery ' + esc(m.avery) + '</span><span class="ls-chip code">' + (m.code ? 'Celcast ' + esc(m.code) : 'Celcast compat.') + '</span>'
+      : '<span class="ls-chip">' + (zSticker ? 'Rapid LED sticker' : 'Thermal barcodes') + '</span><span class="ls-chip code">100 × 150 mm</span>';
 
     return '<div class="ls-card' + (m.fits ? '' : ' bad') + (zebra ? ' zebra' : '') + '" onclick="LS.selectModel(\'' + t.id + '\')">' +
       '<div class="ls-card-head">' +
@@ -226,7 +251,7 @@
     sheet.style.height = (PH * scale) + 'px';
 
     var start = Math.max(1, intVal('lsStart', 1));
-    var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack' };
+    var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack', zebra: !!(LS.caps && LS.caps.family === 'zebra') };
     var total = t.cols * t.rows, html = '', badCount = 0;
 
     // Margin visualisation: draw the page's real margin band around the label
@@ -576,7 +601,7 @@
       if (meta) meta.textContent = LS.caps.size;
       return;
     }
-    var url = cellPreviewURL(cell, LS.caps.labelW, LS.caps.labelH, { productRecipe: LS.caps.productRecipe });
+    var url = cellPreviewURL(cell, LS.caps.labelW, LS.caps.labelH, { productRecipe: LS.caps.productRecipe, zebra: LS.caps.family === 'zebra' });
     box.innerHTML = url
       ? '<img src="' + url + '" alt="" style="aspect-ratio:' + LS.caps.labelW + '/' + LS.caps.labelH + ';" />'
       : '<span class="ls-mprev-empty">—</span>';
@@ -660,7 +685,7 @@
     var sheets = Math.max(1, intVal('lsSheets', 1));
     var start = Math.max(1, intVal('lsStart', 1));
     var total = t.cols * t.rows;
-    var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack' };
+    var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack', zebra: !!(LS.caps && LS.caps.family === 'zebra') };
 
     for (var s = 0; s < sheets; s++) {
       if (s > 0) doc.addPage();
