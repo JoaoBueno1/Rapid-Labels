@@ -159,12 +159,9 @@
   // Custom Label and Multi-Label. One card per feature (not per template): the
   // A4/A3 size is chosen inside the editor, exactly like the home modals.
   var SHEET_FEATURES = [
-    { key: 'search', name: 'Search & Print', tpl: 'a4label', mode: 'search',
-      purpose: 'Search a product and print one big warehouse label — SKU, code, barcode, QTY and date.',
-      chip: 'Search a product' },
-    { key: 'custom', name: 'Custom Label', tpl: 'a4label', mode: 'custom',
-      purpose: 'Type everything by hand — the same big warehouse label, no product lookup.',
-      chip: 'Type by hand' }
+    { key: 'warehouse', name: 'Warehouse Label', tpl: 'a4label',
+      purpose: 'One big single-product label per sheet — SKU, code, barcode, QTY and date. Search a product or type it by hand.',
+      chip: 'Search or manual' }
   ];
   function sheetFeature(key) { return SHEET_FEATURES.filter(function (f) { return f.key === key; })[0] || null; }
 
@@ -450,7 +447,12 @@
         el('lsPlForm').style.display = 'block';
       }
     } else { pickType(defaultType()); }
-    if (LS.editor.type === 'biglabel' && !el('lsBigDate').value) el('lsBigDate').value = todayISO();
+    if (LS.editor.type === 'biglabel') {
+      if (!el('lsBigDate').value) el('lsBigDate').value = todayISO();
+      // A filled label opens in Manual (fields shown for editing); a fresh one
+      // opens in Search (the common case — find the product).
+      pickBigMode(existing && existing.type === 'biglabel' ? 'manual' : 'search');
+    }
     updateModalPreview();
     openModal('lsCellModal');
   }
@@ -476,6 +478,7 @@
     ['lsPlCode', 'lsPlDesc', 'lsPlLines'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
     ['lsBigSearch', 'lsBigDc5', 'lsBigCode', 'lsBigQty', 'lsBigDate'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
     var bgr = el('lsBigResults'); if (bgr) { bgr.style.display = 'none'; bgr.innerHTML = ''; }
+    var bgc = el('lsBigChosen'); if (bgc) { bgc.style.display = 'none'; bgc.innerHTML = ''; }
     LS.editor.product = null; LS.editor.plProduct = null;
   }
 
@@ -668,11 +671,31 @@
   }
   function bigChoose(i) {
     var p = LS._bigResults[i]; if (!p) return;
-    el('lsBigDc5').value = p.attribute1 || '';
-    el('lsBigCode').value = p.sku || '';
+    el('lsBigDc5').value = p.attribute1 || '';    // the fields are the single source of truth,
+    el('lsBigCode').value = p.sku || '';          // whether filled by search or typed in Manual
     el('lsBigSearch').value = '';
     el('lsBigResults').style.display = 'none';
+    var ch = el('lsBigChosen');
+    if (ch) {
+      ch.style.display = 'block';
+      ch.innerHTML = '<div style="padding:9px 11px;border:1px solid #d7e3ec;border-radius:9px;background:#f7fbfd;">' +
+        '<b style="font-size:15px;">' + esc(p.attribute1 || '') + '</b> <span style="color:#5b6b78;">' + esc(p.sku || '') + '</span>' +
+        '<br><span style="color:#5b6b78;font-size:12px;">' + esc((p.name || '').slice(0, 54)) + '</span>' +
+        '<div style="color:#8a97a2;font-size:11px;margin-top:5px;">Switch to <b>Manual</b> to tweak the code or 5DC.</div></div>';
+    }
     updateModalPreview();
+  }
+
+  // Two ways to fill the warehouse label: Search a product, or type it by hand.
+  // Both write to the same 5DC/Code fields, so buildCell reads them either way.
+  function pickBigMode(mode) {
+    LS.editor.bigMode = mode;
+    var sp = el('lsBigSearchPanel'), mp = el('lsBigManualPanel');
+    if (sp) sp.style.display = mode === 'search' ? 'block' : 'none';
+    if (mp) mp.style.display = mode === 'manual' ? 'block' : 'none';
+    var bs = el('lsBigModeSearch'), bm = el('lsBigModeManual');
+    if (bs) bs.classList.toggle('ls-btn-primary', mode === 'search');
+    if (bm) bm.classList.toggle('ls-btn-primary', mode === 'manual');
   }
 
   // ── Paper size (A4 ↔ A3) for the big-label features — swaps the base template,
@@ -1119,6 +1142,7 @@
   LS.setSheetPaper = setSheetPaper;
   LS.bigSearch = bigSearch;
   LS.bigChoose = bigChoose;
+  LS.pickBigMode = pickBigMode;
   LS.backToModels = backToModels;
   LS.renderSheet = renderSheet;
   LS.updateSummary = updateSummary;

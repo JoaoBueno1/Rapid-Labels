@@ -174,22 +174,34 @@
             <option value="EAN13">EAN-13</option>
           </select>
         </div>
-        <!-- big warehouse label (Search & Print / Custom Label) -->
+        <!-- Warehouse label — two ways to fill it: Search a product, or type it -->
         <div id="lsTypeBigLabel" style="display:none;">
-          <label class="ls-label">Search a product (5DC, SKU or name) — or type the fields below</label>
-          <input type="text" id="lsBigSearch" class="ls-input" placeholder="e.g. 95908, R1021…" autocomplete="off" oninput="LS.bigSearch(this.value)" />
-          <div class="ls-results" id="lsBigResults" style="display:none;"></div>
-          <div style="display:flex;gap:12px;margin-top:12px;">
-            <div style="flex:1;">
-              <label class="ls-label">SKU (5DC)</label>
-              <input type="text" id="lsBigDc5" class="ls-input" placeholder="95908" autocomplete="off" />
-            </div>
-            <div style="flex:1.4;">
-              <label class="ls-label">Code</label>
-              <input type="text" id="lsBigCode" class="ls-input" placeholder="R1021-WH-TRI" autocomplete="off" />
+          <div class="ls-bigmode" style="display:flex;gap:8px;margin-bottom:12px;">
+            <button type="button" class="ls-btn ls-btn-sm ls-btn-primary" id="lsBigModeSearch" onclick="LS.pickBigMode('search')" style="flex:1;">🔍 Search product</button>
+            <button type="button" class="ls-btn ls-btn-sm" id="lsBigModeManual" onclick="LS.pickBigMode('manual')" style="flex:1;">✏️ Manual</button>
+          </div>
+          <!-- SEARCH: find the product, we fill the code / 5DC / barcode -->
+          <div id="lsBigSearchPanel">
+            <label class="ls-label">Find a product — by 5DC, SKU or name</label>
+            <input type="text" id="lsBigSearch" class="ls-input" placeholder="e.g. 95908, R1021…" autocomplete="off" oninput="LS.bigSearch(this.value)" />
+            <div class="ls-results" id="lsBigResults" style="display:none;"></div>
+            <div id="lsBigChosen" style="display:none;margin-top:10px;font-size:13px;"></div>
+          </div>
+          <!-- MANUAL: type the code and 5DC by hand (create / edit) -->
+          <div id="lsBigManualPanel" style="display:none;">
+            <div style="display:flex;gap:12px;">
+              <div style="flex:1;">
+                <label class="ls-label">SKU (5DC)</label>
+                <input type="text" id="lsBigDc5" class="ls-input" placeholder="95908" autocomplete="off" />
+              </div>
+              <div style="flex:1.4;">
+                <label class="ls-label">Code</label>
+                <input type="text" id="lsBigCode" class="ls-input" placeholder="R1021-WH-TRI" autocomplete="off" />
+              </div>
             </div>
           </div>
-          <div style="display:flex;gap:12px;margin-top:8px;">
+          <!-- always: quantity + date -->
+          <div style="display:flex;gap:12px;margin-top:12px;">
             <div style="flex:1;">
               <label class="ls-label">QTY</label>
               <input type="text" id="lsBigQty" class="ls-input" placeholder="50" autocomplete="off" />
@@ -199,7 +211,7 @@
               <input type="date" id="lsBigDate" class="ls-input" />
             </div>
           </div>
-          <div class="ls-note" id="lsBigBc" style="margin-top:10px;">The barcode encodes the <b>product code</b> (CODE128) — the same as the home Search &amp; Print, so it scans into Cin7.</div>
+          <div class="ls-note" id="lsBigBc" style="margin-top:10px;">The barcode encodes the <b>product code</b> (CODE128) — same as the home print, so it scans into Cin7.</div>
         </div>
       </div>
 
@@ -218,6 +230,6 @@
   <script src="label-assets.js?v=20260727f"></script>
   <script src="label-templates.js?v=20260728d"></script>
   <script src="label-render.js?v=20260728c"></script>
-  <script src="label-sheets.js?v=20260728e"></script>
+  <script src="label-sheets.js?v=20260728f"></script>
 </body>
 </html>
