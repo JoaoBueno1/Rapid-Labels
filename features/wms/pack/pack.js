@@ -1,20 +1,32 @@
-// Pack Station (desktop) — Rapid WMS. For packers: pick a PICKED order, scan-verify
-// items into cartons, capture box dims, authorise the pack in Cin7 (via the WMS
-// outbox — exactly-once), and print our own packing slip. All Cin7 writes go through
-// /api/wms/* → the engine → the outbox; this page never touches Cin7 directly.
+// Pack Station (desktop) — Rapid WMS. Scan-first packing for picked orders:
+//   1) scan items into cartons (barcode 13/14-digit, OR the SKU printed as CODE128
+//      e.g. R1021-WH-TRI — both resolve to the same order line)
+//   2) capture carton dimensions
+//   3) authorise the pack in Cin7 (via the WMS outbox — exactly-once) → print slip →
+//      hand off to booking in the TMS.
+// Reads picked orders + commits via /api/wms/*; resolves scans against cin7_mirror
+// products with the anon client (client-side, so scanning is instant).
 
 const API = '/api/wms';
 const PACK = {
   queue: [],
-  selected: null,                         // { parcelId, waveId, taskId, ref, wave, lines }
+  sel: null,                 // { parcelId, taskId, wave, lines }
+  lines: [],                 // [{ id, sku, name, qty_ordered, qty_scanned }]
+  packed: {},                // lineId -> packed count
+  lineBox: {},               // lineId -> carton name
   boxes: [{ name: 'Box 1', l: '', w: '', h: '', weight: '' }],
-  lineBox: {},                            // parcel_line_id -> box name
-  filter: '',
+  currentBox: 'Box 1',
+  barcodeMap: {},            // barcode -> sku
+  skuByUpper: {},            // UPPER(sku) -> sku
   committed: false
 };
+window.PACK = PACK;          // debug/inspection handle
 
 function $(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function num(v) { const n = parseFloat(v); return isNaN(n) ? null : n; }
+function totOrdered() { return PACK.lines.reduce((s, l) => s + Number(l.qty_ordered || 0), 0); }
+function totPacked() { return PACK.lines.reduce((s, l) => s + (PACK.packed[l.id] || 0), 0); }
 
 async function api(method, path, body) {
   const r = await fetch(API + path, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -22,187 +34,241 @@ async function api(method, path, body) {
   if (!r.ok || (j && j.error)) throw new Error((j && j.error) || ('HTTP ' + r.status));
   return j;
 }
+async function sbClient() {
+  try { await (window.supabaseReady || Promise.resolve()); } catch (_) {}
+  return (window.supabaseSearch && window.supabaseSearch.client) || window.supabase || null;
+}
 
-// ── queue ──
+// ═══ landing: the pack queue ═══
 async function loadQueue() {
-  const box = $('packQueue');
-  box.innerHTML = '<div class="pk-muted">Loading…</div>';
+  const body = $('pkQueueBody');
+  body.innerHTML = '<tr><td colspan="4" class="pk-muted">Loading…</td></tr>';
   try {
     PACK.queue = await api('GET', '/pack/ready');
     renderQueue();
   } catch (e) {
-    box.innerHTML = `<div class="pk-muted">Couldn't load the pack queue.<br><span class="pk-small">${esc(e.message)}</span><br><span class="pk-small">The WMS API needs the server running the latest code and the <b>wms</b> schema deployed + exposed.</span></div>`;
-    $('packCount').textContent = '—';
+    body.innerHTML = `<tr><td colspan="4" class="pk-muted">Couldn't load the pack queue — ${esc(e.message)}.<br><span class="pk-small">The WMS API needs the server running the latest code and the <b>wms</b> schema deployed + exposed.</span></td></tr>`;
+    $('pkQueueCount').textContent = '';
   }
 }
 function renderQueue() {
-  const box = $('packQueue');
-  const q = PACK.filter.toLowerCase();
-  const items = PACK.queue.filter(it => !q || String(it.wave.order_number || '').toLowerCase().includes(q) || String(it.wave.customer || '').toLowerCase().includes(q));
-  $('packCount').textContent = PACK.queue.length + ' to pack';
-  if (!items.length) { box.innerHTML = '<div class="pk-muted">Nothing waiting to pack.</div>'; return; }
-  box.innerHTML = items.map(it => {
+  const body = $('pkQueueBody');
+  $('pkQueueCount').textContent = PACK.queue.length ? `${PACK.queue.length} order${PACK.queue.length !== 1 ? 's' : ''}` : '';
+  if (!PACK.queue.length) { body.innerHTML = '<tr><td colspan="4" class="pk-muted">Nothing waiting to pack right now.</td></tr>'; return; }
+  body.innerHTML = PACK.queue.map(it => {
     const n = (it.lines || []).length;
-    const active = PACK.selected && PACK.selected.parcelId === it.parcelId;
-    return `<button class="pk-qitem${active ? ' active' : ''}" data-parcel="${it.parcelId}">` +
-      `<div class="pk-qorder">${esc(it.wave.order_number || ('parcel ' + it.parcelId))}</div>` +
-      `<div class="pk-qcust">${esc(it.wave.customer || '—')}</div>` +
-      `<div class="pk-qmeta">${n} line${n !== 1 ? 's' : ''}</div></button>`;
+    return `<tr class="pk-qrow" data-parcel="${it.parcelId}">` +
+      `<td class="rt-mono"><b>${esc(it.wave.order_number || ('parcel ' + it.parcelId))}</b></td>` +
+      `<td>${esc(it.wave.customer || '—')}</td>` +
+      `<td class="r">${n}</td>` +
+      `<td class="r"><button class="rt-btn rt-btn-sm rt-btn-primary" data-parcel="${it.parcelId}">Pack →</button></td></tr>`;
   }).join('');
 }
+function openBySearch() {
+  const q = ($('pkOrderSearch').value || '').trim().toLowerCase();
+  if (!q) return;
+  const it = PACK.queue.find(x => String(x.wave.order_number || '').toLowerCase() === q) ||
+             PACK.queue.find(x => String(x.wave.order_number || '').toLowerCase().includes(q));
+  if (it) selectOrder(it.parcelId);
+  else { $('pkScanMsg') && ($('pkScanMsg').textContent = ''); alert('That order is not in the pack queue — only PICKED orders can be packed.'); }
+}
 
-// ── detail ──
-function selectOrder(parcelId) {
+// ═══ workspace ═══
+async function selectOrder(parcelId) {
   const it = PACK.queue.find(x => String(x.parcelId) === String(parcelId));
   if (!it) return;
-  PACK.selected = it;
+  PACK.sel = it;
+  PACK.lines = (it.lines || []).slice();
+  PACK.packed = {}; PACK.lineBox = {};
   PACK.boxes = [{ name: 'Box 1', l: '', w: '', h: '', weight: '' }];
-  PACK.lineBox = {};
-  (it.lines || []).forEach(l => { PACK.lineBox[l.id] = l.box || 'Box 1'; });
+  PACK.currentBox = 'Box 1';
   PACK.committed = false;
-  renderQueue();
-  renderDetail();
+  PACK.lines.forEach(l => { PACK.packed[l.id] = Number(l.qty_scanned) > 0 ? 0 : 0; PACK.lineBox[l.id] = 'Box 1'; });
+
+  // pre-fetch product barcodes for instant client-side scan resolution
+  PACK.barcodeMap = {}; PACK.skuByUpper = {};
+  PACK.lines.forEach(l => { PACK.skuByUpper[String(l.sku).toUpperCase()] = l.sku; });
+  try {
+    const sb = await sbClient();
+    if (sb) {
+      const skus = [...new Set(PACK.lines.map(l => l.sku).filter(Boolean))];
+      const { data } = await sb.schema('cin7_mirror').from('products').select('sku,barcode').in('sku', skus);
+      (data || []).forEach(p => { if (p.barcode && !/^0+$/.test(String(p.barcode))) PACK.barcodeMap[String(p.barcode).trim()] = p.sku; });
+    }
+  } catch (_) {}
+
+  $('pkLanding').style.display = 'none';
+  $('pkWorkspace').style.display = '';
+  $('pkWsNo').textContent = it.wave.order_number || ('parcel ' + it.parcelId);
+  $('pkWsCust').textContent = it.wave.customer || '';
+  renderBoxes(); renderCurrentBoxSelect(); renderLines(); updateProgress();
+  setTimeout(() => { const s = $('pkScan'); if (s) s.focus(); }, 60);
+}
+function backToOrders() {
+  $('pkWorkspace').style.display = 'none';
+  $('pkLanding').style.display = '';
 }
 
-function boxOptions(sel) {
-  return PACK.boxes.map(b => `<option${b.name === sel ? ' selected' : ''}>${esc(b.name)}</option>`).join('');
+// ── scanning ──
+function scanFeedback(kind, text) {
+  const el = $('pkScanMsg'); if (!el) return;
+  el.className = 'pk-scanmsg ' + kind;
+  el.textContent = text;
 }
-function renderDetail() {
-  const it = PACK.selected;
-  const el = $('packDetail');
-  if (!it) { el.innerHTML = '<div class="pk-empty">Select a picked order on the left to pack it.</div>'; return; }
-  const ship = it.wave.ship_to || {};
-  const addr = [ship.Line1 || ship.line1, ship.City || ship.city, ship.State || ship.state, ship.Postcode || ship.postcode].filter(Boolean).join(', ');
+function flashLine(lineId) {
+  const row = document.querySelector(`#pkLinesBody tr[data-line="${lineId}"]`);
+  if (row) { row.classList.remove('pk-flash'); void row.offsetWidth; row.classList.add('pk-flash'); }
+}
+function onScan(code) {
+  code = String(code || '').trim();
+  if (!code) return;
+  const up = code.toUpperCase();
+  let sku = PACK.barcodeMap[code] || PACK.barcodeMap[up];    // 13/14-digit barcode
+  if (!sku && PACK.skuByUpper[up]) sku = PACK.skuByUpper[up]; // SKU printed as CODE128
+  if (!sku) { scanFeedback('err', `✗ "${code}" — not on this order`); return; }
+  const skuU = sku.toUpperCase();
+  const anyLine = PACK.lines.find(l => String(l.sku).toUpperCase() === skuU);
+  if (!anyLine) { scanFeedback('err', `✗ ${sku} — not on this order`); return; }
+  const line = PACK.lines.find(l => String(l.sku).toUpperCase() === skuU && (PACK.packed[l.id] || 0) < Number(l.qty_ordered));
+  if (!line) { scanFeedback('warn', `• ${sku} already fully packed`); flashLine(anyLine.id); return; }
+  PACK.packed[line.id] = (PACK.packed[line.id] || 0) + 1;
+  PACK.lineBox[line.id] = PACK.currentBox;
+  scanFeedback('ok', `✓ ${sku} → ${PACK.currentBox}  (${PACK.packed[line.id]}/${Number(line.qty_ordered)})`);
+  renderLines(); updateProgress(); flashLine(line.id);
+}
 
-  const linesHtml = (it.lines || []).map(l => {
-    const short = Number(l.qty_scanned) < Number(l.qty_ordered);
-    return `<tr class="${short ? 'pk-short' : ''}">` +
-      `<td class="pk-mono">${esc(l.sku)}</td>` +
-      `<td>${esc((l.name || '').slice(0, 60))}</td>` +
-      `<td class="pk-num">${Number(l.qty_scanned || 0)} / ${Number(l.qty_ordered)}</td>` +
-      `<td><select class="pk-input pk-boxsel" data-line="${l.id}">${boxOptions(PACK.lineBox[l.id])}</select></td></tr>`;
+// ── lines ──
+function boxOptions(sel) { return PACK.boxes.map(b => `<option${b.name === sel ? ' selected' : ''}>${esc(b.name)}</option>`).join(''); }
+function renderLines() {
+  const body = $('pkLinesBody');
+  body.innerHTML = PACK.lines.map(l => {
+    const packed = PACK.packed[l.id] || 0, ord = Number(l.qty_ordered);
+    const done = packed >= ord, over = packed > ord;
+    return `<tr data-line="${l.id}" class="${done ? 'pk-done' : ''}${over ? ' pk-over' : ''}">` +
+      `<td class="rt-mono">${esc(l.sku)}</td>` +
+      `<td>${esc((l.name || '').slice(0, 54))}</td>` +
+      `<td><select class="rt-input pk-boxsel" data-line="${l.id}">${boxOptions(PACK.lineBox[l.id])}</select></td>` +
+      `<td class="c"><span class="pk-count ${done ? 'ok' : ''}">${packed} / ${ord}</span></td>` +
+      `<td class="r"><button class="pk-mini" data-fill="${l.id}" title="Pack all">all</button>` +
+      `<button class="pk-mini" data-minus="${l.id}" title="−1">−</button></td></tr>`;
   }).join('');
-
-  const boxesHtml = PACK.boxes.map((b, i) => `
-    <div class="pk-box" data-i="${i}">
-      <div class="pk-box-name">${esc(b.name)}</div>
-      <input class="pk-input pk-dim" data-i="${i}" data-f="l" value="${esc(b.l)}" placeholder="L cm" />
-      <input class="pk-input pk-dim" data-i="${i}" data-f="w" value="${esc(b.w)}" placeholder="W cm" />
-      <input class="pk-input pk-dim" data-i="${i}" data-f="h" value="${esc(b.h)}" placeholder="H cm" />
-      <input class="pk-input pk-dim" data-i="${i}" data-f="weight" value="${esc(b.weight)}" placeholder="kg" />
-      ${PACK.boxes.length > 1 ? `<button class="pk-btn pk-btn-ghost pk-boxdel" data-i="${i}" title="Remove box">✕</button>` : ''}
-    </div>`).join('');
-
-  el.innerHTML = `
-    <div class="pk-card">
-      <div class="pk-order-head">
-        <div>
-          <div class="pk-order-no">${esc(it.wave.order_number || ('parcel ' + it.parcelId))}</div>
-          <div class="pk-order-cust">${esc(it.wave.customer || '—')}</div>
-          ${addr ? `<div class="pk-order-addr">${esc(addr)}</div>` : ''}
-        </div>
-        <div class="pk-order-task pk-small">Fulfilment ${esc(it.taskId || '')}</div>
-      </div>
-
-      <div class="pk-section-title">Items</div>
-      <table class="pk-table">
-        <thead><tr><th>SKU</th><th>Item</th><th class="pk-num">Qty</th><th>Carton</th></tr></thead>
-        <tbody>${linesHtml || '<tr><td colspan="4" class="pk-muted">No lines.</td></tr>'}</tbody>
-      </table>
-
-      <div class="pk-section-title">Cartons &amp; dimensions</div>
-      <div id="packBoxes">${boxesHtml}</div>
-      <button id="packAddBox" class="pk-btn pk-btn-sm">+ Add carton</button>
-
-      <div class="pk-actions">
-        <div id="packMsg" class="pk-msg"></div>
-        <button id="packPrint" class="pk-btn">🖨 Print slip</button>
-        <button id="packCommit" class="pk-btn pk-btn-primary">✓ Authorise pack</button>
-      </div>
-      <div class="pk-small pk-note">Authorising writes the pack to Cin7 once (via the WMS outbox). Dimensions are also kept in our system for the shipping slip.</div>
-    </div>`;
+}
+function updateProgress() {
+  const p = totPacked(), t = totOrdered();
+  const pct = t ? Math.min(100, Math.round(p / t * 100)) : 0;
+  $('pkProgressBar').style.width = pct + '%';
+  $('pkProgressTxt').textContent = `${p} / ${t} packed`;
+  const auth = $('pkAuthorise');
+  if (auth && !PACK.committed) auth.classList.toggle('pk-ready', p >= t && t > 0);
 }
 
-// ── box editing ──
+// ── cartons ──
 function readBoxInputs() {
-  document.querySelectorAll('#packBoxes .pk-dim').forEach(inp => {
+  document.querySelectorAll('#pkBoxes .pk-dim').forEach(inp => {
     const i = Number(inp.getAttribute('data-i')), f = inp.getAttribute('data-f');
     if (PACK.boxes[i]) PACK.boxes[i][f] = inp.value.trim();
   });
 }
-function addBox() { readBoxInputs(); PACK.boxes.push({ name: 'Box ' + (PACK.boxes.length + 1), l: '', w: '', h: '', weight: '' }); renderDetail(); }
+function renderBoxes() {
+  $('pkBoxes').innerHTML = PACK.boxes.map((b, i) => `
+    <div class="pk-box">
+      <span class="pk-box-name">${esc(b.name)}</span>
+      <input class="rt-input pk-dim" data-i="${i}" data-f="l" value="${esc(b.l)}" placeholder="L" />
+      <input class="rt-input pk-dim" data-i="${i}" data-f="w" value="${esc(b.w)}" placeholder="W" />
+      <input class="rt-input pk-dim" data-i="${i}" data-f="h" value="${esc(b.h)}" placeholder="H" />
+      <input class="rt-input pk-dim pk-dim-wt" data-i="${i}" data-f="weight" value="${esc(b.weight)}" placeholder="kg" />
+      ${PACK.boxes.length > 1 ? `<button class="pk-mini pk-boxdel" data-i="${i}" title="Remove">✕</button>` : '<span class="pk-dim-unit">cm</span>'}
+    </div>`).join('');
+}
+function renderCurrentBoxSelect() {
+  const sel = $('pkCurrentBox');
+  sel.innerHTML = PACK.boxes.map(b => `<option${b.name === PACK.currentBox ? ' selected' : ''}>${esc(b.name)}</option>`).join('');
+}
+function addBox() {
+  readBoxInputs();
+  PACK.boxes.push({ name: 'Box ' + (PACK.boxes.length + 1), l: '', w: '', h: '', weight: '' });
+  renderBoxes(); renderCurrentBoxSelect(); renderLines();
+}
 function removeBox(i) {
   readBoxInputs();
-  const removed = PACK.boxes[i] ? PACK.boxes[i].name : null;
   PACK.boxes.splice(i, 1);
-  PACK.boxes.forEach((b, k) => { b.name = 'Box ' + (k + 1); });   // renumber
-  // reassign any line that pointed at the removed/renumbered box to Box 1
+  PACK.boxes.forEach((b, k) => { b.name = 'Box ' + (k + 1); });
   Object.keys(PACK.lineBox).forEach(id => { if (!PACK.boxes.some(b => b.name === PACK.lineBox[id])) PACK.lineBox[id] = 'Box 1'; });
-  renderDetail();
+  if (!PACK.boxes.some(b => b.name === PACK.currentBox)) PACK.currentBox = 'Box 1';
+  renderBoxes(); renderCurrentBoxSelect(); renderLines();
 }
 
-// ── commit ──
-async function authorisePack() {
-  const it = PACK.selected; if (!it) return;
+// ── authorise + slip + booking ──
+async function authorise() {
+  const it = PACK.sel; if (!it || PACK.committed) return;
   readBoxInputs();
-  // read line→box from the selects
   document.querySelectorAll('.pk-boxsel').forEach(s => { PACK.lineBox[s.getAttribute('data-line')] = s.value; });
-  const btn = $('packCommit'); const msg = $('packMsg');
+  const p = totPacked(), t = totOrdered();
+  if (p < t && !confirm(`Only ${p} of ${t} items scanned. Authorise a short pack anyway?`)) return;
+  const btn = $('pkAuthorise'), msg = $('pkAuthMsg');
   btn.disabled = true; btn.textContent = 'Authorising…'; msg.textContent = '';
   try {
-    // persist each line's carton, then commit the pack
-    await Promise.all((it.lines || []).map(l => api('POST', '/pack/assign', { parcelLineId: l.id, box: PACK.lineBox[l.id] || 'Box 1' })));
+    await Promise.all(PACK.lines.map(l => api('POST', '/pack/assign', { parcelLineId: l.id, box: PACK.lineBox[l.id] || 'Box 1' })));
     const boxes = PACK.boxes.map(b => ({ name: b.name, length: num(b.l), width: num(b.w), height: num(b.h), weight: num(b.weight) }));
     const r = await api('POST', '/commit/pack', { parcelId: it.parcelId, boxes });
     PACK.committed = true;
-    msg.innerHTML = `<span class="pk-ok">✓ Packed${r.alreadyDone ? ' (already done)' : ''}. Fulfilment ${esc(r.taskId || '')}.</span>`;
-    btn.textContent = '✓ Packed';
-    // drop it from the queue
+    msg.innerHTML = `<span class="pk-ok-msg">✓ Packed${r.alreadyDone ? ' (already done)' : ''} — fulfilment ${esc(r.taskId || '')}.</span>`;
+    btn.textContent = '✓ Packed'; btn.classList.remove('pk-ready');
+    $('pkPrint').disabled = false; $('pkBook').disabled = false;
     PACK.queue = PACK.queue.filter(x => x.parcelId !== it.parcelId);
-    renderQueue();
-    printSlip();   // auto-open the slip after a successful pack
+    printSlip();
   } catch (e) {
-    msg.innerHTML = `<span class="pk-err">✗ ${esc(e.message)}</span>`;
+    msg.innerHTML = `<span class="pk-err-msg">✗ ${esc(e.message)}</span>`;
     btn.disabled = false; btn.textContent = '✓ Authorise pack';
   }
 }
-function num(v) { const n = parseFloat(v); return isNaN(n) ? null : n; }
-
-// ── packing slip (print) ──
 function printSlip() {
-  const it = PACK.selected; if (!it) return;
+  const it = PACK.sel; if (!it) return;
   readBoxInputs();
   const ship = it.wave.ship_to || {};
   const addr = [ship.Line1 || ship.line1, ship.Line2 || ship.line2, ship.City || ship.city, [ship.State || ship.state, ship.Postcode || ship.postcode].filter(Boolean).join(' ')].filter(Boolean);
-  const lineBy = {}; (it.lines || []).forEach(l => { const b = PACK.lineBox[l.id] || 'Box 1'; (lineBy[b] = lineBy[b] || []).push(l); });
+  const byBox = {}; PACK.lines.forEach(l => { const b = PACK.lineBox[l.id] || 'Box 1'; (byBox[b] = byBox[b] || []).push(l); });
   const boxesHtml = PACK.boxes.map(b => {
     const dims = [b.l && b.w && b.h ? `${b.l}×${b.w}×${b.h} cm` : '', b.weight ? `${b.weight} kg` : ''].filter(Boolean).join(' · ');
-    const rows = (lineBy[b.name] || []).map(l => `<tr><td>${esc(l.sku)}</td><td>${esc(l.name || '')}</td><td style="text-align:right">${Number(l.qty_scanned || l.qty_ordered)}</td></tr>`).join('');
+    const rows = (byBox[b.name] || []).map(l => `<tr><td>${esc(l.sku)}</td><td>${esc(l.name || '')}</td><td style="text-align:right">${PACK.packed[l.id] || Number(l.qty_ordered)}</td></tr>`).join('');
     return `<div class="slip-box"><div class="slip-box-h">${esc(b.name)}${dims ? ' — ' + esc(dims) : ''}</div>` +
       `<table class="slip-tbl"><thead><tr><th>SKU</th><th>Item</th><th style="text-align:right">Qty</th></tr></thead><tbody>${rows || '<tr><td colspan="3">—</td></tr>'}</tbody></table></div>`;
   }).join('');
-  $('packSlip').innerHTML = `
-    <div class="slip-head">
-      <div><div class="slip-title">PACKING SLIP</div><div class="slip-order">${esc(it.wave.order_number || '')}</div></div>
-      <div class="slip-date">${new Date().toLocaleDateString('en-AU')}</div>
-    </div>
+  $('pkSlip').innerHTML = `
+    <div class="slip-head"><div><div class="slip-title">PACKING SLIP</div><div class="slip-order">${esc(it.wave.order_number || '')}</div></div><div class="slip-date">${new Date().toLocaleDateString('en-AU')}</div></div>
     <div class="slip-to"><b>${esc(it.wave.customer || '')}</b><br>${addr.map(esc).join('<br>')}</div>
-    <div class="slip-boxes">${boxesHtml}</div>
+    <div>${boxesHtml}</div>
     <div class="slip-foot">${PACK.boxes.length} carton${PACK.boxes.length !== 1 ? 's' : ''} · Rapid LED</div>`;
   window.print();
 }
+function sendToBooking() {
+  const it = PACK.sel; if (!it) return;
+  // TODO: wire to the TMS booking screen (carry SO#, customer, cartons+dims).
+  const dims = PACK.boxes.map(b => `${b.name}: ${b.l || '?'}×${b.w || '?'}×${b.h || '?'}cm ${b.weight || '?'}kg`).join('\n');
+  alert(`Ready for booking:\n\nOrder ${it.wave.order_number}\n${it.wave.customer || ''}\n${PACK.boxes.length} carton(s)\n${dims}\n\nNext: this hands off to the booking screen in the TMS (connection coming).`);
+}
 
-// ── events ──
+// ═══ events ═══
 document.addEventListener('click', e => {
-  const q = e.target.closest('.pk-qitem'); if (q) { selectOrder(q.getAttribute('data-parcel')); return; }
-  if (e.target.id === 'packReload') { loadQueue(); return; }
-  if (e.target.id === 'packAddBox') { addBox(); return; }
+  const row = e.target.closest('[data-parcel]'); if (row) { selectOrder(row.getAttribute('data-parcel')); return; }
+  if (e.target.id === 'pkReload') { loadQueue(); return; }
+  if (e.target.id === 'pkOrderGo') { openBySearch(); return; }
+  if (e.target.id === 'pkBack') { backToOrders(); return; }
+  if (e.target.id === 'pkAddBox') { addBox(); return; }
   const del = e.target.closest('.pk-boxdel'); if (del) { removeBox(Number(del.getAttribute('data-i'))); return; }
-  if (e.target.id === 'packCommit') { authorisePack(); return; }
-  if (e.target.id === 'packPrint') { printSlip(); return; }
+  const fill = e.target.closest('[data-fill]'); if (fill) { const l = PACK.lines.find(x => String(x.id) === fill.getAttribute('data-fill')); if (l) { PACK.packed[l.id] = Number(l.qty_ordered); PACK.lineBox[l.id] = PACK.currentBox; renderLines(); updateProgress(); } return; }
+  const minus = e.target.closest('[data-minus]'); if (minus) { const id = minus.getAttribute('data-minus'); PACK.packed[id] = Math.max(0, (PACK.packed[id] || 0) - 1); renderLines(); updateProgress(); return; }
+  if (e.target.id === 'pkAuthorise') { authorise(); return; }
+  if (e.target.id === 'pkPrint') { printSlip(); return; }
+  if (e.target.id === 'pkBook') { sendToBooking(); return; }
 });
-document.addEventListener('input', e => {
-  if (e.target.id === 'packSearch') { PACK.filter = e.target.value || ''; renderQueue(); }
+document.addEventListener('keydown', e => {
+  if (e.target.id === 'pkScan' && e.key === 'Enter') { e.preventDefault(); const v = e.target.value; e.target.value = ''; onScan(v); e.target.focus(); }
+  if (e.target.id === 'pkOrderSearch' && e.key === 'Enter') { e.preventDefault(); openBySearch(); }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'pkCurrentBox') { PACK.currentBox = e.target.value; }
+  if (e.target.classList && e.target.classList.contains('pk-boxsel')) { PACK.lineBox[e.target.getAttribute('data-line')] = e.target.value; }
 });
 
 loadQueue();

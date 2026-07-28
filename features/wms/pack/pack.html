@@ -4,51 +4,103 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pack Station — Rapid WMS</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./pack.css?v=20260729a" />
-  <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+  <link rel="stylesheet" href="/features/returns/returns.css?v=20260722d" />
+  <link rel="stylesheet" href="./pack.css?v=20260729b" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
 </head>
 <body>
-  <header class="site-header">
-    <div class="header-inner">
-      <div class="left">
-        <a class="back-link" href="/index.html">← Back</a>
-        <a class="brand" href="/index.html">JSlab.dev</a>
-      </div>
-      <nav class="site-nav">
-        <a href="/wms" class="nav-link">WMS Scanner</a>
-        <a href="./pack.html" class="nav-link active">Pack Station</a>
-      </nav>
+  <header class="rt-header">
+    <div class="rt-header-inner">
+      <a class="rt-back" href="/index.html">← Back</a>
+      <div class="rt-brand">Pack Station</div>
+      <div class="rt-sub" id="pkSub">Pick → Pack → Ship</div>
     </div>
   </header>
 
-  <main class="pk-shell">
-    <div class="pk-topbar">
-      <h1 class="pk-title">📦 Pack Station</h1>
-      <span id="packCount" class="pk-pill">—</span>
-      <div class="pk-grow"></div>
-      <span class="pk-pill pk-live" title="Picked orders waiting to be packed & shipped">Picked → Pack</span>
-      <button id="packReload" class="pk-btn">↻ Reload</button>
-    </div>
+  <main class="rt-main">
 
-    <div class="pk-cols">
-      <!-- LEFT: queue -->
-      <aside class="pk-queue-wrap">
-        <input id="packSearch" type="search" class="pk-input" placeholder="Filter: order # or customer" />
-        <div id="packQueue" class="pk-queue"><div class="pk-muted">Loading…</div></div>
-      </aside>
+    <!-- ═══ LANDING — choose a picked order ═══ -->
+    <section id="pkLanding">
+      <div class="pk-scanbar">
+        <div class="pk-scanbar-hint">💡 Only <b>picked</b> orders show here — pack what's been picked, into cartons, then hand off to booking. Scan or type a sales order to jump straight to it.</div>
+        <div class="pk-scanbar-row">
+          <input type="text" id="pkOrderSearch" class="rt-input" placeholder="Scan or type a sales order (e.g. SO-207463)…" autocomplete="off" />
+          <button class="rt-btn rt-btn-primary" type="button" id="pkOrderGo">Open order</button>
+        </div>
+      </div>
 
-      <!-- RIGHT: detail -->
-      <section id="packDetail" class="pk-detail">
-        <div class="pk-empty">Select a picked order on the left to pack it.</div>
-      </section>
-    </div>
+      <div class="rt-toolbar">
+        <b class="pk-toolbar-title">Waiting to pack</b>
+        <span class="rt-count" id="pkQueueCount"></span>
+        <div class="pk-grow"></div>
+        <button class="rt-btn" type="button" id="pkReload">↻ Reload</button>
+      </div>
+      <div class="rt-table-wrap">
+        <table class="rt-table">
+          <thead><tr><th>Order</th><th>Customer</th><th class="r">Lines</th><th class="r">Action</th></tr></thead>
+          <tbody id="pkQueueBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ═══ WORKSPACE — pack one order (guided) ═══ -->
+    <section id="pkWorkspace" style="display:none">
+      <div class="pk-ws-head">
+        <button class="rt-btn" type="button" id="pkBack">← Orders</button>
+        <div class="pk-ws-id">
+          <span class="pk-ws-no" id="pkWsNo"></span>
+          <span class="pk-ws-cust" id="pkWsCust"></span>
+        </div>
+        <div class="pk-grow"></div>
+        <div class="pk-progress" id="pkProgress"><div class="pk-progress-bar" id="pkProgressBar"></div><span id="pkProgressTxt"></span></div>
+      </div>
+
+      <div class="pk-cols">
+        <!-- LEFT: scan + items -->
+        <div class="pk-main">
+          <div class="pk-step">
+            <div class="pk-step-head"><span class="pk-step-n">1</span> Scan items into the carton</div>
+            <div class="pk-scan-row">
+              <input type="text" id="pkScan" class="rt-input pk-scan-input" placeholder="Scan a barcode, or type a SKU  (9312… / 1930… / R1021-WH-TRI)" autocomplete="off" />
+              <label class="pk-into">into <select id="pkCurrentBox" class="rt-input"></select></label>
+            </div>
+            <div id="pkScanMsg" class="pk-scanmsg">&nbsp;</div>
+            <div class="rt-table-wrap">
+              <table class="rt-table pk-lines">
+                <thead><tr><th>SKU</th><th>Item</th><th>Carton</th><th class="c">Packed</th><th class="r"></th></tr></thead>
+                <tbody id="pkLinesBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: cartons + complete -->
+        <aside class="pk-side">
+          <div class="pk-step">
+            <div class="pk-step-head"><span class="pk-step-n">2</span> Cartons &amp; dimensions</div>
+            <div id="pkBoxes"></div>
+            <button class="rt-btn rt-btn-sm" type="button" id="pkAddBox">+ Add carton</button>
+          </div>
+
+          <div class="pk-step">
+            <div class="pk-step-head"><span class="pk-step-n">3</span> Complete &amp; ship</div>
+            <button class="rt-btn rt-btn-primary pk-block" type="button" id="pkAuthorise">✓ Authorise pack</button>
+            <div id="pkAuthMsg" class="pk-authmsg"></div>
+            <button class="rt-btn pk-block" type="button" id="pkPrint" disabled>🖨 Print packing slip</button>
+            <button class="rt-btn pk-block pk-book" type="button" id="pkBook" disabled>🚚 Send to booking (TMS) →</button>
+            <div class="pk-help">Authorise writes the pack to Cin7 <b>once</b> (via the WMS outbox — safe to retry). Then print the slip and book the shipment in the TMS.</div>
+          </div>
+        </aside>
+      </div>
+    </section>
   </main>
 
   <!-- print-only packing slip -->
-  <div id="packSlip" class="pk-slip"></div>
+  <div id="pkSlip" class="pk-slip"></div>
 
-  <script src="./pack.js?v=20260729a"></script>
+  <script src="./pack.js?v=20260729b"></script>
 </body>
 </html>
