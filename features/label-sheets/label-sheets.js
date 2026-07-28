@@ -300,12 +300,11 @@
   function openMulti() {
     var c0 = LS.cells[0];
     LS.mlRows = (c0 && c0.rows) ? c0.rows.map(function (r) { return Object.assign({}, r); }) : [];
+    mlResize();
     var so = mlSizeOrient();
     updateMlToggles(so.size, so.orient);
     renderMlRows();
     updateMlCap();
-    var s = el('lsMlSearch'); if (s) s.value = '';
-    var rr = el('lsMlResults'); if (rr) { rr.style.display = 'none'; rr.innerHTML = ''; }
     openModal('lsMultiModal');
   }
   function closeMulti() { closeModal('lsMultiModal'); }
@@ -317,10 +316,18 @@
   function updateMlCap() {
     var e = el('lsMlCap'); if (!e) return;
     var so = mlSizeOrient();
-    e.innerHTML = '<b>' + LS.mlRows.length + '</b> / ' + mlMaxSlots() + ' rows fit · ' + so.size + ' ' + so.orient;
+    e.innerHTML = '<b>' + mlMaxSlots() + '</b> rows fit · ' + so.size + ' ' + so.orient;
+  }
+  // Fixed slots: pad/trim to exactly maxSlots (keep filled data — pop extras, push
+  // empties), like the home multi-label, so every slot that fits is laid out ready.
+  function mlResize() {
+    var n = mlMaxSlots();
+    while (LS.mlRows.length > n) LS.mlRows.pop();
+    while (LS.mlRows.length < n) LS.mlRows.push({ dc5: '', sku: '', qty: '', barcode: '' });
   }
 
-  // Swap the Multi template when size / orientation changes (keeps the rows).
+  // Swap the Multi template on size / orientation change; the new row count is
+  // laid out ready, keeping whatever was already typed.
   function setMultiConfig(size, orient) {
     var cur = mlSizeOrient();
     size = size || cur.size; orient = orient || cur.orient;
@@ -329,7 +336,9 @@
     mlReadRows();
     LS.tpl = t; LS.caps = window.LabelTemplates.meta(t);
     LS.cells = [LS.cells[0] || null];
+    mlResize();
     updateMlToggles(size, orient);
+    renderMlRows();
     updateMlCap();
     el('lsEdName').textContent = LS.caps.name;
     el('lsEdMeta').textContent = LS.caps.media || LS.caps.size;
@@ -337,20 +346,25 @@
     renderSheet();
   }
 
+  // A pre-made slot row: # · 5DC · Code/SKU · QTY · clear, with its own find
+  // dropdown — type a 5DC or SKU in the row to search the catalogue right there.
   function mlRowHtml(r, i) {
-    return '<div class="ls-mlrow" data-bc="' + esc(r.barcode || '') + '" style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #eef2f6;">' +
-      '<span style="width:20px;color:#94a3b8;font-size:12px;text-align:right;flex-shrink:0;">' + (i + 1) + '</span>' +
-      '<input class="ls-input" data-f="dc5" value="' + esc(r.dc5 || '') + '" placeholder="5DC" style="width:80px;flex-shrink:0;" autocomplete="off" />' +
-      '<input class="ls-input" data-f="sku" value="' + esc(r.sku || '') + '" placeholder="Code / SKU" style="flex:1;min-width:0;" autocomplete="off" />' +
-      '<input class="ls-input" data-f="qty" value="' + esc(r.qty || '') + '" placeholder="QTY" style="width:62px;flex-shrink:0;" autocomplete="off" />' +
-      '<button class="ls-btn ls-btn-sm ls-btn-ghost" onclick="LS.mlRemoveRow(' + i + ')" style="flex-shrink:0;" title="Remove">✕</button>' +
+    return '<div class="ls-mlrow-wrap">' +
+      '<div class="ls-mlrow" data-i="' + i + '" data-bc="' + esc(r.barcode || '') + '" style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #eef2f6;">' +
+        '<span style="width:20px;color:#94a3b8;font-size:12px;text-align:right;flex-shrink:0;">' + (i + 1) + '</span>' +
+        '<input class="ls-input" data-f="dc5" value="' + esc(r.dc5 || '') + '" placeholder="5DC" style="width:82px;flex-shrink:0;" autocomplete="off" oninput="LS.mlRowSearch(' + i + ',this.value)" />' +
+        '<input class="ls-input" data-f="sku" value="' + esc(r.sku || '') + '" placeholder="Code / SKU / name" style="flex:1;min-width:0;" autocomplete="off" oninput="LS.mlRowSearch(' + i + ',this.value)" />' +
+        '<input class="ls-input" data-f="qty" value="' + esc(r.qty || '') + '" placeholder="QTY" style="width:60px;flex-shrink:0;" autocomplete="off" />' +
+        '<button class="ls-btn ls-btn-sm ls-btn-ghost" onclick="LS.mlClearRow(' + i + ')" style="flex-shrink:0;" title="Clear row">✕</button>' +
+      '</div>' +
+      '<div class="ls-results ml-res" style="display:none;margin:2px 0 6px 28px;"></div>' +
     '</div>';
   }
   function renderMlRows() {
     var box = el('lsMlRows'); if (!box) return;
-    if (!LS.mlRows.length) { box.innerHTML = '<div class="ls-note" style="padding:12px 0;">No rows yet — search a product above, or add an empty row.</div>'; return; }
     box.innerHTML = LS.mlRows.map(mlRowHtml).join('');
   }
+  function mlRowEl(i) { var b = el('lsMlRows'); return b ? b.querySelector('.ls-mlrow[data-i="' + i + '"]') : null; }
   // Read the DOM inputs back into state (barcode kept on the row's data-bc).
   function mlReadRows() {
     var box = el('lsMlRows'); if (!box) return;
@@ -361,42 +375,43 @@
     });
     LS.mlRows = out;
   }
-  function mlAddRow() {
-    mlReadRows();
-    if (LS.mlRows.length >= mlMaxSlots()) { alert('This layout fits ' + mlMaxSlots() + ' rows. Switch to a bigger size or orientation for more.'); return; }
-    LS.mlRows.push({ dc5: '', sku: '', qty: '', barcode: '' });
-    renderMlRows(); updateMlCap();
-  }
-  function mlRemoveRow(i) {
-    mlReadRows();
-    LS.mlRows.splice(i, 1);
-    renderMlRows(); updateMlCap();
-  }
-  function mlSearch(term) {
+  // Per-row find: typing a 5DC or SKU in a row searches the catalogue and shows a
+  // dropdown right under that row; picking fills the row's 5DC + Code + barcode.
+  function mlRowSearch(i, term) {
+    var row = mlRowEl(i); if (!row) return;
+    var res = row.parentNode.querySelector('.ml-res');
     term = (term || '').trim().toLowerCase();
-    var box = el('lsMlResults');
-    if (term.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
-    if (!LS.products) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Loading products…</span></div>'; return; }
-    LS._mlResults = LS.products.filter(function (p) {
+    if (term.length < 2) { res.style.display = 'none'; res.innerHTML = ''; return; }
+    if (!LS.products) { res.style.display = 'block'; res.innerHTML = '<div class="ls-result"><span class="rname">Loading products…</span></div>'; return; }
+    var hits = LS.products.filter(function (p) {
       return ((p.attribute1 || '').toLowerCase().indexOf(term) >= 0) || ((p.sku || '').toLowerCase().indexOf(term) >= 0) || ((p.name || '').toLowerCase().indexOf(term) >= 0);
-    }).slice(0, 40);
-    if (!LS._mlResults.length) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Nothing found.</span></div>'; return; }
-    box.innerHTML = LS._mlResults.map(function (p, i) {
-      return '<div class="ls-result" onclick="LS.mlPickNew(' + i + ')">' +
+    }).slice(0, 25);
+    LS._mlRowRes = LS._mlRowRes || {}; LS._mlRowRes[i] = hits;
+    if (!hits.length) { res.style.display = 'block'; res.innerHTML = '<div class="ls-result"><span class="rname">Nothing found.</span></div>'; return; }
+    res.innerHTML = hits.map(function (p, k) {
+      return '<div class="ls-result" onclick="LS.mlRowPick(' + i + ',' + k + ')">' +
         '<span class="r5dc">' + esc(p.attribute1 || '') + '</span>' +
         '<span class="rsku">' + esc(p.sku || '') + '</span>' +
-        '<span class="rname">' + esc((p.name || '').slice(0, 46)) + '</span></div>';
+        '<span class="rname">' + esc((p.name || '').slice(0, 42)) + '</span></div>';
     }).join('');
-    box.style.display = 'block';
+    res.style.display = 'block';
   }
-  function mlPickNew(i) {
-    var p = LS._mlResults[i]; if (!p) return;
-    mlReadRows();
-    if (LS.mlRows.length >= mlMaxSlots()) { alert('This layout fits ' + mlMaxSlots() + ' rows. Switch to a bigger size or orientation for more.'); return; }
-    LS.mlRows.push({ dc5: p.attribute1 || '', sku: p.sku || '', barcode: p.barcode || '', qty: '1' });
-    el('lsMlSearch').value = '';
-    el('lsMlResults').style.display = 'none';
-    renderMlRows(); updateMlCap();
+  function mlRowPick(i, k) {
+    var p = (LS._mlRowRes && LS._mlRowRes[i]) ? LS._mlRowRes[i][k] : null; if (!p) return;
+    var row = mlRowEl(i); if (!row) return;
+    row.querySelector('[data-f="dc5"]').value = p.attribute1 || '';
+    row.querySelector('[data-f="sku"]').value = p.sku || '';
+    var qe = row.querySelector('[data-f="qty"]'); if (qe && !qe.value.trim()) qe.value = '1';
+    row.setAttribute('data-bc', p.barcode || '');
+    var res = row.parentNode.querySelector('.ml-res'); res.style.display = 'none'; res.innerHTML = '';
+    mlReadRows(); updateMlCap();
+  }
+  function mlClearRow(i) {
+    var row = mlRowEl(i); if (!row) return;
+    ['dc5', 'sku', 'qty'].forEach(function (f) { var e = row.querySelector('[data-f="' + f + '"]'); if (e) e.value = ''; });
+    row.setAttribute('data-bc', '');
+    var res = row.parentNode.querySelector('.ml-res'); if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+    mlReadRows(); updateMlCap();
   }
   function applyMulti() {
     mlReadRows();
@@ -1290,10 +1305,9 @@
   LS.openMulti = openMulti;
   LS.closeMulti = closeMulti;
   LS.setMultiConfig = setMultiConfig;
-  LS.mlSearch = mlSearch;
-  LS.mlPickNew = mlPickNew;
-  LS.mlAddRow = mlAddRow;
-  LS.mlRemoveRow = mlRemoveRow;
+  LS.mlRowSearch = mlRowSearch;
+  LS.mlRowPick = mlRowPick;
+  LS.mlClearRow = mlClearRow;
   LS.applyMulti = applyMulti;
   LS.backToModels = backToModels;
   LS.renderSheet = renderSheet;

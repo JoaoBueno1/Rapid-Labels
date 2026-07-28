@@ -252,14 +252,10 @@
         <div style="flex:1;text-align:right;"><span class="ls-note" id="lsMlCap" style="display:inline;"></span></div>
       </div>
 
-      <!-- add a product by search -->
-      <label class="ls-label" style="margin-top:10px;">Add a product — by 5DC, SKU or name</label>
-      <input type="text" id="lsMlSearch" class="ls-input" placeholder="e.g. 95908, R1021…" autocomplete="off" oninput="LS.mlSearch(this.value)" />
-      <div class="ls-results" id="lsMlResults" style="display:none;"></div>
+      <div class="ls-note" style="margin-top:8px;">The rows that fit this size are ready below — type a <b>5DC</b> or <b>SKU</b> in any row to find the product, or type by hand. Empty rows are ignored.</div>
 
-      <!-- rows -->
-      <div id="lsMlRows" style="max-height:46vh;overflow:auto;margin-top:12px;"></div>
-      <button class="ls-btn ls-btn-sm ls-btn-block" onclick="LS.mlAddRow()" style="margin-top:8px;">+ Add empty row (type by hand)</button>
+      <!-- pre-made rows (one per slot that fits) with per-row find -->
+      <div id="lsMlRows" style="max-height:52vh;overflow:auto;margin-top:10px;"></div>
 
       <div class="ls-modal-actions">
         <button class="ls-btn ls-btn-ghost" onclick="LS.closeMulti()">Cancel</button>
@@ -276,6 +272,6 @@
   <script src="label-assets.js?v=20260727f"></script>
   <script src="label-templates.js?v=20260728e"></script>
   <script src="label-render.js?v=20260728d"></script>
-  <script src="label-sheets.js?v=20260728h"></script>
+  <script src="label-sheets.js?v=20260728i"></script>
 </body>
 </html>
