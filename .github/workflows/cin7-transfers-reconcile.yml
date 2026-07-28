@@ -1,0 +1,37 @@
+# ============================================================
+# Cin7 Transfers Reconcile — close PHANTOM open transfers (every 6h at :20)
+# ============================================================
+# sync-transfers.js only re-touches the currently-open + 200-most-recent set, so a
+# transfer that completes and ages out of that window stays 'IN TRANSIT' in the
+# mirror forever (Cin7 ignores ModifiedSince, so we can't sweep by date). This job
+# reconciles the OPEN SET: Cin7's live IN TRANSIT + ORDERED lists are authoritative;
+# any mirror row still open but absent from them is confirmed via Search and closed.
+# Read-mostly + a handful of status writes. Offset from the syncs.
+# ============================================================
+
+name: Cin7 Transfers Reconcile
+
+on:
+  schedule:
+    - cron: '20 */6 * * *'   # every 6 hours at :20
+  workflow_dispatch: {}
+
+jobs:
+  reconcile-transfers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --production
+      - name: Reconcile stock transfers
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          RECONCILE_TR_CAP: '300'
+        run: node cin7-stock-sync/reconcile-transfers.js

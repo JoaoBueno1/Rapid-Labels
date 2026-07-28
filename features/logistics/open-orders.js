@@ -10,7 +10,8 @@ const OO = {
   tab: 'so',
   filters: { warehouse: 'All', rep: '', stage: '', invoice: '', search: '', minAge: 2, includeDrafts: false },
   so: [], tr: [], notes: {}, loaded: false, _noteOrder: null,
-  pageSo: 1, pageBo: 1, pageTr: 1, pageSize: 50
+  pageSo: 1, pageBo: 1, pageTr: 1, pageSize: 50,
+  _soLines: {}, _trLines: {}   // per-order / per-transfer line caches (expand-row)
 };
 
 const SO_STAGES = ['To pick', 'Picking', 'Picked', 'Packing', 'Shipping'];
@@ -66,7 +67,8 @@ async function fetchSO(sb) {
     (data || []).forEach(r => out.push({
       order: r.order_number, customer: r.customer || '—', rep: r.sales_rep || '—',
       warehouse: normWarehouse(r.location_name) || '—', stage: soStage(r), status: r.status || '—',
-      invoiceStatus: r.invoice_status || '', orderDate: r.order_date, age: daysSince(r.order_date)
+      invoiceStatus: r.invoice_status || '', orderDate: r.order_date, age: daysSince(r.order_date),
+      ship: r.shipping_status || '', pick: r.picking_status || '', pack: r.packing_status || ''
     }));
     if (!data || data.length < size) break;
     from += data.length; if (from > 200000) break;
@@ -79,13 +81,13 @@ async function fetchTR(sb) {
   const out = []; let from = 0; const size = 1000;
   while (true) {
     const { data, error } = await sb.schema('cin7_mirror').from('stock_transfers')
-      .select('number,from_location,to_location,status,departure_date,total_qty,line_count,reference,cin7_updated')
+      .select('task_id,number,from_location,to_location,status,departure_date,total_qty,line_count,reference,cin7_updated')
       .in('status', statuses)
       .order('departure_date', { ascending: false, nullsFirst: false })
       .range(from, from + size - 1);
     if (error) { console.error('[open-orders] TR error', error); break; }
     (data || []).forEach(r => out.push({
-      number: r.number, from: normWarehouse(r.from_location) || '—', to: normWarehouse(r.to_location) || '—', status: r.status,
+      taskId: r.task_id, number: r.number, from: normWarehouse(r.from_location) || '—', to: normWarehouse(r.to_location) || '—', status: r.status,
       departure: r.departure_date, qty: r.total_qty, lines: r.line_count, reference: r.reference,
       age: daysSince(r.departure_date || r.cin7_updated)
     }));
@@ -175,8 +177,8 @@ function noteCell(order) {
 function soRowHtml(r) {
   const warn = r.age != null && r.age > 3;
   const n = OO.notes[r.order];
-  return `<tr class="${warn ? 'warn' : ''}${n && n.resolved ? ' resolved' : ''}">` +
-    `<td class="oo-mono">${esc(r.order)}</td>` +
+  return `<tr class="oo-clickable ${warn ? 'warn' : ''}${n && n.resolved ? ' resolved' : ''}" data-kind="so" data-key="${esc(r.order)}">` +
+    `<td class="oo-mono"><span class="oo-caret">▸</span>${esc(r.order)}</td>` +
     `<td>${esc(r.customer)}</td>` +
     `<td>${esc(r.rep)}</td>` +
     `<td>${esc(r.warehouse)}</td>` +
@@ -207,8 +209,8 @@ function renderTR() {
   if (!total) { tbody.innerHTML = `<tr><td colspan="6" class="oo-empty">No open transfers match the filters.</td></tr>`; renderPager('ooTrPager', 0, 1, () => {}); return; }
   tbody.innerHTML = paged.map(r => {
     const st = r.status === 'IN TRANSIT' ? 'transit' : (r.status === 'ORDERED' ? 'ordered' : 'draft');
-    return `<tr>` +
-      `<td class="oo-mono">${esc(r.number)}</td>` +
+    return `<tr class="oo-clickable" data-kind="tr" data-key="${esc(r.number)}">` +
+      `<td class="oo-mono"><span class="oo-caret">▸</span>${esc(r.number)}</td>` +
       `<td>${esc(r.from)} <span class="oo-arrow">→</span> ${esc(r.to)}</td>` +
       `<td><span class="oo-trstatus ${st}">${esc(r.status)}</span></td>` +
       `<td>${fmtDate(r.departure)}</td>` +
@@ -216,6 +218,86 @@ function renderTR() {
       `<td>${r.qty != null ? esc(r.qty) : (r.lines != null ? esc(r.lines) + ' lines' : '—')}</td></tr>`;
   }).join('');
   renderPager('ooTrPager', total, OO.pageTr, p => { OO.pageTr = p; renderTR(); });
+}
+
+// ── expand-row: line items + fulfilment breakdown ──
+async function loadSoLines(order) {
+  if (OO._soLines[order]) return OO._soLines[order];
+  const sb = await ensureClient();
+  const { data, error } = await sb.schema('cin7_mirror').from('sale_lines')
+    .select('line_no,sku,product_name,quantity,price,total').eq('order_number', order).order('line_no');
+  if (error) throw new Error(error.message);
+  return (OO._soLines[order] = data || []);
+}
+async function loadTrLines(number, taskId) {
+  if (OO._trLines[number]) return OO._trLines[number];
+  if (!taskId) throw new Error('transfer id unavailable');
+  const r = await fetch('/api/open-orders/transfer-lines?taskId=' + encodeURIComponent(taskId));
+  if (!r.ok) throw new Error(r.status === 404 ? 'lookup endpoint unavailable (restart server)' : ('lookup failed — HTTP ' + r.status));
+  const j = await r.json().catch(() => ({}));
+  if (!j.success) throw new Error(j.error || 'lookup failed');
+  return (OO._trLines[number] = j);
+}
+// one fulfilment sub-status pill (Pick / Pack / Ship / Invoice)
+// Order matters: "NOT PACKED" / "NOT SHIPPED" end in PACKED/SHIPPED, so the
+// negative + partial cases must be tested BEFORE the "done" suffix match.
+function subStatus(label, value) {
+  const v = String(value || '—'), u = v.toUpperCase();
+  let cls;
+  if (/^NOT /.test(u) || u === '—' || u === 'NOT AVAILABLE') cls = 'none';
+  else if (u.includes('PARTIAL') || /(PICKING|PACKING|SHIPPING|ORDERED)/.test(u)) cls = 'part';
+  else if (/(PICKED|PACKED|SHIPPED|INVOICED|FULFILLED|COMPLETED)$/.test(u)) cls = 'done';
+  else cls = 'part';
+  return `<span class="oo-sub ${cls}"><b>${esc(label)}</b> ${esc(v)}</span>`;
+}
+function linesTable(rows, cols) {
+  if (!rows.length) return '<div class="oo-detail-empty">No line items recorded.</div>';
+  const head = cols.map(c => `<th class="${c.cls || ''}">${esc(c.h)}</th>`).join('');
+  const body = rows.map(r => '<tr>' + cols.map(c => `<td class="${c.cls || ''}">${c.fmt(r)}</td>`).join('') + '</tr>').join('');
+  return `<table class="oo-detail-tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+async function renderSoDetail(order) {
+  const r = OO.so.find(x => x.order === order) || {};
+  const strip = `<div class="oo-substrip">${subStatus('Pick', r.pick)}${subStatus('Pack', r.pack)}${subStatus('Ship', r.ship)}${subStatus('Invoice', r.invoiceStatus)}</div>`;
+  const lines = await loadSoLines(order);
+  const tbl = linesTable(lines, [
+    { h: 'SKU', cls: 'oo-mono', fmt: l => esc(l.sku || '—') },
+    { h: 'Product', fmt: l => esc(l.product_name || '—') },
+    { h: 'Qty', cls: 'num', fmt: l => esc(l.quantity != null ? l.quantity : '—') },
+    { h: 'Price', cls: 'num', fmt: l => l.price != null ? '$' + Number(l.price).toFixed(2) : '—' },
+    { h: 'Total', cls: 'num', fmt: l => l.total != null ? '$' + Number(l.total).toFixed(2) : '—' }
+  ]);
+  return strip + tbl;
+}
+async function renderTrDetail(number) {
+  const r = OO.tr.find(x => x.number === number) || {};
+  const j = await loadTrLines(number, r.taskId);
+  const m = j.meta || {};
+  const strip = `<div class="oo-substrip">${subStatus('Status', m.status)}` +
+    (m.completion ? subStatus('Completed', fmtDate(m.completion)) : '') +
+    (m.reference ? `<span class="oo-sub none"><b>Ref</b> ${esc(m.reference)}</span>` : '') + '</div>';
+  const tbl = linesTable(j.lines || [], [
+    { h: 'SKU', cls: 'oo-mono', fmt: l => esc(l.sku || '—') },
+    { h: 'Product', fmt: l => esc(l.name || '—') },
+    { h: 'Transfer Qty', cls: 'num', fmt: l => esc(l.qty != null ? l.qty : '—') },
+    { h: 'On hand', cls: 'num', fmt: l => esc(l.onHand != null ? l.onHand : '—') },
+    { h: 'Available', cls: 'num', fmt: l => esc(l.available != null ? l.available : '—') }
+  ]);
+  return strip + tbl;
+}
+async function toggleExpand(tr) {
+  const nxt = tr.nextElementSibling;
+  if (nxt && nxt.classList.contains('oo-detailrow')) { nxt.remove(); tr.classList.remove('oo-expanded'); return; }
+  tr.classList.add('oo-expanded');
+  const kind = tr.getAttribute('data-kind'), key = tr.getAttribute('data-key');
+  const colspan = tr.children.length;
+  const drow = document.createElement('tr');
+  drow.className = 'oo-detailrow';
+  drow.innerHTML = `<td colspan="${colspan}"><div class="oo-detail"><div class="oo-detail-load">Loading items…</div></div></td>`;
+  tr.after(drow);
+  const box = drow.querySelector('.oo-detail');
+  try { box.innerHTML = kind === 'tr' ? await renderTrDetail(key) : await renderSoDetail(key); }
+  catch (e) { box.innerHTML = `<div class="oo-detail-err">Could not load items: ${esc(e.message)}</div>`; }
 }
 
 function renderKpis() {
@@ -355,6 +437,9 @@ function bind() {
     const b = e.target.closest('.oo-notebtn');
     if (b) { openNoteModal(b.getAttribute('data-order')); return; }
     if (e.target === document.getElementById('ooNoteModal')) closeNoteModal();
+    // expand/collapse a data row to show its line items (ignore clicks in the action cell)
+    const row = e.target.closest('tr.oo-clickable');
+    if (row && !e.target.closest('.oo-actioncell')) { toggleExpand(row); }
   });
   ['ooNoteCancel', 'ooNoteCancelX'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('click', closeNoteModal); });
   const saveBtn = document.getElementById('ooNoteSave'); if (saveBtn) saveBtn.addEventListener('click', saveNote);
@@ -364,7 +449,7 @@ function init() {
   bind();
   switchTab('so');
   const def = document.querySelector('.oo-agechip[data-age="2"]'); if (def) def.classList.add('active');   // default: open > 2 days
-  loadData().catch(e => { console.error('[open-orders] load failed', e); const t = document.querySelector('#ooSoTable tbody'); if (t) t.innerHTML = `<tr><td colspan="7" class="oo-empty">Could not load data: ${esc(e.message)}</td></tr>`; });
+  loadData().catch(e => { console.error('[open-orders] load failed', e); const t = document.querySelector('#ooSoTable tbody'); if (t) t.innerHTML = `<tr><td colspan="10" class="oo-empty">Could not load data: ${esc(e.message)}</td></tr>`; });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();

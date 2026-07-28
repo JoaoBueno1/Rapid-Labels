@@ -1,0 +1,38 @@
+# ============================================================
+# Cin7 Sales Reconcile — un-stick PHANTOM open orders (every 6h at :40)
+# ============================================================
+# The live sales sync (UpdatedSince=3h) only catches orders modified in the last
+# few hours. An order that ships during a gap — or before that cron existed — is
+# never "updated" again, so it stays open in the mirror forever. UpdatedSince can't
+# reach it; this job re-polls the STALE open set (open + Cin7 timestamp older than
+# STALE_DAYS), confirms each via Search, and writes back the current status columns
+# (rep / location / lines are left untouched). Offset from the syncs.
+# ============================================================
+
+name: Cin7 Sales Reconcile
+
+on:
+  schedule:
+    - cron: '40 */6 * * *'   # every 6 hours at :40
+  workflow_dispatch: {}
+
+jobs:
+  reconcile-sales:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --production
+      - name: Reconcile sales orders
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          RECONCILE_SO_CAP: '200'
+          RECONCILE_SO_STALE_DAYS: '2'
+        run: node cin7-stock-sync/reconcile-sales.js

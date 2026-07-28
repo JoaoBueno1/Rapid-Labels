@@ -9,6 +9,31 @@
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
+// Cin7 (for on-demand transfer line items — transfers are header-only in the mirror)
+const CIN7_BASE = 'https://inventory.dearsystems.com/ExternalApi/v2';
+const CIN7_ACC = process.env.CIN7_ACCOUNT_ID || '';
+const CIN7_KEY = process.env.CIN7_API_KEY || '';
+const _trCache = new Map();               // taskId -> { at, payload }
+const TR_TTL = 10 * 60 * 1000;            // 10 min — a packing list rarely changes mid-transit
+
+// One live Cin7 detail call per expanded transfer (user-triggered, cached). The
+// mirror stores transfers header-only, so line items aren't there to read.
+async function fetchTransferLines(taskId) {
+  const cached = _trCache.get(taskId);
+  if (cached && Date.now() - cached.at < TR_TTL) return cached.payload;
+  const r = await fetch(`${CIN7_BASE}/stockTransfer?TaskID=${encodeURIComponent(taskId)}`, {
+    headers: { 'api-auth-accountid': CIN7_ACC, 'api-auth-applicationkey': CIN7_KEY, 'Accept': 'application/json' }
+  });
+  if (!r.ok) throw new Error(`Cin7 ${r.status}`);
+  const j = await r.json();
+  const payload = {
+    meta: { status: j.Status || null, number: j.Number || null, from: j.FromLocation || null, to: j.ToLocation || null, completion: j.CompletionDate || null, reference: j.Reference || null },
+    lines: (j.Lines || []).map(l => ({ sku: l.SKU, name: l.ProductName, qty: l.TransferQuantity, onHand: l.QuantityOnHand, available: l.QuantityAvailable }))
+  };
+  _trCache.set(taskId, { at: Date.now(), payload });
+  return payload;
+}
+
 function headers(extra = {}) {
   return Object.assign({
     'apikey': SUPABASE_KEY,
@@ -38,8 +63,21 @@ async function upsertNote(row) {
 }
 
 function registerOpenOrdersRoutes(app) {
+  // Line items for one transfer (on-demand, cached). Needs only Cin7 creds, so it
+  // is registered BEFORE (and independently of) the Supabase guard — a Supabase-less
+  // or partially-configured deploy still serves the expand-row lookup.
+  app.get('/api/open-orders/transfer-lines', async (req, res) => {
+    try {
+      const taskId = String(req.query.taskId || '').trim();
+      if (!taskId) return res.status(400).json({ success: false, error: 'taskId required' });
+      if (!CIN7_ACC || !CIN7_KEY) return res.status(503).json({ success: false, error: 'Cin7 credentials not configured' });
+      res.json(Object.assign({ success: true }, await fetchTransferLines(taskId)));
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
   if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.warn('⚠️  Open Orders notes: SUPABASE_URL / key missing — /api/open-orders routes disabled');
+    console.warn('⚠️  Open Orders: SUPABASE_URL / key missing — notes routes disabled (transfer-lines still active)');
+    console.log('✅ Open Orders transfer-lines route registered (Cin7 only)');
     return;
   }
 
@@ -69,7 +107,7 @@ function registerOpenOrdersRoutes(app) {
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
   });
 
-  console.log('✅ Open Orders notes routes registered (/api/open-orders/*)');
+  console.log('✅ Open Orders routes registered (/api/open-orders/*)');
 }
 
 module.exports = { registerOpenOrdersRoutes, getNotes, upsertNote };
