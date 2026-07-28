@@ -1,6 +1,8 @@
-/* Rapid WMS PWA — scanner-first operator app. Talks to /api/wms/*.
-   Screens: home · wave · pick · assembly · pack · lookup.
-   All in-progress state is drafts on the server; commits go through the outbox. */
+/* Rapid WMS PWA — scanner-first HANDHELD app for pickers + stock staff.
+   Screens: home · wave (order) · pick · assembly/production · transfer · stock-lookup.
+   Pack is NOT here — packing is a separate desktop page for packers (open picked
+   orders → authorise pack → print slip → booking). All in-progress state is drafts
+   on the server; commits go through the outbox. */
 (function () {
   'use strict';
 
@@ -65,12 +67,39 @@
       '<div class="tiles">' +
         '<button class="tile" id="tLook"><div class="ic">🔎</div><div class="t">Stock lookup</div><div class="s">Find a SKU across bins</div></button>' +
         '<button class="tile" id="tXfer"><div class="ic">🔁</div><div class="t">Transfer</div><div class="s">Bin ↔ bin · warehouse ↔ warehouse</div></button>' +
-        '<button class="tile" id="tUser"><div class="ic">👤</div><div class="t">' + esc(S.user) + '</div><div class="s">Change operator</div></button>' +
-      '</div>';
+        '<button class="tile" id="tRecv"><div class="ic">📥</div><div class="t">Receive</div><div class="s">PO putaway into bins</div></button>' +
+        '<button class="tile" id="tOps"><div class="ic">📋</div><div class="t">Ops</div><div class="s">Outbox &amp; movements</div></button>' +
+      '</div>' +
+      '<div class="row" style="justify-content:space-between;margin-top:16px">' +
+        '<div class="sec" style="margin:0">Open orders</div>' +
+        '<button class="chip" id="tUser">' + esc(S.user) + ' ▾</button></div>' +
+      '<div id="openList"><div class="empty"><span class="spin"></span></div></div>';
     wireScan(function (v) { openOrder(v); });
     $('tLook').onclick = function () { go('lookup', 'Stock lookup'); };
     $('tXfer').onclick = function () { S.transfer = null; go('transfer', 'Transfer'); };
+    $('tRecv').onclick = function () { S.receipt = null; go('receive', 'Receive PO'); };
+    $('tOps').onclick = function () { go('ops', 'Ops'); };
     $('tUser').onclick = function () { var u = prompt('Operator name', S.user); if (u) { setUser(u.trim()); render(); } };
+    loadOpenList();
+  }
+  function loadOpenList() {
+    api('GET', '/open').then(function (d) {
+      var el = $('openList'); if (!el) return;
+      var ip = (d.inProgress || []).map(function (w) {
+        var picked = (w.parcels || []).filter(function (p) { return p.kind === 'pick' && p.status === 'committed'; }).length;
+        var tag = (w.parcels || []).some(function (p) { return p.kind === 'assembly' && p.status !== 'committed'; }) ? 'awaiting build' : (picked ? 'picked' : 'picking');
+        return '<button class="card" style="width:100%;text-align:left;cursor:pointer" data-so="' + esc(w.order_number) + '">' +
+          '<div class="row"><div class="grow"><span class="sku">' + esc(w.order_number) + '</span><div class="nm">' + esc(w.customer || '') + '</div></div>' +
+          '<span class="pill ' + (tag === 'picked' ? 'done' : 'prog') + '">' + tag + '</span></div></button>';
+      }).join('');
+      var ts = (d.toStart || []).map(function (o) {
+        return '<button class="card" style="width:100%;text-align:left;cursor:pointer" data-so="' + esc(o.order_number) + '">' +
+          '<div class="row"><div class="grow"><span class="sku">' + esc(o.order_number) + '</span><div class="nm">' + esc(o.customer || '') + '</div></div>' +
+          '<span class="pill draft">to start</span></div></button>';
+      }).join('');
+      el.innerHTML = (ip || ts) ? (ip + (ts ? '<div class="sec">To start</div>' + ts : '')) : '<div class="empty">No open orders.</div>';
+      Array.prototype.forEach.call(el.querySelectorAll('[data-so]'), function (b) { b.onclick = function () { openOrder(b.getAttribute('data-so')); }; });
+    }).catch(function () { var el = $('openList'); if (el) el.innerHTML = '<div class="empty">Open list unavailable.</div>'; });
   }
   function openOrder(order) {
     order = order.replace(/\s+/g, ''); if (!/^SO-?\d+/i.test(order)) order = order; // accept as-is
@@ -106,7 +135,6 @@
       view.innerHTML = html;
       var ab = view.querySelector('[data-open="assembly"]'); if (ab) ab.onclick = function () { go('assembly', 'Build ' + wh.order_number, { waveId: wh.id, parcelId: asm.id }); };
       var pb = view.querySelector('[data-open="pick"]'); if (pb) pb.onclick = function () { go('pick', 'Pick ' + wh.order_number, { waveId: wh.id, parcelId: pick.id }); };
-      var kb = view.querySelector('[data-open="pack"]'); if (kb) kb.onclick = function () { go('pack', 'Pack ' + wh.order_number, { waveId: wh.id, parcelId: pick.id }); };
     }).catch(function (e) { view.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
   function parcelCard(parcel, claims, kind) {
@@ -122,10 +150,8 @@
     }).join('');
     var action;
     if (kind === 'pick' && done) {
-      // picked → next step is pack (same fulfilment)
-      action = parcel.status === 'committed'
-        ? '<button class="btn go" data-open="pack">📦  Pack this</button>'
-        : '<button class="btn go" disabled>Completed ✓</button>';
+      // picked → packing happens at the desktop pack station, not on the handheld
+      action = '<div class="banner" style="margin:0"><b>✓ Picked</b> — ready for the pack station.</div>';
     } else if (done) {
       action = '<button class="btn go" disabled>Completed ✓</button>';
     } else {
@@ -177,17 +203,14 @@
       }).catch(function (e) { toast(e.message, 'err'); });
     };
   }
+  function isBinCode(v) { return /^[A-Z]{2}-[A-Z0-9]+-L\d/.test(v) || /DOCK|PRODUCTION|-GA\b/.test(v); }
   function onPickScan(view, line, v) {
-    // heuristic: a bin code matches the aisle grammar; else it's a product/SKU
-    if (/^[A-Z]{2}-[A-Z0-9]/.test(v) && !/^R\d/.test(v)) {
-      line.from_bin = v; toast('Bin ' + v); saveScan(line);
-    } else {
-      // product scan — accept if it matches the line SKU (barcode->SKU handled server-side later)
-      if (v === line.sku || v.indexOf(line.sku) >= 0 || line.sku.indexOf(v) >= 0) { toast('Product OK'); }
-      else { toast('Scanned ' + v + ' (expected ' + line.sku + ')', 'err'); return; }
-      saveScan(line);
-    }
-    renderPick(view);
+    if (isBinCode(v)) { line.from_bin = v; toast('Bin ' + v); saveScan(line); renderPick(view); return; }
+    // product scan → resolve barcode/SKU/5DC server-side (70% of SKUs have no barcode)
+    api('GET', '/resolve/' + encodeURIComponent(v)).then(function (p) {
+      if (p.sku === line.sku) { toast('✓ ' + p.sku + (p.matchedBy === 'barcode' ? ' (barcode)' : '')); saveScan(line); renderPick(view); }
+      else { toast('Scanned ' + p.sku + ' — expected ' + line.sku, 'err'); }
+    }).catch(function () { toast('Unknown code: ' + v, 'err'); });
   }
   function saveScan(line) {
     var qty = num($('qtyIn') && $('qtyIn').value) || num(line.qty_ordered);
@@ -269,36 +292,12 @@
     toast('Building… (adopting Cin7 build)');
     api('POST', '/build', { waveId: S.wave.wave.id, fgSku: b.fg.sku, fgProductId: b.fg.product_id, qty: num(b.fg.qty_ordered), components: b.comps })
       .then(function (build) { return api('POST', '/commit/build', { buildId: build.id }); })
-      .then(function (r) { toast((r.assemblyNumber || 'Built') + (r.adopted ? ' (adopted)' : '') + ' ✓', 'ok'); reloadWaveThen('wave'); })
+      .then(function (r) {
+        var msg = (r.assemblyNumber || 'Built') + (r.adopted ? ' (adopted)' : '');
+        if (r.putaway && r.putaway.ok) msg += ' → ' + r.putaway.bin;
+        toast(msg + ' ✓', 'ok'); reloadWaveThen('wave');
+      })
       .catch(function (e) { toast(e.message, 'err'); });
-  }
-
-  // ═══════════════ PACK ═══════════════
-  function packScreen(view, ctx) {
-    var parcel = (S.wave.parcels || []).filter(function (p) { return p.id === ctx.parcelId; })[0];
-    S.parcel = parcel;
-    var box = { name: 'Box 1', length: '', width: '', height: '', weight: '' };
-    S.box = box;
-    view.innerHTML =
-      '<div class="banner">Verify items into the carton, enter its size, then commit.</div>' +
-      '<div class="card">' + (parcel.lines || []).map(function (l) {
-        return '<div class="row" style="padding:8px 0;border-top:1px solid var(--line)"><div class="grow"><div class="sku">' + esc(l.sku) + '</div></div><div class="qty">×' + num(l.qty_scanned) + '</div><span class="pill done" style="margin-left:8px"><span class="dot"></span>Box 1</span></div>';
-      }).join('') + '</div>' +
-      '<div class="sec">Carton</div><div class="card">' +
-        '<label class="fld">Name</label><input class="txt" id="bxName" value="Box 1" />' +
-        '<div class="grid2"><div><label class="fld">Length cm</label><input class="txt" id="bxL" inputmode="decimal" /></div>' +
-        '<div><label class="fld">Width cm</label><input class="txt" id="bxW" inputmode="decimal" /></div></div>' +
-        '<div class="grid2"><div><label class="fld">Height cm</label><input class="txt" id="bxH" inputmode="decimal" /></div>' +
-        '<div><label class="fld">Weight kg</label><input class="txt" id="bxKg" inputmode="decimal" /></div></div>' +
-      '</div>';
-    bottom('<button class="btn go lg" id="doPack">📦  Commit pack</button>');
-    $('doPack').onclick = function () {
-      var boxes = [{ name: $('bxName').value || 'Box 1', length: num($('bxL').value), width: num($('bxW').value), height: num($('bxH').value), weight: num($('bxKg').value) }];
-      toast('Packing…');
-      api('POST', '/commit/pack', { parcelId: S.parcel.id, boxes: boxes }).then(function (r) {
-        toast(r.alreadyDone ? 'Already packed' : 'Packed ✓ — print slip', 'ok'); reloadWaveThen('wave');
-      }).catch(function (e) { toast(e.message, 'err'); });
-    };
   }
 
   // ═══════════════ STOCK LOOKUP ═══════════════
@@ -374,7 +373,66 @@
     }).join('') : '<div class="empty">Scan products to add lines.</div>';
   }
 
-  SCREENS = { home: homeScreen, wave: waveScreen, pick: pickScreen, assembly: assemblyScreen, pack: packScreen, lookup: lookupScreen, transfer: transferScreen };
+  // ═══════════════ RECEIVE (PO putaway) ═══════════════
+  function receiveScreen(view) {
+    if (!S.receipt) {
+      view.innerHTML = '<p class="eyebrow">Receive a purchase order</p>' + scanField('Scan or type PO number…');
+      wireScan(function (v) {
+        toast('Loading ' + v + '…');
+        api('GET', '/purchase/' + encodeURIComponent(v)).then(function (po) { S.receipt = { po: v, lines: (po.lines || []).map(function (l) { return Object.assign({ done: 0 }, l); }), bin: '' }; renderReceive(view); }).catch(function (e) { toast(e.message, 'err'); });
+      });
+      return;
+    }
+    renderReceive(view);
+  }
+  function renderReceive(view) {
+    var r = S.receipt;
+    view.innerHTML =
+      '<div class="banner"><b>' + esc(r.po) + '</b> — scan the <b>destination bin</b>, then each product to put it away.</div>' +
+      scanField('Scan bin, then product…') + qtyStepper(1) +
+      '<div class="card" style="margin-top:12px"><div class="meta">Bin: <b class="mono">' + esc(r.bin || '— scan —') + '</b></div></div>' +
+      r.lines.map(function (l, i) {
+        var full = l.done >= l.qty;
+        return '<div class="card ' + (full ? 'done' : '') + '"><div class="row"><div class="grow"><span class="sku">' + esc(l.sku) + '</span><div class="nm">' + esc(l.name || '') + '</div></div>' +
+          '<div class="qty">' + (full ? '✓ ' : '') + l.done + '<span class="of">/' + l.qty + '</span></div></div></div>';
+      }).join('');
+    wireScan(function (v) { onReceiveScan(view, v); });
+    wireQty();
+  }
+  function onReceiveScan(view, v) {
+    var r = S.receipt;
+    if (isBinCode(v)) { r.bin = v; toast('Bin ' + v); renderReceive(view); return; }
+    api('GET', '/resolve/' + encodeURIComponent(v)).then(function (p) {
+      var line = r.lines.filter(function (l) { return l.sku === p.sku; })[0];
+      if (!line) { toast(p.sku + ' not on this PO', 'err'); return; }
+      if (!r.bin) { toast('Scan a destination bin first', 'err'); return; }
+      var qty = num($('qtyIn') && $('qtyIn').value) || (line.qty - line.done) || 1;
+      api('POST', '/receive', { sku: line.sku, productId: line.productId, qty: qty, toBin: r.bin, poNumber: r.po }).then(function () {
+        line.done += qty; toast('Put away ' + line.sku + ' ×' + qty + ' → ' + r.bin, 'ok'); renderReceive(view);
+      }).catch(function (e) { toast(e.message, 'err'); });
+    }).catch(function () { toast('Unknown code: ' + v, 'err'); });
+  }
+
+  // ═══════════════ OPS (outbox + journal) ═══════════════
+  function opsScreen(view) {
+    view.innerHTML = '<div class="sec" style="margin-top:0">Outbox</div><div id="opsOut"><span class="spin"></span></div><div class="sec">Recent movements</div><div id="opsMov"><span class="spin"></span></div>';
+    api('GET', '/outbox').then(function (rows) {
+      $('opsOut').innerHTML = (rows || []).slice(0, 30).map(function (o) {
+        var cls = o.status === 'confirmed' || o.status === 'reconciled' ? 'done' : (o.status === 'failed' ? 'warnp' : 'prog');
+        return '<div class="row" style="padding:8px 0;border-top:1px solid var(--line)"><div class="grow"><span class="mono" style="font-size:13px">' + esc(o.op_type) + '</span>' + (o.cin7_ref ? ' <span class="meta">' + esc(o.cin7_ref) + '</span>' : '') + (o.last_error ? '<div class="nm" style="color:var(--bad)">' + esc(o.last_error) + '</div>' : '') + '</div><span class="pill ' + cls + '">' + esc(o.status) + '</span></div>';
+      }).join('') || '<div class="empty">No writes yet.</div>';
+    }).catch(function () { $('opsOut').innerHTML = '<div class="empty">unavailable</div>'; });
+    api('GET', '/movements').then(function (rows) {
+      $('opsMov').innerHTML = (rows || []).slice(0, 40).map(function (m) {
+        return '<div class="row" style="padding:7px 0;border-top:1px solid var(--line)"><div class="grow"><span class="mono" style="font-size:13px">' + esc(m.movement_type) + '</span> <span class="sku" style="font-size:14px">' + esc(m.sku) + '</span></div><div class="qty">' + (m.qty > 0 ? '+' : '') + m.qty + '</div><span class="meta" style="margin-left:8px">' + esc(m.to_bin || m.from_bin || '') + '</span></div>';
+      }).join('') || '<div class="empty">No movements yet.</div>';
+    }).catch(function () { $('opsMov').innerHTML = '<div class="empty">unavailable</div>'; });
+  }
+
+  // NOTE: pack is intentionally NOT a PWA screen — packing is done at the desktop
+  // pack station (packers see picked orders there, authorise, print the slip, then
+  // booking). The commitPack engine/route stay in the backend for that page.
+  SCREENS = { home: homeScreen, wave: waveScreen, pick: pickScreen, assembly: assemblyScreen, lookup: lookupScreen, transfer: transferScreen, receive: receiveScreen, ops: opsScreen };
 
   // ── boot ──
   $('backBtn').onclick = back;

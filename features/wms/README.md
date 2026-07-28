@@ -74,8 +74,11 @@ lib/reconciler.js       drain ambiguous 'sent' / 'failed' outbox rows against li
                         never blindly re-sent). Run every ~60s once live.
 routes/wms-routes.js    Express API. registerWmsRoutes(app, supabaseBackend). Mounted under
                         /api/wms/*. NOT added to any nav.
-pwa/                    the operator PWA (scanner-first): pick, assembly/production, pack,
-                        transfer, stock-lookup. wms.html is unlinked.
+pwa/                    the HANDHELD PWA (scanner-first) for pickers + stock staff:
+                        pick, assembly/production, transfer, stock-lookup. wms.html is
+                        unlinked. NOTE: pack is NOT here — it is a separate DESKTOP page
+                        for packers (open picked orders → authorise pack → print slip →
+                        booking). The commitPack engine/route stay in the backend for it.
 ```
 
 ## The large-order, two-user flow (the thing this is built for)

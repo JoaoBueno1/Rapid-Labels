@@ -201,6 +201,17 @@ async function getTransfer(taskId) {
   return ok(r) ? r.body : null;
 }
 
+// ── Purchases (for receiving) ────────────────────────────────────────────────
+async function findPurchaseByNumber(orderNumber) {
+  const r = await get(`purchaseList?Search=${encodeURIComponent(orderNumber)}&Page=1&Limit=5`);
+  const rows = (r.body && (r.body.PurchaseList || r.body.Purchases)) || [];
+  return rows.find((x) => x.OrderNumber === orderNumber || x.Number === orderNumber) || rows[0] || null;
+}
+async function getPurchase(id) {
+  const r = await get(`purchase?ID=${id}`);
+  return ok(r) ? r.body : null;
+}
+
 // ── Product / assembly detection ─────────────────────────────────────────────
 async function getProduct(productId) {
   const r = await get(`product?ID=${productId}`);
@@ -218,5 +229,6 @@ module.exports = {
   authorisePick, getPick, authorisePack, getPack,
   createBuild, setBuildRecipe, completeBuild, getBuild, findLinkedBuild, recipeFromExistingBuild,
   createTransfer, completeTransfer, getTransfer,
+  findPurchaseByNumber, getPurchase,
   availability, getProduct, isAssembled,
 };

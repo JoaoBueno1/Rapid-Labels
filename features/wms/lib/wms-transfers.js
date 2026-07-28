@@ -115,4 +115,38 @@ async function commitTransfer(sb, transferId, user) {
   return { ok: true, cin7_ref: res.cin7_ref, alreadyDone: res.alreadyDone };
 }
 
-module.exports = { resolveLocationId, stageTransfer, addLine, scanLine, removeLine, getTransferState, commitTransfer };
+// Generic putaway: move stock from a source location into a destination bin, via
+// the proven stockTransfer + the exactly-once outbox (crash-safe DRAFT checkpoint).
+// Used for the binless produced FG (from the warehouse root) and PO receiving
+// putaway (from the receiving dock).
+const PRODUCTION_BIN = process.env.WMS_PRODUCTION_BIN || 'MA-PRODUCTION';
+const RECEIVING_BIN = process.env.WMS_RECEIVING_BIN || 'MA-DOCK';
+async function putaway(sb, { sku, productId, qty, fromLocation, toBin, waveId, tag }, user) {
+  const fromId = await resolveLocationId(sb, fromLocation || 'Main Warehouse');
+  const toId = await resolveLocationId(sb, toBin);
+  if (!toId) throw new Error(`putaway bin "${toBin}" not found`);
+  const label = tag || 'PUTAWAY';
+  const reference = `WMS ${label} | ${sku} → ${toBin}`;
+  const lines = [{ ProductID: productId, TransferQuantity: Number(qty), Comments: `${sku} ×${qty} ${label.toLowerCase()} → ${toBin}` }];
+  const key = outbox.opKey(label.toLowerCase(), sku, toBin, qty, waveId, fromLocation);
+  await outbox.enqueue(sb, { op_key: key, op_type: 'transfer', target: 'stockTransfer', payload: { fromId, toId, lines }, created_by: user });
+  const res = await outbox.execute(sb, key, {
+    actor: user,
+    doWrite: async () => {
+      const row = await outbox.load(sb, key);
+      let taskId = row.cin7_task_id;
+      if (!taskId) { const d = await cin7.createTransfer({ fromLocationId: fromId, toLocationId: toId, reference, lines }); taskId = d.TaskID; await outbox.patch(sb, key, { cin7_task_id: taskId }); }
+      const done = await cin7.completeTransfer({ taskId, fromLocationId: fromId, toLocationId: toId, reference, lines });
+      return { cin7_ref: (done && done.Number) || null, cin7_task_id: taskId, response: done };
+    },
+    verify: async () => { const row = await outbox.load(sb, key); if (!row.cin7_task_id) return { done: false }; const t = await cin7.getTransfer(row.cin7_task_id); return { done: t && /COMPLETED/i.test(t.Status || '') }; },
+    movements: [{ movement_type: 'putaway', sku, product_id: productId, qty: Number(qty), from_bin: fromLocation, to_bin: toBin, cin7_ref: reference, wave_id: waveId }],
+  });
+  return { ok: true, bin: toBin, cin7_ref: res.cin7_ref, alreadyDone: res.alreadyDone };
+}
+// The FG born binless → move it to the production bin.
+async function putawayFG(sb, { fgSku, fgProductId, qty, toBin, waveId }, user) {
+  return putaway(sb, { sku: fgSku, productId: fgProductId, qty, fromLocation: 'Main Warehouse', toBin: toBin || PRODUCTION_BIN, waveId, tag: 'PUTAWAY' }, user);
+}
+
+module.exports = { resolveLocationId, stageTransfer, addLine, scanLine, removeLine, getTransferState, commitTransfer, putaway, putawayFG, PRODUCTION_BIN, RECEIVING_BIN };

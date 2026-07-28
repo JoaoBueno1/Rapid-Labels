@@ -331,6 +331,17 @@ try {
   console.warn('⚠️  Could not register Container Check routes:', e.message);
 }
 
+// ── WMS (handheld PWA: pick / assembly / transfer / receive / ops) ──
+// Isolated feature. API under /api/wms/*; the PWA is mounted at /wms/ (open
+// http://localhost:8383/wms). Assets in features/wms/pwa are relative, so we mount
+// the whole folder with wms.html as the index — nothing else on the site is touched.
+try {
+  require('./features/wms/routes/wms-routes').registerWmsRoutes(app, supabaseBackend);
+  app.use('/wms', express.static(path.join(__dirname, 'features/wms/pwa'), { index: 'wms.html' }));
+} catch (e) {
+  console.warn('⚠️  Could not register WMS routes:', e.message);
+}
+
 // ── Replenishment: Pending TR Lines (fetches line details from Cin7 API) ──
 (function registerPendingTRRoutes() {
   const https = require('https');

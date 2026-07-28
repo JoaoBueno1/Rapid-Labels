@@ -14,6 +14,7 @@
 
 const engine = require('../lib/wms-engine');
 const transfers = require('../lib/wms-transfers');
+const receiving = require('../lib/wms-receiving');
 const sync = require('../lib/wms-sync');
 const reconciler = require('../lib/reconciler');
 
@@ -36,6 +37,22 @@ function registerWmsRoutes(app, sb) {
     const w = await engine.getWave(sb, Number(req.params.id));
     if (!w) return res.status(404).json({ error: 'wave not found' });
     res.json(w);
+  }));
+
+  // open-work board (home): in-progress orders + Cin7 orders to start
+  app.get('/api/wms/open', A(async (req, res) => res.json(await engine.listOpenWork(sb, {}))));
+  // resolve a scanned code → product (barcode → SKU → 5DC)
+  app.get('/api/wms/resolve/:code', A(async (req, res) => {
+    const r = await engine.resolveScan(sb, req.params.code);
+    if (!r) return res.status(404).json({ error: 'not found', code: req.params.code });
+    res.json(r);
+  }));
+
+  // ── Receiving: read a PO, then putaway each line into a bin ──
+  app.get('/api/wms/purchase/:number', A(async (req, res) => res.json(await receiving.getPurchaseLines(sb, req.params.number))));
+  app.post('/api/wms/receive', A(async (req, res) => {
+    const { sku, productId, qty, toBin, poNumber } = req.body || {};
+    res.json(await receiving.receiveLine(sb, { sku, productId, qty: Number(qty), toBin, poNumber }, user(req)));
   }));
 
   // ── Concurrency: claim / release a line ──

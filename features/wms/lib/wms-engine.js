@@ -9,8 +9,10 @@
 
 const cin7 = require('./cin7-wms-client');
 const outbox = require('./outbox');
+const transfers = require('./wms-transfers');
 
 function wms(sb) { return sb.schema('wms'); }
+const PRODUCTION_BIN = process.env.WMS_PRODUCTION_BIN || 'MA-PRODUCTION';
 const MAIN_WH_ID = process.env.WMS_MAIN_WAREHOUSE_ID || '907821e3-c06b-4bf1-a8af-888bc3a2031f';
 const MAIN_WH_NAME = 'Main Warehouse';
 
@@ -71,6 +73,43 @@ async function buildWave(sb, orderNumber, user) {
   });
   if (plines.length) await wms(sb).from('parcel_lines').insert(plines);
   return getWave(sb, wave.id);
+}
+
+// Open-work board for the home: our in-progress orders (for resume / handoff) +
+// Cin7 orders sitting NOT PICKED (new work to start). Drives the multi-user flow.
+async function listOpenWork(sb, { limit = 30 } = {}) {
+  const { data: waves } = await wms(sb).from('waves').select('id,order_number,customer,status,has_assembly,created_at')
+    .neq('status', 'committed').order('created_at', { ascending: false }).limit(limit);
+  const ids = (waves || []).map((w) => w.id);
+  let parcels = [];
+  if (ids.length) { const r = await wms(sb).from('parcels').select('wave_id,kind,status').in('wave_id', ids); parcels = r.data || []; }
+  const byWave = {}; parcels.forEach((p) => { (byWave[p.wave_id] = byWave[p.wave_id] || []).push(p); });
+  const inProgress = (waves || []).map((w) => ({ ...w, parcels: byWave[w.id] || [] }));
+
+  const started = new Set((waves || []).map((w) => w.order_number));
+  const { data: cin7 } = await sb.schema('cin7_mirror').from('sales_orders')
+    .select('order_number,customer,picking_status,type,order_date')
+    .eq('location_name', 'Main Warehouse').eq('picking_status', 'NOT PICKED')
+    .order('order_date', { ascending: false }).limit(limit * 2);
+  const toStart = (cin7 || []).filter((o) => !started.has(o.order_number) && /advanced/i.test(o.type || '')).slice(0, limit);
+  return { inProgress, toStart };
+}
+
+// Resolve a scanned code to a product: real barcode → SKU → 5DC (human lookup).
+// SKU (printed as CODE128 by label-sheets) is the authoritative scan key.
+async function resolveScan(sb, code) {
+  code = String(code || '').trim();
+  if (!code) return null;
+  const cm = sb.schema('cin7_mirror');
+  const cols = 'id,sku,name,barcode,attribute1';
+  let hit = (await cm.from('products').select(cols).eq('barcode', code).limit(1)).data;
+  if (hit && hit[0]) return fmt(hit[0], 'barcode');
+  hit = (await cm.from('products').select(cols).eq('sku', code).limit(1)).data;
+  if (hit && hit[0]) return fmt(hit[0], 'sku');
+  hit = (await cm.from('products').select(cols).eq('attribute1', code).limit(2)).data;
+  if (hit && hit.length === 1) return fmt(hit[0], '5dc');       // 5DC is non-unique — only trust a single hit
+  return null;
+  function fmt(p, by) { return { sku: p.sku, productId: p.id, name: p.name, matchedBy: by, ambiguous: false }; }
 }
 
 async function getWave(sb, waveId) {
@@ -178,7 +217,7 @@ async function getRecipe(sb, fgSku) {
 async function stageBuild(sb, { waveId, fgSku, fgProductId, qty, warehouseId, putawayBin, components }, user) {
   const { data: build } = await wms(sb).from('builds').insert({
     wave_id: waveId || null, fg_sku: fgSku, fg_product_id: fgProductId, qty,
-    warehouse_id: warehouseId || MAIN_WH_ID, putaway_bin: putawayBin || null,
+    warehouse_id: warehouseId || MAIN_WH_ID, putaway_bin: putawayBin || PRODUCTION_BIN,
     status: 'draft', created_by: user,
   }).select().single();
   const rows = [];
@@ -233,7 +272,17 @@ async function commitBuild(sb, buildId, user) {
   });
 
   await wms(sb).from('builds').update({ status: 'committed', outbox_op_key: key, cin7_assembly_number: res.cin7_ref, updated_at: new Date().toISOString() }).eq('id', buildId);
-  return { ok: true, taskId, assemblyNumber: res.cin7_ref, adopted, alreadyDone: res.alreadyDone };
+
+  // Simple, automatic putaway: the produced FG is born binless — move it to the
+  // fixed production bin so it's findable/pickable. Best-effort (own exactly-once op).
+  const putBin = build.putaway_bin || PRODUCTION_BIN;
+  let putaway = null;
+  try {
+    putaway = await transfers.putawayFG(sb, { fgSku: build.fg_sku, fgProductId: build.fg_product_id, qty: Number(build.qty), toBin: putBin, waveId: build.wave_id }, user);
+    await wms(sb).from('builds').update({ putaway_bin: putBin }).eq('id', buildId);
+  } catch (e) { putaway = { ok: false, error: String(e.message) }; }
+
+  return { ok: true, taskId, assemblyNumber: res.cin7_ref, adopted, alreadyDone: res.alreadyDone, putaway };
 }
 
 // ── COMMIT: pack (write-after-confirm) ──────────────────────────────────────
@@ -268,6 +317,6 @@ async function commitPack(sb, parcelId, boxes, user) {
 
 module.exports = {
   MAIN_WH_ID, MAIN_WH_NAME, locString, resolveBinId,
-  buildWave, getWave, claimLine, releaseLine, recordScan, suggestBins, getRecipe,
+  buildWave, getWave, listOpenWork, resolveScan, claimLine, releaseLine, recordScan, suggestBins, getRecipe,
   stageBuild, commitPick, commitBuild, commitPack,
 };
