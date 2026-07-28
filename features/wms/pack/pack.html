@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pack Station — Rapid WMS</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./pack.css?v=20260729a" />
+  <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="/wms" class="nav-link">WMS Scanner</a>
+        <a href="./pack.html" class="nav-link active">Pack Station</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="pk-shell">
+    <div class="pk-topbar">
+      <h1 class="pk-title">📦 Pack Station</h1>
+      <span id="packCount" class="pk-pill">—</span>
+      <div class="pk-grow"></div>
+      <span class="pk-pill pk-live" title="Picked orders waiting to be packed & shipped">Picked → Pack</span>
+      <button id="packReload" class="pk-btn">↻ Reload</button>
+    </div>
+
+    <div class="pk-cols">
+      <!-- LEFT: queue -->
+      <aside class="pk-queue-wrap">
+        <input id="packSearch" type="search" class="pk-input" placeholder="Filter: order # or customer" />
+        <div id="packQueue" class="pk-queue"><div class="pk-muted">Loading…</div></div>
+      </aside>
+
+      <!-- RIGHT: detail -->
+      <section id="packDetail" class="pk-detail">
+        <div class="pk-empty">Select a picked order on the left to pack it.</div>
+      </section>
+    </div>
+  </main>
+
+  <!-- print-only packing slip -->
+  <div id="packSlip" class="pk-slip"></div>
+
+  <script src="./pack.js?v=20260729a"></script>
+</body>
+</html>

@@ -97,6 +97,34 @@ function registerWmsRoutes(app, sb) {
     res.json(await engine.commitBuild(sb, Number(buildId), user(req)));
   }));
 
+  // ── Pack station (desktop): orders picked and waiting to pack ──
+  // A pick parcel with a Cin7 fulfilment (picked) but no committed sale_pack op yet.
+  app.get('/api/wms/pack/ready', A(async (req, res) => {
+    const w = sb.schema('wms');
+    const { data: parcels } = await w.from('parcels').select('id,wave_id,kind,status,cin7_task_id,cin7_ref')
+      .eq('kind', 'pick').not('cin7_task_id', 'is', null).order('updated_at', { ascending: false }).limit(60);
+    const list = parcels || [];
+    if (!list.length) return res.json([]);
+    const taskIds = list.map((p) => p.cin7_task_id);
+    const { data: packed } = await w.from('outbox').select('cin7_task_id').eq('op_type', 'sale_pack').in('cin7_task_id', taskIds).in('status', ['sent', 'confirmed', 'reconciled']);
+    const packedSet = new Set((packed || []).map((p) => p.cin7_task_id));
+    const ready = list.filter((p) => !packedSet.has(p.cin7_task_id));
+    if (!ready.length) return res.json([]);
+    const waveIds = [...new Set(ready.map((p) => p.wave_id))];
+    const { data: waves } = await w.from('waves').select('id,order_number,customer,ship_to,sale_id').in('id', waveIds);
+    const wmap = {}; (waves || []).forEach((x) => { wmap[x.id] = x; });
+    const { data: lines } = await w.from('parcel_lines').select('id,parcel_id,sku,name,qty_ordered,qty_scanned,box').in('parcel_id', ready.map((p) => p.id));
+    const lmap = {}; (lines || []).forEach((l) => { (lmap[l.parcel_id] = lmap[l.parcel_id] || []).push(l); });
+    res.json(ready.map((p) => ({ parcelId: p.id, waveId: p.wave_id, taskId: p.cin7_task_id, ref: p.cin7_ref, wave: wmap[p.wave_id] || {}, lines: lmap[p.id] || [] })));
+  }));
+
+  // assign a line to a carton (persists parcel_lines.box; commitPack reads it)
+  app.post('/api/wms/pack/assign', A(async (req, res) => {
+    const { parcelLineId, box } = req.body || {};
+    await sb.schema('wms').from('parcel_lines').update({ box: box || null, updated_at: new Date().toISOString() }).eq('id', Number(parcelLineId));
+    res.json({ ok: true });
+  }));
+
   // ── Commit: pack ──
   app.post('/api/wms/commit/pack', A(async (req, res) => {
     const { parcelId, boxes } = req.body || {};
