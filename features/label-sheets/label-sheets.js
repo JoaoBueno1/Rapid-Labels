@@ -416,6 +416,12 @@
     LS.selectMode = false; LS.selected.clear();
     var sb = el('lsSelectBar'); if (sb) sb.style.display = 'none';
     var stg = el('lsSelectToggle'); if (stg) stg.classList.remove('active');
+    // "Fill all" / "Select" only make sense on a sheet with more than one label.
+    // On a 1-up model (Warehouse, Multi-Label, Full sheet, single Zebra sticker)
+    // they do nothing — hide them to keep the bar clean.
+    var multiCell = (t.cols * t.rows) > 1;
+    var fab = el('lsFillAllBtn'); if (fab) fab.style.display = multiCell ? '' : 'none';
+    if (stg) stg.style.display = multiCell ? '' : 'none';
     var zebra = LS.caps.family === 'zebra';
     var sheet = LS.caps.family === 'sheet';
     el('lsEdName').textContent = LS.caps.name;
