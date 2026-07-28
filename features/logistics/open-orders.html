@@ -47,16 +47,17 @@
 
     <!-- KPIs -->
     <div class="cb-metrics">
-      <div class="cb-metric"><div class="cb-metric-label">Open sales orders</div><div class="cb-metric-value" id="ooKpiSo">—</div></div>
+      <div class="cb-metric"><div class="cb-metric-label">In fulfilment</div><div class="cb-metric-value" id="ooKpiSo">—</div></div>
+      <div class="cb-metric"><div class="cb-metric-label">Backorders</div><div class="cb-metric-value" id="ooKpiBo">—</div></div>
       <div class="cb-metric"><div class="cb-metric-label">Open transfers</div><div class="cb-metric-value" id="ooKpiTr">—</div></div>
-      <div class="cb-metric"><div class="cb-metric-label">Backordered</div><div class="cb-metric-value" id="ooKpiBack">—</div></div>
-      <div class="cb-metric alert"><div class="cb-metric-label">Oldest open</div><div class="cb-metric-value" id="ooKpiOldest">—</div></div>
+      <div class="cb-metric alert"><div class="cb-metric-label">Oldest active</div><div class="cb-metric-value" id="ooKpiOldest">—</div></div>
     </div>
 
     <div class="cb-card">
       <!-- Tabs -->
       <div class="oo-tabs">
         <button id="ooTabSo" class="oo-tab active" type="button">Sales Orders</button>
+        <button id="ooTabBo" class="oo-tab" type="button">Backorders</button>
         <button id="ooTabTr" class="oo-tab" type="button">Transfers</button>
       </div>
 
@@ -100,6 +101,19 @@
           </table>
         </div>
         <div id="ooSoPager" class="oo-pager"></div>
+      </div>
+
+      <!-- Backorders table (same columns; status = BACKORDERED) -->
+      <div id="ooPanelBo" style="display:none;">
+        <div class="im-table-wrap">
+          <table id="ooBoTable" class="oo-table">
+            <thead><tr>
+              <th>Order</th><th>Customer</th><th>Sales Rep</th><th>Warehouse</th><th>Stage</th><th>Status</th><th class="num">Age</th><th>Order Date</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="ooBoPager" class="oo-pager"></div>
       </div>
 
       <!-- TR table -->

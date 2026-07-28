@@ -10,10 +10,12 @@ const OO = {
   tab: 'so',
   filters: { warehouse: 'All', rep: '', stage: '', search: '', minAge: 2, includeDrafts: false },
   so: [], tr: [], loaded: false,
-  pageSo: 1, pageTr: 1, pageSize: 50
+  pageSo: 1, pageBo: 1, pageTr: 1, pageSize: 50
 };
 
 const SO_STAGES = ['To pick', 'Picking', 'Picked', 'Packing', 'Shipping'];
+// Business cutoff (operator): orders before this are stale/abandoned — not of interest.
+const MIN_ORDER_DATE = '2025-08-01';
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function daysSince(d) { if (!d) return null; const t = new Date(d); if (isNaN(t)) return null; return Math.floor((Date.now() - t.getTime()) / 86400000); }
@@ -45,6 +47,7 @@ async function fetchSO(sb) {
       .eq('order_status', 'AUTHORISED')
       .neq('shipping_status', 'SHIPPED')
       .not('status', 'in', '(VOIDED,CANCELLED,CREDITED,DRAFT)')
+      .gte('order_date', MIN_ORDER_DATE)
       .order('order_date', { ascending: true })
       .range(from, from + size - 1);
     if (error) { console.error('[open-orders] SO error', error); break; }
@@ -84,7 +87,8 @@ async function fetchTR(sb) {
 }
 
 // ── filters ──
-function filteredSO() {
+function isBackorder(r) { return String(r.status).toUpperCase() === 'BACKORDERED'; }
+function soBaseFiltered() {
   const f = OO.filters, q = (f.search || '').trim().toLowerCase();
   return OO.so.filter(r => {
     if (f.warehouse !== 'All' && String(r.warehouse).toLowerCase() !== f.warehouse.toLowerCase()) return false;
@@ -95,6 +99,8 @@ function filteredSO() {
     return true;
   });
 }
+function activeSO() { return soBaseFiltered().filter(r => !isBackorder(r)); }
+function backorderSO() { return soBaseFiltered().filter(isBackorder); }
 function filteredTR() {
   // Age filter is a SO concept ("stuck orders"); transfers show all active regardless.
   const f = OO.filters, q = (f.search || '').trim().toLowerCase();
@@ -126,27 +132,29 @@ function renderPager(id, total, page, onGo) {
   el.appendChild(mk('Next ›', page >= pages, () => onGo(page + 1)));
 }
 
-function renderSO() {
-  const rows = filteredSO();
-  const total = rows.length, ps = OO.pageSize;
-  if (OO.pageSo > Math.ceil(total / ps)) OO.pageSo = 1;
-  const paged = rows.slice((OO.pageSo - 1) * ps, OO.pageSo * ps);
-  const tbody = document.querySelector('#ooSoTable tbody');
-  if (!total) { tbody.innerHTML = `<tr><td colspan="8" class="oo-empty">No open orders match the filters.</td></tr>`; renderPager('ooSoPager', 0, 1, () => {}); return; }
-  tbody.innerHTML = paged.map(r => {
-    const warn = r.age != null && r.age > 3;
-    return `<tr class="${warn ? 'warn' : ''}">` +
-      `<td class="oo-mono">${esc(r.order)}</td>` +
-      `<td>${esc(r.customer)}</td>` +
-      `<td>${esc(r.rep)}</td>` +
-      `<td>${esc(r.warehouse)}</td>` +
-      `<td>${stageChip(r.stage)}</td>` +
-      `<td>${esc(r.status)}</td>` +
-      `<td class="num">${ageBadge(r.age)}</td>` +
-      `<td>${fmtDate(r.orderDate)}</td></tr>`;
-  }).join('');
-  renderPager('ooSoPager', total, OO.pageSo, p => { OO.pageSo = p; renderSO(); });
+function soRowHtml(r) {
+  const warn = r.age != null && r.age > 3;
+  return `<tr class="${warn ? 'warn' : ''}">` +
+    `<td class="oo-mono">${esc(r.order)}</td>` +
+    `<td>${esc(r.customer)}</td>` +
+    `<td>${esc(r.rep)}</td>` +
+    `<td>${esc(r.warehouse)}</td>` +
+    `<td>${stageChip(r.stage)}</td>` +
+    `<td>${esc(r.status)}</td>` +
+    `<td class="num">${ageBadge(r.age)}</td>` +
+    `<td>${fmtDate(r.orderDate)}</td></tr>`;
 }
+function renderSoTable(rows, tableId, pagerId, pageKey, empty) {
+  const total = rows.length, ps = OO.pageSize;
+  if (OO[pageKey] > Math.ceil(total / ps)) OO[pageKey] = 1;
+  const paged = rows.slice((OO[pageKey] - 1) * ps, OO[pageKey] * ps);
+  const tbody = document.querySelector('#' + tableId + ' tbody');
+  if (!total) { tbody.innerHTML = `<tr><td colspan="8" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
+  tbody.innerHTML = paged.map(soRowHtml).join('');
+  renderPager(pagerId, total, OO[pageKey], p => { OO[pageKey] = p; renderSoTable(rows, tableId, pagerId, pageKey, empty); });
+}
+function renderSO() { renderSoTable(activeSO(), 'ooSoTable', 'ooSoPager', 'pageSo', 'No orders in active fulfilment match the filters.'); }
+function renderBO() { renderSoTable(backorderSO(), 'ooBoTable', 'ooBoPager', 'pageBo', 'No backorders match the filters.'); }
 function renderTR() {
   const rows = filteredTR();
   const total = rows.length, ps = OO.pageSize;
@@ -168,28 +176,27 @@ function renderTR() {
 }
 
 function renderKpis() {
-  const so = filteredSO(), tr = filteredTR();
-  const oldest = so.reduce((m, r) => Math.max(m, r.age || 0), 0);
-  const back = so.filter(r => String(r.status).toUpperCase() === 'BACKORDERED').length;
+  const act = activeSO(), bo = backorderSO(), tr = filteredTR();
+  const oldest = act.reduce((m, r) => Math.max(m, r.age || 0), 0);
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-  set('ooKpiSo', so.length);
+  set('ooKpiSo', act.length);
+  set('ooKpiBo', bo.length);
   set('ooKpiTr', tr.length);
   set('ooKpiOldest', oldest ? oldest + 'd' : '—');
-  set('ooKpiBack', back);
   const tallies = document.getElementById('ooCounts');
-  if (tallies) tallies.textContent = `${OO.so.length} open orders · ${OO.tr.length} open transfers (before filters)`;
+  if (tallies) tallies.textContent = `${OO.so.length} open orders · ${OO.tr.length} open transfers · since ${MIN_ORDER_DATE}`;
 }
 
-function renderAll() { renderKpis(); renderSO(); renderTR(); }
+function renderAll() { renderKpis(); renderSO(); renderBO(); renderTR(); }
 
 function switchTab(tab) {
   OO.tab = tab;
-  document.getElementById('ooTabSo').classList.toggle('active', tab === 'so');
-  document.getElementById('ooTabTr').classList.toggle('active', tab === 'tr');
+  [['ooTabSo', 'so'], ['ooTabBo', 'bo'], ['ooTabTr', 'tr']].forEach(([id, t]) => document.getElementById(id).classList.toggle('active', tab === t));
   document.getElementById('ooPanelSo').style.display = tab === 'so' ? '' : 'none';
+  document.getElementById('ooPanelBo').style.display = tab === 'bo' ? '' : 'none';
   document.getElementById('ooPanelTr').style.display = tab === 'tr' ? '' : 'none';
-  // rep/stage filters only apply to SOs
-  document.getElementById('ooSoFilters').style.display = tab === 'so' ? '' : 'none';
+  // warehouse/rep/stage/age filters apply to both SO tabs; transfers have their own row
+  document.getElementById('ooSoFilters').style.display = (tab === 'so' || tab === 'bo') ? '' : 'none';
   document.getElementById('ooTrFilters').style.display = tab === 'tr' ? '' : 'none';
 }
 
@@ -222,10 +229,11 @@ async function loadData() {
   if (upd) upd.textContent = 'Snapshot read ' + new Date().toLocaleTimeString();
 }
 
-function reRender() { OO.pageSo = 1; OO.pageTr = 1; renderAll(); }
+function reRender() { OO.pageSo = 1; OO.pageBo = 1; OO.pageTr = 1; renderAll(); }
 
 function bind() {
   document.getElementById('ooTabSo').addEventListener('click', () => switchTab('so'));
+  document.getElementById('ooTabBo').addEventListener('click', () => switchTab('bo'));
   document.getElementById('ooTabTr').addEventListener('click', () => switchTab('tr'));
   const whSel = document.getElementById('ooWarehouse');
   if (whSel) whSel.addEventListener('change', () => { OO.filters.warehouse = whSel.value || 'All'; reRender(); });
