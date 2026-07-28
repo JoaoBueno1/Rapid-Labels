@@ -165,6 +165,9 @@
     // The warehouse big-label encodes the product CODE (never the EAN), CODE128 —
     // exactly what the home Search/Custom print does, so it scans into Cin7.
     if (cell.type === 'biglabel') return { value: usable(cell.code) || usable(cell.sku), fmt: 'CODE128' };
+    // The multi-table carries a barcode per row, not one for the cell — the scan
+    // check doesn't apply to the table as a whole.
+    if (cell.type === 'multitable') return { value: '', fmt: 'CODE128' };
     var real = usable(cell.barcode);
     if (real) return { value: real, fmt: cell.fmt || 'auto' };
     return { value: bcValue(cell, FALLBACK_ORDER), fmt: 'CODE128' };
@@ -367,6 +370,7 @@
       case 'location': return (opts && opts.zebra) ? layoutZebraLocation(cell, W, H) : layoutLocation(cell, W, H);
       case 'product':  return PRODUCT_RECIPES[(opts && opts.productRecipe) || 'stack'](cell, W, H);
       case 'biglabel': return layoutBigLabel(cell, W, H);
+      case 'multitable': return layoutMultiTable(cell, W, H, opts && opts.mlConfig);
       case 'barcode':  return layoutBarcodeCell(cell, W, H);
       case 'text':     return layoutTextCell(cell, W, H);
       default:         return [];
@@ -933,6 +937,57 @@
     return out;
   }
 
+  // ── Recipe: multiTable — the home "Multi-Label" 4-column table ──────────────
+  // EXACT replica of multi-label.js: a printed table (5DC | SKU | BARCODE | QTY)
+  // with a header row, one row per product, and a footer. Four page configs
+  // (A4/A3 × portrait/landscape) each carry their own row cap + row height +
+  // column widths + font sizes; ML_CONFIGS holds the verbatim numbers (fonts in
+  // pt, heights/widths in mm/%). The barcode encodes the product barcode, else
+  // the SKU (multi-label's rule), symbology auto-detected the same way.
+  var ML_CONFIGS = {
+    'A4-portrait':  { maxSlots: 8,  font5dc: 34, fontSku: 22, fontQty: 34, bcH: 18, cellH: 30, w5dc: 18, wsku: 28, wbc: 36, wqty: 18 },
+    'A4-landscape': { maxSlots: 5,  font5dc: 42, fontSku: 26, fontQty: 42, bcH: 22, cellH: 32, w5dc: 16, wsku: 28, wbc: 38, wqty: 18 },
+    'A3-portrait':  { maxSlots: 14, font5dc: 40, fontSku: 26, fontQty: 40, bcH: 22, cellH: 27, w5dc: 16, wsku: 28, wbc: 38, wqty: 18 },
+    'A3-landscape': { maxSlots: 10, font5dc: 44, fontSku: 28, fontQty: 44, bcH: 22, cellH: 27, w5dc: 15, wsku: 26, wbc: 40, wqty: 19 }
+  };
+  function mlRowValue(r) { return usable(r.barcode) || usable(r.sku); }   // barcode, else SKU (home rule)
+  function layoutMultiTable(cell, W, H, cfgKey) {
+    var C = ML_CONFIGS[cfgKey] || ML_CONFIGS['A4-portrait'];
+    var out = [], i, j, PT = PT2MM;
+    var rows = (cell.rows || []).filter(function (r) { return r && (usable(r.dc5) || usable(r.sku)); }).slice(0, C.maxSlots);
+
+    var w5 = W * C.w5dc / 100, wsk = W * C.wsku / 100, wbc = W * C.wbc / 100, wq = W * C.wqty / 100;
+    var cx5 = w5 / 2, cxsk = w5 + wsk / 2, cxbc = w5 + wsk + wbc / 2, cxq = w5 + wsk + wbc + wq / 2;
+    var xbc = w5 + wsk;
+
+    // ── header row (10pt, uppercase, 2px bottom rule) ──
+    var thFs = 10 * PT, headH = 1.5 + thFs + 1.5;
+    var hb = 1.5 + thFs * 0.82;
+    out.push({ kind: 'text', text: '5DC', x: cx5, y: hb, size: thFs, bold: true, align: 'center' });
+    out.push({ kind: 'text', text: 'SKU', x: cxsk, y: hb, size: thFs, bold: true, align: 'center' });
+    out.push({ kind: 'text', text: 'BARCODE', x: cxbc, y: hb, size: thFs, bold: true, align: 'center' });
+    out.push({ kind: 'text', text: 'QTY', x: cxq, y: hb, size: thFs, bold: true, align: 'center' });
+    out.push({ kind: 'line', x1: 0, y1: headH, x2: W, y2: headH, lw: 0.6 });
+
+    // ── data rows (each cellH tall, content centred, 1px rule; last row 2px) ──
+    var y = headH;
+    for (i = 0; i < rows.length; i++) {
+      var r = rows[i], mid = y + C.cellH / 2, dc5 = usable(r.dc5), sku = usable(r.sku), qty = usable(r.qty);
+      if (dc5) { var f5 = Math.min(C.font5dc * PT, fitSize(dc5, w5 * 0.9, C.font5dc * PT, true, 3)); out.push({ kind: 'text', text: dc5, x: cx5, y: mid + f5 * 0.34, size: f5, bold: true, align: 'center' }); }
+      if (sku) { var fsk = Math.min(C.fontSku * PT, fitSize(sku, wsk * 0.92, C.fontSku * PT, false, 2.2)); out.push({ kind: 'text', text: sku, x: cxsk, y: mid + fsk * 0.34, size: fsk, align: 'center' }); }
+      var bcv = mlRowValue(r);
+      if (bcv) { var bc = barcodeFit(bcv, 'auto', xbc + 2, mid - C.bcH / 2, wbc - 4, C.bcH); for (j = 0; j < bc.prims.length; j++) out.push(bc.prims[j]); }
+      if (qty) { var fq = Math.min(C.fontQty * PT, fitSize(String(qty), wq * 0.9, C.fontQty * PT, true, 3)); out.push({ kind: 'text', text: String(qty), x: cxq, y: mid + fq * 0.34, size: fq, bold: true, align: 'center' }); }
+      y += C.cellH;
+      out.push({ kind: 'line', x1: 0, y1: y, x2: W, y2: y, lw: (i === rows.length - 1) ? 0.6 : 0.25 });
+    }
+
+    // ── footer, bottom-right (date · Rapid Labels) ──
+    var ff = 7 * PT;
+    out.push({ kind: 'text', text: (usable(cell.date) ? cell.date + ' · ' : '') + 'Rapid Labels', x: W, y: H - 0.5, size: ff, align: 'right' });
+    return out;
+  }
+
   var PRODUCT_RECIPES = { code5dc: layoutCode5dc, shipping: layoutShipping, stack: layoutProductStack, zebraProduct: layoutZebraProduct, bigLabel: layoutBigLabel };
 
   // ── Backend A — canvas (on-screen preview) ──────────────────────────────
@@ -1035,7 +1090,9 @@
   }
   // Same question, asked about a cell on a given template.
   function cellScan(cell, W, H, recipe) {
-    if (!cell || cell.type === 'text') return { ok: true, empty: true, moduleMM: 0, minMM: MIN_MODULE_MM, format: '', value: '' };
+    // Text has no barcode; the multi-table carries one barcode per row (checked as
+    // it is drawn), so a single cell-level check does not apply to either.
+    if (!cell || cell.type === 'text' || cell.type === 'multitable') return { ok: true, empty: true, moduleMM: 0, minMM: MIN_MODULE_MM, format: '', value: '' };
     var eb = effectiveBarcode(cell);
     var box = barcodeBox(cell.type === 'location' ? 'location' : (cell.type === 'plabel' ? 'plabel' : recipe), W, H);
     return scanQuality(eb.value, eb.fmt, box.w, box.h);

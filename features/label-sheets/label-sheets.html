@@ -70,14 +70,17 @@
             <h3>Print</h3>
             <button class="ls-btn ls-btn-primary ls-btn-block ls-btn-lg" onclick="LS.generatePdf()">⬇ Generate PDF to print</button>
             <div id="lsSheetOpts" style="display:none;margin-top:12px;">
-              <label class="ls-label">Paper size</label>
-              <div style="display:flex;gap:8px;">
-                <button class="ls-btn ls-btn-sm" id="lsPaperA4" onclick="LS.setSheetPaper('A4')" style="flex:1;">A4</button>
-                <button class="ls-btn ls-btn-sm" id="lsPaperA3" onclick="LS.setSheetPaper('A3')" style="flex:1;">A3</button>
+              <div id="lsWhPaperWrap">
+                <label class="ls-label">Paper size</label>
+                <div style="display:flex;gap:8px;">
+                  <button class="ls-btn ls-btn-sm" id="lsPaperA4" onclick="LS.setSheetPaper('A4')" style="flex:1;">A4</button>
+                  <button class="ls-btn ls-btn-sm" id="lsPaperA3" onclick="LS.setSheetPaper('A3')" style="flex:1;">A3</button>
+                </div>
               </div>
+              <button class="ls-btn ls-btn-sm ls-btn-block" id="lsMlEditBtn" style="display:none;" onclick="LS.openMulti()">✎ Edit rows &amp; size</button>
               <label class="ls-label" style="margin-top:10px;">Copies</label>
               <input type="number" min="1" value="1" id="lsCopies" class="ls-input num" />
-              <div class="ls-note" style="margin-top:10px;">Prints landscape. In the print dialog set <b>Scale = Actual size / 100%</b>. One label per page; <b>Copies</b> repeats it.</div>
+              <div class="ls-note" style="margin-top:10px;">Prints at the page size shown. In the print dialog set <b>Scale = Actual size / 100%</b>.</div>
             </div>
             <div class="ls-note" id="lsCelcastNote" style="margin-top:10px;"><b>That's the whole trick:</b> in the print dialog set <b>Scale = Actual size / 100%</b> — never “Fit to page”, which shrinks it (often to ~96%) and then nothing lines up. At 100% these sheets align on their own. Load the correct Celcast sheet.</div>
           </div>
@@ -222,14 +225,57 @@
     </div>
   </div>
 
+  <!-- ═══ Multi-Label editor modal ═══ -->
+  <div class="ls-modal" id="lsMultiModal">
+    <div class="ls-modal-box" style="max-width:700px;">
+      <div class="ls-modal-head">
+        <div class="ls-modal-title">Multi-Label — product table</div>
+        <button class="ls-x" onclick="LS.closeMulti()">×</button>
+      </div>
+
+      <!-- paper + orientation (each combo fits a different number of rows) -->
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px;">
+        <div>
+          <label class="ls-label">Paper</label>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="ls-btn ls-btn-sm" id="lsMlA4" onclick="LS.setMultiConfig('A4',null)">A4</button>
+            <button type="button" class="ls-btn ls-btn-sm" id="lsMlA3" onclick="LS.setMultiConfig('A3',null)">A3</button>
+          </div>
+        </div>
+        <div>
+          <label class="ls-label">Orientation</label>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="ls-btn ls-btn-sm" id="lsMlPortrait" onclick="LS.setMultiConfig(null,'portrait')">Portrait</button>
+            <button type="button" class="ls-btn ls-btn-sm" id="lsMlLandscape" onclick="LS.setMultiConfig(null,'landscape')">Landscape</button>
+          </div>
+        </div>
+        <div style="flex:1;text-align:right;"><span class="ls-note" id="lsMlCap" style="display:inline;"></span></div>
+      </div>
+
+      <!-- add a product by search -->
+      <label class="ls-label" style="margin-top:10px;">Add a product — by 5DC, SKU or name</label>
+      <input type="text" id="lsMlSearch" class="ls-input" placeholder="e.g. 95908, R1021…" autocomplete="off" oninput="LS.mlSearch(this.value)" />
+      <div class="ls-results" id="lsMlResults" style="display:none;"></div>
+
+      <!-- rows -->
+      <div id="lsMlRows" style="max-height:46vh;overflow:auto;margin-top:12px;"></div>
+      <button class="ls-btn ls-btn-sm ls-btn-block" onclick="LS.mlAddRow()" style="margin-top:8px;">+ Add empty row (type by hand)</button>
+
+      <div class="ls-modal-actions">
+        <button class="ls-btn ls-btn-ghost" onclick="LS.closeMulti()">Cancel</button>
+        <button class="ls-btn ls-btn-primary" onclick="LS.applyMulti()">Apply</button>
+      </div>
+    </div>
+  </div>
+
   <!-- libs (same CDNs the other label tools already use) -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="label-assets.js?v=20260727f"></script>
-  <script src="label-templates.js?v=20260728d"></script>
-  <script src="label-render.js?v=20260728c"></script>
-  <script src="label-sheets.js?v=20260728f"></script>
+  <script src="label-templates.js?v=20260728e"></script>
+  <script src="label-render.js?v=20260728d"></script>
+  <script src="label-sheets.js?v=20260728g"></script>
 </body>
 </html>

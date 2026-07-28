@@ -87,7 +87,12 @@
     location: { type: 'location', code: 'MA-G-13-L3' },
     text: { type: 'text', text: 'Rapid LED' },
     plabel: { type: 'plabel', code: 'R1021-WH-TRI', dc5: '95908', desc: '8w Dimmable Downlight Integral Driver IP54 90mm Cut Out, Tri', lines: ['200 – 240VAC / 50-60Hz'], barcode: '9727435304891', fmt: 'auto' },
-    biglabel: { type: 'biglabel', sku: 'R1021-WH-TRI', code: 'R1021-WH-TRI', dc5: '95908', qty: '50', date: '28/07/2026', fmt: 'auto' }
+    biglabel: { type: 'biglabel', sku: 'R1021-WH-TRI', code: 'R1021-WH-TRI', dc5: '95908', qty: '50', date: '28/07/2026', fmt: 'auto' },
+    multitable: { type: 'multitable', date: '28/07/2026', rows: [
+      { dc5: '95908', sku: 'R1021-WH-TRI', barcode: '9727435304891', qty: '50' },
+      { dc5: '30361', sku: 'R2201-WH-40', barcode: '', qty: '8' },
+      { dc5: '77777', sku: 'R3206-TRI', barcode: '9727435181869', qty: '6' }
+    ] }
   };
 
   // ── Rendered preview of one cell (shared by the cards and the sheet) ──
@@ -159,18 +164,22 @@
   // Custom Label and Multi-Label. One card per feature (not per template): the
   // A4/A3 size is chosen inside the editor, exactly like the home modals.
   var SHEET_FEATURES = [
-    { key: 'warehouse', name: 'Warehouse Label', tpl: 'a4label',
+    { key: 'warehouse', kind: 'warehouse', name: 'Warehouse Label', tpl: 'a4label',
       purpose: 'One big single-product label per sheet — SKU, code, barcode, QTY and date. Search a product or type it by hand.',
-      chip: 'Search or manual' }
+      chip: 'Search or manual', size: 'A4 or A3 · landscape', badge: '1 per sheet', exName: 'Warehouse label', exHint: 'SKU, code, barcode, QTY and date' },
+    { key: 'multi', kind: 'multi', name: 'Multi-Label', tpl: 'multiA4P',
+      purpose: 'A table of products — 5DC, SKU, barcode and QTY, one row each. Pick A4/A3 and portrait/landscape in the editor.',
+      chip: 'Product table', size: 'A4 / A3 · portrait or landscape', badge: 'up to 14 rows', exName: 'Product table', exHint: '5DC, SKU, barcode, QTY per row' }
   ];
   function sheetFeature(key) { return SHEET_FEATURES.filter(function (f) { return f.key === key; })[0] || null; }
 
-  // Illustration: a landscape A4/A3 sheet with the REAL rendered big label on it,
-  // so the card shows the actual print (the "example"), framed as a sheet.
-  function sheetImageSVG() {
-    var url = cellPreviewURL(SAMPLES.biglabel, 281, 194, { productRecipe: 'bigLabel' });
-    var pw = 148, ph = Math.round(pw * 194 / 281), px = (158 - pw) / 2, py = (178 - ph) / 2;
-    var s = '<svg width="158" height="178" viewBox="0 0 158 178" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A4/A3 warehouse label sheet">';
+  // Illustration: an A4/A3 sheet (portrait or landscape by the content's aspect)
+  // with the REAL rendered label/table on it — so the card shows the actual print.
+  function sheetFrameSVG(url, wmm, hmm) {
+    var box = 158, boxH = 178, maxW = 150, maxH = 150, asp = wmm / hmm, pw, ph;
+    if (asp >= 1) { pw = maxW; ph = pw / asp; } else { ph = maxH; pw = ph * asp; }
+    var px = (box - pw) / 2, py = (boxH - ph) / 2;
+    var s = '<svg width="' + box + '" height="' + boxH + '" viewBox="0 0 ' + box + ' ' + boxH + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A4/A3 sheet">';
     s += '<rect x="' + (px + 3) + '" y="' + (py + 4) + '" width="' + pw + '" height="' + ph + '" rx="3" fill="#0f172a" opacity="0.10"/>';
     s += '<rect x="' + px + '" y="' + py + '" width="' + pw + '" height="' + ph + '" rx="3" fill="#ffffff" stroke="#334155" stroke-width="1.4"/>';
     if (url) s += '<image href="' + url + '" x="' + (px + 4) + '" y="' + (py + 4) + '" width="' + (pw - 8) + '" height="' + (ph - 8) + '" preserveAspectRatio="xMidYMid meet"/>';
@@ -181,21 +190,24 @@
   function renderSheetCard(f) {
     var t = window.LabelTemplates.byId(f.tpl);
     var m = window.LabelTemplates.meta(t);
-    var preview = sheetImageSVG();
-    var url = cellPreviewURL(SAMPLES.biglabel, m.labelW, m.labelH, { productRecipe: 'bigLabel' });
+    var multi = f.kind === 'multi';
+    var sample = multi ? SAMPLES.multitable : SAMPLES.biglabel;
+    var opts = multi ? { mlConfig: t.mlConfig } : { productRecipe: 'bigLabel' };
+    var url = cellPreviewURL(sample, m.labelW, m.labelH, opts);
+    var preview = sheetFrameSVG(url, m.labelW, m.labelH);
     var example = '<div class="ls-ex">' +
       '<div class="ls-ex-frame" style="min-height:62px;">' + (url ? '<img src="' + url + '" alt="" />' : '<span class="ls-loading">…</span>') + '</div>' +
-      '<div class="ls-ex-name">Warehouse label</div>' +
-      '<div class="ls-ex-hint">SKU, code, barcode, QTY and date</div>' +
+      '<div class="ls-ex-name">' + esc(f.exName) + '</div>' +
+      '<div class="ls-ex-hint">' + esc(f.exHint) + '</div>' +
     '</div>';
     return '<div class="ls-card zebra" onclick="LS.selectSheet(\'' + f.key + '\')">' +
       '<div class="ls-card-head">' +
         '<div class="ls-card-preview">' + preview + '</div>' +
         '<div class="ls-card-id">' +
           '<div class="ls-card-title">' + esc(f.name) + '</div>' +
-          '<div class="ls-card-size">A4 or A3 · landscape</div>' +
-          '<div class="ls-card-badges"><span class="ls-badge up">1 per sheet</span><span class="ls-badge">A4 / A3</span></div>' +
-          '<div class="ls-card-codes"><span class="ls-chip">' + esc(f.chip) + '</span><span class="ls-chip code">Copies &amp; date</span></div>' +
+          '<div class="ls-card-size">' + esc(f.size) + '</div>' +
+          '<div class="ls-card-badges"><span class="ls-badge up">' + esc(f.badge) + '</span><span class="ls-badge">A4 / A3</span></div>' +
+          '<div class="ls-card-codes"><span class="ls-chip">' + esc(f.chip) + '</span><span class="ls-chip code">' + (multi ? 'Copies' : 'Copies &amp; date') + '</span></div>' +
           '<div class="ls-card-purpose">' + esc(f.purpose) + '</div>' +
         '</div>' +
       '</div>' +
@@ -258,7 +270,7 @@
         '<div class="ls-models">' + list.map(renderCard).join('') + '</div>';
     }
     function sheetSection() {
-      return '<div class="ls-sec">' + esc('A4 / A3 sheets') + ' <span>' + esc('printed on your normal printer — search or type a big warehouse label') + '</span></div>' +
+      return '<div class="ls-sec">' + esc('A4 / A3 sheets') + ' <span>' + esc('printed on your normal printer — a single big label, or a product table') + '</span></div>' +
         '<div class="ls-models">' + SHEET_FEATURES.map(renderSheetCard).join('') + '</div>';
     }
     el('lsModelGrid').innerHTML =
@@ -267,14 +279,133 @@
       section('Zebra — thermal labels', 'single 4×6 labels on the Zebra thermal printer', zebra);
   }
 
-  // A sheet feature = a base template + an editor mode. Selecting one enters the
-  // editor and opens the fill form straight away (1-up, like the home modal).
+  // A sheet feature = a base template + an editor. Warehouse opens the single-cell
+  // fill form; Multi-Label opens its own rows table (choose size/orientation there).
   function selectSheet(key) {
     var f = sheetFeature(key); if (!f) return;
     LS._sheetFeature = f;
     selectModel(f.tpl);
-    openCell(0, f);
+    if (f.kind === 'multi') openMulti();
+    else openCell(0, f);
   }
+
+  // ═══ Multi-Label editor (the home 4-column product table) ═══
+  var ML_CAP = { 'A4-portrait': 8, 'A4-landscape': 5, 'A3-portrait': 14, 'A3-landscape': 10 };
+  function mlSizeOrient() {
+    var c = (LS.tpl && LS.tpl.mlConfig) || 'A4-portrait', p = c.split('-');
+    return { size: p[0], orient: p[1] };
+  }
+  function mlMaxSlots() { return ML_CAP[(LS.tpl && LS.tpl.mlConfig)] || 8; }
+
+  function openMulti() {
+    var c0 = LS.cells[0];
+    LS.mlRows = (c0 && c0.rows) ? c0.rows.map(function (r) { return Object.assign({}, r); }) : [];
+    var so = mlSizeOrient();
+    updateMlToggles(so.size, so.orient);
+    renderMlRows();
+    updateMlCap();
+    var s = el('lsMlSearch'); if (s) s.value = '';
+    var rr = el('lsMlResults'); if (rr) { rr.style.display = 'none'; rr.innerHTML = ''; }
+    openModal('lsMultiModal');
+  }
+  function closeMulti() { closeModal('lsMultiModal'); }
+
+  function updateMlToggles(size, orient) {
+    var map = { lsMlA4: size === 'A4', lsMlA3: size === 'A3', lsMlPortrait: orient === 'portrait', lsMlLandscape: orient === 'landscape' };
+    Object.keys(map).forEach(function (id) { var e = el(id); if (e) e.classList.toggle('ls-btn-primary', map[id]); });
+  }
+  function updateMlCap() {
+    var e = el('lsMlCap'); if (!e) return;
+    var so = mlSizeOrient();
+    e.innerHTML = '<b>' + LS.mlRows.length + '</b> / ' + mlMaxSlots() + ' rows fit · ' + so.size + ' ' + so.orient;
+  }
+
+  // Swap the Multi template when size / orientation changes (keeps the rows).
+  function setMultiConfig(size, orient) {
+    var cur = mlSizeOrient();
+    size = size || cur.size; orient = orient || cur.orient;
+    var id = 'multi' + size + (orient === 'portrait' ? 'P' : 'L');
+    var t = window.LabelTemplates.byId(id); if (!t) return;
+    mlReadRows();
+    LS.tpl = t; LS.caps = window.LabelTemplates.meta(t);
+    LS.cells = [LS.cells[0] || null];
+    updateMlToggles(size, orient);
+    updateMlCap();
+    el('lsEdName').textContent = LS.caps.name;
+    el('lsEdMeta').textContent = LS.caps.media || LS.caps.size;
+    el('lsSub').textContent = LS.caps.name + ' — ' + (LS.caps.media || LS.caps.size);
+    renderSheet();
+  }
+
+  function mlRowHtml(r, i) {
+    return '<div class="ls-mlrow" data-bc="' + esc(r.barcode || '') + '" style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #eef2f6;">' +
+      '<span style="width:20px;color:#94a3b8;font-size:12px;text-align:right;flex-shrink:0;">' + (i + 1) + '</span>' +
+      '<input class="ls-input" data-f="dc5" value="' + esc(r.dc5 || '') + '" placeholder="5DC" style="width:80px;flex-shrink:0;" autocomplete="off" />' +
+      '<input class="ls-input" data-f="sku" value="' + esc(r.sku || '') + '" placeholder="Code / SKU" style="flex:1;min-width:0;" autocomplete="off" />' +
+      '<input class="ls-input" data-f="qty" value="' + esc(r.qty || '') + '" placeholder="QTY" style="width:62px;flex-shrink:0;" autocomplete="off" />' +
+      '<button class="ls-btn ls-btn-sm ls-btn-ghost" onclick="LS.mlRemoveRow(' + i + ')" style="flex-shrink:0;" title="Remove">✕</button>' +
+    '</div>';
+  }
+  function renderMlRows() {
+    var box = el('lsMlRows'); if (!box) return;
+    if (!LS.mlRows.length) { box.innerHTML = '<div class="ls-note" style="padding:12px 0;">No rows yet — search a product above, or add an empty row.</div>'; return; }
+    box.innerHTML = LS.mlRows.map(mlRowHtml).join('');
+  }
+  // Read the DOM inputs back into state (barcode kept on the row's data-bc).
+  function mlReadRows() {
+    var box = el('lsMlRows'); if (!box) return;
+    var out = [];
+    box.querySelectorAll('.ls-mlrow').forEach(function (rowEl) {
+      var g = function (f) { var e = rowEl.querySelector('[data-f="' + f + '"]'); return e ? e.value.trim() : ''; };
+      out.push({ dc5: g('dc5'), sku: g('sku'), qty: g('qty'), barcode: rowEl.getAttribute('data-bc') || '' });
+    });
+    LS.mlRows = out;
+  }
+  function mlAddRow() {
+    mlReadRows();
+    if (LS.mlRows.length >= mlMaxSlots()) { alert('This layout fits ' + mlMaxSlots() + ' rows. Switch to a bigger size or orientation for more.'); return; }
+    LS.mlRows.push({ dc5: '', sku: '', qty: '', barcode: '' });
+    renderMlRows(); updateMlCap();
+  }
+  function mlRemoveRow(i) {
+    mlReadRows();
+    LS.mlRows.splice(i, 1);
+    renderMlRows(); updateMlCap();
+  }
+  function mlSearch(term) {
+    term = (term || '').trim().toLowerCase();
+    var box = el('lsMlResults');
+    if (term.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    if (!LS.products) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Loading products…</span></div>'; return; }
+    LS._mlResults = LS.products.filter(function (p) {
+      return ((p.attribute1 || '').toLowerCase().indexOf(term) >= 0) || ((p.sku || '').toLowerCase().indexOf(term) >= 0) || ((p.name || '').toLowerCase().indexOf(term) >= 0);
+    }).slice(0, 40);
+    if (!LS._mlResults.length) { box.style.display = 'block'; box.innerHTML = '<div class="ls-result"><span class="rname">Nothing found.</span></div>'; return; }
+    box.innerHTML = LS._mlResults.map(function (p, i) {
+      return '<div class="ls-result" onclick="LS.mlPickNew(' + i + ')">' +
+        '<span class="r5dc">' + esc(p.attribute1 || '') + '</span>' +
+        '<span class="rsku">' + esc(p.sku || '') + '</span>' +
+        '<span class="rname">' + esc((p.name || '').slice(0, 46)) + '</span></div>';
+    }).join('');
+    box.style.display = 'block';
+  }
+  function mlPickNew(i) {
+    var p = LS._mlResults[i]; if (!p) return;
+    mlReadRows();
+    if (LS.mlRows.length >= mlMaxSlots()) { alert('This layout fits ' + mlMaxSlots() + ' rows. Switch to a bigger size or orientation for more.'); return; }
+    LS.mlRows.push({ dc5: p.attribute1 || '', sku: p.sku || '', barcode: p.barcode || '', qty: '1' });
+    el('lsMlSearch').value = '';
+    el('lsMlResults').style.display = 'none';
+    renderMlRows(); updateMlCap();
+  }
+  function applyMulti() {
+    mlReadRows();
+    var rows = LS.mlRows.filter(function (r) { return usableStr(r.dc5) || usableStr(r.sku); });
+    LS.cells[0] = rows.length ? { type: 'multitable', rows: rows, date: fmtDate(todayISO()) } : null;
+    closeMulti();
+    renderSheet();
+  }
+  function usableStr(v) { return String(v == null ? '' : v).trim(); }
 
   function selectModel(id) {
     var t = window.LabelTemplates.byId(id);
@@ -298,7 +429,12 @@
     var ac = el('lsAlignCard'); if (ac) ac.style.display = (zebra || sheet) ? 'none' : '';
     var so = el('lsSheetOpts'); if (so) so.style.display = sheet ? 'block' : 'none';
     var cn = el('lsCelcastNote'); if (cn) cn.style.display = (zebra || sheet) ? 'none' : '';
-    if (sheet) updatePaperSeg(t.id === 'a3label' ? 'A3' : 'A4');
+    // Warehouse shows the A4/A3 toggle here; Multi picks size + orientation in its
+    // own modal, so show an "Edit rows" button instead of the paper toggle.
+    var isMulti = sheet && !!t.mlConfig;
+    var whp = el('lsWhPaperWrap'); if (whp) whp.style.display = (sheet && !isMulti) ? 'block' : 'none';
+    var mlb = el('lsMlEditBtn'); if (mlb) mlb.style.display = isMulti ? 'block' : 'none';
+    if (sheet && !isMulti) updatePaperSeg(t.id === 'a3label' ? 'A3' : 'A4');
     el('lsModels').style.display = 'none';
     el('lsEditor').style.display = 'block';
     loadCalibInputs();
@@ -326,7 +462,7 @@
     sheet.style.height = (PH * scale) + 'px';
 
     var start = Math.max(1, intVal('lsStart', 1));
-    var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack', zebra: !!(LS.caps && LS.caps.family === 'zebra') };
+    var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack', zebra: !!(LS.caps && LS.caps.family === 'zebra'), mlConfig: LS.tpl && LS.tpl.mlConfig };
     var total = t.cols * t.rows, html = '', badCount = 0;
 
     // Margin visualisation: draw the page's real margin band around the label
@@ -863,7 +999,7 @@
     var sheets = (LS.caps && LS.caps.family === 'sheet') ? Math.max(1, intVal('lsCopies', 1)) : Math.max(1, intVal('lsSheets', 1));
     var start = Math.max(1, intVal('lsStart', 1));
     var total = t.cols * t.rows;
-    var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack', zebra: !!(LS.caps && LS.caps.family === 'zebra') };
+    var opts = { productRecipe: LS.caps ? LS.caps.productRecipe : 'stack', zebra: !!(LS.caps && LS.caps.family === 'zebra'), mlConfig: LS.tpl && LS.tpl.mlConfig };
 
     for (var s = 0; s < sheets; s++) {
       if (s > 0) doc.addPage([pW, pH], orient);
@@ -1134,6 +1270,8 @@
       m.addEventListener('input', live);
       m.addEventListener('change', live);
     }
+    var mm = el('lsMultiModal');
+    if (mm) mm.addEventListener('click', function (ev) { if (ev.target === mm) mm.classList.remove('open'); });
   }
 
   // expose
@@ -1143,6 +1281,14 @@
   LS.bigSearch = bigSearch;
   LS.bigChoose = bigChoose;
   LS.pickBigMode = pickBigMode;
+  LS.openMulti = openMulti;
+  LS.closeMulti = closeMulti;
+  LS.setMultiConfig = setMultiConfig;
+  LS.mlSearch = mlSearch;
+  LS.mlPickNew = mlPickNew;
+  LS.mlAddRow = mlAddRow;
+  LS.mlRemoveRow = mlRemoveRow;
+  LS.applyMulti = applyMulti;
   LS.backToModels = backToModels;
   LS.renderSheet = renderSheet;
   LS.updateSummary = updateSummary;

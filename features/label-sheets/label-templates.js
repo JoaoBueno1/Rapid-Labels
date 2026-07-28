@@ -46,7 +46,16 @@
     // Multi-Label features. One giant warehouse label per sheet (landscape), or a
     // tabular multi-label. pageW>pageH marks landscape.
     { id:'a4label', avery:'—', code:'A4', up:1, cols:1, rows:1, labelW:281.0, labelH:194.0, marginTop:8.0, marginLeft:8.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:297, pageH:210, media:'A4 · 297 × 210 mm (landscape)' },
-    { id:'a3label', avery:'—', code:'A3', up:1, cols:1, rows:1, labelW:404.0, labelH:281.0, marginTop:8.0, marginLeft:8.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:420, pageH:297, media:'A3 · 420 × 297 mm (landscape)' }
+    { id:'a3label', avery:'—', code:'A3', up:1, cols:1, rows:1, labelW:404.0, labelH:281.0, marginTop:8.0, marginLeft:8.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:420, pageH:297, media:'A3 · 420 × 297 mm (landscape)' },
+
+    // ── Multi-Label table (family 'sheet', one table per page) — the home
+    // Multi-Label. Page + margin per the home @page (A4 6mm 8mm, A3 4mm 6mm);
+    // the single cell IS the printable area, filled by the multiTable recipe.
+    // mlConfig picks the row cap / row height / fonts / column widths.
+    { id:'multiA4P', avery:'—', code:'A4', up:1, cols:1, rows:1, labelW:194.0, labelH:285.0, marginTop:6.0, marginLeft:8.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:210, pageH:297, media:'A4 portrait · up to 8 rows',  mlConfig:'A4-portrait' },
+    { id:'multiA4L', avery:'—', code:'A4', up:1, cols:1, rows:1, labelW:281.0, labelH:198.0, marginTop:6.0, marginLeft:8.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:297, pageH:210, media:'A4 landscape · up to 5 rows', mlConfig:'A4-landscape' },
+    { id:'multiA3P', avery:'—', code:'A3', up:1, cols:1, rows:1, labelW:285.0, labelH:412.0, marginTop:4.0, marginLeft:6.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:297, pageH:420, media:'A3 portrait · up to 14 rows', mlConfig:'A3-portrait' },
+    { id:'multiA3L', avery:'—', code:'A3', up:1, cols:1, rows:1, labelW:408.0, labelH:289.0, marginTop:4.0, marginLeft:6.0, pitchX:0, pitchY:0, radius:0, shape:'rect', family:'sheet', pageW:420, pageH:297, media:'A3 landscape · up to 10 rows', mlConfig:'A3-landscape' }
   ];
 
   // ── What each sheet IS FOR, and what it may carry ─────────────────────────
@@ -79,7 +88,11 @@
     zebraStk1: { name: 'Zebra sticker — whole label', purpose: 'One Rapid LED product sticker filling the 4×6 thermal label.', allow: ['plabel'], productRecipe: 'stack', tuned: true },
     zebraStk2: { name: 'Zebra sticker — 2 up', purpose: 'Two Rapid LED product stickers on one 4×6 thermal label (split in half).', allow: ['plabel'], productRecipe: 'stack', tuned: true },
     a4label: { name: 'Warehouse label — A4', purpose: 'One giant warehouse label filling an A4 sheet: SKU, code, barcode, QTY and date.', allow: ['biglabel'], productRecipe: 'bigLabel', tuned: true },
-    a3label: { name: 'Warehouse label — A3', purpose: 'One giant warehouse label filling an A3 sheet: SKU, code, barcode, QTY and date.', allow: ['biglabel'], productRecipe: 'bigLabel', tuned: true }
+    a3label: { name: 'Warehouse label — A3', purpose: 'One giant warehouse label filling an A3 sheet: SKU, code, barcode, QTY and date.', allow: ['biglabel'], productRecipe: 'bigLabel', tuned: true },
+    multiA4P: { name: 'Multi-Label — A4 portrait', purpose: 'A table of products — 5DC, SKU, barcode and QTY — one row each.', allow: ['multitable'], productRecipe: 'stack', tuned: true },
+    multiA4L: { name: 'Multi-Label — A4 landscape', purpose: 'A table of products — 5DC, SKU, barcode and QTY — one row each.', allow: ['multitable'], productRecipe: 'stack', tuned: true },
+    multiA3P: { name: 'Multi-Label — A3 portrait', purpose: 'A table of products — 5DC, SKU, barcode and QTY — one row each.', allow: ['multitable'], productRecipe: 'stack', tuned: true },
+    multiA3L: { name: 'Multi-Label — A3 landscape', purpose: 'A table of products — 5DC, SKU, barcode and QTY — one row each.', allow: ['multitable'], productRecipe: 'stack', tuned: true }
   };
   var DEFAULT_CAPS = { name: '', purpose: '', allow: ['product', 'barcode', 'text'], productRecipe: 'stack', tuned: false };
   function caps(id) { return Object.assign({}, DEFAULT_CAPS, CAPS[id] || {}); }
