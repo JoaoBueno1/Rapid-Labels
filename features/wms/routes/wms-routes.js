@@ -118,6 +118,24 @@ function registerWmsRoutes(app, sb) {
     res.json(ready.map((p) => ({ parcelId: p.id, waveId: p.wave_id, taskId: p.cin7_task_id, ref: p.cin7_ref, wave: wmap[p.wave_id] || {}, lines: lmap[p.id] || [] })));
   }));
 
+  // Open ANY sales order for packing (typed/scanned SO). Builds/gets the wave — reads
+  // the Cin7 sale, creates our DRAFT wave (no Cin7 write yet). Works whether or not the
+  // order was picked in our WMS: `picked` tells the UI. Un-picked orders get picked +
+  // packed together at authorise (for testing real orders before the pick flow is used).
+  app.post('/api/wms/pack/open', A(async (req, res) => {
+    const orderNumber = String((req.body || {}).orderNumber || '').trim();
+    if (!orderNumber) throw new Error('orderNumber required');
+    const w = await engine.buildWave(sb, orderNumber, user(req));
+    const pick = (w.parcels || []).find(p => p.kind === 'pick');
+    if (!pick) throw new Error('This order has no normal (pick) lines to pack.');
+    res.json({
+      parcelId: pick.id, taskId: pick.cin7_task_id || null, picked: !!pick.cin7_task_id,
+      hasAssembly: !!w.wave.has_assembly,
+      wave: { order_number: w.wave.order_number, customer: w.wave.customer, ship_to: w.wave.ship_to },
+      lines: pick.lines
+    });
+  }));
+
   // assign a line to a carton (persists parcel_lines.box; commitPack reads it)
   app.post('/api/wms/pack/assign', A(async (req, res) => {
     const { parcelLineId, box } = req.body || {};

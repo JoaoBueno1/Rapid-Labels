@@ -39,51 +39,30 @@ async function sbClient() {
   return (window.supabaseSearch && window.supabaseSearch.client) || window.supabase || null;
 }
 
-// ═══ landing: the pack queue ═══
-async function loadQueue() {
-  const body = $('pkQueueBody');
-  body.innerHTML = '<tr><td colspan="4" class="pk-muted">Loading…</td></tr>';
+// ═══ landing: open a typed/scanned sales order ═══
+async function openOrder() {
+  const on = ($('pkOrderSearch').value || '').trim();
+  if (!on) return;
+  const msg = $('pkOpenMsg'), btn = $('pkOrderGo');
+  msg.className = 'pk-openmsg'; msg.textContent = 'Opening ' + on + '…'; btn.disabled = true;
   try {
-    PACK.queue = await api('GET', '/pack/ready');
-    renderQueue();
+    const sel = await api('POST', '/pack/open', { orderNumber: on });   // reads Cin7, builds our wave (no Cin7 write)
+    msg.textContent = '';
+    await openWorkspace(sel);
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="4" class="pk-muted">Couldn't load the pack queue — ${esc(e.message)}.<br><span class="pk-small">The WMS API needs the server running the latest code and the <b>wms</b> schema deployed + exposed.</span></td></tr>`;
-    $('pkQueueCount').textContent = '';
-  }
-}
-function renderQueue() {
-  const body = $('pkQueueBody');
-  $('pkQueueCount').textContent = PACK.queue.length ? `${PACK.queue.length} order${PACK.queue.length !== 1 ? 's' : ''}` : '';
-  if (!PACK.queue.length) { body.innerHTML = '<tr><td colspan="4" class="pk-muted">Nothing waiting to pack right now.</td></tr>'; return; }
-  body.innerHTML = PACK.queue.map(it => {
-    const n = (it.lines || []).length;
-    return `<tr class="pk-qrow" data-parcel="${it.parcelId}">` +
-      `<td class="rt-mono"><b>${esc(it.wave.order_number || ('parcel ' + it.parcelId))}</b></td>` +
-      `<td>${esc(it.wave.customer || '—')}</td>` +
-      `<td class="r">${n}</td>` +
-      `<td class="r"><button class="rt-btn rt-btn-sm rt-btn-primary" data-parcel="${it.parcelId}">Pack →</button></td></tr>`;
-  }).join('');
-}
-function openBySearch() {
-  const q = ($('pkOrderSearch').value || '').trim().toLowerCase();
-  if (!q) return;
-  const it = PACK.queue.find(x => String(x.wave.order_number || '').toLowerCase() === q) ||
-             PACK.queue.find(x => String(x.wave.order_number || '').toLowerCase().includes(q));
-  if (it) selectOrder(it.parcelId);
-  else { $('pkScanMsg') && ($('pkScanMsg').textContent = ''); alert('That order is not in the pack queue — only PICKED orders can be packed.'); }
+    msg.className = 'pk-openmsg err'; msg.textContent = '✗ ' + e.message;
+  } finally { btn.disabled = false; }
 }
 
 // ═══ workspace ═══
-async function selectOrder(parcelId) {
-  const it = PACK.queue.find(x => String(x.parcelId) === String(parcelId));
-  if (!it) return;
-  PACK.sel = it;
-  PACK.lines = (it.lines || []).slice();
+async function openWorkspace(sel) {
+  PACK.sel = sel;
+  PACK.lines = (sel.lines || []).slice();
   PACK.packed = {}; PACK.lineBox = {};
   PACK.boxes = [{ name: 'Box 1', l: '', w: '', h: '', weight: '' }];
   PACK.currentBox = 'Box 1';
   PACK.committed = false;
-  PACK.lines.forEach(l => { PACK.packed[l.id] = Number(l.qty_scanned) > 0 ? 0 : 0; PACK.lineBox[l.id] = 'Box 1'; });
+  PACK.lines.forEach(l => { PACK.packed[l.id] = 0; PACK.lineBox[l.id] = 'Box 1'; });
 
   // pre-fetch product barcodes for instant client-side scan resolution
   PACK.barcodeMap = {}; PACK.skuByUpper = {};
@@ -92,21 +71,24 @@ async function selectOrder(parcelId) {
     const sb = await sbClient();
     if (sb) {
       const skus = [...new Set(PACK.lines.map(l => l.sku).filter(Boolean))];
-      const { data } = await sb.schema('cin7_mirror').from('products').select('sku,barcode').in('sku', skus);
-      (data || []).forEach(p => { if (p.barcode && !/^0+$/.test(String(p.barcode))) PACK.barcodeMap[String(p.barcode).trim()] = p.sku; });
+      if (skus.length) { const { data } = await sb.schema('cin7_mirror').from('products').select('sku,barcode').in('sku', skus); (data || []).forEach(p => { if (p.barcode && !/^0+$/.test(String(p.barcode))) PACK.barcodeMap[String(p.barcode).trim()] = p.sku; }); }
     }
   } catch (_) {}
 
   $('pkLanding').style.display = 'none';
   $('pkWorkspace').style.display = '';
-  $('pkWsNo').textContent = it.wave.order_number || ('parcel ' + it.parcelId);
-  $('pkWsCust').textContent = it.wave.customer || '';
+  $('pkWsNo').textContent = sel.wave.order_number || '';
+  $('pkWsCust').textContent = sel.wave.customer || '';
+  const auth = $('pkAuthorise');
+  auth.textContent = sel.picked ? '✓ Authorise pack' : '✓ Pick & pack';   // un-picked orders get picked+packed together
   renderBoxes(); renderCurrentBoxSelect(); renderLines(); updateProgress();
   setTimeout(() => { const s = $('pkScan'); if (s) s.focus(); }, 60);
 }
 function backToOrders() {
   $('pkWorkspace').style.display = 'none';
   $('pkLanding').style.display = '';
+  const s = $('pkOrderSearch'); if (s) { s.value = ''; s.focus(); }
+  const m = $('pkOpenMsg'); if (m) m.textContent = '';
 }
 
 // ── scanning ──
@@ -204,10 +186,22 @@ async function authorise() {
   readBoxInputs();
   document.querySelectorAll('.pk-boxsel').forEach(s => { PACK.lineBox[s.getAttribute('data-line')] = s.value; });
   const p = totPacked(), t = totOrdered();
+  if (p === 0) { alert('Scan at least one item before authorising.'); return; }
   if (p < t && !confirm(`Only ${p} of ${t} items scanned. Authorise a short pack anyway?`)) return;
+  if (!it.picked && !confirm(`${it.wave.order_number} isn't picked in our WMS yet.\n\nAuthorising will PICK it (from Main Warehouse) AND PACK it in Cin7 — one clean write each (safe to retry). Use this for orders not yet picked elsewhere.\n\nContinue?`)) return;
   const btn = $('pkAuthorise'), msg = $('pkAuthMsg');
-  btn.disabled = true; btn.textContent = 'Authorising…'; msg.textContent = '';
+  btn.disabled = true; msg.textContent = '';
   try {
+    // 1) not picked in our WMS → record the scanned qtys (from Main Warehouse root) and pick first
+    if (!it.picked) {
+      btn.textContent = 'Picking…';
+      const scanned = PACK.lines.filter(l => (PACK.packed[l.id] || 0) > 0);
+      for (const l of scanned) await api('POST', '/scan', { parcelLineId: l.id, binCode: '', qty: PACK.packed[l.id], sku: l.sku });
+      await api('POST', '/commit/pick', { parcelId: it.parcelId });
+      it.picked = true;
+    }
+    // 2) assign cartons + pack
+    btn.textContent = 'Packing…';
     await Promise.all(PACK.lines.map(l => api('POST', '/pack/assign', { parcelLineId: l.id, box: PACK.lineBox[l.id] || 'Box 1' })));
     const boxes = PACK.boxes.map(b => ({ name: b.name, length: num(b.l), width: num(b.w), height: num(b.h), weight: num(b.weight) }));
     const r = await api('POST', '/commit/pack', { parcelId: it.parcelId, boxes });
@@ -215,11 +209,10 @@ async function authorise() {
     msg.innerHTML = `<span class="pk-ok-msg">✓ Packed${r.alreadyDone ? ' (already done)' : ''} — fulfilment ${esc(r.taskId || '')}.</span>`;
     btn.textContent = '✓ Packed'; btn.classList.remove('pk-ready');
     $('pkPrint').disabled = false; $('pkBook').disabled = false;
-    PACK.queue = PACK.queue.filter(x => x.parcelId !== it.parcelId);
     printSlip();
   } catch (e) {
     msg.innerHTML = `<span class="pk-err-msg">✗ ${esc(e.message)}</span>`;
-    btn.disabled = false; btn.textContent = '✓ Authorise pack';
+    btn.disabled = false; btn.textContent = it.picked ? '✓ Authorise pack' : '✓ Pick & pack';
   }
 }
 function printSlip() {
@@ -250,9 +243,7 @@ function sendToBooking() {
 
 // ═══ events ═══
 document.addEventListener('click', e => {
-  const row = e.target.closest('[data-parcel]'); if (row) { selectOrder(row.getAttribute('data-parcel')); return; }
-  if (e.target.id === 'pkReload') { loadQueue(); return; }
-  if (e.target.id === 'pkOrderGo') { openBySearch(); return; }
+  if (e.target.id === 'pkOrderGo') { openOrder(); return; }
   if (e.target.id === 'pkBack') { backToOrders(); return; }
   if (e.target.id === 'pkAddBox') { addBox(); return; }
   const del = e.target.closest('.pk-boxdel'); if (del) { removeBox(Number(del.getAttribute('data-i'))); return; }
@@ -264,11 +255,11 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.target.id === 'pkScan' && e.key === 'Enter') { e.preventDefault(); const v = e.target.value; e.target.value = ''; onScan(v); e.target.focus(); }
-  if (e.target.id === 'pkOrderSearch' && e.key === 'Enter') { e.preventDefault(); openBySearch(); }
+  if (e.target.id === 'pkOrderSearch' && e.key === 'Enter') { e.preventDefault(); openOrder(); }
 });
 document.addEventListener('change', e => {
   if (e.target.id === 'pkCurrentBox') { PACK.currentBox = e.target.value; }
   if (e.target.classList && e.target.classList.contains('pk-boxsel')) { PACK.lineBox[e.target.getAttribute('data-line')] = e.target.value; }
 });
 
-loadQueue();
+setTimeout(() => { const s = $('pkOrderSearch'); if (s) s.focus(); }, 50);

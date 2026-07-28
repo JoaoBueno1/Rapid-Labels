@@ -22,27 +22,17 @@
 
   <main class="rt-main">
 
-    <!-- ═══ LANDING — choose a picked order ═══ -->
+    <!-- ═══ LANDING — open a sales order to pack ═══ -->
     <section id="pkLanding">
-      <div class="pk-scanbar">
-        <div class="pk-scanbar-hint">💡 Only <b>picked</b> orders show here — pack what's been picked, into cartons, then hand off to booking. Scan or type a sales order to jump straight to it.</div>
-        <div class="pk-scanbar-row">
-          <input type="text" id="pkOrderSearch" class="rt-input" placeholder="Scan or type a sales order (e.g. SO-207463)…" autocomplete="off" />
-          <button class="rt-btn rt-btn-primary" type="button" id="pkOrderGo">Open order</button>
+      <div class="pk-open">
+        <div class="pk-open-title">Open a sales order to pack</div>
+        <div class="pk-open-hint">Type or scan the <b>sales order</b> — we read it from Cin7, you verify the items into cartons, then ship. Reading the SO pre-fills everything for the TMS booking.</div>
+        <div class="pk-open-row">
+          <input type="text" id="pkOrderSearch" class="rt-input" placeholder="Sales order   (e.g. SO-207463)" autocomplete="off" />
+          <button class="rt-btn rt-btn-primary" type="button" id="pkOrderGo">Open order →</button>
         </div>
-      </div>
-
-      <div class="rt-toolbar">
-        <b class="pk-toolbar-title">Waiting to pack</b>
-        <span class="rt-count" id="pkQueueCount"></span>
-        <div class="pk-grow"></div>
-        <button class="rt-btn" type="button" id="pkReload">↻ Reload</button>
-      </div>
-      <div class="rt-table-wrap">
-        <table class="rt-table">
-          <thead><tr><th>Order</th><th>Customer</th><th class="r">Lines</th><th class="r">Action</th></tr></thead>
-          <tbody id="pkQueueBody"></tbody>
-        </table>
+        <div id="pkOpenMsg" class="pk-openmsg"></div>
+        <div class="pk-open-note">Picked in our WMS → packs it. Not picked yet → we pick &amp; pack it together (from Main Warehouse) — handy for testing real orders.</div>
       </div>
     </section>
 

@@ -9,13 +9,15 @@
 td.c, th.c { text-align: center; }
 td.r, th.r { text-align: right; }
 
-/* ── landing: scan/find an order ── */
-.pk-scanbar { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 14px; padding: 16px 18px; margin-bottom: 18px; }
-.pk-scanbar-hint { font-size: 13.5px; color: #1e3a8a; margin-bottom: 12px; }
-.pk-scanbar-row { display: flex; gap: 10px; }
-.pk-scanbar-row .rt-input { flex: 1; font-size: 15px; }
-.pk-qrow { cursor: pointer; }
-.pk-qrow:hover td { background: #f8fafc; }
+/* ── landing: open a sales order ── */
+.pk-open { max-width: 640px; margin: 44px auto 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 30px 34px; text-align: center; box-shadow: 0 1px 3px rgba(15,23,42,.04); }
+.pk-open-title { font-size: 20px; font-weight: 700; color: #0f172a; }
+.pk-open-hint { font-size: 14px; color: #64748b; margin: 8px 0 22px; line-height: 1.55; }
+.pk-open-row { display: flex; gap: 10px; }
+.pk-open-row .rt-input { flex: 1; font-size: 17px; font-family: "IBM Plex Mono", monospace; text-align: center; }
+.pk-openmsg { min-height: 20px; margin-top: 12px; font-size: 14px; }
+.pk-openmsg.err { color: #b91c1c; font-weight: 600; }
+.pk-open-note { font-size: 12px; color: #94a3b8; margin-top: 20px; line-height: 1.55; border-top: 1px solid #f1f5f9; padding-top: 14px; }
 
 /* ── workspace ── */
 .pk-ws-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
