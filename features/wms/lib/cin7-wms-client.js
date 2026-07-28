@@ -178,6 +178,29 @@ async function availability(sku) {
   return (ok(r) && r.body && r.body.ProductAvailabilityList) || [];
 }
 
+// ── Stock transfers (bin↔bin, warehouse↔warehouse) ──────────────────────────
+// The ONE Cin7 write already proven in production (gateway-engine.js): POST DRAFT
+// then PUT COMPLETED. From/To are location GUIDs (a bin GUID or a warehouse root).
+// lines: [{ ProductID, TransferQuantity, Comments }]
+async function createTransfer({ fromLocationId, toLocationId, reference, lines }) {
+  const r = await post('stockTransfer', { Status: 'DRAFT', From: fromLocationId, To: toLocationId, Reference: reference, Lines: lines });
+  if (!ok(r)) throw new Error(`createTransfer: ${errText(r)}`);
+  return r.body; // { TaskID, Number, ... }
+}
+async function completeTransfer({ taskId, fromLocationId, toLocationId, reference, lines }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const r = await write('stockTransfer', {
+    TaskID: taskId, From: fromLocationId, To: toLocationId, Status: 'COMPLETED',
+    CompletionDate: today, Reference: reference, CostDistributionType: 'Cost', SkipOrder: true, Lines: lines,
+  });
+  if (!ok(r)) throw new Error(`completeTransfer: ${errText(r)}`);
+  return r.body;
+}
+async function getTransfer(taskId) {
+  const r = await get(`stockTransfer?ID=${taskId}`);
+  return ok(r) ? r.body : null;
+}
+
 // ── Product / assembly detection ─────────────────────────────────────────────
 async function getProduct(productId) {
   const r = await get(`product?ID=${productId}`);
@@ -194,5 +217,6 @@ module.exports = {
   findSaleByNumber, getSale, getFulfilments, createFulfilment,
   authorisePick, getPick, authorisePack, getPack,
   createBuild, setBuildRecipe, completeBuild, getBuild, findLinkedBuild, recipeFromExistingBuild,
+  createTransfer, completeTransfer, getTransfer,
   availability, getProduct, isAssembled,
 };

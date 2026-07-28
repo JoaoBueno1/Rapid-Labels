@@ -13,6 +13,9 @@
 'use strict';
 
 const engine = require('../lib/wms-engine');
+const transfers = require('../lib/wms-transfers');
+const sync = require('../lib/wms-sync');
+const reconciler = require('../lib/reconciler');
 
 function registerWmsRoutes(app, sb) {
   if (!sb) { console.warn('⚠️  WMS routes: no Supabase backend — skipping'); return; }
@@ -82,6 +85,29 @@ function registerWmsRoutes(app, sb) {
     const { parcelId, boxes } = req.body || {};
     res.json(await engine.commitPack(sb, Number(parcelId), boxes || [], user(req)));
   }));
+
+  // ── Transfers (bin↔bin, warehouse↔warehouse) — pausable sessions ──
+  app.post('/api/wms/transfer', A(async (req, res) => {
+    const { kind, fromLocation, toLocation } = req.body || {};
+    res.json(await transfers.stageTransfer(sb, { kind, fromLocation, toLocation }, user(req)));
+  }));
+  app.get('/api/wms/transfer/:id', A(async (req, res) => {
+    const t = await transfers.getTransferState(sb, Number(req.params.id));
+    if (!t) return res.status(404).json({ error: 'transfer not found' });
+    res.json(t);
+  }));
+  app.post('/api/wms/transfer/:id/line', A(async (req, res) => {
+    const { sku, productId, qty, fromBin, toBin } = req.body || {};
+    res.json(await transfers.addLine(sb, Number(req.params.id), { sku, productId, qty: Number(qty), fromBin, toBin }));
+  }));
+  app.post('/api/wms/transfer/line/:lineId/scan', A(async (req, res) => res.json(await transfers.scanLine(sb, Number(req.params.lineId), { qty: Number((req.body || {}).qty) }))));
+  app.delete('/api/wms/transfer/line/:lineId', A(async (req, res) => res.json(await transfers.removeLine(sb, Number(req.params.lineId)))));
+  app.post('/api/wms/commit/transfer', A(async (req, res) => res.json(await transfers.commitTransfer(sb, Number((req.body || {}).transferId), user(req)))));
+
+  // ── Maintenance: sync the owned bin/pickface registry + reconcile the outbox ──
+  app.post('/api/wms/sync/bins', A(async (req, res) => res.json(await sync.syncBins(sb))));
+  app.post('/api/wms/sync/pickface', A(async (req, res) => res.json(await sync.syncPickface(sb))));
+  app.post('/api/wms/reconcile', A(async (req, res) => res.json(await reconciler.reconcile(sb, req.body || {}))));
 
   // ── Outbox / journal visibility (ops + audit) ──
   app.get('/api/wms/outbox', A(async (req, res) => {

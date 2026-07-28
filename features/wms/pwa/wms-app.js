@@ -64,10 +64,12 @@
       scanField('Scan or type SO number…') +
       '<div class="tiles">' +
         '<button class="tile" id="tLook"><div class="ic">🔎</div><div class="t">Stock lookup</div><div class="s">Find a SKU across bins</div></button>' +
+        '<button class="tile" id="tXfer"><div class="ic">🔁</div><div class="t">Transfer</div><div class="s">Bin ↔ bin · warehouse ↔ warehouse</div></button>' +
         '<button class="tile" id="tUser"><div class="ic">👤</div><div class="t">' + esc(S.user) + '</div><div class="s">Change operator</div></button>' +
       '</div>';
     wireScan(function (v) { openOrder(v); });
     $('tLook').onclick = function () { go('lookup', 'Stock lookup'); };
+    $('tXfer').onclick = function () { S.transfer = null; go('transfer', 'Transfer'); };
     $('tUser').onclick = function () { var u = prompt('Operator name', S.user); if (u) { setUser(u.trim()); render(); } };
   }
   function openOrder(order) {
@@ -318,7 +320,61 @@
     }).catch(function (e) { $('lookRes').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
 
-  SCREENS = { home: homeScreen, wave: waveScreen, pick: pickScreen, assembly: assemblyScreen, pack: packScreen, lookup: lookupScreen };
+  // ═══════════════ TRANSFER ═══════════════
+  function transferScreen(view) {
+    if (!S.transfer) { renderTransferStart(view); return; }
+    renderTransferBuild(view);
+  }
+  function renderTransferStart(view) {
+    view.innerHTML =
+      '<div class="banner">Move stock <b>bin → bin</b> or <b>warehouse → warehouse</b>. Build the list, then commit once — sessions pause and resume, so huge TRs are fine.</div>' +
+      '<div class="card">' +
+        '<label class="fld">From (bin code or warehouse name)</label><input class="txt" id="xFrom" placeholder="e.g. MA-A-07-L7-P2  or  Main Warehouse" />' +
+        '<label class="fld">To</label><input class="txt" id="xTo" placeholder="e.g. MA-B-04-L5-P2  or  Sydney" />' +
+      '</div>' +
+      '<button class="btn lg" id="xStart">Start transfer</button>';
+    setTimeout(function () { var f = $('xFrom'); if (f) f.focus(); }, 60);
+    $('xStart').onclick = function () {
+      var from = $('xFrom').value.trim(), to = $('xTo').value.trim();
+      if (!from || !to) return toast('Enter from and to', 'err');
+      var kind = /warehouse|sydney|brisbane|main|project|gateway/i.test(from + to) && !/-L\d/.test(from) ? 'warehouse' : 'bin';
+      api('POST', '/transfer', { kind: kind, fromLocation: from, toLocation: to }).then(function (t) {
+        S.transfer = { id: t.id, from: from, to: to, lines: [] }; renderTransferBuild(view);
+      }).catch(function (e) { toast(e.message, 'err'); });
+    };
+  }
+  function renderTransferBuild(view) {
+    var x = S.transfer;
+    view.innerHTML =
+      '<div class="card"><div class="meta"><b class="mono">' + esc(x.from) + '</b> → <b class="mono">' + esc(x.to) + '</b></div></div>' +
+      scanField('Scan product to add…') + qtyStepper(1) +
+      '<div id="xLines" style="margin-top:12px"></div>';
+    wireScan(function (v) { addTransferLine(view, v); });
+    wireQty();
+    renderTransferLines();
+    bottom('<button class="btn ghost" id="xCancel">Discard</button><button class="btn go" id="xCommit"' + (x.lines.length ? '' : ' disabled') + '>Commit transfer (' + x.lines.length + ')</button>');
+    $('xCancel').onclick = function () { S.transfer = null; back(); };
+    $('xCommit').onclick = function () {
+      toast('Committing transfer…');
+      api('POST', '/commit/transfer', { transferId: x.id }).then(function (r) {
+        toast((r.cin7_ref || 'Transfer') + ' ✓', 'ok'); S.transfer = null; back();
+      }).catch(function (e) { toast(e.message, 'err'); });
+    };
+  }
+  function addTransferLine(view, sku) {
+    var qty = num($('qtyIn') && $('qtyIn').value) || 1;
+    api('POST', '/transfer/' + S.transfer.id + '/line', { sku: sku, qty: qty, fromBin: S.transfer.from, toBin: S.transfer.to }).then(function (line) {
+      S.transfer.lines.push({ id: line.id, sku: line.sku, qty: line.qty }); toast(line.sku + ' ×' + line.qty); renderTransferBuild(view);
+    }).catch(function (e) { toast(e.message, 'err'); });
+  }
+  function renderTransferLines() {
+    var el = $('xLines'); if (!el) return;
+    el.innerHTML = S.transfer.lines.length ? S.transfer.lines.map(function (l) {
+      return '<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><div class="grow"><span class="sku">' + esc(l.sku) + '</span></div><div class="qty">×' + l.qty + '</div></div>';
+    }).join('') : '<div class="empty">Scan products to add lines.</div>';
+  }
+
+  SCREENS = { home: homeScreen, wave: waveScreen, pick: pickScreen, assembly: assemblyScreen, pack: packScreen, lookup: lookupScreen, transfer: transferScreen };
 
   // ── boot ──
   $('backBtn').onclick = back;

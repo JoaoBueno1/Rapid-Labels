@@ -62,8 +62,16 @@ lib/cin7-wms-client.js  thin Cin7 client for the PROVEN endpoints only, with the
 lib/outbox.js           write-once orchestration: enqueue(op) → send() → confirm/reconcile.
                         The heart of exactly-once. Every Cin7 write goes through here.
 lib/wms-engine.js       domain logic: build a Wave from a sale, split BOM vs normal lines,
-                        line-level claims, and the commit paths (pick / build / pack /
-                        transfer) — all via the outbox.
+                        line-level claims, recipe lookup, and the commit paths
+                        (pick / build / pack) — all via the outbox.
+lib/wms-transfers.js    bin↔bin and warehouse↔warehouse transfers on the proven
+                        stockTransfer write (POST DRAFT → PUT COMPLETED), pausable sessions
+                        for huge TRs, crash-safe DRAFT checkpoint through the outbox.
+lib/wms-sync.js         populate the owned bin/pickface registry from cin7_mirror with the
+                        cleanup gate (drop barcode-named/branch-code junk, classify bin_type).
+lib/reconciler.js       drain ambiguous 'sent' / 'failed' outbox rows against live Cin7 —
+                        completes exactly-once (a timeout that actually landed is reconciled,
+                        never blindly re-sent). Run every ~60s once live.
 routes/wms-routes.js    Express API. registerWmsRoutes(app, supabaseBackend). Mounted under
                         /api/wms/*. NOT added to any nav.
 pwa/                    the operator PWA (scanner-first): pick, assembly/production, pack,
@@ -119,8 +127,23 @@ authority because Cin7 offers none.
 
 Until steps 3–4 are done, none of this is reachable from the running app.
 
-## Not built yet / next (2-week horizon)
-- TMS boundary (ShipmentRequest/Result) — intentionally out of scope now.
-- Ship step write-back (we stop at pack for now).
-- Multi-warehouse bin onboarding UI (schema is multi-warehouse-shaped from day one).
-- Box-dimension persistence into Cin7 pack (dims are captured in our DB regardless).
+## Roadmap / status
+
+**Done**
+- Owned state schema + outbox (exactly-once) + append-only journal.
+- Pick with chosen bin, pack, assembly/kitting (adopt-or-create) — proven live.
+- Large-order two-user flow (assembly parcel + pick parcel, multi-fulfilment).
+- Transfers (bin↔bin, warehouse↔warehouse) on the proven stockTransfer write, pausable.
+- Bin/pickface sync with the cleanup gate; outbox reconciler.
+- PWA: home · wave · pick · assembly · pack · transfer · stock-lookup.
+
+**Maintenance jobs to schedule once live** (cron / interval):
+- `POST /api/wms/sync/bins` + `/sync/pickface` — refresh the registry (e.g. hourly).
+- `POST /api/wms/reconcile` — drain ambiguous outbox rows (e.g. every 60s).
+
+**Next (2-week horizon)**
+- Our own **packing slip** PDF (reuse `features/label-sheets/label-render.js`).
+- **Putaway** screen for the binless produced FG (and receiving putaway).
+- **Cycle count** for the ~0.34% hard divergence.
+- **Ship** write-back + a thin **TMS** boundary (ShipmentRequest/Result) — out of scope now.
+- Box-dimension persistence into Cin7 pack (dims already captured in our DB regardless).
