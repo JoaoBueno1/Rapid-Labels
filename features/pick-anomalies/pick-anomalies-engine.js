@@ -446,6 +446,16 @@ function normBin(v) {
   return /^ma-/i.test(s) ? s.toUpperCase() : s;
 }
 
+// Staging / production areas where a pick legitimately comes off-pickface every
+// time — dock receiving (MA-DOCK), the general assembly area (MA-GA) and the
+// production floor (MA-PRODUCTION), plus their sub-bins (MA-GA-01, MA-DOCK-02…).
+// A pick FROM one of these is expected, not a mispick, so it is never flagged as
+// an anomaly. Prefix match (word boundary) so sub-bins are covered but real
+// pickface bins like MA-G-15-L1 (area G) are NOT. Mirrors warehouse-movements'
+// EXCLUDE_LOC and pick-productivity's staging filter. Only these three for now.
+const EXCLUDED_PICK_BIN_RE = /^MA-(DOCK|GA|PRODUCTION)\b/;
+function isExcludedPickBin(bin) { return !!bin && EXCLUDED_PICK_BIN_RE.test(normBin(bin)); }
+
 function extractBin(location) {
   if (!location) return null;
   if (!location.includes(': ')) return null;
@@ -869,6 +879,9 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
       } else if (pick.bin === expected) {
         pick.status = 'correct';
         pick.expectedBin = expected;
+      } else if (isExcludedPickBin(pick.bin)) {
+        pick.status = 'correct';                 // staging/production area — expected pick, never an anomaly
+        pick.expectedBin = expected;
       } else {
         pick.status = 'anomaly';
         pick.expectedBin = expected;
@@ -906,7 +919,7 @@ async function _analyzeAndSave(dateFrom, dateTo, syncMeta) {
             const compInfo = compLocators.get(pl.ProductCode);
             const compExpected = compInfo?.locator || null;
             const compBin = normBin(pl.Bin) || null;
-            const isCorrect = !compBin || !compExpected || !compExpected.startsWith('MA-') || compBin === compExpected;
+            const isCorrect = !compBin || !compExpected || !compExpected.startsWith('MA-') || compBin === compExpected || isExcludedPickBin(compBin);
             return {
               sku: pl.ProductCode, productId: pl.ProductID, qty: pl.Quantity,
               cost: pl.Cost, bin: compBin, binId: pl.BinID,
@@ -2351,6 +2364,14 @@ function registerPickAnomalyRoutes(app) {
                 orderChanged = true;
               }
             }
+
+            // Staging/production picks (MA-DOCK/GA/PRODUCTION) are never anomalies —
+            // clear any flagged before this rule existed, even if the pickface is unchanged.
+            if (pick.status === 'anomaly' && isExcludedPickBin(pick.bin)) {
+              pick.status = 'correct';
+              pick.errorType = null;
+              orderChanged = true;
+            }
           }
 
           // Re-evaluate FG components too
@@ -2362,10 +2383,14 @@ function registerPickAnomalyRoutes(app) {
               if (newExpected !== comp.expectedBin) {
                 comp.expectedBin = newExpected;
                 const compBin = comp.bin || null;
-                const isCorrect = !compBin || !newExpected || !newExpected.startsWith('MA-') || compBin === newExpected;
+                const isCorrect = !compBin || !newExpected || !newExpected.startsWith('MA-') || compBin === newExpected || isExcludedPickBin(compBin);
                 comp.status = isCorrect ? 'correct' : 'anomaly';
                 comp.errorType = isCorrect ? null : classifyError(compBin, newExpected);
                 orderChanged = true;
+              }
+              // Staging/production components are never anomalies — clear old flags too.
+              if (comp.status === 'anomaly' && isExcludedPickBin(comp.bin)) {
+                comp.status = 'correct'; comp.errorType = null; orderChanged = true;
               }
             }
           }
@@ -2576,6 +2601,8 @@ async function analyzeOrderRealtime(saleId, orderNumber, preFetchedDetail = null
       pick.status = 'correct'; pick.expectedBin = expected;
     } else if (pick.bin === expected) {
       pick.status = 'correct'; pick.expectedBin = expected;
+    } else if (isExcludedPickBin(pick.bin)) {
+      pick.status = 'correct'; pick.expectedBin = expected;   // staging/production area — expected pick
     } else {
       pick.status = 'anomaly'; pick.expectedBin = expected; pick.errorType = classifyError(pick.bin, expected);
     }
@@ -2691,6 +2718,7 @@ async function analyzeAssemblyRealtime(fgTaskId, fgDetail = null, source = 'asse
     if (!bin) status = 'no_bin_ok'; // component issued without a bin (branch/BOM) — not flaggable
     else if (!expected || expected === '0' || expected === 'BOM' || expected === 'Production' || !expected.startsWith('MA-')) status = 'correct';
     else if (bin === expected) status = 'correct';
+    else if (isExcludedPickBin(bin)) status = 'correct';   // staging/production area — expected pick
     else { status = 'anomaly'; errorType = classifyError(bin, expected); }
     return {
       id: `${asmNum}-${idx++}`, sku: pl.ProductCode, productId: pl.ProductID,
