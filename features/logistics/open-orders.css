@@ -1,0 +1,76 @@
+/* Open Orders monitor — layered on the shared design system (styles.css /
+   logistics.css). Only the tabs, chips and status badges are defined here. */
+
+/* KPI cards + card/topbar fallbacks (self-contained, in case the shared .cb-*
+   layout lives in a page-specific stylesheet we don't link). */
+.cb-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 14px 0 18px; }
+.cb-metric { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; }
+.cb-metric-label { font-size: 12px; color: #64748b; }
+.cb-metric-value { font-size: 27px; font-weight: 700; color: #0f172a; margin-top: 4px; line-height: 1.1; }
+.cb-metric.alert .cb-metric-value { color: #ef4444; }
+.cb-topbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+.cb-topbar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cb-topbar-right { display: flex; align-items: center; gap: 10px; }
+.cb-page-title { font-size: 26px; font-weight: 700; margin: 0; }
+.cb-status-pill { display: inline-block; border: 1px solid #cbd5e1; border-radius: 999px; padding: 3px 10px; font-size: 12px; color: #475569; }
+.cb-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; margin-top: 4px; }
+.cb-btn { appearance: none; cursor: pointer; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+.cb-btn:hover { border-color: #94a3b8; }
+.im-filters { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin: 6px 0 14px; }
+
+/* pagination */
+.oo-pager { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+.oo-pager button { appearance: none; cursor: pointer; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 8px; padding: 5px 11px; font-size: 13px; }
+.oo-pager button:disabled { opacity: .5; cursor: default; }
+.oo-pager .oo-pageinfo { color: #64748b; font-size: 13px; padding: 0 8px; }
+
+.oo-tabs { display: flex; gap: 6px; border-bottom: 1px solid #e2e8f0; margin-bottom: 14px; }
+.oo-tab {
+  appearance: none; background: none; border: none; cursor: pointer;
+  font: 500 14px/1 "IBM Plex Sans", system-ui, sans-serif; color: #64748b;
+  padding: 10px 16px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.oo-tab:hover { color: #334155; }
+.oo-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+.oo-fld { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; }
+.oo-fld select { min-width: 150px; }
+.oo-fld-label, .oo-hint { font-size: 12px; color: #94a3b8; }
+
+.oo-agewrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.oo-agechip {
+  appearance: none; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;
+  color: #475569; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 500;
+}
+.oo-agechip:hover { border-color: #94a3b8; }
+.oo-agechip.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+/* tables */
+.oo-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.oo-table th { text-align: left; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; padding: 9px 10px; white-space: nowrap; }
+.oo-table td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+.oo-table tr.warn td { background: #fffbeb; }
+.oo-table tr:hover td { background: #f8fafc; }
+.oo-table td.num, .oo-table th.num { text-align: right; }
+.oo-mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; color: #0f172a; white-space: nowrap; }
+.oo-empty { text-align: center; color: #94a3b8; padding: 26px 10px !important; }
+.oo-arrow { color: #94a3b8; }
+
+/* age badge */
+.oo-age { display: inline-block; min-width: 32px; text-align: center; border-radius: 6px; padding: 2px 7px; font-size: 12px; font-weight: 600; background: #f1f5f9; color: #475569; }
+.oo-age.warn { background: #fef3c7; color: #92400e; }
+.oo-age.bad { background: #fee2e2; color: #b91c1c; }
+
+/* stage chip */
+.oo-stage { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; border: 1px solid transparent; }
+.oo-stage.s-topick   { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.oo-stage.s-picking  { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.oo-stage.s-picked   { background: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
+.oo-stage.s-packing  { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+.oo-stage.s-shipping { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+
+/* transfer status */
+.oo-trstatus { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+.oo-trstatus.transit { background: #ecfdf5; color: #047857; }
+.oo-trstatus.ordered { background: #eff6ff; color: #1d4ed8; }
+.oo-trstatus.draft   { background: #f1f5f9; color: #64748b; }

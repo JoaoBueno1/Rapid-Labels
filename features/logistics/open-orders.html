@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open Orders</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="../logistics/logistics.css" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./open-orders.css?v=20260728a" />
+  <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="open-orders.html" class="nav-link active">Open Orders</a>
+        <a href="deliveries-couriers.html" class="nav-link">Deliveries &amp; Couriers</a>
+        <a href="gateway.html" class="nav-link">Gateway</a>
+        <a href="warehouse-movements.html" class="nav-link">Warehouse Movements</a>
+        <a href="invoicing-monitor.html" class="nav-link">Invoicing Monitor</a>
+        <a href="../analytics/integrations.html" class="nav-link" style="color: #667eea; font-weight: 600;">🔌 Integrations</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-container wide-container cb-shell">
+
+    <!-- Topbar -->
+    <div class="cb-topbar">
+      <div class="cb-topbar-left">
+        <h1 class="cb-page-title">📦 Open Orders</h1>
+        <span id="ooCounts" class="cb-status-pill" title="Totals before filters">—</span>
+        <span id="ooUpdated" class="cb-status-pill" title="When this page last read the snapshot">—</span>
+      </div>
+      <div class="cb-topbar-right">
+        <span class="cb-status-pill" style="border-color:#16a34a;color:#16a34a" title="Auto-synced from Cin7 every hour — this page only reads the snapshot (no API calls)">● LIVE</span>
+        <button id="ooRefresh" class="cb-btn" title="Re-read the snapshot (no Cin7 call)">↻ Refresh</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="cb-metrics">
+      <div class="cb-metric"><div class="cb-metric-label">Open sales orders</div><div class="cb-metric-value" id="ooKpiSo">—</div></div>
+      <div class="cb-metric"><div class="cb-metric-label">Open transfers</div><div class="cb-metric-value" id="ooKpiTr">—</div></div>
+      <div class="cb-metric"><div class="cb-metric-label">Backordered</div><div class="cb-metric-value" id="ooKpiBack">—</div></div>
+      <div class="cb-metric alert"><div class="cb-metric-label">Oldest open</div><div class="cb-metric-value" id="ooKpiOldest">—</div></div>
+    </div>
+
+    <div class="cb-card">
+      <!-- Tabs -->
+      <div class="oo-tabs">
+        <button id="ooTabSo" class="oo-tab active" type="button">Sales Orders</button>
+        <button id="ooTabTr" class="oo-tab" type="button">Transfers</button>
+      </div>
+
+      <!-- Shared filters -->
+      <div class="im-filters">
+        <input id="ooSearch" type="search" placeholder="Search: order / transfer #, customer, location" style="flex:1 1 260px; max-width:380px;" />
+        <label class="oo-fld">Warehouse
+          <select id="ooWarehouse"><option>All</option></select>
+        </label>
+      </div>
+
+      <!-- SO-only filters -->
+      <div class="im-filters" id="ooSoFilters">
+        <div class="oo-agewrap">
+          <span class="oo-fld-label">Open more than</span>
+          <button type="button" class="oo-agechip" data-age="1">1d</button>
+          <button type="button" class="oo-agechip" data-age="2">2d</button>
+          <button type="button" class="oo-agechip" data-age="3">3d</button>
+          <button type="button" class="oo-agechip" data-age="7">7d</button>
+          <button type="button" class="oo-agechip" data-age="0">All</button>
+        </div>
+        <label class="oo-fld">Sales rep <select id="ooRep"><option value="">All reps</option></select></label>
+        <label class="oo-fld">Stage <select id="ooStage"><option value="">All stages</option></select></label>
+      </div>
+
+      <!-- TR-only filters -->
+      <div class="im-filters" id="ooTrFilters" style="display:none;">
+        <label class="oo-fld" style="flex-direction:row; align-items:center; gap:6px;">
+          <input type="checkbox" id="ooIncludeDrafts" /> Include drafts <span class="oo-hint">(often stale — ghost destinations, old dates)</span>
+        </label>
+      </div>
+
+      <!-- SO table -->
+      <div id="ooPanelSo">
+        <div class="im-table-wrap">
+          <table id="ooSoTable" class="oo-table">
+            <thead><tr>
+              <th>Order</th><th>Customer</th><th>Sales Rep</th><th>Warehouse</th><th>Stage</th><th>Status</th><th class="num">Age</th><th>Order Date</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="ooSoPager" class="oo-pager"></div>
+      </div>
+
+      <!-- TR table -->
+      <div id="ooPanelTr" style="display:none;">
+        <div class="im-table-wrap">
+          <table id="ooTrTable" class="oo-table">
+            <thead><tr>
+              <th>Transfer</th><th>Route</th><th>Status</th><th>Departure</th><th class="num">Age</th><th>Qty / Lines</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="ooTrPager" class="oo-pager"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <script type="module" src="./open-orders.js"></script>
+</body>
+</html>
