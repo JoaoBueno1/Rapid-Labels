@@ -81,6 +81,15 @@
         </div>
         <label class="oo-fld">Sales rep <select id="ooRep"><option value="">All reps</option></select></label>
         <label class="oo-fld">Stage <select id="ooStage"><option value="">All stages</option></select></label>
+        <label class="oo-fld">Invoice
+          <select id="ooInvoice">
+            <option value="">All invoice</option>
+            <option value="not">Not invoiced</option>
+            <option value="partial">Partially invoiced</option>
+            <option value="invoiced">Invoiced</option>
+            <option value="credited">Credited</option>
+          </select>
+        </label>
       </div>
 
       <!-- TR-only filters -->
@@ -95,7 +104,7 @@
         <div class="im-table-wrap">
           <table id="ooSoTable" class="oo-table">
             <thead><tr>
-              <th>Order</th><th>Customer</th><th>Sales Rep</th><th>Warehouse</th><th>Stage</th><th>Status</th><th class="num">Age</th><th>Order Date</th><th>Action</th>
+              <th>Order</th><th>Customer</th><th>Sales Rep</th><th>Warehouse</th><th>Stage</th><th>Status</th><th>Invoiced</th><th class="num">Age</th><th>Order Date</th><th>Action</th>
             </tr></thead>
             <tbody></tbody>
           </table>
@@ -108,7 +117,7 @@
         <div class="im-table-wrap">
           <table id="ooBoTable" class="oo-table">
             <thead><tr>
-              <th>Order</th><th>Customer</th><th>Sales Rep</th><th>Warehouse</th><th>Stage</th><th>Status</th><th class="num">Age</th><th>Order Date</th><th>Action</th>
+              <th>Order</th><th>Customer</th><th>Sales Rep</th><th>Warehouse</th><th>Stage</th><th>Status</th><th>Invoiced</th><th class="num">Age</th><th>Order Date</th><th>Action</th>
             </tr></thead>
             <tbody></tbody>
           </table>

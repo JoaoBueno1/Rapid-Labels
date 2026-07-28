@@ -8,7 +8,7 @@
 
 const OO = {
   tab: 'so',
-  filters: { warehouse: 'All', rep: '', stage: '', search: '', minAge: 2, includeDrafts: false },
+  filters: { warehouse: 'All', rep: '', stage: '', invoice: '', search: '', minAge: 2, includeDrafts: false },
   so: [], tr: [], notes: {}, loaded: false, _noteOrder: null,
   pageSo: 1, pageBo: 1, pageTr: 1, pageSize: 50
 };
@@ -52,7 +52,7 @@ function soStage(r) {
 }
 
 async function fetchSO(sb) {
-  const fields = 'order_number,customer,sales_rep,location_name,order_status,status,shipping_status,picking_status,packing_status,order_date';
+  const fields = 'order_number,customer,sales_rep,location_name,order_status,status,shipping_status,picking_status,packing_status,invoice_status,order_date';
   const out = []; let from = 0; const size = 1000;
   while (true) {
     const { data, error } = await sb.schema('cin7_mirror').from('sales_orders').select(fields)
@@ -66,7 +66,7 @@ async function fetchSO(sb) {
     (data || []).forEach(r => out.push({
       order: r.order_number, customer: r.customer || '—', rep: r.sales_rep || '—',
       warehouse: normWarehouse(r.location_name) || '—', stage: soStage(r), status: r.status || '—',
-      orderDate: r.order_date, age: daysSince(r.order_date)
+      invoiceStatus: r.invoice_status || '', orderDate: r.order_date, age: daysSince(r.order_date)
     }));
     if (!data || data.length < size) break;
     from += data.length; if (from > 200000) break;
@@ -108,6 +108,7 @@ function soBaseFiltered() {
     if (f.warehouse !== 'All' && String(r.warehouse).toLowerCase() !== f.warehouse.toLowerCase()) return false;
     if (f.rep && String(r.rep).toLowerCase() !== f.rep.toLowerCase()) return false;
     if (f.stage && r.stage !== f.stage) return false;
+    if (f.invoice && invoiceKind(r.invoiceStatus) !== f.invoice) return false;
     if (f.minAge > 0 && (r.age == null || r.age < f.minAge)) return false;
     if (q && !(String(r.order).toLowerCase().includes(q) || String(r.customer).toLowerCase().includes(q))) return false;
     return true;
@@ -132,6 +133,22 @@ function ageBadge(age) {
   return `<span class="oo-age${cls}">${age}d</span>`;
 }
 function stageChip(stage) { return `<span class="oo-stage s-${stage.replace(/\s+/g, '').toLowerCase()}">${esc(stage)}</span>`; }
+// Invoice status, simplified into buckets so "not invoiced" is obvious at a glance
+// (Cin7 mixes NOT INVOICED / PARTIALLY INVOICED / PARTIALLY INVOICED / CREDITED / …).
+function invoiceKind(s) {
+  const u = String(s || '').toUpperCase();
+  if (!u || u === 'NOT AVAILABLE') return 'na';
+  if (u.includes('NOT')) return 'not';
+  if (u.includes('PARTIAL')) return 'partial';
+  if (u.includes('CREDIT')) return 'credited';
+  if (u.includes('INVOICED')) return 'invoiced';
+  return 'other';
+}
+function invoiceBadge(s) {
+  const k = invoiceKind(s);
+  const label = { not: 'Not invoiced', partial: 'Partial', invoiced: 'Invoiced', credited: 'Credited', na: '—', other: s };
+  return `<span class="oo-inv ${k}">${esc(label[k] || s || '—')}</span>`;
+}
 
 function renderPager(id, total, page, onGo) {
   const el = document.getElementById(id); if (!el) return;
@@ -165,6 +182,7 @@ function soRowHtml(r) {
     `<td>${esc(r.warehouse)}</td>` +
     `<td>${stageChip(r.stage)}</td>` +
     `<td>${esc(r.status)}</td>` +
+    `<td>${invoiceBadge(r.invoiceStatus)}</td>` +
     `<td class="num">${ageBadge(r.age)}</td>` +
     `<td>${fmtDate(r.orderDate)}</td>` +
     noteCell(r.order) + `</tr>`;
@@ -174,7 +192,7 @@ function renderSoTable(rows, tableId, pagerId, pageKey, empty) {
   if (OO[pageKey] > Math.ceil(total / ps)) OO[pageKey] = 1;
   const paged = rows.slice((OO[pageKey] - 1) * ps, OO[pageKey] * ps);
   const tbody = document.querySelector('#' + tableId + ' tbody');
-  if (!total) { tbody.innerHTML = `<tr><td colspan="9" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
+  if (!total) { tbody.innerHTML = `<tr><td colspan="10" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
   tbody.innerHTML = paged.map(soRowHtml).join('');
   renderPager(pagerId, total, OO[pageKey], p => { OO[pageKey] = p; renderSoTable(rows, tableId, pagerId, pageKey, empty); });
 }
@@ -313,6 +331,8 @@ function bind() {
   if (repSel) repSel.addEventListener('change', () => { OO.filters.rep = repSel.value || ''; reRender(); });
   const stSel = document.getElementById('ooStage');
   if (stSel) stSel.addEventListener('change', () => { OO.filters.stage = stSel.value || ''; reRender(); });
+  const invSel = document.getElementById('ooInvoice');
+  if (invSel) invSel.addEventListener('change', () => { OO.filters.invoice = invSel.value || ''; reRender(); });
   const searchEl = document.getElementById('ooSearch');
   if (searchEl) { let t; searchEl.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { OO.filters.search = searchEl.value || ''; reRender(); }, 180); }); }
   // age chips

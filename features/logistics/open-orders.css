@@ -69,6 +69,14 @@
 .oo-stage.s-packing  { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
 .oo-stage.s-shipping { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
 
+/* invoice status */
+.oo-inv { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.oo-inv.not { background: #fef2f2; color: #b91c1c; }
+.oo-inv.partial { background: #fef3c7; color: #92400e; }
+.oo-inv.invoiced { background: #ecfdf5; color: #047857; }
+.oo-inv.credited { background: #f5f3ff; color: #6d28d9; }
+.oo-inv.na, .oo-inv.other { background: #f1f5f9; color: #64748b; }
+
 /* transfer status */
 .oo-trstatus { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
 .oo-trstatus.transit { background: #ecfdf5; color: #047857; }
