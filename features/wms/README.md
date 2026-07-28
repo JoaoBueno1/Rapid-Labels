@@ -1,8 +1,10 @@
 # Rapid WMS — Pick / Pack / Assembly on Cin7 Core
 
-**Status: in development (dev branch). NOT wired into the live app — no nav button, no
-home tile. The routes are self-contained and the PWA page is unlinked. Nothing here
-touches an existing feature.**
+**Status: in development (dev branch). The handheld PWA is now reachable at `/wms`
+(`http://localhost:8383/wms`) and the API at `/api/wms/*` — wired additively in
+`server.js` (try/catch, no nav tile, no existing page touched). It is NOT yet linked from
+any nav. Remaining prerequisite to be data-functional: deploy the `wms.*` Supabase schema
+(see Activation). See the "Handoff" section at the bottom for exactly where we stopped.**
 
 Our own warehouse-execution layer on top of Cin7 Core (Cin7 stays the ERP / source of
 truth for total on-hand). We own the operator experience (PWA scanners), the in-progress
@@ -73,12 +75,18 @@ lib/reconciler.js       drain ambiguous 'sent' / 'failed' outbox rows against li
                         completes exactly-once (a timeout that actually landed is reconciled,
                         never blindly re-sent). Run every ~60s once live.
 routes/wms-routes.js    Express API. registerWmsRoutes(app, supabaseBackend). Mounted under
-                        /api/wms/*. NOT added to any nav.
+                        /api/wms/*. Wired in server.js; NOT added to any nav tile.
+lib/wms-receiving.js    PO receiving: read a purchase's expected lines, then putaway each
+                        into a bin (from the receiving dock) via the proven stockTransfer +
+                        outbox. The PO-receipt write itself stays in Cin7 (out of scope).
 pwa/                    the HANDHELD PWA (scanner-first) for pickers + stock staff:
-                        pick, assembly/production, transfer, stock-lookup. wms.html is
-                        unlinked. NOTE: pack is NOT here — it is a separate DESKTOP page
-                        for packers (open picked orders → authorise pack → print slip →
-                        booking). The commitPack engine/route stay in the backend for it.
+                        home (open-orders list) · wave · pick · assembly/production ·
+                        stock-lookup · transfer · receive (PO putaway) · ops (outbox +
+                        movements audit). Scans resolve barcode→SKU→5DC server-side via
+                        /api/wms/resolve/:code. Served at /wms (mounted in server.js).
+                        NOTE: pack is NOT here — it is a separate DESKTOP page for packers
+                        (open picked orders → authorise pack → print slip → booking). The
+                        commitPack engine/route stay in the backend for it (not built yet).
 ```
 
 ## The large-order, two-user flow (the thing this is built for)
@@ -113,22 +121,22 @@ authority because Cin7 offers none.
 - **Append-only journal:** every committed move is written to `wms.movements` with the
   actor, op-key, and Cin7 reference — the auditable record Cin7 itself can't fully give us.
 
-## Activation (when ready — NOT done yet, keeps the feature dark)
+## Activation status
 
-1. **Apply the schema:** run `db/001_wms_core.sql` on Supabase (SQL editor or psql).
-2. **Expose the schema:** Supabase → Settings → API → *Exposed schemas* → add `wms`
-   (same as `cin7_mirror` is exposed). The service-role client uses `.schema('wms')`.
-3. **Wire the routes** — add one line to `server.js` near the other feature routes:
-   ```js
-   const { registerWmsRoutes } = require('./features/wms/routes/wms-routes');
-   registerWmsRoutes(app, supabaseBackend);
-   ```
-4. **Open the PWA** at `/features/wms/pwa/wms.html` (already served statically; just not
-   linked from any nav — add a tile to `index.html` only when you want it live).
-5. **Env:** `CIN7_ACCOUNT_ID` / `CIN7_API_KEY` are already set. Optional overrides:
-   `WMS_MAIN_WAREHOUSE_ID`, `CIN7_WIP_ACCOUNT` / `CIN7_ASSEMBLY_ACCOUNT` (default `635`).
-
-Until steps 3–4 are done, none of this is reachable from the running app.
+- [x] **Routes wired** — `server.js` calls `registerWmsRoutes(app, supabaseBackend)` and
+      mounts the PWA folder at `/wms` (try/catch, additive). `/api/wms/health` returns ok.
+- [x] **PWA reachable** — open `http://localhost:8383/wms` (redirects to `/wms/`, assets
+      resolve under that mount). NOT linked from any nav tile yet — intentional.
+- [ ] **Apply the schema** — run `db/001_wms_core.sql` on Supabase (SQL editor or psql).
+      **This is the remaining blocker: until done, the shell loads but `/open`, `/wave`,
+      etc. error with `relation "wms.*" does not exist`.**
+- [ ] **Expose the schema** — Supabase → Settings → API → *Exposed schemas* → add `wms`
+      (same as `cin7_mirror`). The service-role client uses `.schema('wms')`.
+- [x] **Env** — `CIN7_ACCOUNT_ID` / `CIN7_API_KEY` set; Supabase service key present
+      (`/api/wms/health` confirmed). Optional overrides: `WMS_MAIN_WAREHOUSE_ID`,
+      `CIN7_WIP_ACCOUNT` / `CIN7_ASSEMBLY_ACCOUNT` (default `635`), `WMS_PRODUCTION_BIN`
+      (`MA-PRODUCTION`), `WMS_RECEIVING_BIN` (`MA-DOCK`).
+- [ ] **Link from nav** — add a tile to `index.html` only when you want it visible to users.
 
 ## Roadmap / status
 
@@ -138,15 +146,53 @@ Until steps 3–4 are done, none of this is reachable from the running app.
 - Large-order two-user flow (assembly parcel + pick parcel, multi-fulfilment).
 - Transfers (bin↔bin, warehouse↔warehouse) on the proven stockTransfer write, pausable.
 - Bin/pickface sync with the cleanup gate; outbox reconciler.
-- PWA: home · wave · pick · assembly · pack · transfer · stock-lookup.
+- Receiving putaway (`lib/wms-receiving.js`) + PWA **receive** screen.
+- PWA: home (open-orders list) · wave · pick · assembly · stock-lookup · transfer ·
+  receive · ops. Scans resolve barcode→SKU→5DC server-side. Pack is **not** a PWA screen.
+- Wired at `/wms` + `/api/wms/*` in `server.js` (additive, isolated).
 
 **Maintenance jobs to schedule once live** (cron / interval):
 - `POST /api/wms/sync/bins` + `/sync/pickface` — refresh the registry (e.g. hourly).
 - `POST /api/wms/reconcile` — drain ambiguous outbox rows (e.g. every 60s).
 
 **Next (2-week horizon)**
+- **Deploy the `wms.*` schema** (the current blocker — see Activation / Handoff).
+- **Desktop pack-station page** for packers (picked orders → authorise pack → print slip →
+  booking). Backend (`commitPack` + `/api/wms/commit/pack`) exists; the page does not.
 - Our own **packing slip** PDF (reuse `features/label-sheets/label-render.js`).
-- **Putaway** screen for the binless produced FG (and receiving putaway).
 - **Cycle count** for the ~0.34% hard divergence.
 - **Ship** write-back + a thin **TMS** boundary (ShipmentRequest/Result) — out of scope now.
 - Box-dimension persistence into Cin7 pack (dims already captured in our DB regardless).
+
+---
+
+## Handoff — where we stopped (continue on another PC)
+
+Last worked: 2026-07-28, dev branch. Latest relevant commits: `6801559` (wire PWA at
+`/wms` + receive/ops screens), building on `db77326` (transfers + sync + reconciler).
+
+**State right now**
+- PWA + API fully built and wired at `/wms` and `/api/wms/*`. Smoke-tested: `/wms` serves,
+  CSS/JS load (200), `/api/wms/health` → `{"ok":true}`. No existing page touched.
+- Feature is on **dev**, pushed. Not linked from any nav (intentional).
+- Pack is backend-only by design; the desktop pack page is **not** built.
+
+**The one thing blocking a live end-to-end run**
+- The `wms.*` Supabase schema is (probably) **not deployed**. `/health` doesn't touch the
+  DB, so it passes regardless. Opening a real order will error until the schema exists.
+
+**To resume on the other PC**
+1. `git pull` on the **dev** branch.
+2. `.env` must have `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `CIN7_ACCOUNT_ID`,
+   `CIN7_API_KEY` (this file is git-ignored — copy it over, it does NOT travel with git).
+3. Deploy the schema: run `db/001_wms_core.sql` in Supabase, then expose the `wms` schema
+   (Settings → API → Exposed schemas). *(Verify first — it may already be deployed.)*
+4. `node server.js` → open `http://localhost:8383/wms`.
+5. Seed the owned registry once: `POST /api/wms/sync/bins` then `POST /api/wms/sync/pickface`.
+6. Then test a real order via the home open-orders list (scan/type an `SO-…`).
+
+**Immediate next tasks (in priority order)**
+1. Confirm/deploy the `wms.*` schema and run one real order end-to-end (pick + assembly).
+2. Build the **desktop pack-station page** (picked orders list → authorise pack → print
+   packing slip → booking/TMS handoff).
+3. Schedule the maintenance jobs (sync + reconcile) once it's live.
