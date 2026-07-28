@@ -74,3 +74,25 @@
 .oo-trstatus.transit { background: #ecfdf5; color: #047857; }
 .oo-trstatus.ordered { background: #eff6ff; color: #1d4ed8; }
 .oo-trstatus.draft   { background: #f1f5f9; color: #64748b; }
+
+/* follow-up ("tratativa") */
+.oo-actioncell { white-space: nowrap; }
+.oo-notebtn { appearance: none; cursor: pointer; border: 1px solid #cbd5e1; background: #fff; color: #475569; border-radius: 6px; padding: 2px 9px; font-size: 13px; }
+.oo-notebtn:hover { border-color: #2563eb; color: #2563eb; }
+.oo-note-badge { display: inline-block; margin-right: 6px; font-size: 13px; font-weight: 600; }
+.oo-note-badge.done { color: #047857; }
+.oo-note-badge.has { color: #b45309; }
+.oo-table tr.resolved td { opacity: 0.55; }
+.oo-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #334155; padding-bottom: 6px; }
+
+.oo-modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+.oo-modal.open { display: flex; }
+.oo-modal-box { background: #fff; border-radius: 14px; width: 100%; max-width: 470px; padding: 18px 20px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); }
+.oo-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.oo-modal-title { font-weight: 700; font-size: 16px; color: #0f172a; }
+.oo-modal-x { appearance: none; border: none; background: none; font-size: 22px; cursor: pointer; color: #94a3b8; line-height: 1; }
+.oo-modal-box textarea, .oo-modal-box input[type=text] { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; font: inherit; box-sizing: border-box; }
+.oo-note-hint { font-size: 12px; color: #94a3b8; margin-top: 12px; }
+.oo-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.oo-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.oo-primary:hover { background: #1d4ed8; }

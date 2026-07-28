@@ -256,6 +256,14 @@ try {
   console.warn('⚠️  Could not register pick anomaly routes:', e.message);
 }
 
+// ── Open Orders "tratativas" (chase notes) routes ──
+try {
+  const { registerOpenOrdersRoutes } = require('./features/logistics/open-orders-notes');
+  registerOpenOrdersRoutes(app);
+} catch (e) {
+  console.warn('⚠️  Could not register open-orders routes:', e.message);
+}
+
 // ── Order Pipeline Sync (on-demand + scheduled) ──
 let pipelineSyncRunning = false;
 async function _runPipelineSync(source = 'manual') {

@@ -9,7 +9,7 @@
 const OO = {
   tab: 'so',
   filters: { warehouse: 'All', rep: '', stage: '', search: '', minAge: 2, includeDrafts: false },
-  so: [], tr: [], loaded: false,
+  so: [], tr: [], notes: {}, loaded: false, _noteOrder: null,
   pageSo: 1, pageBo: 1, pageTr: 1, pageSize: 50
 };
 
@@ -19,7 +19,19 @@ const MIN_ORDER_DATE = '2025-08-01';
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function daysSince(d) { if (!d) return null; const t = new Date(d); if (isNaN(t)) return null; return Math.floor((Date.now() - t.getTime()) / 86400000); }
-function fmtDate(d) { if (!d) return '—'; const t = new Date(d); return isNaN(t) ? '—' : t.toISOString().slice(0, 10); }
+function fmtDate(d) { if (!d) return '—'; const t = new Date(d); if (isNaN(t)) return '—'; const p = n => String(n).padStart(2, '0'); return `${p(t.getUTCDate())}/${p(t.getUTCMonth() + 1)}/${t.getUTCFullYear()}`; }
+
+// Only monitor the real warehouses: Main Warehouse + the city-named ones. Drop the
+// junk/virtual locations Cin7 carries — Project warehouses, "Ghost:" write-off
+// destinations, Faulty, and bug/empty "location" names.
+function isRealWarehouse(name) {
+  const n = String(name == null ? '' : name).trim();
+  if (!n) return false;
+  return !/project|ghost|faulty|location/i.test(n);
+}
+// A location sometimes comes bin-qualified ("Main Warehouse: MA-A-04-L2") — that's
+// a data bug for our purposes; collapse it to the base warehouse name.
+function normWarehouse(name) { const n = String(name == null ? '' : name).trim(); return n.includes(':') ? n.split(':')[0].trim() : n; }
 
 async function ensureClient() {
   try { await (window.supabaseReady || Promise.resolve()); } catch (_) {}
@@ -53,13 +65,13 @@ async function fetchSO(sb) {
     if (error) { console.error('[open-orders] SO error', error); break; }
     (data || []).forEach(r => out.push({
       order: r.order_number, customer: r.customer || '—', rep: r.sales_rep || '—',
-      warehouse: r.location_name || '—', stage: soStage(r), status: r.status || '—',
+      warehouse: normWarehouse(r.location_name) || '—', stage: soStage(r), status: r.status || '—',
       orderDate: r.order_date, age: daysSince(r.order_date)
     }));
     if (!data || data.length < size) break;
     from += data.length; if (from > 200000) break;
   }
-  return out;
+  return out.filter(r => isRealWarehouse(r.warehouse));
 }
 
 async function fetchTR(sb) {
@@ -73,17 +85,19 @@ async function fetchTR(sb) {
       .range(from, from + size - 1);
     if (error) { console.error('[open-orders] TR error', error); break; }
     (data || []).forEach(r => out.push({
-      number: r.number, from: r.from_location || '—', to: r.to_location || '—', status: r.status,
+      number: r.number, from: normWarehouse(r.from_location) || '—', to: normWarehouse(r.to_location) || '—', status: r.status,
       departure: r.departure_date, qty: r.total_qty, lines: r.line_count, reference: r.reference,
       age: daysSince(r.departure_date || r.cin7_updated)
     }));
     if (!data || data.length < size) break;
     from += data.length; if (from > 200000) break;
   }
+  // drop transfers touching a junk location (Ghost / Project / Faulty write-offs)
+  const real = out.filter(r => isRealWarehouse(r.from) && isRealWarehouse(r.to));
   // active first (IN TRANSIT, ORDERED), then drafts; each oldest-first by age
   const rank = { 'IN TRANSIT': 0, 'ORDERED': 1, 'DRAFT': 2 };
-  out.sort((a, b) => (rank[a.status] - rank[b.status]) || ((b.age || 0) - (a.age || 0)));
-  return out;
+  real.sort((a, b) => (rank[a.status] - rank[b.status]) || ((b.age || 0) - (a.age || 0)));
+  return real;
 }
 
 // ── filters ──
@@ -132,9 +146,19 @@ function renderPager(id, total, page, onGo) {
   el.appendChild(mk('Next ›', page >= pages, () => onGo(page + 1)));
 }
 
+function noteCell(order) {
+  const n = OO.notes[order];
+  let badge = '';
+  if (n) {
+    if (n.resolved) badge = '<span class="oo-note-badge done" title="Resolved">✓</span>';
+    else if ((n.note && n.note.trim()) || n.contacted_at) badge = '<span class="oo-note-badge has" title="Has a follow-up note">📝</span>';
+  }
+  return `<td class="oo-actioncell">${badge}<button class="oo-notebtn" data-order="${esc(order)}" title="Add / edit follow-up">✎</button></td>`;
+}
 function soRowHtml(r) {
   const warn = r.age != null && r.age > 3;
-  return `<tr class="${warn ? 'warn' : ''}">` +
+  const n = OO.notes[r.order];
+  return `<tr class="${warn ? 'warn' : ''}${n && n.resolved ? ' resolved' : ''}">` +
     `<td class="oo-mono">${esc(r.order)}</td>` +
     `<td>${esc(r.customer)}</td>` +
     `<td>${esc(r.rep)}</td>` +
@@ -142,14 +166,15 @@ function soRowHtml(r) {
     `<td>${stageChip(r.stage)}</td>` +
     `<td>${esc(r.status)}</td>` +
     `<td class="num">${ageBadge(r.age)}</td>` +
-    `<td>${fmtDate(r.orderDate)}</td></tr>`;
+    `<td>${fmtDate(r.orderDate)}</td>` +
+    noteCell(r.order) + `</tr>`;
 }
 function renderSoTable(rows, tableId, pagerId, pageKey, empty) {
   const total = rows.length, ps = OO.pageSize;
   if (OO[pageKey] > Math.ceil(total / ps)) OO[pageKey] = 1;
   const paged = rows.slice((OO[pageKey] - 1) * ps, OO[pageKey] * ps);
   const tbody = document.querySelector('#' + tableId + ' tbody');
-  if (!total) { tbody.innerHTML = `<tr><td colspan="8" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
+  if (!total) { tbody.innerHTML = `<tr><td colspan="9" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
   tbody.innerHTML = paged.map(soRowHtml).join('');
   renderPager(pagerId, total, OO[pageKey], p => { OO[pageKey] = p; renderSoTable(rows, tableId, pagerId, pageKey, empty); });
 }
@@ -219,10 +244,57 @@ function populateFilterOptions() {
   fillSelect('ooStage', SO_STAGES, 'All stages');
 }
 
+// ── follow-up notes ("tratativas") — read/write via our server (not Cin7) ──
+async function fetchNotes() {
+  try {
+    const r = await fetch('/api/open-orders/notes');
+    if (!r.ok) return {};
+    const j = await r.json();
+    const map = {};
+    (j.notes || []).forEach(n => { map[n.order_number] = n; });
+    return map;
+  } catch (_) { return {}; }   // endpoint not up yet (needs a server restart/deploy) — page still works
+}
+function openNoteModal(order) {
+  OO._noteOrder = order;
+  const n = OO.notes[order] || {};
+  document.getElementById('ooNoteOrder').textContent = order;
+  document.getElementById('ooNoteText').value = n.note || '';
+  document.getElementById('ooNoteBy').value = n.contacted_by || localStorage.getItem('oo_contacted_by') || '';
+  document.getElementById('ooNoteContacted').checked = !!n.contacted_at;
+  document.getElementById('ooNoteResolved').checked = !!n.resolved;
+  document.getElementById('ooNoteModal').classList.add('open');
+  document.getElementById('ooNoteText').focus();
+}
+function closeNoteModal() { document.getElementById('ooNoteModal').classList.remove('open'); OO._noteOrder = null; }
+async function saveNote() {
+  const order = OO._noteOrder; if (!order) return;
+  const by = document.getElementById('ooNoteBy').value.trim();
+  if (by) { try { localStorage.setItem('oo_contacted_by', by); } catch (_) {} }
+  const body = {
+    order_number: order,
+    note: document.getElementById('ooNoteText').value.trim(),
+    contacted: document.getElementById('ooNoteContacted').checked,
+    contacted_by: by,
+    resolved: document.getElementById('ooNoteResolved').checked
+  };
+  const btn = document.getElementById('ooNoteSave'); btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/open-orders/note', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || 'save failed');
+    OO.notes[order] = j.note || body;
+    closeNoteModal();
+    renderAll();
+  } catch (e) {
+    alert('Could not save the follow-up: ' + e.message + '\n(The notes endpoint needs the server running the latest code.)');
+  } finally { btn.disabled = false; btn.textContent = 'Save'; }
+}
+
 async function loadData() {
   const sb = await ensureClient();
-  const [so, tr] = await Promise.all([fetchSO(sb), fetchTR(sb)]);
-  OO.so = so; OO.tr = tr; OO.loaded = true;
+  const [so, tr, notes] = await Promise.all([fetchSO(sb), fetchTR(sb), fetchNotes()]);
+  OO.so = so; OO.tr = tr; OO.notes = notes || {}; OO.loaded = true;
   populateFilterOptions();
   renderAll();
   const upd = document.getElementById('ooUpdated');
@@ -258,6 +330,14 @@ function bind() {
   });
   const refreshBtn = document.getElementById('ooRefresh');
   if (refreshBtn) refreshBtn.addEventListener('click', () => loadData());
+  // follow-up ("tratativa") modal — buttons are rendered into rows, so delegate
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.oo-notebtn');
+    if (b) { openNoteModal(b.getAttribute('data-order')); return; }
+    if (e.target === document.getElementById('ooNoteModal')) closeNoteModal();
+  });
+  ['ooNoteCancel', 'ooNoteCancelX'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('click', closeNoteModal); });
+  const saveBtn = document.getElementById('ooNoteSave'); if (saveBtn) saveBtn.addEventListener('click', saveNote);
 }
 
 function init() {
