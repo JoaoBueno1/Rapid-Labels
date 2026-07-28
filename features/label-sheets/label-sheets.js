@@ -274,9 +274,9 @@
         '<div class="ls-models">' + SHEET_FEATURES.map(renderSheetCard).join('') + '</div>';
     }
     el('lsModelGrid').innerHTML =
-      section('Celcast — A4 sheets', 'die-cut label sheets, printed on your normal printer', a4) +
       sheetSection() +
-      section('Zebra — thermal labels', 'single 4×6 labels on the Zebra thermal printer', zebra);
+      section('Zebra — thermal labels', 'single 4×6 labels on the Zebra thermal printer', zebra) +
+      section('Celcast — A4 sheets', 'die-cut label sheets, printed on your normal printer', a4);
   }
 
   // A sheet feature = a base template + an editor. Warehouse opens the single-cell
@@ -465,7 +465,7 @@
   function backToModels() {
     el('lsEditor').style.display = 'none';
     el('lsModels').style.display = 'block';
-    el('lsSub').textContent = 'Celcast label sheets · choose a model';
+    el('lsSub').textContent = 'Label formats · choose one';
   }
 
   // ═══ STEP 2 — visual sheet ═══
