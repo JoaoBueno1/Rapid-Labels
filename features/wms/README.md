@@ -1,10 +1,13 @@
 # Rapid WMS — Pick / Pack / Assembly on Cin7 Core
 
-**Status: in development (dev branch). The handheld PWA is now reachable at `/wms`
-(`http://localhost:8383/wms`) and the API at `/api/wms/*` — wired additively in
-`server.js` (try/catch, no nav tile, no existing page touched). It is NOT yet linked from
-any nav. Remaining prerequisite to be data-functional: deploy the `wms.*` Supabase schema
-(see Activation). See the "Handoff" section at the bottom for exactly where we stopped.**
+**Status: in development (dev branch). The handheld PWA is at `/wms`
+(`http://localhost:8383/wms`), the desktop **Pack Station** at `features/wms/pack/pack.html`,
+and the API at `/api/wms/*` — all wired additively in `server.js` (try/catch, no existing
+page touched). The `wms.*` Supabase schema is now **deployed and exposed**; the API is
+**live** (server restarted 2026-07-29, `/api/wms/pack/open` returns real business errors,
+not 404). It is deliberately **NOT linked from any nav** — the Pack Station tile was pulled
+from `index.html` on 2026-07-29 (we're not using it in production yet). See the "Handoff"
+section at the bottom for exactly where we stopped and what to continue.**
 
 Our own warehouse-execution layer on top of Cin7 Core (Cin7 stays the ERP / source of
 truth for total on-hand). We own the operator experience (PWA scanners), the in-progress
@@ -127,16 +130,20 @@ authority because Cin7 offers none.
       mounts the PWA folder at `/wms` (try/catch, additive). `/api/wms/health` returns ok.
 - [x] **PWA reachable** — open `http://localhost:8383/wms` (redirects to `/wms/`, assets
       resolve under that mount). NOT linked from any nav tile yet — intentional.
-- [ ] **Apply the schema** — run `db/001_wms_core.sql` on Supabase (SQL editor or psql).
-      **This is the remaining blocker: until done, the shell loads but `/open`, `/wave`,
-      etc. error with `relation "wms.*" does not exist`.**
-- [ ] **Expose the schema** — Supabase → Settings → API → *Exposed schemas* → add `wms`
-      (same as `cin7_mirror`). The service-role client uses `.schema('wms')`.
+- [x] **Apply the schema** — `db/001_wms_core.sql` ran on Supabase (SQL editor); the
+      `wms.*` tables exist. **This was the old blocker — now done (2026-07-29).**
+- [x] **Expose the schema** — done via SQL Editor (the dashboard "Exposed schemas" UI did
+      **not** match the live PostgREST list, so it didn't apply). The reliable fix that
+      worked: `alter role authenticator set pgrst.db_schemas = 'public, graphql_public,
+      cin7_mirror, rapid_inv, wms'; notify pgrst, 'reload config';`. ⚠️ **Keep `cin7_mirror`
+      and `rapid_inv` in that list** or Open Orders / Label Sheets / Pick Anomalies break.
 - [x] **Env** — `CIN7_ACCOUNT_ID` / `CIN7_API_KEY` set; Supabase service key present
       (`/api/wms/health` confirmed). Optional overrides: `WMS_MAIN_WAREHOUSE_ID`,
       `CIN7_WIP_ACCOUNT` / `CIN7_ASSEMBLY_ACCOUNT` (default `635`), `WMS_PRODUCTION_BIN`
       (`MA-PRODUCTION`), `WMS_RECEIVING_BIN` (`MA-DOCK`).
-- [ ] **Link from nav** — add a tile to `index.html` only when you want it visible to users.
+- [ ] **Link from nav** — intentionally **not** linked. The Pack Station tile was added and
+      then **removed from `index.html` on 2026-07-29** (not used in production yet).
+      Re-add the tile in Warehouse Ops when ready to go live.
 
 ## Roadmap / status
 
@@ -166,33 +173,47 @@ authority because Cin7 offers none.
 
 ---
 
-## Handoff — where we stopped (continue on another PC)
+## Handoff — where we stopped (2026-07-29)
 
-Last worked: 2026-07-28, dev branch. Latest relevant commits: `6801559` (wire PWA at
-`/wms` + receive/ops screens), building on `db77326` (transfers + sync + reconciler).
+Last worked: 2026-07-29, dev branch. Pack-Station commits: `c506239` (desktop page +
+pack-ready/assign routes), `a5b70a9` (redesign to the Returns design system, scan-first,
+guided sections), `911d53b` (SO-driven entry + pack orders not-yet-picked in the WMS).
 
-**State right now**
-- PWA + API fully built and wired at `/wms` and `/api/wms/*`. Smoke-tested: `/wms` serves,
-  CSS/JS load (200), `/api/wms/health` → `{"ok":true}`. No existing page touched.
-- Feature is on **dev**, pushed. Not linked from any nav (intentional).
-- Pack is backend-only by design; the desktop pack page is **not** built.
+**State right now — activation is essentially DONE, we're at first-real-order testing**
+- PWA + API + **desktop Pack Station** built and wired. `wms.*` schema **deployed and
+  exposed**; server **restarted**, `/api/wms/*` **live**. `/api/wms/health` → `{"ok":true}`.
+- Pack Station (`features/wms/pack/pack.html`): SO-driven landing (type/scan an `SO-…` →
+  `POST /api/wms/pack/open` → workspace) → scan items (resolves a 13/14-digit barcode **and**
+  the SKU-as-CODE128 e.g. `R1021-WH-TRI`, case-insensitive, client-side from a
+  `cin7_mirror.products` pre-fetch) → cartons/dims → **Authorise pack** (via outbox) → print
+  slip → **Send to booking (TMS handoff = STUB, not wired yet)**. Also packs orders **not**
+  picked in the WMS (button reads "Pick & pack" vs "Authorise pack").
+- **Nav tile REMOVED from `index.html` (2026-07-29)** — not used in production yet. The page
+  still works by URL; re-add the Warehouse-Ops tile when going live.
 
-**The one thing blocking a live end-to-end run**
-- The `wms.*` Supabase schema is (probably) **not deployed**. `/health` doesn't touch the
-  DB, so it passes regardless. Opening a real order will error until the schema exists.
+**What the first real test showed (the current gap, not a bug)**
+- `POST /api/wms/pack/open` for a **Simple Sale** returns HTTP 400:
+  `"… is a Simple Sale. Only Advanced Sales support the pack step — set it to Advanced in
+  Cin7."` (`wms-engine.js:40`). This is by design: our pick/pack writes to Cin7
+  **fulfilment tasks** (`/sale/fulfilment/{pick,pack}`, keyed by TaskID), which **only
+  Advanced Sales have** — a Simple Sale collapses pick+ship into one step with no task.
+- **Open decision before volume testing:** are the real outbound orders Simple or Advanced
+  in Cin7? If mostly Simple, either default WMS-driven sales to Advanced, or build a separate
+  "ship a Simple Sale" path (no pick/pack task → less control; not recommended as default).
 
-**To resume on the other PC**
-1. `git pull` on the **dev** branch.
-2. `.env` must have `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `CIN7_ACCOUNT_ID`,
-   `CIN7_API_KEY` (this file is git-ignored — copy it over, it does NOT travel with git).
-3. Deploy the schema: run `db/001_wms_core.sql` in Supabase, then expose the `wms` schema
-   (Settings → API → Exposed schemas). *(Verify first — it may already be deployed.)*
-4. `node server.js` → open `http://localhost:8383/wms`.
-5. Seed the owned registry once: `POST /api/wms/sync/bins` then `POST /api/wms/sync/pickface`.
-6. Then test a real order via the home open-orders list (scan/type an `SO-…`).
+**To resume**
+1. `git pull` on **dev**; `.env` present (git-ignored — `SUPABASE_URL`,
+   `SUPABASE_SERVICE_KEY`, `CIN7_ACCOUNT_ID`, `CIN7_API_KEY`).
+2. `node server.js` (full node path on this PC:
+   `C:\Users\JoaoMarcos\.fnm\node-versions\v24.13.1\installation\node.exe server.js`).
+3. In Cin7, take an **Advanced Sale** (ideally not-yet-picked) → open it in the Pack Station
+   by URL → scan → Authorise. ⚠️ Authorising a real order = **real Cin7 writes** (pick+pack,
+   moves stock); the confirm warns.
 
 **Immediate next tasks (in priority order)**
-1. Confirm/deploy the `wms.*` schema and run one real order end-to-end (pick + assembly).
-2. Build the **desktop pack-station page** (picked orders list → authorise pack → print
-   packing slip → booking/TMS handoff).
-3. Schedule the maintenance jobs (sync + reconcile) once it's live.
+1. Decide the Simple-vs-Advanced default (see gap above) and run one real Advanced Sale
+   end-to-end through the Pack Station.
+2. **Wire "Send to booking"** to the TMS booking screen (Rapid-Express-Web repo) — carry
+   `SO#` / customer / cartons+dims into the booking flow. Currently a JS `alert` stub.
+3. Persist box dims into the Cin7 pack (dims are captured in our DB only today).
+4. Re-add the Warehouse-Ops nav tile when ready to expose it to users.
