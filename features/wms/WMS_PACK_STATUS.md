@@ -143,6 +143,15 @@ the operator must already be logged into the TMS. Carton dims now persist via PO
 `/api/wms/pack/boxes` → `wms.parcels.boxes` (migration `003_wms_pack_boxes.sql`, additive;
 best-effort — reports `persisted:false` until the migration is run, deep-link works anyway).
 
+⚠️ **Activation state:** the Labels side (Pack "Send to booking" → opens the TMS URL) is on
+`main`/prod. The **TMS hook is on `Rapid-Express-Web` `dev` only** (main/prod not touched —
+dev/main are intentionally divergent there). So in prod today the deep-link **opens** the
+Book Order page but does NOT prefill yet — it degrades gracefully (params ignored, operator
+types the SO as usual, nothing breaks). Prefill activates once the TMS hook is promoted to
+`main` (a deliberate, careful merge — TMS `main` has 6 hotfix commits `dev` doesn't, so
+cherry-pick the book_order.js commit, don't FF). To test now: point
+`localStorage.rapidExpressWebBaseUrl` at a TMS running the `dev` branch.
+
 Why the FULL "book from the WMS" chain is deferred (separate, careful TMS pass):
 - The TMS has a clean, framework-agnostic `book_shipment()` / `BookingService.book()`
   (Rapid-Express-Web `src/services/booking.py`) returning consignment + tracking + base64
