@@ -392,6 +392,8 @@ async function toggleExpand(tr) {
   const box = drow.querySelector('.oo-detail');
   try { box.innerHTML = kind === 'tr' ? await renderTrDetail(key) : await renderSoDetail(key); }
   catch (e) { box.innerHTML = `<div class="oo-detail-err">Could not load items: ${esc(e.message)}</div>`; }
+  // assembly lines reveal their components automatically — no extra click needed
+  if (kind === 'so') box.querySelectorAll('.oo-asm').forEach(btn => toggleAsm(btn));
 }
 
 function renderKpis() {
@@ -407,6 +409,37 @@ function renderKpis() {
 }
 
 function renderAll() { renderKpis(); renderSO(); renderBO(); renderTR(); }
+
+// ── CSV export (the currently-filtered list — e.g. one sales rep to email them) ──
+function invoiceLabel(s) {
+  const k = invoiceKind(s);
+  return ({ not: 'Not invoiced', partial: 'Partially invoiced', invoiced: 'Invoiced', credited: 'Credited', na: '', other: s })[k] || s || '';
+}
+function csvCell(v) { const s = String(v == null ? '' : v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function downloadCsv(filename, header, rows) {
+  const body = [header].concat(rows).map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' });   // BOM so Excel reads UTF-8
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+function exportCsv() {
+  const f = OO.filters;
+  const dateTag = new Date().toISOString().slice(0, 10);
+  const repTag = f.rep ? '_' + f.rep.replace(/[^a-z0-9]+/gi, '-') : '';
+  if (OO.tab === 'tr') {
+    const rows = filteredTR().map(r => [r.number, r.from, r.to, r.status, fmtDate(r.departure), r.age == null ? '' : r.age]);
+    if (!rows.length) return alert('Nothing to export in the current filter.');
+    downloadCsv(`open_transfers_${dateTag}.csv`, ['Transfer', 'From', 'To', 'Status', 'Departure', 'Days'], rows);
+    return;
+  }
+  const data = OO.tab === 'bo' ? backorderSO() : activeSO();
+  if (!data.length) return alert('Nothing to export in the current filter.');
+  const rows = data.map(r => [r.order, r.customer, r.rep, r.warehouse, r.stage, invoiceLabel(r.invoiceStatus), fmtDate(r.orderDate), r.age == null ? '' : r.age]);
+  const kind = OO.tab === 'bo' ? 'backorders' : 'open_orders';
+  downloadCsv(`${kind}${repTag}_${dateTag}.csv`, ['Order', 'Customer', 'Sales Rep', 'Warehouse', 'Stage', 'Invoiced', 'Order Date', 'Days Open'], rows);
+}
 
 function switchTab(tab) {
   OO.tab = tab;
@@ -526,6 +559,8 @@ function bind() {
   });
   const refreshBtn = document.getElementById('ooRefresh');
   if (refreshBtn) refreshBtn.addEventListener('click', () => loadData());
+  const exportBtn = document.getElementById('ooExport');
+  if (exportBtn) exportBtn.addEventListener('click', exportCsv);
   // follow-up ("tratativa") modal — buttons are rendered into rows, so delegate
   document.addEventListener('click', e => {
     const b = e.target.closest('.oo-notebtn');
