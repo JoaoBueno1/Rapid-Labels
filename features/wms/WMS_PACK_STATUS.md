@@ -110,6 +110,24 @@ chosen order/TR:**
 - `recordTrScan` overwrites the ordered qty with the scanned qty — a short-pick is
   silently swallowed; decide the policy before trusting dispatch.
 
+## Multi-operator claim + richer lookup (built 2026-07-30 — gated / inactive)
+- **Order-level claim + lease** (analysis item #1): opening an SO/TR claims it for the
+  operator with a 10-min lease + 60s heartbeat; a second picker on the same order is
+  turned away ("Being picked by <name>"). A dead session's lease expires and frees the
+  order. **Gated by `WMS_CLAIMS_ENABLED`** (default off) — until it's on, the flow is the
+  same single-operator flow. Needs migration `db/002_wms_claims.sql` run in the Labels
+  Supabase SQL Editor first (additive nullable columns on `waves` + `transfers`). Logic
+  unit-tested 10/10 (claim, reject-held, heartbeat, lease-takeover, release, off=no-op).
+  `WMS_LEASE_MIN` overrides the 10-min lease.
+- **Stock lookup** (analysis item #3): shows **physical on-hand per bin** as the primary
+  number, Cin7 "available" separately (it can include buildable units), and for an
+  assembly SKU the **BOM components + how many are buildable**. Read-only; always on.
+- **Assembly (item #2): left as-is by decision** — always build from fresh components;
+  do NOT consume pre-built FG on-hand (could be an error/return; provenance unverifiable).
+- Still to build (careful, gated): #4 reserved-stock guard, #6 pick-exception surface,
+  #7 reconciler/sync scheduling, #5 Pack→Booking→Ship (TMS). Auth/login = future (the
+  claim `user` is still just the `X-WMS-User` header — no login screens yet, by request).
+
 ## Running it
 - Server: `node server.js` (full node path on the office PC:
   `C:\Users\JoaoMarcos\.fnm\node-versions\v24.13.1\installation\node.exe server.js`).

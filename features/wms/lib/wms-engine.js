@@ -163,6 +163,46 @@ async function releaseLine(sb, waveId, saleLineRef) {
   await wms(sb).from('line_claims').update({ released_at: new Date().toISOString() }).eq('wave_id', waveId).eq('sale_line_ref', saleLineRef);
 }
 
+// ── Order-level claim + lease (multi-operator picking). Gated by WMS_CLAIMS_ENABLED
+//    so the single-operator flow is byte-for-byte unchanged until the 002 migration is
+//    applied AND the flag is set. Works for a wave (SO pick) or a transfer (TR pick)
+//    via the table name. Cin7 has no such lock — this is our concurrency authority. ──
+const CLAIMS_ON = () => String(process.env.WMS_CLAIMS_ENABLED || '').toLowerCase() === 'true';
+const LEASE_MIN = Number(process.env.WMS_LEASE_MIN || 10);
+const CLAIM_TABLES = { waves: true, transfers: true };
+
+async function claimWork(sb, table, id, user) {
+  if (!CLAIMS_ON()) return { ok: true, enforced: false };
+  if (!CLAIM_TABLES[table]) throw new Error('bad work table');
+  const now = new Date();
+  const lease = new Date(now.getTime() + LEASE_MIN * 60000).toISOString();
+  const { data: row } = await wms(sb).from(table).select('claimed_by,lease_expires_at').eq('id', id).maybeSingle();
+  if (!row) throw new Error('work not found');
+  const heldByOther = row.claimed_by && row.claimed_by !== user
+    && row.lease_expires_at && new Date(row.lease_expires_at) > now;
+  if (heldByOther) return { ok: false, enforced: true, claimedBy: row.claimed_by };
+  // Optimistic claim: succeed only if claimed_by is still exactly what we just read
+  // (free / mine / a stale expired holder). A racing claimer flips it and we get 0 rows.
+  let q = wms(sb).from(table).update({ claimed_by: user, claimed_at: now.toISOString(), lease_expires_at: lease }).eq('id', id);
+  q = row.claimed_by ? q.eq('claimed_by', row.claimed_by) : q.is('claimed_by', null);
+  const { data: upd } = await q.select('id');
+  if (!upd || !upd.length) return { ok: false, enforced: true, race: true };
+  return { ok: true, enforced: true, leaseExpiresAt: lease };
+}
+async function heartbeatWork(sb, table, id, user) {
+  if (!CLAIMS_ON()) return { ok: true, enforced: false };
+  if (!CLAIM_TABLES[table]) throw new Error('bad work table');
+  const lease = new Date(Date.now() + LEASE_MIN * 60000).toISOString();
+  const { data } = await wms(sb).from(table).update({ lease_expires_at: lease }).eq('id', id).eq('claimed_by', user).select('id');
+  return { ok: !!(data && data.length), leaseExpiresAt: lease };
+}
+async function releaseWork(sb, table, id, user) {
+  if (!CLAIMS_ON()) return { ok: true, enforced: false };
+  if (!CLAIM_TABLES[table]) throw new Error('bad work table');
+  await wms(sb).from(table).update({ claimed_by: null, claimed_at: null, lease_expires_at: null }).eq('id', id).eq('claimed_by', user);
+  return { ok: true };
+}
+
 // ── Scan a bin+product+qty into a draft line (before any Cin7 write) ─────────
 async function recordScan(sb, parcelLineId, { binCode, qty, sku, raw }, user) {
   const binId = await resolveBinId(sb, binCode);
@@ -191,6 +231,45 @@ async function suggestBins(sb, sku) {
   const bins = avail.filter((a) => a.Location === MAIN_WH_NAME && Number(a.Available) > 0)
     .map((a) => ({ bin: a.Bin || '', available: Number(a.Available), onHand: Number(a.OnHand) }));
   return { pickface, bins };
+}
+
+// ── Stock lookup for the PWA. Cin7's "Available" for an assembly SKU can INCLUDE
+//    units that are only buildable from components (not physically on the shelf), so
+//    we surface physical on-hand per bin as the primary number and, for an assembly,
+//    the BOM components + how many are actually buildable. Read-only. ──
+async function stockLookup(sb, sku) {
+  sku = String(sku || '').trim();
+  const { data: prod } = await sb.schema('cin7_mirror').from('products')
+    .select('sku,name,stock_locator').eq('sku', sku).maybeSingle();
+  const isAssembly = /^(bom|production)$/i.test(String((prod && prod.stock_locator) || '').trim());
+  const rows = await cin7.availability(sku);
+  const locations = (rows || []).map((r) => ({
+    warehouse: r.Location, bin: r.Bin || '',
+    onHand: Number(r.OnHand) || 0, available: Number(r.Available) || 0,
+  }));
+  const onHandTotal = locations.reduce((s, l) => s + l.onHand, 0);
+  const availableTotal = locations.reduce((s, l) => s + l.available, 0);
+
+  let components = [];
+  let potentialBuilds = null;
+  if (isAssembly) {
+    try {
+      const recipe = await getRecipe(sb, sku); // [{ sku, product_id, qty_per }]
+      let minBuilds = Infinity;
+      for (const c of (recipe || [])) {
+        let cOnHand = 0;
+        try {
+          const av = await cin7.availability(c.sku);
+          cOnHand = (av || []).reduce((s, a) => s + (Number(a.OnHand) || 0), 0);
+        } catch (e) { /* best-effort per component */ }
+        const per = Number(c.qty_per) || 1;
+        if (per > 0) minBuilds = Math.min(minBuilds, Math.floor(cOnHand / per));
+        components.push({ sku: c.sku, qtyPer: per, onHand: cOnHand });
+      }
+      potentialBuilds = components.length && minBuilds !== Infinity ? minBuilds : 0;
+    } catch (e) { /* recipe unavailable — still return the base lookup */ }
+  }
+  return { sku, name: (prod && prod.name) || null, isAssembly, onHandTotal, availableTotal, potentialBuilds, locations, components };
 }
 
 // ── COMMIT: pick (write-after-confirm, exactly-once) ────────────────────────
@@ -455,4 +534,5 @@ module.exports = {
   buildWave, getWave, listOpenWork, resolveScan, claimLine, releaseLine, recordScan, suggestBins, getRecipe,
   stageBuild, commitPick, commitBuild, commitPack,
   getPickList, recordComponentScan, finalize,
+  claimWork, heartbeatWork, releaseWork, stockLookup,
 };

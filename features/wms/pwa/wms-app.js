@@ -33,9 +33,42 @@
       if (confirm('Save this pick before leaving?\nOK = save · Cancel = discard (resets it)')) savePick(false); else discardPick();
       return;
     }
-    if (S.stack.length > 1) { S.stack.pop(); render(); }
+    if (S.stack.length > 1) {
+      S.stack.pop();
+      if (S.claim && !S.stack.some(function (s) { return s.screen === 'pick'; })) releaseClaim();
+      render();
+    }
   }
   function replace(screen, title, ctx) { S.stack[S.stack.length - 1] = { screen: screen, title: title, ctx: ctx }; render(); }
+
+  // ── Order-level claim + lease (multi-operator). No-op unless the server has
+  //    WMS_CLAIMS_ENABLED on; then a second picker on the same order is turned away
+  //    and a heartbeat keeps our lease alive while we hold it. ──
+  function claimAndEnter(kind, id, title, ctx) {
+    api('POST', '/claim-work', { kind: kind, id: id }).then(function (r) {
+      if (r && r.ok === false) {
+        toast(r.claimedBy ? ('Being picked by ' + r.claimedBy) : 'Just taken by another operator', 'err');
+        return;
+      }
+      S.claim = { kind: kind, id: id, enforced: !!(r && r.enforced) };
+      startHeartbeat();
+      go('pick', title, ctx);
+    }).catch(function (e) { toast(e.message, 'err'); });
+  }
+  function startHeartbeat() {
+    stopHeartbeat();
+    if (!S.claim || !S.claim.enforced) return;
+    S.hbTimer = setInterval(function () {
+      if (!S.claim) { stopHeartbeat(); return; }
+      api('POST', '/heartbeat-work', { kind: S.claim.kind, id: S.claim.id }).catch(function () {});
+    }, 60000);
+  }
+  function stopHeartbeat() { if (S.hbTimer) { clearInterval(S.hbTimer); S.hbTimer = null; } }
+  function releaseClaim() {
+    stopHeartbeat();
+    var c = S.claim; S.claim = null;
+    if (c && c.enforced) api('POST', '/release-work', { kind: c.kind, id: c.id }).catch(function () {});
+  }
 
   var SCREENS;
   function render() {
@@ -97,7 +130,7 @@
     number = String(number).replace(/\s+/g, '').toUpperCase();
     if (/^\d+$/.test(number)) number = 'TR-' + number;
     toast('Opening ' + number + '…');
-    api('POST', '/tr/open', { number: number }).then(function (pl) { go('pick', pl.transfer.number, { trId: pl.trId }); }).catch(function (e) { toast(e.message, 'err'); });
+    api('POST', '/tr/open', { number: number }).then(function (pl) { claimAndEnter('tr', pl.trId, pl.transfer.number, { trId: pl.trId }); }).catch(function (e) { toast(e.message, 'err'); });
   }
   // Pick entry — scan/type the sales order, then straight into the pick list.
   function pickEntryScreen(view) {
@@ -112,7 +145,7 @@
     if (/^\d+$/.test(order)) order = 'SO-' + order;
     toast('Opening ' + order + '…');
     api('POST', '/wave', { orderNumber: order }).then(function (w) {
-      go('pick', w.wave.order_number, { waveId: w.wave.id });
+      claimAndEnter('so', w.wave.id, w.wave.order_number, { waveId: w.wave.id });
     }).catch(function (e) { toast(e.message, 'err'); });
   }
 
@@ -279,6 +312,7 @@
     var b = $('pkFinal'); if (b) { b.disabled = true; b.textContent = 'Working…'; }
     api('POST', '/tr-dispatch', { transferId: S.pick.trId }).then(function (r) {
       toast((r.number || 'TR') + ' → In Transit ✓', 'ok');
+      releaseClaim();
       while (S.stack.length > 1) S.stack.pop();
       render();
     }).catch(function (e) { toast(e.message, 'err'); var bb = $('pkFinal'); if (bb) { bb.disabled = false; bb.textContent = 'Dispatch — mark In Transit'; } });
@@ -291,6 +325,7 @@
       var msg = (r.order || 'Order') + ' picked ✓';
       if (r.builds && r.builds.length) msg += ' · built ' + r.builds.map(function (x) { return x.assemblyNumber || x.fg; }).join(', ');
       toast(msg, 'ok');
+      releaseClaim();
       while (S.stack.length > 1) S.stack.pop();
       render();
     }).catch(function (e) { toast(e.message, 'err'); var bb = $('pkFinal'); if (bb) { bb.disabled = false; bb.textContent = '✓ Finalize order — build & pick'; } });
@@ -305,13 +340,32 @@
     $('lookRes').innerHTML = '<div class="empty"><span class="spin"></span></div>';
     api('GET', '/lookup/' + encodeURIComponent(sku)).then(function (r) {
       var rows = (r.locations || []).filter(function (x) { return x.onHand !== 0 || x.available !== 0; });
-      if (!rows.length) { $('lookRes').innerHTML = '<div class="empty">No stock for ' + esc(sku) + '.</div>'; return; }
-      $('lookRes').innerHTML = '<div class="card"><div class="sku" style="margin-bottom:8px">' + esc(r.sku) + '</div>' +
-        rows.map(function (x) {
-          return '<div class="row" style="padding:8px 0;border-top:1px solid var(--line)"><div class="grow"><span class="mono">' + esc(x.bin || x.warehouse) + '</span>' +
-            (x.bin ? ' <span class="meta">' + esc(x.warehouse) + '</span>' : '') + '</div>' +
-            '<div class="qty">' + x.available + '<span class="of"> avail</span></div></div>';
-        }).join('') + '</div>';
+      // Physical on hand is the operational truth; Cin7 "available" can include units
+      // that are only buildable from components (for an assembly SKU) — show both.
+      var head = '<div class="card"><div class="sku">' + esc(r.sku) + '</div>' +
+        (r.name ? '<div class="nm">' + esc(r.name) + '</div>' : '') +
+        '<div class="row" style="margin-top:10px;gap:18px">' +
+          '<div><div class="qty">' + num(r.onHandTotal) + '</div><div class="meta">physical on hand</div></div>' +
+          '<div><div class="qty" style="color:var(--muted)">' + num(r.availableTotal) + '</div><div class="meta">Cin7 available</div></div>' +
+          (r.isAssembly ? '<div><div class="qty" style="color:var(--muted)">' + (r.potentialBuilds == null ? '—' : r.potentialBuilds) + '</div><div class="meta">buildable</div></div>' : '') +
+        '</div>' +
+        (r.isAssembly ? '<div class="loc none" style="margin-top:8px"><span class="lbl">assembly</span> “available” may include units not on the shelf</div>' : '') +
+      '</div>';
+      var locHtml = rows.length
+        ? '<div class="sec">Where (physical)</div>' + rows.map(function (x) {
+            return '<div class="card"><div class="row"><div class="grow"><span class="mono">' + esc(x.bin || x.warehouse) + '</span>' +
+              (x.bin ? ' <span class="meta">' + esc(x.warehouse) + '</span>' : '') + '</div>' +
+              '<div class="qty">' + num(x.onHand) + '<span class="of"> phys</span></div></div></div>';
+          }).join('')
+        : '<div class="empty">No physical stock in any bin.</div>';
+      var compHtml = (r.components && r.components.length)
+        ? '<div class="sec">Components (BOM)</div>' + r.components.map(function (c) {
+            return '<div class="card"><div class="row"><div class="grow"><span class="mono">' + esc(c.sku) + '</span>' +
+              ' <span class="meta">× ' + num(c.qtyPer) + ' per unit</span></div>' +
+              '<div class="qty">' + num(c.onHand) + '<span class="of"> on hand</span></div></div></div>';
+          }).join('')
+        : '';
+      $('lookRes').innerHTML = head + locHtml + compHtml;
     }).catch(function (e) { $('lookRes').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
 

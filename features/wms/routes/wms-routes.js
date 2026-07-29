@@ -77,6 +77,23 @@ function registerWmsRoutes(app, sb) {
     res.json({ ok: true });
   }));
 
+  // ── Order-level claim + lease (multi-operator picking). Gated server-side by
+  //    WMS_CLAIMS_ENABLED; when off these are cheap no-ops so the flow is unchanged.
+  //    kind: 'so' (a wave) | 'tr' (a transfer). No Cin7 write — our concurrency layer.
+  const workTable = (k) => (k === 'tr' ? 'transfers' : k === 'so' ? 'waves' : null);
+  app.post('/api/wms/claim-work', A(async (req, res) => {
+    const { kind, id } = req.body || {}; const t = workTable(kind);
+    if (!t) throw new Error('bad work kind'); res.json(await engine.claimWork(sb, t, Number(id), user(req)));
+  }));
+  app.post('/api/wms/heartbeat-work', A(async (req, res) => {
+    const { kind, id } = req.body || {}; const t = workTable(kind);
+    if (!t) throw new Error('bad work kind'); res.json(await engine.heartbeatWork(sb, t, Number(id), user(req)));
+  }));
+  app.post('/api/wms/release-work', A(async (req, res) => {
+    const { kind, id } = req.body || {}; const t = workTable(kind);
+    if (!t) throw new Error('bad work kind'); res.json(await engine.releaseWork(sb, t, Number(id), user(req)));
+  }));
+
   // ── Scan a bin+product+qty into a draft line ──
   app.post('/api/wms/scan', A(async (req, res) => {
     const { parcelLineId, binCode, qty, sku, raw } = req.body || {};
@@ -85,11 +102,7 @@ function registerWmsRoutes(app, sb) {
 
   // ── Stock lookup + bin suggestion (PWA) ──
   app.get('/api/wms/suggest/:sku', A(async (req, res) => res.json(await engine.suggestBins(sb, req.params.sku))));
-  app.get('/api/wms/lookup/:sku', A(async (req, res) => {
-    const cin7 = require('../lib/cin7-wms-client');
-    const rows = await cin7.availability(req.params.sku);
-    res.json({ sku: req.params.sku, locations: rows.map((r) => ({ warehouse: r.Location, bin: r.Bin || '', onHand: Number(r.OnHand), available: Number(r.Available) })) });
-  }));
+  app.get('/api/wms/lookup/:sku', A(async (req, res) => res.json(await engine.stockLookup(sb, req.params.sku))));
 
   // ── Commit: pick ──
   app.post('/api/wms/commit/pick', W(async (req, res) => {
