@@ -183,6 +183,16 @@ function registerWmsRoutes(app, sb) {
     res.json({ ok: true });
   }));
 
+  // persist the packed carton dims (for the TMS booking handoff). Best-effort: the
+  // boxes column arrives with migration 003 — if it isn't there yet, report persisted:false
+  // rather than error, so the Pack Station's fire-and-forget save never breaks packing.
+  app.post('/api/wms/pack/boxes', A(async (req, res) => {
+    const { parcelId, boxes } = req.body || {};
+    const { error } = await sb.schema('wms').from('parcels')
+      .update({ boxes: boxes || [], updated_at: new Date().toISOString() }).eq('id', Number(parcelId));
+    res.json({ ok: true, persisted: !error });
+  }));
+
   // ── Commit: pack ──
   app.post('/api/wms/commit/pack', W(async (req, res) => {
     const { parcelId, boxes } = req.body || {};

@@ -234,11 +234,39 @@ function printSlip() {
     <div class="slip-foot">${PACK.boxes.length} carton${PACK.boxes.length !== 1 ? 's' : ''} · Rapid LED</div>`;
   window.print();
 }
+// The TMS base URL for the booking deep-link. Override per-site via
+// localStorage.rapidExpressWebBaseUrl; defaults to the production TMS.
+function tmsBase() {
+  try {
+    const v = (localStorage.getItem('rapidExpressWebBaseUrl') || '').trim().replace(/\/+$/, '');
+    return v || 'https://www.rapidexpress.com.au';
+  } catch (e) { return 'https://www.rapidexpress.com.au'; }
+}
+// Persist the packed carton dims (best-effort — needs the 003 boxes column). The
+// deep-link works without this; it just makes the dims queryable server-side too.
+function saveBoxes() {
+  const it = PACK.sel; if (!it) return;
+  readBoxInputs();
+  const boxes = PACK.boxes.map(b => ({ name: b.name, length: num(b.l), width: num(b.w), height: num(b.h), weight: num(b.weight) }));
+  api('POST', '/pack/boxes', { parcelId: it.parcelId, boxes }).catch(() => {});
+}
+// Hand off to the TMS Book Order screen: ?ref=<SO> makes the TMS fill customer/address
+// from Cin7 (its existing lookup), and ?parcels=<json> pre-fills the packed cartons. The
+// operator then rate-shops + picks a carrier IN the TMS (its quote/validation stay the
+// source of truth). Opens a new tab where the operator is already logged into the TMS.
 function sendToBooking() {
   const it = PACK.sel; if (!it) return;
-  // TODO: wire to the TMS booking screen (carry SO#, customer, cartons+dims).
-  const dims = PACK.boxes.map(b => `${b.name}: ${b.l || '?'}×${b.w || '?'}×${b.h || '?'}cm ${b.weight || '?'}kg`).join('\n');
-  alert(`Ready for booking:\n\nOrder ${it.wave.order_number}\n${it.wave.customer || ''}\n${PACK.boxes.length} carton(s)\n${dims}\n\nNext: this hands off to the booking screen in the TMS (connection coming).`);
+  readBoxInputs();
+  saveBoxes();
+  const parcels = PACK.boxes.map(b => ({
+    type: 'carton', quantity: 1,
+    length: num(b.l), width: num(b.w), height: num(b.h), weight: num(b.weight),
+  }));
+  const url = tmsBase() + '/book-order?use_flask=1'
+    + '&ref=' + encodeURIComponent(it.wave.order_number || '')
+    + '&parcels=' + encodeURIComponent(JSON.stringify(parcels))
+    + '&src=wms-pack';
+  window.open(url, '_blank', 'noopener');
 }
 
 // ═══ events ═══

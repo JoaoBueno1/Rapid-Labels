@@ -128,8 +128,22 @@ chosen order/TR:**
   #7 reconciler/sync scheduling, #5 Pack→Booking→Ship (TMS). Auth/login = future (the
   claim `user` is still just the `X-WMS-User` header — no login screens yet, by request).
 
-## Pack → Booking → Ship (#5) — feasibility investigated 2026-07-30 (NOT built)
-Verdict: **not "easy"** — do NOT wire the live server-to-server booking yet.
+## Pack → Booking → Ship (#5) — safe deep-link slice BUILT 2026-07-30
+The full server-to-server booking is NOT easy (details below); the safe slice is shipped.
+
+**Built (A):** Pack "Send to booking" now opens
+`<TMS>/book-order?use_flask=1&ref=<SO>&parcels=<json>&src=wms-pack` in a new tab. The TMS
+reads `?ref` → its existing Cin7 lookup (`searchCin7Order`) fills customer + address;
+`?parcels` pre-fills the packed cartons; the operator rate-shops + picks a carrier IN the
+TMS (its quote + AusPost validation stay authoritative). No new TMS booking auth, no Cin7
+write. It's one additive JS hook in `static/js/book_order.js` `initBookOrderPage()` (fires
+only with `?ref`/`?parcels`; the prod quote/book/dispatch flow is untouched). TMS base
+defaults to https://www.rapidexpress.com.au (override `localStorage.rapidExpressWebBaseUrl`);
+the operator must already be logged into the TMS. Carton dims now persist via POST
+`/api/wms/pack/boxes` → `wms.parcels.boxes` (migration `003_wms_pack_boxes.sql`, additive;
+best-effort — reports `persisted:false` until the migration is run, deep-link works anyway).
+
+Why the FULL "book from the WMS" chain is deferred (separate, careful TMS pass):
 - The TMS has a clean, framework-agnostic `book_shipment()` / `BookingService.book()`
   (Rapid-Express-Web `src/services/booking.py`) returning consignment + tracking + base64
   label. BUT the real booking + quote endpoints are **session-cookie only**
@@ -144,11 +158,13 @@ Verdict: **not "easy"** — do NOT wire the live server-to-server booking yet.
 - Pack lacks: a carrier/service choice (no rate-shop step), contact phone/email, and a
   persisted carton-dims column (dims live only in browser + `outbox.payload` JSON; the
   `commitPack` "persist dims for the TMS" comment is inaccurate — it doesn't).
-- **Easy + safe slice we CAN do** (no prod-TMS change): persist `ship_to` + carton dims to
-  a first-class wms column, and make "Send to booking" a **prefilled deep-link into the
-  TMS Book Order screen** (a human picks the carrier + books there, keeping rate-shop +
-  AusPost address validation). The api-key booking route + reviving the Cin7-ship stash +
-  a write-back queue are a separate, carefully-planned TMS pass.
+- To book server-to-server FROM the WMS later: a NEW api-key/token-authed TMS route
+  wrapping `book_shipment()` (`src/services/booking.py`) + branch binding on the `ApiKey`
+  model (today's booking endpoints are session-cookie only). Wrap it — never modify
+  orders_booking/carriers (prod-critical).
+- Then the Cin7 "Ship" write-back (`PUT /sale/fulfilment/ship` + `AddTrackingNumbers`):
+  revive the TMS `git stash@{0}` code, commit behind `CIN7_WRITEBACK_ENABLED`, run async
+  post-booking behind a queue (this is the first Cin7 write from that path).
 
 ## Running it
 - Server: `node server.js` (full node path on the office PC:

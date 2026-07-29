@@ -423,8 +423,11 @@ async function commitPack(sb, parcelId, boxes, user) {
     verify: async () => { const p = await cin7.getPack(taskId); return { done: p && p.Status === 'AUTHORISED' }; },
     movements: packLines.map((l) => ({ movement_type: 'pack', sku: l.SKU, qty: l.Quantity, cin7_ref: wave.order_number, warehouse_id: MAIN_WH_ID, wave_id: wave.id })),
   });
-  // persist our own carton dims (Cin7 doesn't reliably keep them) for the TMS + our slip
   await wms(sb).from('parcels').update({ status: 'committed', updated_at: new Date().toISOString() }).eq('id', parcelId);
+  // Best-effort stash of our own carton dims (Cin7 doesn't reliably keep them) for the
+  // TMS handoff + slip. Separate write so a missing `boxes` column (pre-003 migration)
+  // can't fail the status='committed' update above; the error is intentionally ignored.
+  await wms(sb).from('parcels').update({ boxes: boxSpec }).eq('id', parcelId);
   return { ok: true, taskId, boxes: boxSpec, alreadyDone: res.alreadyDone };
 }
 
