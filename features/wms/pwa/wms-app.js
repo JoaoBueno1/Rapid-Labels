@@ -175,17 +175,13 @@
         : '<div class="banner warn">No pickface set — scan the bin you take it from.</div>') +
       '<div class="card">' +
         '<div class="sku">' + esc(it.sku) + (it.kind === 'component' ? ' <span class="pill warnp" style="font-size:10px">for ' + esc(it.forFg || 'assembly') + '</span>' : '') + '</div>' +
-        '<div class="nm" style="white-space:normal">' + esc(it.name || '') + '</div>' +
         '<div class="meta" style="margin-top:6px">Pick from <b class="mono">' + esc(it.pickface || '—') + '</b> <span id="pfLive" class="faint"></span></div>' +
-        '<div class="statrow">' +
-          '<div class="statbox" id="boxPicked"><span class="k">Picked</span><b id="cPicked">' + c.picked + '</b></div>' +
-          '<div class="statbox"><span class="k">Remain</span><b id="cRemain">' + remain + '</b></div>' +
-        '</div>' +
+        '<div class="cnt"><span>Picked <b id="cPicked">' + c.picked + '</b></span><span>Remain <b id="cRemain">' + remain + '</b></span></div>' +
         '<label class="fld">Bin</label>' +
         '<div class="fldrow"><input class="txt" id="binIn" placeholder="Scan the pickface bin" autocomplete="off" autocapitalize="characters" spellcheck="false" />' +
           '<span class="okmark" id="binOk"></span></div>' +
         '<label class="fld">Product</label>' +
-        '<div class="fldrow"><input class="txt" id="prodIn" placeholder="Scan the product barcode" autocomplete="off" autocapitalize="characters" spellcheck="false"' + (c.binOk ? '' : ' disabled') + ' />' +
+        '<div class="fldrow"><input class="txt" id="prodIn" placeholder="Scan the product barcode" autocomplete="off" autocapitalize="characters" spellcheck="false" />' +
           '<span class="okmark" id="prodOk"></span></div>' +
         '<label class="fld">Quantity picked</label>' +
         '<input class="txt mono qtybig" id="qtyIn" inputmode="numeric" placeholder="0" value="' + (c.picked || '') + '" />' +
@@ -236,9 +232,8 @@
     n = Math.max(0, Math.min(c.need, Math.floor(num(n))));
     if (typed) { var qi = $('qtyIn'); if (qi && num(qi.value) > c.need) qi.value = c.need; }
     c.picked = n; c.dirty = true;
-    var cp = $('cPicked'); if (cp) cp.textContent = n;
+    var cp = $('cPicked'); if (cp) { cp.textContent = n; cp.classList.toggle('hit', n >= c.need && n > 0); }
     var cr = $('cRemain'); if (cr) cr.textContent = Math.max(0, c.need - n);
-    var bx = $('boxPicked'); if (bx) bx.classList.toggle('hit', n >= c.need && n > 0);
     if (!typed) { var q = $('qtyIn'); if (q) q.value = n || ''; }
   }
   function loadItemStock(it) {
