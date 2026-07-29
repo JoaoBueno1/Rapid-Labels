@@ -128,6 +128,28 @@ chosen order/TR:**
   #7 reconciler/sync scheduling, #5 Pack→Booking→Ship (TMS). Auth/login = future (the
   claim `user` is still just the `X-WMS-User` header — no login screens yet, by request).
 
+## Pack → Booking → Ship (#5) — feasibility investigated 2026-07-30 (NOT built)
+Verdict: **not "easy"** — do NOT wire the live server-to-server booking yet.
+- The TMS has a clean, framework-agnostic `book_shipment()` / `BookingService.book()`
+  (Rapid-Express-Web `src/services/booking.py`) returning consignment + tracking + base64
+  label. BUT the real booking + quote endpoints are **session-cookie only**
+  (`@login_required`); the one api-key route (`/api/v1/book`) creates an internal order,
+  no carrier call. So the Labels Node server can't book today without a headless login OR
+  a NEW api-key route wrapping `book_shipment()` + branch binding (`ApiKey` has no
+  `branch_id`). Booking is prod-critical — wrap it, never modify orders_booking/carriers.
+- Cin7 "Ship" write-back (`PUT /sale/fulfilment/ship` + `AddTrackingNumbers`) is proven
+  but DORMANT: the code is only in TMS `git stash@{0}` (not committed to dev/main), and
+  the Labels WMS client has no ship method. It would be the first Cin7 write from that
+  path → must be async + queued.
+- Pack lacks: a carrier/service choice (no rate-shop step), contact phone/email, and a
+  persisted carton-dims column (dims live only in browser + `outbox.payload` JSON; the
+  `commitPack` "persist dims for the TMS" comment is inaccurate — it doesn't).
+- **Easy + safe slice we CAN do** (no prod-TMS change): persist `ship_to` + carton dims to
+  a first-class wms column, and make "Send to booking" a **prefilled deep-link into the
+  TMS Book Order screen** (a human picks the carrier + books there, keeping rate-shop +
+  AusPost address validation). The api-key booking route + reviving the Cin7-ship stash +
+  a write-back queue are a separate, carefully-planned TMS pass.
+
 ## Running it
 - Server: `node server.js` (full node path on the office PC:
   `C:\Users\JoaoMarcos\.fnm\node-versions\v24.13.1\installation\node.exe server.js`).
