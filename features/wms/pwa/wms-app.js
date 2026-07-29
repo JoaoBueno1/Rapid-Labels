@@ -27,7 +27,14 @@
   var S = { user: localStorage.getItem('wms_user') || 'operator', stack: [], pick: null };
   function setUser(u) { S.user = u || 'operator'; localStorage.setItem('wms_user', S.user); $('whoChip').textContent = S.user; }
   function go(screen, title, ctx) { S.stack.push({ screen: screen, title: title, ctx: ctx }); render(); }
-  function back() { if (S.stack.length > 1) { S.stack.pop(); render(); } }
+  function back() {
+    var cur = S.stack[S.stack.length - 1];
+    if (cur && cur.screen === 'pickItem' && S.cur && S.cur.dirty) {
+      if (confirm('Save this pick before leaving?\nOK = save · Cancel = discard (resets it)')) savePick(false); else discardPick();
+      return;
+    }
+    if (S.stack.length > 1) { S.stack.pop(); render(); }
+  }
   function replace(screen, title, ctx) { S.stack[S.stack.length - 1] = { screen: screen, title: title, ctx: ctx }; render(); }
 
   var SCREENS;
@@ -67,14 +74,24 @@
       '<p class="eyebrow">Warehouse</p>' +
       '<div class="tiles">' +
         '<button class="tile" id="tPick"><div class="t">Pick</div><div class="s">Open a sales order and pick its items</div></button>' +
-        '<button class="tile" id="tXfer"><div class="t">Transfer</div><div class="s">Move stock bin to bin or between warehouses</div></button>' +
+        '<button class="tile" id="tTr"><div class="t">Transfer (TR)</div><div class="s">Scan a stock transfer and pick its items</div></button>' +
+        '<button class="tile" id="tXfer"><div class="t">Bin transfer</div><div class="s">Move stock bin to bin or between warehouses</div></button>' +
         '<button class="tile" id="tLook"><div class="t">Stock lookup</div><div class="s">Find a SKU across all bins</div></button>' +
       '</div>' +
       '<div class="row" style="justify-content:flex-end;margin-top:22px"><button class="who" id="tUser">' + esc(S.user) + ' ▾</button></div>';
     $('tPick').onclick = function () { go('pickEntry', 'Pick'); };
-    $('tXfer').onclick = function () { S.transfer = null; go('transfer', 'Transfer'); };
+    $('tTr').onclick = function () { go('trEntry', 'Transfer (TR)'); };
+    $('tXfer').onclick = function () { S.transfer = null; go('transfer', 'Bin transfer'); };
     $('tLook').onclick = function () { go('lookup', 'Stock lookup'); };
     $('tUser').onclick = function () { var u = prompt('Operator name', S.user); if (u) { setUser(u.trim()); render(); } };
+  }
+  // Transfer (TR) — scan an ordered stock transfer and pick its items. (Pick flow next.)
+  function trEntryScreen(view) {
+    view.innerHTML =
+      '<p class="eyebrow">Stock transfer (TR)</p>' +
+      '<div class="banner">Scan or type the <b>TR</b> number to open it and pick its items.</div>' +
+      scanField('Scan or type TR number…');
+    wireScan(function (v) { toast('TR pick flow is being built — next update (' + v + ')', 'err'); });
   }
   // Pick entry — scan/type the sales order, then straight into the pick list.
   function pickEntryScreen(view) {
@@ -118,11 +135,10 @@
       };
     });
     if (pl.allPicked) {
-      bottom('<button class="btn go lg" id="pkFinal">✓ Finalize order — build &amp; pick</button>');
+      bottom('<button class="btn go lg" id="pkFinal">Finish order — build &amp; pick</button>');
       $('pkFinal').onclick = doFinalize;
     } else {
-      bottom('<button class="btn ghost" id="pkReload">↻ Refresh</button><button class="btn go" disabled>' + (total - done) + ' left to pick</button>');
-      $('pkReload').onclick = function () { render(); };
+      bottom('<button class="btn ghost" disabled style="opacity:1;color:var(--muted)">' + done + ' / ' + total + ' picked · ' + (total - done) + ' to go</button>');
     }
   }
   function pickCard(it, i) {
@@ -140,68 +156,121 @@
       '<div class="qty">' + (it.picked ? '✓ ' : '') + '×' + num(it.qty) + '</div></div></button>';
   }
 
-  // Focused pick of ONE item. Step-by-step, product scan is mandatory (proves it is
-  // the right item), qty is typeable; on Confirm the card completes and we drop back
-  // to the list (it turns green). Same screen for a normal line or a component.
+  // Focused pick of ONE item — separate Bin + Product fields (like Cin7 WMS). The bin
+  // must MATCH the pickface (no random bins); each product scan adds one to the count
+  // (or type it), capped at the need; when the count reaches the need it auto-saves and
+  // the card turns green. Back prompts save-or-discard, and leaving unsaved resets the
+  // pick so another operator resumes cleanly.
   function pickItemScreen(view, ctx) {
-    S.cur = { it: ctx.item, bin: ctx.item.pickface || '', productOk: false };
-    var c = S.cur, it = c.it;
+    var it = ctx.item;
+    S.cur = { it: it, need: num(it.qty), bin: '', binOk: false, productOk: false, picked: num(it.qtyScanned) || 0, dirty: false };
+    renderPickItem(view);
+    loadItemStock(it);
+  }
+  function renderPickItem(view) {
+    var c = S.cur, it = c.it, remain = Math.max(0, c.need - c.picked);
     view.innerHTML =
       (it.pickface
-        ? '<div class="banner">Pick from <b>' + esc(it.pickface) + '</b> — the pickface. Then scan the product to confirm.</div>'
-        : '<div class="banner warn">No pickface set — pick from a bin below and tell stock to restock the pickface.</div>') +
-      scanField(stepPlaceholder()) +
-      '<div class="card"><div class="hd"><div class="sku">' + esc(it.sku) + '</div>' +
-        (it.kind === 'component' ? '<span class="pill warnp">for ' + esc(it.forFg || 'assembly') + '</span>' : '') + '</div>' +
-        '<div class="nm">' + esc(it.name || '') + '</div>' +
-        '<div class="loc' + (it.pickface ? '' : ' none') + '" style="margin-top:10px"><span class="lbl">bin</span> <b class="mono" id="curBin">' + esc(c.bin || 'scan a bin') + '</b></div>' +
-        '<div class="row" style="margin-top:14px;justify-content:space-between;align-items:center">' +
-          '<div class="meta">Qty to pick <span class="faint">(need ' + num(it.qty) + ')</span></div>' + qtyStepper(num(it.qty)) +
+        ? '<div class="banner">Pick <b>' + c.need + '</b> from <b>' + esc(it.pickface) + '</b> — the pickface.</div>'
+        : '<div class="banner warn">No pickface set — scan the bin you take it from.</div>') +
+      '<div class="card">' +
+        '<div class="sku">' + esc(it.sku) + (it.kind === 'component' ? ' <span class="pill warnp" style="font-size:10px">for ' + esc(it.forFg || 'assembly') + '</span>' : '') + '</div>' +
+        '<div class="nm" style="white-space:normal">' + esc(it.name || '') + '</div>' +
+        '<div class="meta" style="margin-top:6px">Pick from <b class="mono">' + esc(it.pickface || '—') + '</b> <span id="pfLive" class="faint"></span></div>' +
+        '<div class="statrow">' +
+          '<div class="statbox" id="boxPicked"><span class="k">Picked</span><b id="cPicked">' + c.picked + '</b></div>' +
+          '<div class="statbox"><span class="k">Remain</span><b id="cRemain">' + remain + '</b></div>' +
         '</div>' +
-        '<div class="sec" style="margin:16px 0 6px">Other bins with stock <span style="text-transform:none;font-weight:400;letter-spacing:0">— restock the pickface from here</span></div>' +
+        '<label class="fld">Bin</label>' +
+        '<div class="fldrow"><input class="txt" id="binIn" placeholder="Scan the pickface bin" autocomplete="off" autocapitalize="characters" spellcheck="false" />' +
+          '<span class="okmark" id="binOk"></span></div>' +
+        '<label class="fld">Product</label>' +
+        '<div class="fldrow"><input class="txt" id="prodIn" placeholder="Scan the product barcode" autocomplete="off" autocapitalize="characters" spellcheck="false"' + (c.binOk ? '' : ' disabled') + ' />' +
+          '<span class="okmark" id="prodOk"></span></div>' +
+        '<label class="fld">Quantity picked</label>' +
+        '<input class="txt mono qtybig" id="qtyIn" inputmode="numeric" placeholder="0" value="' + (c.picked || '') + '" />' +
+        '<div class="sec" style="margin:16px 0 6px">Stock in other bins <span style="text-transform:none;font-weight:400;letter-spacing:0">— consultative only</span></div>' +
         '<div class="chips" id="binChips"><span class="spin"></span></div>' +
       '</div>';
-    wireScan(onItemScan);
-    wireQty();
-    loadSuggestions(it.sku);
-    bottom('<button class="btn ghost" id="pkCancel">Back</button><button class="btn go" id="pkSave"' + (c.bin && c.productOk ? '' : ' disabled') + '>Confirm pick</button>');
-    $('pkCancel').onclick = back;
-    $('pkSave').onclick = saveItem;
+    wireItemInputs();
+    bottom('<button class="btn ghost" id="pkDiscard">Discard</button><button class="btn go" id="pkSave">Save &amp; back</button>');
+    $('pkDiscard').onclick = function () { discardPick(); };
+    $('pkSave').onclick = function () { savePick(false); };
   }
-  function stepPlaceholder() { return !S.cur.bin ? '1 · Scan the BIN you are picking from' : (!S.cur.productOk ? '2 · Scan the PRODUCT to confirm' : 'Product OK — set qty, then Confirm'); }
-  function refreshStep() {
-    var inp = $('scanIn'); if (inp) inp.placeholder = stepPlaceholder();
-    var s = $('pkSave'); if (s) s.disabled = !(S.cur.bin && S.cur.productOk);
+  function wireItemInputs() {
+    var binIn = $('binIn'), prodIn = $('prodIn'), qtyIn = $('qtyIn');
+    if (binIn) {
+      var doBin = function () { var v = (binIn.value || '').trim().toUpperCase(); if (v) confirmBin(v); };
+      binIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doBin(); } });
+      binIn.addEventListener('blur', doBin);
+    }
+    if (prodIn) {
+      var doProd = function () { var v = (prodIn.value || '').trim().toUpperCase(); if (v) { prodIn.value = ''; scanProduct(v); } };
+      prodIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doProd(); } });
+    }
+    if (qtyIn) qtyIn.addEventListener('input', function () { setPicked(num(qtyIn.value), true); });
+    setTimeout(function () { var f = S.cur.binOk ? prodIn : binIn; if (f) f.focus(); }, 60);
   }
-  function setBin(bin) { S.cur.bin = bin; var b = $('curBin'); if (b) b.textContent = bin; refreshStep(); toast('Bin ' + bin); }
-  function onItemScan(v) {
+  function confirmBin(v) {
     var c = S.cur, it = c.it;
-    if (isBinCode(v)) { setBin(v); return; }
-    if (!c.bin) { toast('Scan the bin first', 'err'); return; }
+    if (it.pickface && v !== String(it.pickface).toUpperCase()) { toast('Wrong bin — pick from ' + it.pickface, 'err'); var b0 = $('binIn'); if (b0) b0.value = ''; return; }
+    c.bin = it.pickface || v; c.binOk = true;
+    var bi = $('binIn'); if (bi) { bi.value = c.bin; bi.disabled = true; }
+    var ok = $('binOk'); if (ok) ok.textContent = '✓';
+    var p = $('prodIn'); if (p) { p.disabled = false; p.focus(); }
+    toast('Bin confirmed', 'ok');
+  }
+  function scanProduct(v) {
+    var c = S.cur, it = c.it;
+    if (!c.binOk) { toast('Scan the bin first', 'err'); return; }
     api('GET', '/resolve/' + encodeURIComponent(v)).then(function (p) {
-      if (p.sku !== it.sku) { toast('Scanned ' + p.sku + ' — expected ' + it.sku, 'err'); return; }
-      c.productOk = true;
-      if (!$('prodOk')) { var b = $('curBin'); if (b) b.insertAdjacentHTML('afterend', ' &nbsp;<span class="pill done" id="prodOk">product OK</span>'); }
-      toast('Product confirmed', 'ok'); refreshStep();
+      if (p.sku !== it.sku) { toast('Wrong product: ' + p.sku + ' — need ' + it.sku, 'err'); return; }
+      c.productOk = true; var ok = $('prodOk'); if (ok) ok.textContent = '✓';
+      if (c.picked >= c.need) { toast('Full qty already (' + c.need + ')', 'err'); return; }
+      setPicked(c.picked + 1, false);
+      if (c.picked >= c.need) { toast(it.sku + ' complete', 'ok'); savePick(true); }
     }).catch(function () { toast('Unknown code: ' + v, 'err'); });
   }
-  function loadSuggestions(sku) {
-    api('GET', '/suggest/' + encodeURIComponent(sku)).then(function (s) {
-      var el = $('binChips'); if (!el) return;
-      var bins = (s.bins || []).slice(0, 8).map(function (b) { return '<span class="chip" data-bin="' + esc(b.bin) + '">' + esc(b.bin || '(root)') + '<span class="av">' + b.available + '</span></span>'; });
-      el.innerHTML = bins.join('') || '<span class="meta">No stock in any bin.</span>';
-      Array.prototype.forEach.call(el.querySelectorAll('[data-bin]'), function (c) { c.onclick = function () { setBin(c.getAttribute('data-bin')); }; });
+  function setPicked(n, typed) {
+    var c = S.cur;
+    n = Math.max(0, Math.min(c.need, Math.floor(num(n))));
+    if (typed) { var qi = $('qtyIn'); if (qi && num(qi.value) > c.need) qi.value = c.need; }
+    c.picked = n; c.dirty = true;
+    var cp = $('cPicked'); if (cp) cp.textContent = n;
+    var cr = $('cRemain'); if (cr) cr.textContent = Math.max(0, c.need - n);
+    var bx = $('boxPicked'); if (bx) bx.classList.toggle('hit', n >= c.need && n > 0);
+    if (!typed) { var q = $('qtyIn'); if (q) q.value = n || ''; }
+  }
+  function loadItemStock(it) {
+    api('GET', '/suggest/' + encodeURIComponent(it.sku)).then(function (s) {
+      var bins = s.bins || [];
+      if (it.pickface) {
+        var pf = bins.filter(function (b) { return String(b.bin).toUpperCase() === String(it.pickface).toUpperCase(); })[0];
+        var el = $('pfLive'); if (el) el.textContent = pf ? '· ' + pf.available + ' in this bin' : '· 0 here — restock needed';
+      }
+      var el2 = $('binChips'); if (!el2) return;
+      var others = bins.filter(function (b) { return !it.pickface || String(b.bin).toUpperCase() !== String(it.pickface).toUpperCase(); }).slice(0, 8);
+      el2.innerHTML = others.map(function (b) { return '<span class="chip" style="cursor:default">' + esc(b.bin || '(root)') + '<span class="av">' + b.available + '</span></span>'; }).join('') || '<span class="meta">No stock in other bins.</span>';
     }).catch(function () { var el = $('binChips'); if (el) el.innerHTML = '<span class="meta">Bins unavailable.</span>'; });
   }
-  function saveItem() {
-    var c = S.cur, it = c.it, bin = c.bin, qty = num($('qtyIn') && $('qtyIn').value) || num(it.qty);
-    if (!bin) return toast('Scan the bin first', 'err');
-    if (!c.productOk) return toast('Scan the product to confirm first', 'err');
+  function savePick(auto) {
+    var c = S.cur, it = c.it;
+    if (!c.binOk) return toast('Scan the bin first', 'err');
+    if (!c.productOk) return toast('Scan the product to confirm', 'err');
     var call = it.kind === 'component'
-      ? api('POST', '/component-scan', { buildComponentId: it.id, binCode: bin, qty: qty })
-      : api('POST', '/scan', { parcelLineId: it.id, binCode: bin, qty: qty, sku: it.sku });
-    call.then(function () { toast(it.sku + ' picked', 'ok'); back(); }).catch(function (e) { toast(e.message, 'err'); });
+      ? api('POST', '/component-scan', { buildComponentId: it.id, binCode: c.bin, qty: c.picked })
+      : api('POST', '/scan', { parcelLineId: it.id, binCode: c.bin, qty: c.picked, sku: it.sku });
+    call.then(function () { c.dirty = false; toast(it.sku + ' saved ' + c.picked + '/' + c.need, 'ok'); popBack(); }).catch(function (e) { toast(e.message, 'err'); });
   }
+  function discardPick() {
+    var c = S.cur, it = c.it;
+    var call = it.kind === 'component'
+      ? api('POST', '/component-scan', { buildComponentId: it.id, binCode: '', qty: 0 })
+      : api('POST', '/scan', { parcelLineId: it.id, binCode: '', qty: 0, sku: it.sku });
+    c.dirty = false;
+    call.then(function () { toast('Pick reset'); popBack(); }).catch(function () { popBack(); });
+  }
+  function popBack() { if (S.stack.length > 1) { S.stack.pop(); render(); } }
   function doFinalize() {
     if (!confirm('Finalize ' + S.pick.wave.order_number + '?\nThis builds any assemblies and picks everything in Cin7 (real stock move).')) return;
     toast('Finalizing — build + pick…');
@@ -285,7 +354,7 @@
     }).join('') : '<div class="empty">Scan products to add lines.</div>';
   }
 
-  SCREENS = { home: homeScreen, pickEntry: pickEntryScreen, pick: pickScreen, pickItem: pickItemScreen, lookup: lookupScreen, transfer: transferScreen };
+  SCREENS = { home: homeScreen, pickEntry: pickEntryScreen, trEntry: trEntryScreen, pick: pickScreen, pickItem: pickItemScreen, lookup: lookupScreen, transfer: transferScreen };
 
   // ── boot ──
   $('backBtn').onclick = back;
