@@ -70,6 +70,9 @@ again on the next pull.
 - **257** products newly added to the table.
 - **3** case-duplicate rows merged/cleaned (Main values kept, branch data preserved).
 - Result: 4,647 rows, **0 decimals** in `avg_mth_main`.
-- Because transfers are ~50% of Main outflow, the fresh totals roughly doubled the
-  demand figures vs the previous (stale, 6.53-month) load — expected, and it makes
-  the coverage alerts fire earlier on the true top movers.
+- Moving the window to the last 3 months (was Aug 2025 – Feb 2026) lifted total
+  Main demand **~+25%** (both the old and new figures already counted transfers —
+  the rise is fresher, current velocity, not a change in method).
+- Effect on the 1,473 configured pickfaces: **🔴 critical (<3 wk) 99 → 166**,
+  **⚪ no-demand 247 → 352** (dead SKUs to reclaim), 🟢 healthy 1,069 → 885. Balanced
+  churn: 232 pickfaces became more urgent, 237 less urgent, 1,004 unchanged.
