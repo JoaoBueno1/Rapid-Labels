@@ -152,6 +152,36 @@ function invoiceBadge(s) {
   return `<span class="oo-inv ${k}">${esc(label[k] || s || '—')}</span>`;
 }
 
+// ── Cin7-style fulfilment strip: Sales order · Pick · Pack · Ship · Invoice ──
+// green = done, orange = pending/partial, grey = not applicable. Replaces the
+// Stage/Status/Invoiced text columns so you can read at a glance WHERE an order
+// is stuck (e.g. picked + invoiced but not packed/shipped). Hover for the value.
+const OO_SVG = 'viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+const OO_ICONS = {
+  order: `<svg ${OO_SVG}><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>`,
+  pick: `<svg ${OO_SVG}><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M9 14l2 2 4-4"></path></svg>`,
+  pack: `<svg ${OO_SVG}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`,
+  ship: `<svg ${OO_SVG}><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>`,
+  invoice: `<svg ${OO_SVG}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`
+};
+const FULFIL_STEPS = [['order', 'Sales order'], ['pick', 'Pick'], ['pack', 'Pack'], ['ship', 'Ship'], ['invoice', 'Invoice']];
+function stepState(value) {
+  const u = String(value || '').toUpperCase().trim();
+  if (!u || u === 'NOT AVAILABLE') return 'na';
+  if (/^NOT /.test(u) || u.includes('PARTIAL') || /(PICKING|PACKING|SHIPPING)/.test(u)) return 'pend';
+  if (/(PICKED|PACKED|SHIPPED|INVOICED|FULFILLED|COMPLETED)$/.test(u)) return 'done';
+  return 'pend';
+}
+function fulfilStrip(r) {
+  const vals = { order: 'AUTHORISED', pick: r.pick, pack: r.pack, ship: r.ship, invoice: r.invoiceStatus };
+  const cells = FULFIL_STEPS.map(([key, label]) => {
+    const st = key === 'order' ? 'done' : stepState(vals[key]);
+    const val = key === 'order' ? 'Authorised' : (vals[key] || '—');
+    return `<span class="oo-ic ${st}" title="${esc(label)}: ${esc(val)}">${OO_ICONS[key]}</span>`;
+  });
+  return `<div class="oo-icons">${cells.join('')}</div>`;
+}
+
 function renderPager(id, total, page, onGo) {
   const el = document.getElementById(id); if (!el) return;
   el.innerHTML = '';
@@ -182,9 +212,7 @@ function soRowHtml(r) {
     `<td>${esc(r.customer)}</td>` +
     `<td>${esc(r.rep)}</td>` +
     `<td>${esc(r.warehouse)}</td>` +
-    `<td>${stageChip(r.stage)}</td>` +
-    `<td>${esc(r.status)}</td>` +
-    `<td>${invoiceBadge(r.invoiceStatus)}</td>` +
+    `<td class="oo-fulfil">${fulfilStrip(r)}</td>` +
     `<td class="num">${ageBadge(r.age)}</td>` +
     `<td>${fmtDate(r.orderDate)}</td>` +
     noteCell(r.order) + `</tr>`;
@@ -194,7 +222,7 @@ function renderSoTable(rows, tableId, pagerId, pageKey, empty) {
   if (OO[pageKey] > Math.ceil(total / ps)) OO[pageKey] = 1;
   const paged = rows.slice((OO[pageKey] - 1) * ps, OO[pageKey] * ps);
   const tbody = document.querySelector('#' + tableId + ' tbody');
-  if (!total) { tbody.innerHTML = `<tr><td colspan="10" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
+  if (!total) { tbody.innerHTML = `<tr><td colspan="8" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
   tbody.innerHTML = paged.map(soRowHtml).join('');
   renderPager(pagerId, total, OO[pageKey], p => { OO[pageKey] = p; renderSoTable(rows, tableId, pagerId, pageKey, empty); });
 }
@@ -225,7 +253,7 @@ async function loadSoLines(order) {
   if (OO._soLines[order]) return OO._soLines[order];
   const sb = await ensureClient();
   const { data, error } = await sb.schema('cin7_mirror').from('sale_lines')
-    .select('line_no,sku,product_name,quantity,price,total').eq('order_number', order).order('line_no');
+    .select('line_no,sku,product_name,quantity,price,total,backorder_quantity').eq('order_number', order).order('line_no');
   if (error) throw new Error(error.message);
   return (OO._soLines[order] = data || []);
 }
@@ -250,24 +278,27 @@ function subStatus(label, value) {
   else cls = 'part';
   return `<span class="oo-sub ${cls}"><b>${esc(label)}</b> ${esc(v)}</span>`;
 }
-function linesTable(rows, cols) {
+function linesTable(rows, cols, rowCls) {
   if (!rows.length) return '<div class="oo-detail-empty">No line items recorded.</div>';
   const head = cols.map(c => `<th class="${c.cls || ''}">${esc(c.h)}</th>`).join('');
-  const body = rows.map(r => '<tr>' + cols.map(c => `<td class="${c.cls || ''}">${c.fmt(r)}</td>`).join('') + '</tr>').join('');
+  const body = rows.map(r => `<tr class="${rowCls ? rowCls(r) : ''}">` + cols.map(c => `<td class="${c.cls || ''}">${c.fmt(r)}</td>`).join('') + '</tr>').join('');
   return `<table class="oo-detail-tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 async function renderSoDetail(order) {
   const r = OO.so.find(x => x.order === order) || {};
   const strip = `<div class="oo-substrip">${subStatus('Pick', r.pick)}${subStatus('Pack', r.pack)}${subStatus('Ship', r.ship)}${subStatus('Invoice', r.invoiceStatus)}</div>`;
   const lines = await loadSoLines(order);
-  const tbl = linesTable(lines, [
+  const anyBo = lines.some(l => l.backorder_quantity > 0);
+  const cols = [
     { h: 'SKU', cls: 'oo-mono', fmt: l => esc(l.sku || '—') },
     { h: 'Product', fmt: l => esc(l.product_name || '—') },
     { h: 'Qty', cls: 'num', fmt: l => esc(l.quantity != null ? l.quantity : '—') },
+    { h: 'Backorder', cls: 'num', fmt: l => (l.backorder_quantity > 0) ? `<span class="oo-bo">${esc(l.backorder_quantity)}</span>` : '<span class="oo-ok">✓</span>' },
     { h: 'Price', cls: 'num', fmt: l => l.price != null ? '$' + Number(l.price).toFixed(2) : '—' },
     { h: 'Total', cls: 'num', fmt: l => l.total != null ? '$' + Number(l.total).toFixed(2) : '—' }
-  ]);
-  return strip + tbl;
+  ];
+  const hint = anyBo ? '<div class="oo-detail-note">⚠ Highlighted lines are on <b>backorder</b> (awaiting stock) — often why the order is still open.</div>' : '';
+  return strip + hint + linesTable(lines, cols, l => l.backorder_quantity > 0 ? 'oo-bo-row' : '');
 }
 async function renderTrDetail(number) {
   const r = OO.tr.find(x => x.number === number) || {};
@@ -449,7 +480,7 @@ function init() {
   bind();
   switchTab('so');
   const def = document.querySelector('.oo-agechip[data-age="2"]'); if (def) def.classList.add('active');   // default: open > 2 days
-  loadData().catch(e => { console.error('[open-orders] load failed', e); const t = document.querySelector('#ooSoTable tbody'); if (t) t.innerHTML = `<tr><td colspan="10" class="oo-empty">Could not load data: ${esc(e.message)}</td></tr>`; });
+  loadData().catch(e => { console.error('[open-orders] load failed', e); const t = document.querySelector('#ooSoTable tbody'); if (t) t.innerHTML = `<tr><td colspan="8" class="oo-empty">Could not load data: ${esc(e.message)}</td></tr>`; });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();
