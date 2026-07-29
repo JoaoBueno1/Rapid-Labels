@@ -86,6 +86,22 @@ function registerWmsRoutes(app, sb) {
     res.json(await engine.commitPick(sb, Number(parcelId), user(req)));
   }));
 
+  // ── New pick flow: unified list (normal lines + assembly components), component
+  //    scan (draft), and finalize (build FGs + pick everything, one clean commit) ──
+  app.get('/api/wms/pick-list/:waveId', A(async (req, res) => {
+    const l = await engine.getPickList(sb, Number(req.params.waveId));
+    if (!l) return res.status(404).json({ error: 'wave not found' });
+    res.json(l);
+  }));
+  app.post('/api/wms/component-scan', A(async (req, res) => {
+    const { buildComponentId, binCode, qty } = req.body || {};
+    res.json(await engine.recordComponentScan(sb, Number(buildComponentId), { binCode, qty: Number(qty) }, user(req)));
+  }));
+  app.post('/api/wms/finalize', A(async (req, res) => {
+    const { waveId } = req.body || {};
+    res.json(await engine.finalize(sb, Number(waveId), user(req)));
+  }));
+
   // ── Assembly: recipe, then stage a build from scanned components, then commit ──
   app.get('/api/wms/recipe/:sku', A(async (req, res) => res.json({ sku: req.params.sku, components: await engine.getRecipe(sb, req.params.sku) })));
   app.post('/api/wms/build', A(async (req, res) => {

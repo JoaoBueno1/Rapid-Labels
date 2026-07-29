@@ -42,13 +42,16 @@ async function buildWave(sb, orderNumber, user) {
   }
   const lines = (sale.Order && sale.Order.Lines) || [];
 
-  // detect assembled lines (cache per product)
-  const asmCache = {};
-  const detail = [];
-  for (const l of lines) {
-    if (asmCache[l.ProductID] === undefined) asmCache[l.ProductID] = await cin7.isAssembled(l.ProductID);
-    detail.push({ line: l, isAssembly: asmCache[l.ProductID] });
+  // Detect assembled lines from the MIRROR (products.stock_locator = BOM/PRODUCTION is
+  // the company's convention, matches Cin7's BOMType='Assembly'). One query, not N Cin7
+  // getProduct calls — this is what keeps opening an order fast for the picker.
+  const skus = [...new Set(lines.map((l) => l.SKU).filter(Boolean))];
+  const asmSet = new Set();
+  if (skus.length) {
+    const { data: prods } = await sb.schema('cin7_mirror').from('products').select('sku,stock_locator').in('sku', skus);
+    (prods || []).forEach((p) => { if (/^(bom|production)$/i.test(String(p.stock_locator || '').trim())) asmSet.add(p.sku); });
   }
+  const detail = lines.map((l) => ({ line: l, isAssembly: asmSet.has(l.SKU) }));
   const hasAssembly = detail.some((d) => d.isAssembly);
 
   const { data: wave } = await wms(sb).from('waves').insert({
@@ -72,6 +75,22 @@ async function buildWave(sb, orderNumber, user) {
     });
   });
   if (plines.length) await wms(sb).from('parcel_lines').insert(plines);
+
+  // For each assembly line, stage a DRAFT build + its components (from the recipe)
+  // so the picker sees the COMPONENTS as ordinary pick cards. Nothing hits Cin7 —
+  // the build is committed only at finalize, once the whole order is picked.
+  for (const d of detail.filter((x) => x.isAssembly)) {
+    const recipe = await getRecipe(sb, d.line.SKU);   // [{sku, product_id, qty_per}]
+    const { data: build } = await wms(sb).from('builds').insert({
+      wave_id: wave.id, fg_sku: d.line.SKU, fg_product_id: d.line.ProductID, qty: d.line.Quantity,
+      warehouse_id: MAIN_WH_ID, putaway_bin: PRODUCTION_BIN, status: 'draft', created_by: user,
+    }).select().single();
+    const comps = (recipe || []).map((c) => ({
+      build_id: build.id, sku: c.sku, product_id: c.product_id,
+      qty: Number(c.qty_per) * Number(d.line.Quantity), from_bin: null, from_bin_id: null,
+    }));
+    if (comps.length) await wms(sb).from('build_components').insert(comps);
+  }
   return getWave(sb, wave.id);
 }
 
@@ -236,6 +255,8 @@ async function commitBuild(sb, buildId, user) {
   if (!build) throw new Error('build not found');
   const { data: comps } = await wms(sb).from('build_components').select('*').eq('build_id', buildId);
   if (!comps || !comps.length) throw new Error('no components scanned');
+  let orderNo = null;
+  if (build.wave_id) { const { data: w } = await wms(sb).from('waves').select('order_number').eq('id', build.wave_id).maybeSingle(); orderNo = w && w.order_number; }
 
   // Adopt the build Cin7 auto-created for this FG, else create one — never both.
   let taskId = build.cin7_task_id;
@@ -244,7 +265,7 @@ async function commitBuild(sb, buildId, user) {
     const linked = await cin7.findLinkedBuild(build.fg_sku);
     if (linked) { taskId = linked.TaskID; adopted = true; }
     else {
-      const created = await cin7.createBuild({ productId: build.fg_product_id, productCode: build.fg_sku, location: MAIN_WH_NAME, locationId: build.warehouse_id || MAIN_WH_ID, quantity: Number(build.qty) });
+      const created = await cin7.createBuild({ productId: build.fg_product_id, productCode: build.fg_sku, location: MAIN_WH_NAME, locationId: build.warehouse_id || MAIN_WH_ID, quantity: Number(build.qty), notes: orderNo ? `Created as an assembly for sale order #${orderNo} by WMS (${user})` : undefined });
       taskId = created.TaskID;
     }
     await wms(sb).from('builds').update({ cin7_task_id: taskId, adopted }).eq('id', buildId);
@@ -315,8 +336,104 @@ async function commitPack(sb, parcelId, boxes, user) {
   return { ok: true, taskId, boxes: boxSpec, alreadyDone: res.alreadyDone };
 }
 
+// ── Unified pick list (Cin7-WMS style): normal lines + assembly COMPONENTS as
+// ordinary pick cards. The FG sale lines themselves are not picked by the operator
+// — they're satisfied by building from the components at finalize. Sorted so the
+// walk is predictable. ──────────────────────────────────────────────────────────
+async function getPickList(sb, waveId) {
+  const { data: wave } = await wms(sb).from('waves').select('*').eq('id', waveId).maybeSingle();
+  if (!wave) return null;
+  const { data: parcels } = await wms(sb).from('parcels').select('id,kind').eq('wave_id', waveId);
+  const pickParcel = (parcels || []).find((p) => p.kind === 'pick');
+  const normal = pickParcel
+    ? (await wms(sb).from('parcel_lines').select('*').eq('parcel_id', pickParcel.id).eq('is_assembly', false)).data || []
+    : [];
+  const { data: builds } = await wms(sb).from('builds').select('id,fg_sku,qty,status').eq('wave_id', waveId);
+  const buildById = {}; (builds || []).forEach((b) => { buildById[b.id] = b; });
+  const buildIds = (builds || []).map((b) => b.id);
+  let comps = [];
+  if (buildIds.length) comps = (await wms(sb).from('build_components').select('*').in('build_id', buildIds)).data || [];
+
+  // enrich component names from the product mirror (build_components has no name)
+  const compSkus = [...new Set(comps.map((c) => c.sku))];
+  const nameMap = {};
+  if (compSkus.length) {
+    const { data: prods } = await sb.schema('cin7_mirror').from('products').select('sku,name').in('sku', compSkus);
+    (prods || []).forEach((p) => { nameMap[p.sku] = p.name; });
+  }
+
+  const items = [];
+  normal.forEach((l) => items.push({
+    kind: 'line', id: l.id, sku: l.sku, name: l.name, qty: Number(l.qty_ordered),
+    qtyScanned: Number(l.qty_scanned), fromBin: l.from_bin,
+    picked: l.status === 'committed' || Number(l.qty_scanned) >= Number(l.qty_ordered),
+  }));
+  comps.forEach((c) => items.push({
+    kind: 'component', id: c.id, forFg: (buildById[c.build_id] || {}).fg_sku || null,
+    sku: c.sku, name: nameMap[c.sku] || c.sku, qty: Number(c.qty), fromBin: c.from_bin,
+    picked: !!c.from_bin,
+  }));
+  items.sort((a, b) => String(a.sku).localeCompare(String(b.sku), undefined, { numeric: true, sensitivity: 'base' }));
+  return {
+    wave: { id: wave.id, order_number: wave.order_number, customer: wave.customer, ship_to: wave.ship_to, status: wave.status },
+    items, allPicked: items.length > 0 && items.every((i) => i.picked),
+  };
+}
+
+// Persist a component pick (bin chosen) — drafts in our DB, multi-user safe, zero Cin7.
+async function recordComponentScan(sb, buildComponentId, { binCode, qty }, user) {
+  const binId = await resolveBinId(sb, binCode);
+  await wms(sb).from('build_components').update({
+    from_bin: binCode, from_bin_id: binId, updated_at: new Date().toISOString(),
+  }).eq('id', Number(buildComponentId));
+  return { ok: true, binId };
+}
+
+// ── FINALIZE: the whole order is picked → build each FG from its picked components
+// (one clean write via outbox), then pick everything into the sale. Everything was
+// draft until this call, so an abandoned pick leaves ZERO Cin7 footprint. ─────────
+async function finalize(sb, waveId, user) {
+  const { data: wave } = await wms(sb).from('waves').select('*').eq('id', waveId).maybeSingle();
+  if (!wave) throw new Error('wave not found');
+
+  const list = await getPickList(sb, waveId);
+  const unpicked = list.items.filter((i) => !i.picked);
+  if (unpicked.length) throw new Error(`${unpicked.length} item(s) still to pick — pick everything before finalizing.`);
+
+  const { data: parcels } = await wms(sb).from('parcels').select('*').eq('wave_id', waveId);
+  const pickParcel = (parcels || []).find((p) => p.kind === 'pick');
+  const asmParcel = (parcels || []).find((p) => p.kind === 'assembly');
+  const { data: builds } = await wms(sb).from('builds').select('*').eq('wave_id', waveId).neq('status', 'committed');
+
+  const result = { order: wave.order_number, builds: [], picks: [] };
+
+  // 1. build each FG (consume components → produce FG at its putaway bin), then set
+  //    the FG sale line to pick from that bin.
+  for (const b of (builds || [])) {
+    const r = await commitBuild(sb, b.id, user);
+    result.builds.push({ fg: b.fg_sku, assemblyNumber: r.assemblyNumber, adopted: r.adopted });
+    if (asmParcel) {
+      const putBin = b.putaway_bin || PRODUCTION_BIN;
+      const putBinId = await resolveBinId(sb, putBin);
+      await wms(sb).from('parcel_lines').update({
+        from_bin: putBin, from_bin_id: putBinId, qty_scanned: b.qty, status: 'in_progress', updated_at: new Date().toISOString(),
+      }).eq('parcel_id', asmParcel.id).eq('sku', b.fg_sku);
+    }
+  }
+
+  // 2. pick the FG lines (assembly parcel) + the normal lines (pick parcel).
+  for (const parcel of [asmParcel, pickParcel].filter(Boolean)) {
+    const { data: has } = await wms(sb).from('parcel_lines').select('id').eq('parcel_id', parcel.id).gt('qty_scanned', 0).limit(1);
+    if (has && has.length) result.picks.push(await commitPick(sb, parcel.id, user));
+  }
+
+  await wms(sb).from('waves').update({ status: 'committed', updated_at: new Date().toISOString() }).eq('id', waveId);
+  return { ok: true, ...result };
+}
+
 module.exports = {
   MAIN_WH_ID, MAIN_WH_NAME, locString, resolveBinId,
   buildWave, getWave, listOpenWork, resolveScan, claimLine, releaseLine, recordScan, suggestBins, getRecipe,
   stageBuild, commitPick, commitBuild, commitPack,
+  getPickList, recordComponentScan, finalize,
 };

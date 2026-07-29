@@ -122,14 +122,16 @@ async function getPack(taskId) {
 }
 
 // ── Assembly / finished goods ────────────────────────────────────────────────
-async function createBuild({ productId, productCode, location, locationId, quantity }) {
+async function createBuild({ productId, productCode, location, locationId, quantity, notes }) {
   const today = new Date().toISOString().slice(0, 10);
-  const r = await post('finishedGoods', {
+  const body = {
     ProductID: productId, ProductCode: productCode,
     Location: location || 'Main Warehouse', LocationID: locationId,
     Quantity: quantity, Status: 'DRAFT',
     WIPAccount: WIP_ACCOUNT, Account: ASM_ACCOUNT, WIPDate: today,
-  });
+  };
+  if (notes) body.Notes = notes;   // "Created as an assembly for sale order #SO-… by WMS (operator)"
+  const r = await post('finishedGoods', body);
   if (!ok(r)) throw new Error(`createBuild: ${errText(r)}`);
   return r.body; // { TaskID, AssemblyNumber, ... }
 }
