@@ -11,7 +11,7 @@ const OO = {
   filters: { warehouse: 'All', rep: '', stage: '', invoice: '', search: '', minAge: 2, includeDrafts: false },
   so: [], tr: [], notes: {}, loaded: false, _noteOrder: null,
   pageSo: 1, pageBo: 1, pageTr: 1, pageSize: 50,
-  _soLines: {}, _trLines: {}   // per-order / per-transfer line caches (expand-row)
+  _soLines: {}, _trLines: {}, _stock: {}   // per-order / per-transfer / per-SKU caches (expand-row)
 };
 
 const SO_STAGES = ['To pick', 'Picking', 'Picked', 'Packing', 'Shipping'];
@@ -213,6 +213,7 @@ function soRowHtml(r) {
     `<td>${esc(r.rep)}</td>` +
     `<td>${esc(r.warehouse)}</td>` +
     `<td class="oo-fulfil">${fulfilStrip(r)}</td>` +
+    `<td>${invoiceBadge(r.invoiceStatus)}</td>` +
     `<td class="num">${ageBadge(r.age)}</td>` +
     `<td>${fmtDate(r.orderDate)}</td>` +
     noteCell(r.order) + `</tr>`;
@@ -222,7 +223,7 @@ function renderSoTable(rows, tableId, pagerId, pageKey, empty) {
   if (OO[pageKey] > Math.ceil(total / ps)) OO[pageKey] = 1;
   const paged = rows.slice((OO[pageKey] - 1) * ps, OO[pageKey] * ps);
   const tbody = document.querySelector('#' + tableId + ' tbody');
-  if (!total) { tbody.innerHTML = `<tr><td colspan="8" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
+  if (!total) { tbody.innerHTML = `<tr><td colspan="9" class="oo-empty">${empty}</td></tr>`; renderPager(pagerId, 0, 1, () => {}); return; }
   tbody.innerHTML = paged.map(soRowHtml).join('');
   renderPager(pagerId, total, OO[pageKey], p => { OO[pageKey] = p; renderSoTable(rows, tableId, pagerId, pageKey, empty); });
 }
@@ -266,6 +267,34 @@ async function loadTrLines(number, taskId) {
   if (!j.success) throw new Error(j.error || 'lookup failed');
   return (OO._trLines[number] = j);
 }
+// Batch stock enrichment (locator + assembly flag + availability by warehouse) for
+// a set of line SKUs, via the server (service key) — cached per SKU across expands.
+async function loadLineStock(skus) {
+  const need = [...new Set(skus.filter(s => s && !OO._stock[s]))];
+  if (need.length) {
+    const r = await fetch('/api/open-orders/line-stock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skus: need }) });
+    if (r.ok) { const j = await r.json().catch(() => ({})); if (j.success && j.stock) Object.assign(OO._stock, j.stock); }
+    need.forEach(s => { if (!OO._stock[s]) OO._stock[s] = null; });   // remember a miss, don't re-fetch
+  }
+  const out = {}; skus.forEach(s => { out[s] = OO._stock[s] || null; }); return out;
+}
+// Available-across-all-warehouses cell with a per-warehouse tooltip.
+function availCell(st) {
+  if (!st) return '<span class="oo-av na" title="stock not found">—</span>';
+  const total = st.availTotal;
+  const locs = (st.byLoc || []).filter(l => l.on_hand !== 0 || l.available !== 0);
+  const tip = locs.length
+    ? locs.map(l => `${l.location}: ${l.available} avail${l.on_hand !== l.available ? ` (${l.on_hand} on hand)` : ''}`).join('\n')
+    : 'no stock in any warehouse';
+  return `<span class="oo-av ${total > 0 ? 'ok' : 'no'}" title="${esc(tip)}">${esc(total)}</span>`;
+}
+// Locator cell — assembly/BOM products get a clickable chip to reveal components.
+function locatorCell(st, sku) {
+  if (!st) return '<span class="oo-loc">—</span>';
+  if (st.isAssembly) return `<button type="button" class="oo-asm" data-asm="${esc(sku)}" title="Assembly / made-to-order — click to see the components to build it">🔧 ${esc(st.locator || 'Assembly')}</button>`;
+  const loc = (st.locator && st.locator !== '0') ? st.locator : '—';
+  return `<span class="oo-loc">${esc(loc)}</span>`;
+}
 // one fulfilment sub-status pill (Pick / Pack / Ship / Invoice)
 // Order matters: "NOT PACKED" / "NOT SHIPPED" end in PACKED/SHIPPED, so the
 // negative + partial cases must be tested BEFORE the "done" suffix match.
@@ -288,17 +317,51 @@ async function renderSoDetail(order) {
   const r = OO.so.find(x => x.order === order) || {};
   const strip = `<div class="oo-substrip">${subStatus('Pick', r.pick)}${subStatus('Pack', r.pack)}${subStatus('Ship', r.ship)}${subStatus('Invoice', r.invoiceStatus)}</div>`;
   const lines = await loadSoLines(order);
+  const stock = await loadLineStock(lines.map(l => l.sku));
   const anyBo = lines.some(l => l.backorder_quantity > 0);
   const cols = [
     { h: 'SKU', cls: 'oo-mono', fmt: l => esc(l.sku || '—') },
     { h: 'Product', fmt: l => esc(l.product_name || '—') },
+    { h: 'Locator', fmt: l => locatorCell(stock[l.sku], l.sku) },
     { h: 'Qty', cls: 'num', fmt: l => esc(l.quantity != null ? l.quantity : '—') },
+    { h: 'Avail · all WH', cls: 'num', fmt: l => availCell(stock[l.sku]) },
     { h: 'Backorder', cls: 'num', fmt: l => (l.backorder_quantity > 0) ? `<span class="oo-bo">${esc(l.backorder_quantity)}</span>` : '<span class="oo-ok">✓</span>' },
     { h: 'Price', cls: 'num', fmt: l => l.price != null ? '$' + Number(l.price).toFixed(2) : '—' },
     { h: 'Total', cls: 'num', fmt: l => l.total != null ? '$' + Number(l.total).toFixed(2) : '—' }
   ];
-  const hint = anyBo ? '<div class="oo-detail-note">⚠ Highlighted lines are on <b>backorder</b> (awaiting stock) — often why the order is still open.</div>' : '';
+  const hint = anyBo ? '<div class="oo-detail-note">⚠ Highlighted lines are on <b>backorder</b> (awaiting stock). 🔧 = assembly/made-to-order — click the locator to see the components to build it.</div>' : '';
   return strip + hint + linesTable(lines, cols, l => l.backorder_quantity > 0 ? 'oo-bo-row' : '');
+}
+// Assembly line → toggle a nested panel with the components to build it.
+async function toggleAsm(btn) {
+  const tr = btn.closest('tr'); if (!tr) return;
+  const nxt = tr.nextElementSibling;
+  if (nxt && nxt.classList.contains('oo-comprow')) { nxt.remove(); btn.classList.remove('open'); return; }
+  btn.classList.add('open');
+  const crow = document.createElement('tr'); crow.className = 'oo-comprow';
+  crow.innerHTML = `<td colspan="${tr.children.length}"><div class="oo-comp"><div class="oo-detail-load">Loading components…</div></div></td>`;
+  tr.after(crow);
+  const box = crow.querySelector('.oo-comp');
+  try { box.innerHTML = await renderComponents(btn.getAttribute('data-asm')); }
+  catch (e) { box.innerHTML = `<div class="oo-detail-err">Could not load components: ${esc(e.message)}</div>`; }
+}
+async function renderComponents(sku) {
+  const r = await fetch('/api/open-orders/bom?sku=' + encodeURIComponent(sku));
+  if (!r.ok) throw new Error(r.status === 404 ? 'lookup endpoint unavailable (restart server)' : ('HTTP ' + r.status));
+  const j = await r.json().catch(() => ({}));
+  if (!j.success) throw new Error(j.error || 'lookup failed');
+  if (!j.found || !j.components || !j.components.length) return '<div class="oo-detail-empty">No recent build found in Cin7 — components unknown.</div>';
+  const stock = await loadLineStock(j.components.map(c => c.sku));
+  const fmtQ = q => (q == null ? '—' : (q % 1 === 0 ? String(q) : Number(q).toFixed(2)));
+  const cols = [
+    { h: 'Component', cls: 'oo-mono', fmt: c => esc(c.sku) },
+    { h: 'Name', fmt: c => esc(c.name || '—') },
+    { h: 'Locator', fmt: c => locatorCell(stock[c.sku], c.sku) },
+    { h: 'Qty / unit', cls: 'num', fmt: c => esc(fmtQ(c.qtyPerUnit)) },
+    { h: 'Avail · all WH', cls: 'num', fmt: c => availCell(stock[c.sku]) }
+  ];
+  const head = `<div class="oo-comp-head">🔧 Components to build <b>${esc(sku)}</b>${j.builtOn ? ` · recipe from build ${esc(j.assembly || '')} (${fmtDate(j.builtOn)})` : ''}</div>`;
+  return head + linesTable(j.components, cols, c => (stock[c.sku] && stock[c.sku].availTotal <= 0) ? 'oo-bo-row' : '');
 }
 async function renderTrDetail(number) {
   const r = OO.tr.find(x => x.number === number) || {};
@@ -467,6 +530,8 @@ function bind() {
   document.addEventListener('click', e => {
     const b = e.target.closest('.oo-notebtn');
     if (b) { openNoteModal(b.getAttribute('data-order')); return; }
+    const asm = e.target.closest('.oo-asm');
+    if (asm) { toggleAsm(asm); return; }
     if (e.target === document.getElementById('ooNoteModal')) closeNoteModal();
     // expand/collapse a data row to show its line items (ignore clicks in the action cell)
     const row = e.target.closest('tr.oo-clickable');
@@ -480,7 +545,7 @@ function init() {
   bind();
   switchTab('so');
   const def = document.querySelector('.oo-agechip[data-age="2"]'); if (def) def.classList.add('active');   // default: open > 2 days
-  loadData().catch(e => { console.error('[open-orders] load failed', e); const t = document.querySelector('#ooSoTable tbody'); if (t) t.innerHTML = `<tr><td colspan="8" class="oo-empty">Could not load data: ${esc(e.message)}</td></tr>`; });
+  loadData().catch(e => { console.error('[open-orders] load failed', e); const t = document.querySelector('#ooSoTable tbody'); if (t) t.innerHTML = `<tr><td colspan="9" class="oo-empty">Could not load data: ${esc(e.message)}</td></tr>`; });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();
