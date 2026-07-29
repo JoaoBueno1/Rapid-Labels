@@ -100,6 +100,20 @@ function registerWmsRoutes(app, sb) {
     res.json(await engine.recordScan(sb, Number(parcelLineId), { binCode, qty: Number(qty), sku, raw }, user(req)));
   }));
 
+  // ── Pick exception (shortage / damage / wrong-bin): log to the scan audit, no Cin7
+  //    write, doesn't block the pick — a supervisor reviews wms.scans (scan_type='exception').
+  app.post('/api/wms/exception', A(async (req, res) => {
+    const { parcelLineId, kind, reason, sku, bin, qty, lineKind, lineId } = req.body || {};
+    await sb.schema('wms').from('scans').insert({
+      parcel_line_id: parcelLineId ? Number(parcelLineId) : null,
+      scan_type: 'exception',
+      raw_value: [kind || 'issue', reason, (lineKind && lineId) ? `[${lineKind}#${lineId}]` : ''].filter(Boolean).join(' — '),
+      resolved_sku: sku || null, resolved_bin: bin || null,
+      qty: (qty != null && qty !== '') ? Number(qty) : null, scanned_by: user(req),
+    });
+    res.json({ ok: true });
+  }));
+
   // ── Stock lookup + bin suggestion (PWA) ──
   app.get('/api/wms/suggest/:sku', A(async (req, res) => res.json(await engine.suggestBins(sb, req.params.sku))));
   app.get('/api/wms/lookup/:sku', A(async (req, res) => res.json(await engine.stockLookup(sb, req.params.sku))));
@@ -233,7 +247,7 @@ function registerWmsRoutes(app, sb) {
     const { transferLineId, binCode, qty } = req.body || {};
     res.json(await transfers.recordTrScan(sb, Number(transferLineId), { binCode, qty: Number(qty) }, user(req)));
   }));
-  app.post('/api/wms/tr-dispatch', W(async (req, res) => res.json(await transfers.dispatchTr(sb, Number((req.body || {}).transferId), user(req)))));
+  app.post('/api/wms/tr-dispatch', W(async (req, res) => res.json(await transfers.dispatchTr(sb, Number((req.body || {}).transferId), user(req), { override: !!(req.body || {}).override }))));
 
   // ── Maintenance: sync the owned bin/pickface registry + reconcile the outbox ──
   app.post('/api/wms/sync/bins', A(async (req, res) => res.json(await sync.syncBins(sb))));

@@ -227,11 +227,27 @@
         '<input class="txt mono qtybig" id="qtyIn" inputmode="numeric" placeholder="0" value="' + (c.picked || '') + '" />' +
         '<div class="sec" style="margin:16px 0 6px">Stock in other bins <span style="text-transform:none;font-weight:400;letter-spacing:0">— consultative only</span></div>' +
         '<div class="chips" id="binChips"><span class="spin"></span></div>' +
+        '<button class="btn ghost" id="pkIssue" style="margin-top:14px;width:100%">&#9888; Report an issue (short / damaged / wrong bin)</button>' +
       '</div>';
     wireItemInputs();
     bottom('<button class="btn ghost" id="pkDiscard">Discard</button><button class="btn go" id="pkSave">Save &amp; back</button>');
     $('pkDiscard').onclick = function () { discardPick(); };
     $('pkSave').onclick = function () { savePick(false); };
+    var iss = $('pkIssue'); if (iss) iss.onclick = reportIssue;
+  }
+  // Report a pick problem — logged to wms.scans (audit) for a supervisor; no Cin7 write,
+  // doesn't block the pick.
+  function reportIssue() {
+    var c = S.cur, it = c.it;
+    var kind = (prompt('Report an issue for ' + it.sku + ':\nshortage / damage / wrong-bin / other') || '').trim();
+    if (!kind) return;
+    var note = (prompt('Details (optional):') || '').trim();
+    var isLine = it.kind !== 'component' && it.kind !== 'tr-line';
+    api('POST', '/exception', {
+      parcelLineId: isLine ? it.id : null, lineKind: it.kind || 'line', lineId: it.id,
+      kind: kind, reason: note, sku: it.sku, bin: c.bin || it.pickface || '', qty: c.picked,
+    }).then(function () { toast('Issue logged for review', 'ok'); })
+      .catch(function (e) { toast(e.message, 'err'); });
   }
   function wireItemInputs() {
     var binIn = $('binIn'), prodIn = $('prodIn'), qtyIn = $('qtyIn');

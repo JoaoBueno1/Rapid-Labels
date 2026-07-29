@@ -124,9 +124,19 @@ chosen order/TR:**
   assembly SKU the **BOM components + how many are buildable**. Read-only; always on.
 - **Assembly (item #2): left as-is by decision** — always build from fresh components;
   do NOT consume pre-built FG on-hand (could be an error/return; provenance unverifiable).
-- Still to build (careful, gated): #4 reserved-stock guard, #6 pick-exception surface,
-  #7 reconciler/sync scheduling, #5 Pack→Booking→Ship (TMS). Auth/login = future (the
-  claim `user` is still just the `X-WMS-User` header — no login screens yet, by request).
+- Built 2026-07-30 (gated / inactive): **#4** reserved-stock guard on TR dispatch —
+  `dispatchTr` blocks when a line's qty exceeds the source warehouse's free (available)
+  stock, i.e. it would consume units reserved for a sale; gated by `WMS_RESERVATION_GUARD`
+  (off), supervisor `override:true` bypasses. Heuristic from the ~10-15min availability
+  snapshot; unverified against live Cin7 (validate in the supervised test). **#6**
+  pick-exception logging — a "Report an issue" button on the focused-pick screen posts
+  `/api/wms/exception` → `wms.scans` (scan_type='exception'); no Cin7 write, doesn't block
+  the pick, supervisor reviews the audit. **#7** WMS outbox reconciler — `features/wms/
+  scripts/reconcile.js` + GitHub Action `.github/workflows/wms-reconcile.yml`, shipped
+  **DISABLED** (no `schedule`, manual `workflow_dispatch` only; enable the cron only after
+  auth lands). Full server-to-server booking + Cin7-ship write-back still deferred (above).
+- Auth/login = future (the claim `user` is still just the `X-WMS-User` header — no login
+  screens yet, by request).
 
 ## Pack → Booking → Ship (#5) — safe deep-link slice BUILT 2026-07-30
 The full server-to-server booking is NOT easy (details below); the safe slice is shipped.

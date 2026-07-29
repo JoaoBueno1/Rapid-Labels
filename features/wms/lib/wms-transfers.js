@@ -165,8 +165,28 @@ async function recordTrScan(sb, lineId, { binCode, qty }, user) {
   }).eq('id', Number(lineId));
   return { ok: true };
 }
+// Reserved-stock guard (analysis #4): would dispatching stock OUT of a warehouse eat into
+// units allocated to a sale? Heuristic from the live availability snapshot — warehouse free
+// = sum(Available) for that Location; qty > free means the move consumes reserved stock.
+// Gated by WMS_RESERVATION_GUARD (default off) and overridable by a supervisor.
+const RESV_GUARD = () => String(process.env.WMS_RESERVATION_GUARD || '').toLowerCase() === 'true';
+async function reservationViolations(sb, warehouse, lines) {
+  if (!RESV_GUARD()) return [];
+  const out = [];
+  for (const l of lines) {
+    let free = null;
+    try {
+      const av = await cin7.availability(l.sku);
+      const rows = (av || []).filter((a) => a.Location === warehouse);
+      if (rows.length) free = rows.reduce((s, a) => s + (Number(a.Available) || 0), 0);
+    } catch (e) { /* snapshot unavailable → don't block */ }
+    if (free != null && Number(l.qty) > free) out.push({ sku: l.sku, qty: Number(l.qty), available: free });
+  }
+  return out;
+}
+
 // Dispatch the picked TR: ORDERED -> IN TRANSIT (one clean write via the outbox).
-async function dispatchTr(sb, transferId, user) {
+async function dispatchTr(sb, transferId, user, opts) {
   const { data: t } = await wms(sb).from('transfers').select('*').eq('id', transferId).maybeSingle();
   if (!t || !t.cin7_task_id) throw new Error('transfer not found');
   const { data: lines } = await wms(sb).from('transfer_lines').select('*').eq('transfer_id', transferId);
@@ -174,6 +194,13 @@ async function dispatchTr(sb, transferId, user) {
   if (unpicked.length) throw new Error(`${unpicked.length} line(s) still to pick before dispatch.`);
   const picked = (lines || []).filter((l) => l.scanned && Number(l.qty) > 0);
   if (!picked.length) throw new Error('nothing picked to dispatch');
+  if (!(opts && opts.override)) {
+    const viol = await reservationViolations(sb, t.from_location, picked);
+    if (viol.length) {
+      const msg = viol.map((v) => `${v.sku}: dispatch ${v.qty} but only ${v.available} free at ${t.from_location} (rest reserved for a sale)`).join('; ');
+      const e = new Error(`Reserved-stock guard: ${msg}. A supervisor can override.`); e.code = 'RESERVED'; throw e;
+    }
+  }
   const fromId = await resolveLocationId(sb, t.from_location);
   const toId = await resolveLocationId(sb, t.to_location);
   const reference = t.cin7_ref;

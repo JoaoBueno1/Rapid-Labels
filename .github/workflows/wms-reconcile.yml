@@ -1,0 +1,41 @@
+# ============================================================
+# WMS Outbox Reconcile — DISABLED (manual only) until WMS is live + auth lands
+# ============================================================
+# Drains ambiguous 'sent'/'failed' WMS outbox ops against live Cin7 (GET-only; writes only
+# wms.outbox/movements) so a timed-out-but-landed write is never blindly re-sent. Analysis
+# item #7 wants this on a short interval once the WMS goes live.
+#
+# It ships DISABLED: there is NO `schedule`, only `workflow_dispatch` (manual). It will NOT
+# run on its own. With no live WMS writes yet the outbox is empty, so even a manual run is a
+# no-op. To ENABLE: uncomment the `schedule` block below (GitHub cron min granularity is
+# 5 min) — and only AFTER /api/wms/* has authentication (see features/wms/WMS_PACK_STATUS.md),
+# since an unauthenticated live outbox plus a background retrier is a higher-risk combination.
+# Requires repo secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY, CIN7_ACCOUNT_ID, CIN7_API_KEY.
+# ============================================================
+
+name: WMS Outbox Reconcile (disabled)
+
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: '*/10 * * * *'   # every 10 min — ENABLE only after WMS is live + /api/wms/* has auth
+
+jobs:
+  wms-reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --production
+      - name: Reconcile WMS outbox
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          WMS_RECONCILE_CAP: '50'
+        run: node features/wms/scripts/reconcile.js
