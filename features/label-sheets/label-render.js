@@ -341,7 +341,9 @@
     }
     if (hasText && textH > 0.3) {
       var fs = Math.min(textH * 0.80, v.texts[0].size * kx);
-      var base = y + barH + textH * 0.92;          // ~12% of the band stays clear of the bars
+      // Sit the digits a little higher in the band so they never crowd the cell's
+      // bottom edge (they were landing ~1 module from it on the tight 3×8 grid).
+      var base = y + barH + textH * 0.86;          // ~14% clear below, ~6% above (to the bars)
       for (i = 0; i < v.texts.length; i++) {
         b = v.texts[i];
         out.push({
