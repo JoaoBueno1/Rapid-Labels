@@ -446,8 +446,9 @@
         ? (LS.caps.media || LS.caps.size)
         : LS.caps.size + ' · grid ' + LS.caps.grid + ' · ' + LS.caps.up + ' per sheet · Avery ' + LS.caps.avery + (LS.caps.code ? ' · Celcast ' + LS.caps.code : '');
     el('lsSub').textContent = LS.caps.name + ' — ' + (zebra || sheet ? (LS.caps.media || LS.caps.size) : LS.caps.size);
-    // Thermal + plain-sheet models don't use the Celcast die-cut calibration.
-    var ac = el('lsAlignCard'); if (ac) ac.style.display = (zebra || sheet) ? 'none' : '';
+    // Manual alignment retired — at 100% / actual size the sheets align on their own,
+    // so the test-print + offset card stays hidden for every model.
+    var ac = el('lsAlignCard'); if (ac) ac.style.display = 'none';
     var so = el('lsSheetOpts'); if (so) so.style.display = sheet ? 'block' : 'none';
     var cn = el('lsCelcastNote'); if (cn) cn.style.display = (zebra || sheet) ? 'none' : '';
     // Warehouse shows the A4/A3 toggle here; Multi picks size + orientation in its
