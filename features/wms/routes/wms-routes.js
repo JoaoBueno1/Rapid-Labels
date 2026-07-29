@@ -183,6 +183,24 @@ function registerWmsRoutes(app, sb) {
   app.delete('/api/wms/transfer/line/:lineId', A(async (req, res) => res.json(await transfers.removeLine(sb, Number(req.params.lineId)))));
   app.post('/api/wms/commit/transfer', A(async (req, res) => res.json(await transfers.commitTransfer(sb, Number((req.body || {}).transferId), user(req)))));
 
+  // ── TR pick: open an ordered TR, pick its lines, dispatch (ORDERED -> IN TRANSIT) ──
+  app.post('/api/wms/tr/open', A(async (req, res) => {
+    const number = String((req.body || {}).number || '').trim().toUpperCase();
+    if (!number) throw new Error('TR number required');
+    const id = await transfers.openTr(sb, number, user(req));
+    res.json(await transfers.getTrPickList(sb, id));
+  }));
+  app.get('/api/wms/tr-pick-list/:id', A(async (req, res) => {
+    const l = await transfers.getTrPickList(sb, Number(req.params.id));
+    if (!l) return res.status(404).json({ error: 'transfer not found' });
+    res.json(l);
+  }));
+  app.post('/api/wms/tr-scan', A(async (req, res) => {
+    const { transferLineId, binCode, qty } = req.body || {};
+    res.json(await transfers.recordTrScan(sb, Number(transferLineId), { binCode, qty: Number(qty) }, user(req)));
+  }));
+  app.post('/api/wms/tr-dispatch', A(async (req, res) => res.json(await transfers.dispatchTr(sb, Number((req.body || {}).transferId), user(req)))));
+
   // ── Maintenance: sync the owned bin/pickface registry + reconcile the outbox ──
   app.post('/api/wms/sync/bins', A(async (req, res) => res.json(await sync.syncBins(sb))));
   app.post('/api/wms/sync/pickface', A(async (req, res) => res.json(await sync.syncPickface(sb))));

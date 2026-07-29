@@ -115,6 +115,82 @@ async function commitTransfer(sb, transferId, user) {
   return { ok: true, cin7_ref: res.cin7_ref, alreadyDone: res.alreadyDone };
 }
 
+// ── TR PICK: adopt an EXISTING ordered Cin7 stock transfer, pick its ordered lines
+// (each from the source-warehouse pickface), then advance ORDERED -> IN TRANSIT. ─────
+async function openTr(sb, number, user) {
+  const existing = await wms(sb).from('transfers').select('id').eq('cin7_ref', number).eq('kind', 'tr').maybeSingle();
+  if (existing.data) return existing.data.id;
+  const head = await cin7.findTransferByNumber(number);
+  if (!head) throw new Error(`Transfer ${number} not found in Cin7`);
+  if (!/ORDERED/i.test(head.Status || '')) throw new Error(`${number} is ${head.Status} — only ORDERED transfers can be picked here.`);
+  const det = await cin7.getTransfer(head.TaskID);
+  const orderLines = (det && det.Order && det.Order.Lines) || [];
+  if (!orderLines.length) throw new Error(`${number} has no ordered lines to pick.`);
+  const { data: t } = await wms(sb).from('transfers').insert({
+    kind: 'tr', from_location: head.FromLocation, to_location: head.ToLocation,
+    cin7_task_id: head.TaskID, cin7_ref: number, status: 'in_progress', created_by: user,
+  }).select().single();
+  const rows = orderLines.filter((l) => l.SKU).map((l) => ({
+    transfer_id: t.id, sku: l.SKU, product_id: l.ProductID, qty: Number(l.TransferQuantity) || 0, scanned: false,
+  }));
+  if (rows.length) await wms(sb).from('transfer_lines').insert(rows);
+  return t.id;
+}
+async function getTrPickList(sb, transferId) {
+  const { data: t } = await wms(sb).from('transfers').select('*').eq('id', transferId).maybeSingle();
+  if (!t) return null;
+  const { data: lines } = await wms(sb).from('transfer_lines').select('*').eq('transfer_id', transferId);
+  const skus = [...new Set((lines || []).map((l) => l.sku))];
+  const nameMap = {}, pfMap = {};
+  if (skus.length) {
+    const { data: prods } = await sb.schema('cin7_mirror').from('products').select('sku,name,stock_locator').in('sku', skus);
+    (prods || []).forEach((p) => { nameMap[p.sku] = p.name; const loc = String(p.stock_locator || '').trim(); if (/^[a-z]{2}-/i.test(loc)) pfMap[p.sku] = loc; });
+  }
+  const items = (lines || []).map((l) => ({
+    kind: 'tr-line', id: l.id, sku: l.sku, name: nameMap[l.sku] || l.sku, qty: Number(l.qty),
+    qtyScanned: l.scanned ? Number(l.qty) : 0, fromBin: l.from_bin, pickface: pfMap[l.sku] || null, picked: !!l.scanned,
+  }));
+  items.sort((a, b) => String(a.sku).localeCompare(String(b.sku), undefined, { numeric: true, sensitivity: 'base' }));
+  return {
+    source: 'tr', trId: t.id,
+    transfer: { id: t.id, number: t.cin7_ref, from: t.from_location, to: t.to_location, status: t.status },
+    wave: { order_number: t.cin7_ref, customer: t.from_location + ' → ' + t.to_location },
+    items, allPicked: items.length > 0 && items.every((i) => i.picked),
+  };
+}
+async function recordTrScan(sb, lineId, { binCode, qty }, user) {
+  const binId = binCode ? await resolveLocationId(sb, binCode) : null;
+  await wms(sb).from('transfer_lines').update({
+    from_bin: binCode || null, from_bin_id: binId, qty: Number(qty), scanned: !!(Number(qty) > 0), updated_at: new Date().toISOString(),
+  }).eq('id', Number(lineId));
+  return { ok: true };
+}
+// Dispatch the picked TR: ORDERED -> IN TRANSIT (one clean write via the outbox).
+async function dispatchTr(sb, transferId, user) {
+  const { data: t } = await wms(sb).from('transfers').select('*').eq('id', transferId).maybeSingle();
+  if (!t || !t.cin7_task_id) throw new Error('transfer not found');
+  const { data: lines } = await wms(sb).from('transfer_lines').select('*').eq('transfer_id', transferId);
+  const unpicked = (lines || []).filter((l) => !l.scanned);
+  if (unpicked.length) throw new Error(`${unpicked.length} line(s) still to pick before dispatch.`);
+  const picked = (lines || []).filter((l) => l.scanned && Number(l.qty) > 0);
+  if (!picked.length) throw new Error('nothing picked to dispatch');
+  const fromId = await resolveLocationId(sb, t.from_location);
+  const toId = await resolveLocationId(sb, t.to_location);
+  const reference = t.cin7_ref;
+  const cin7Lines = picked.map((l) => ({ ProductID: l.product_id, TransferQuantity: Number(l.qty), Comments: `${l.sku} ×${l.qty}${l.from_bin ? ' from ' + l.from_bin : ''}` }));
+
+  const key = outbox.opKey('tr_dispatch', t.cin7_task_id, cin7Lines);
+  await outbox.enqueue(sb, { op_key: key, op_type: 'tr_dispatch', target: 'stockTransfer', cin7_task_id: t.cin7_task_id, payload: { fromId, toId, cin7Lines }, created_by: user });
+  const res = await outbox.execute(sb, key, {
+    actor: user,
+    doWrite: async () => { const done = await cin7.dispatchTransfer({ taskId: t.cin7_task_id, fromLocationId: fromId, toLocationId: toId, reference, lines: cin7Lines }); return { cin7_ref: (done && done.Number) || t.cin7_ref, cin7_task_id: t.cin7_task_id, response: done }; },
+    verify: async () => { const tr = await cin7.getTransfer(t.cin7_task_id); return { done: tr && /IN TRANSIT|COMPLETED/i.test(tr.Status || ''), cin7_ref: tr && tr.Number }; },
+    movements: picked.map((l) => ({ movement_type: 'transfer', sku: l.sku, product_id: l.product_id, qty: -Math.abs(Number(l.qty)), from_bin: l.from_bin || t.from_location, cin7_ref: t.cin7_ref })),
+  });
+  await wms(sb).from('transfers').update({ status: 'committed', outbox_op_key: key, updated_at: new Date().toISOString() }).eq('id', transferId);
+  return { ok: true, number: t.cin7_ref, status: 'IN TRANSIT', alreadyDone: res.alreadyDone };
+}
+
 // Generic putaway: move stock from a source location into a destination bin, via
 // the proven stockTransfer + the exactly-once outbox (crash-safe DRAFT checkpoint).
 // Used for the binless produced FG (from the warehouse root) and PO receiving
@@ -149,4 +225,4 @@ async function putawayFG(sb, { fgSku, fgProductId, qty, toBin, waveId }, user) {
   return putaway(sb, { sku: fgSku, productId: fgProductId, qty, fromLocation: 'Main Warehouse', toBin: toBin || PRODUCTION_BIN, waveId, tag: 'PUTAWAY' }, user);
 }
 
-module.exports = { resolveLocationId, stageTransfer, addLine, scanLine, removeLine, getTransferState, commitTransfer, putaway, putawayFG, PRODUCTION_BIN, RECEIVING_BIN };
+module.exports = { resolveLocationId, stageTransfer, addLine, scanLine, removeLine, getTransferState, commitTransfer, putaway, putawayFG, PRODUCTION_BIN, RECEIVING_BIN, openTr, getTrPickList, recordTrScan, dispatchTr };

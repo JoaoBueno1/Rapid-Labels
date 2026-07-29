@@ -199,8 +199,25 @@ async function completeTransfer({ taskId, fromLocationId, toLocationId, referenc
   return r.body;
 }
 async function getTransfer(taskId) {
-  const r = await get(`stockTransfer?ID=${taskId}`);
+  const r = await get(`stockTransfer?TaskID=${taskId}`);   // DEAR keys transfers by TaskID (?ID= 400s)
   return ok(r) ? r.body : null;
+}
+// Find an existing transfer by its TR number (for the TR-pick flow).
+async function findTransferByNumber(number) {
+  const r = await get(`stockTransferList?Search=${encodeURIComponent(number)}&Page=1&Limit=10`);
+  const rows = (r.body && r.body.StockTransferList) || [];
+  return rows.find((x) => x.Number === number) || null;
+}
+// Advance an ORDERED transfer to IN TRANSIT with the picked lines (the "send"/pick).
+// lines: [{ ProductID, TransferQuantity, Comments }]
+async function dispatchTransfer({ taskId, fromLocationId, toLocationId, reference, lines }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const r = await write('stockTransfer', {
+    TaskID: taskId, From: fromLocationId, To: toLocationId, Status: 'IN TRANSIT',
+    DepartureDate: today, Reference: reference, CostDistributionType: 'Cost', SkipOrder: true, Lines: lines,
+  });
+  if (!ok(r)) throw new Error(`dispatchTransfer: ${errText(r)}`);
+  return r.body;
 }
 
 // ── Purchases (for receiving) ────────────────────────────────────────────────
@@ -230,7 +247,7 @@ module.exports = {
   findSaleByNumber, getSale, getFulfilments, createFulfilment,
   authorisePick, getPick, authorisePack, getPack,
   createBuild, setBuildRecipe, completeBuild, getBuild, findLinkedBuild, recipeFromExistingBuild,
-  createTransfer, completeTransfer, getTransfer,
+  createTransfer, completeTransfer, getTransfer, findTransferByNumber, dispatchTransfer,
   findPurchaseByNumber, getPurchase,
   availability, getProduct, isAssembled,
 };

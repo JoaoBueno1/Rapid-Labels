@@ -81,17 +81,23 @@
       '<div class="row" style="justify-content:flex-end;margin-top:22px"><button class="who" id="tUser">' + esc(S.user) + ' ▾</button></div>';
     $('tPick').onclick = function () { go('pickEntry', 'Pick'); };
     $('tTr').onclick = function () { go('trEntry', 'Transfer (TR)'); };
-    $('tXfer').onclick = function () { S.transfer = null; go('transfer', 'Bin transfer'); };
+    $('tXfer').onclick = function () { S.bb = null; go('transfer', 'Bin transfer'); };
     $('tLook').onclick = function () { go('lookup', 'Stock lookup'); };
     $('tUser').onclick = function () { var u = prompt('Operator name', S.user); if (u) { setUser(u.trim()); render(); } };
   }
-  // Transfer (TR) — scan an ordered stock transfer and pick its items. (Pick flow next.)
+  // Transfer (TR) — scan an ordered stock transfer and pick its items, then dispatch.
   function trEntryScreen(view) {
     view.innerHTML =
       '<p class="eyebrow">Stock transfer (TR)</p>' +
       '<div class="banner">Scan or type the <b>TR</b> number to open it and pick its items.</div>' +
       scanField('Scan or type TR number…');
-    wireScan(function (v) { toast('TR pick flow is being built — next update (' + v + ')', 'err'); });
+    wireScan(function (v) { openTr(v); });
+  }
+  function openTr(number) {
+    number = String(number).replace(/\s+/g, '').toUpperCase();
+    if (/^\d+$/.test(number)) number = 'TR-' + number;
+    toast('Opening ' + number + '…');
+    api('POST', '/tr/open', { number: number }).then(function (pl) { go('pick', pl.transfer.number, { trId: pl.trId }); }).catch(function (e) { toast(e.message, 'err'); });
   }
   // Pick entry — scan/type the sales order, then straight into the pick list.
   function pickEntryScreen(view) {
@@ -112,9 +118,9 @@
 
   // ═══════════════ PICK — the unified pick list ═══════════════
   function pickScreen(view, ctx) {
-    var waveId = ctx.waveId;
-    api('GET', '/pick-list/' + waveId).then(function (pl) {
-      S.pick = pl; S.pick.waveId = waveId;
+    var url = ctx.trId ? '/tr-pick-list/' + ctx.trId : '/pick-list/' + ctx.waveId;
+    api('GET', url).then(function (pl) {
+      S.pick = pl; S.pick.waveId = ctx.waveId; S.pick.trId = ctx.trId || pl.trId;
       renderPickList(view);
     }).catch(function (e) { view.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
@@ -135,8 +141,9 @@
       };
     });
     if (pl.allPicked) {
-      bottom('<button class="btn go lg" id="pkFinal">Finish order — build &amp; pick</button>');
-      $('pkFinal').onclick = doFinalize;
+      var isTr = pl.source === 'tr';
+      bottom('<button class="btn go lg" id="pkFinal">' + (isTr ? 'Dispatch — mark In Transit' : 'Finish order — build &amp; pick') + '</button>');
+      $('pkFinal').onclick = isTr ? doDispatch : doFinalize;
     } else {
       bottom('<button class="btn ghost" disabled style="opacity:1;color:var(--muted)">' + done + ' / ' + total + ' picked · ' + (total - done) + ' to go</button>');
     }
@@ -252,20 +259,30 @@
     var c = S.cur, it = c.it;
     if (!c.binOk) return toast('Scan the bin first', 'err');
     if (!c.productOk) return toast('Scan the product to confirm', 'err');
-    var call = it.kind === 'component'
-      ? api('POST', '/component-scan', { buildComponentId: it.id, binCode: c.bin, qty: c.picked })
+    var call = it.kind === 'tr-line' ? api('POST', '/tr-scan', { transferLineId: it.id, binCode: c.bin, qty: c.picked })
+      : it.kind === 'component' ? api('POST', '/component-scan', { buildComponentId: it.id, binCode: c.bin, qty: c.picked })
       : api('POST', '/scan', { parcelLineId: it.id, binCode: c.bin, qty: c.picked, sku: it.sku });
     call.then(function () { c.dirty = false; toast(it.sku + ' saved ' + c.picked + '/' + c.need, 'ok'); popBack(); }).catch(function (e) { toast(e.message, 'err'); });
   }
   function discardPick() {
     var c = S.cur, it = c.it;
-    var call = it.kind === 'component'
-      ? api('POST', '/component-scan', { buildComponentId: it.id, binCode: '', qty: 0 })
+    var call = it.kind === 'tr-line' ? api('POST', '/tr-scan', { transferLineId: it.id, binCode: '', qty: 0 })
+      : it.kind === 'component' ? api('POST', '/component-scan', { buildComponentId: it.id, binCode: '', qty: 0 })
       : api('POST', '/scan', { parcelLineId: it.id, binCode: '', qty: 0, sku: it.sku });
     c.dirty = false;
     call.then(function () { toast('Pick reset'); popBack(); }).catch(function () { popBack(); });
   }
   function popBack() { if (S.stack.length > 1) { S.stack.pop(); render(); } }
+  function doDispatch() {
+    if (!confirm('Dispatch ' + S.pick.transfer.number + '?\nMoves it ORDERED → IN TRANSIT in Cin7 (real stock move).')) return;
+    toast('Dispatching…');
+    var b = $('pkFinal'); if (b) { b.disabled = true; b.textContent = 'Working…'; }
+    api('POST', '/tr-dispatch', { transferId: S.pick.trId }).then(function (r) {
+      toast((r.number || 'TR') + ' → In Transit ✓', 'ok');
+      while (S.stack.length > 1) S.stack.pop();
+      render();
+    }).catch(function (e) { toast(e.message, 'err'); var bb = $('pkFinal'); if (bb) { bb.disabled = false; bb.textContent = 'Dispatch — mark In Transit'; } });
+  }
   function doFinalize() {
     if (!confirm('Finalize ' + S.pick.wave.order_number + '?\nThis builds any assemblies and picks everything in Cin7 (real stock move).')) return;
     toast('Finalizing — build + pick…');
@@ -298,55 +315,74 @@
     }).catch(function (e) { $('lookRes').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
   }
 
-  // ═══════════════ TRANSFER (bin↔bin / warehouse↔warehouse) ═══════════════
+  // ═══════════════ BIN TRANSFER — guided FROM → TO ═══════════════
   function transferScreen(view) {
-    if (!S.transfer) { renderTransferStart(view); return; }
-    renderTransferBuild(view);
+    if (!S.bb) S.bb = { step: 'from', fromBin: '', toBin: '', items: [] };
+    if (S.bb.step === 'to') renderBbTo(view); else renderBbFrom(view);
   }
-  function renderTransferStart(view) {
+  // Step 1 — scan the FROM bin, then scan each product taken from it (+ qty).
+  function renderBbFrom(view) {
+    var s = S.bb;
     view.innerHTML =
-      '<div class="banner">Move stock <b>bin → bin</b> (restock) or <b>warehouse → warehouse</b>. Build the list, then commit once — sessions pause and resume.</div>' +
+      '<div class="banner">Move stock <b>bin → bin</b>. Step 1: scan the <b>FROM</b> bin, then each product you take from it.</div>' +
       '<div class="card">' +
-        '<label class="fld">From (bin code or warehouse name)</label><input class="txt" id="xFrom" placeholder="e.g. MA-A-07-L7-P2  or  Main Warehouse" />' +
-        '<label class="fld">To</label><input class="txt" id="xTo" placeholder="e.g. MA-B-04-L5-P2  or  Sydney" />' +
-      '</div><button class="btn lg" id="xStart">Start transfer</button>';
-    setTimeout(function () { var f = $('xFrom'); if (f) f.focus(); }, 60);
-    $('xStart').onclick = function () {
-      var from = $('xFrom').value.trim(), to = $('xTo').value.trim();
-      if (!from || !to) return toast('Enter from and to', 'err');
-      var kind = /warehouse|sydney|brisbane|main|project|gateway/i.test(from + to) && !/-L\d/.test(from) ? 'warehouse' : 'bin';
-      api('POST', '/transfer', { kind: kind, fromLocation: from, toLocation: to }).then(function (t) {
-        S.transfer = { id: t.id, from: from, to: to, lines: [] }; renderTransferBuild(view);
-      }).catch(function (e) { toast(e.message, 'err'); });
-    };
+        '<label class="fld">From bin</label>' +
+        '<div class="fldrow"><input class="txt" id="bbFrom" placeholder="Scan the FROM bin" autocomplete="off" autocapitalize="characters" spellcheck="false"' + (s.fromBin ? ' value="' + esc(s.fromBin) + '" disabled' : '') + ' /><span class="okmark" id="bbFromOk">' + (s.fromBin ? '✓' : '') + '</span></div>' +
+        (s.fromBin ?
+          '<label class="fld">Product</label><input class="txt" id="bbProd" placeholder="Scan a product from this bin" autocomplete="off" autocapitalize="characters" spellcheck="false" />' +
+          '<label class="fld">Qty</label><input class="txt mono qtybig" id="bbQty" inputmode="numeric" placeholder="1" />' : '') +
+      '</div>' +
+      '<div class="sec">Taken from ' + esc(s.fromBin || '—') + '</div><div id="bbList"></div>';
+    var f = $('bbFrom');
+    if (f && !s.fromBin) { f.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); var v = f.value.trim().toUpperCase(); if (v) { s.fromBin = v; renderBbFrom(view); } } }); setTimeout(function () { f.focus(); }, 60); }
+    var pr = $('bbProd');
+    if (pr) { pr.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); var v = pr.value.trim().toUpperCase(); if (v) { pr.value = ''; addBbItem(view, v); } } }); setTimeout(function () { pr.focus(); }, 60); }
+    renderBbList();
+    bottom('<button class="btn ghost" id="bbCancel">Cancel</button><button class="btn go" id="bbNext"' + (s.items.length ? '' : ' disabled') + '>Next: place in TO</button>');
+    $('bbCancel').onclick = function () { S.bb = null; back(); };
+    $('bbNext').onclick = function () { s.step = 'to'; renderBbTo(view); };
   }
-  function renderTransferBuild(view) {
-    var x = S.transfer;
+  function addBbItem(view, code) {
+    var s = S.bb, qty = num($('bbQty') && $('bbQty').value) || 1;
+    api('GET', '/resolve/' + encodeURIComponent(code)).then(function (p) {
+      s.items.push({ sku: p.sku, name: p.name, productId: p.productId, qty: qty });
+      toast(p.sku + ' ×' + qty, 'ok'); renderBbFrom(view);
+    }).catch(function () { toast('Unknown code: ' + code, 'err'); });
+  }
+  function renderBbList() {
+    var el = $('bbList'); if (!el) return; var s = S.bb;
+    el.innerHTML = s.items.length ? s.items.map(function (it, i) {
+      return '<div class="card" style="padding:12px;margin-bottom:8px"><div class="row"><div class="grow"><span class="sku">' + esc(it.sku) + '</span><div class="nm">' + esc(it.name || '') + '</div></div><div class="qty">×' + it.qty + '</div>' +
+        '<button class="pill draft" data-rm="' + i + '" style="margin-left:8px;border:none;cursor:pointer">remove</button></div></div>';
+    }).join('') : '<div class="empty">Scan products taken from ' + esc(s.fromBin || 'the bin') + '.</div>';
+    Array.prototype.forEach.call(el.querySelectorAll('[data-rm]'), function (b) { b.onclick = function () { S.bb.items.splice(Number(b.getAttribute('data-rm')), 1); renderBbFrom($('view')); }; });
+  }
+  // Step 2 — scan the TO bin, confirm the items, commit the move.
+  function renderBbTo(view) {
+    var s = S.bb;
     view.innerHTML =
-      '<div class="card"><div class="meta"><b class="mono">' + esc(x.from) + '</b> → <b class="mono">' + esc(x.to) + '</b></div></div>' +
-      scanField('Scan product to add…') + qtyStepper(1) + '<div id="xLines" style="margin-top:12px"></div>';
-    wireScan(function (v) { addTransferLine(view, v); });
-    wireQty(); renderTransferLines();
-    bottom('<button class="btn ghost" id="xCancel">Discard</button><button class="btn go" id="xCommit"' + (x.lines.length ? '' : ' disabled') + '>Commit (' + x.lines.length + ')</button>');
-    $('xCancel').onclick = function () { S.transfer = null; back(); };
-    $('xCommit').onclick = function () {
-      toast('Committing transfer…');
-      api('POST', '/commit/transfer', { transferId: x.id }).then(function (r) {
-        toast((r.cin7_ref || 'Transfer') + ' ✓', 'ok'); S.transfer = null; back();
-      }).catch(function (e) { toast(e.message, 'err'); });
-    };
+      '<div class="banner">Step 2: scan the <b>TO</b> bin to place the items.</div>' +
+      '<div class="card"><div class="meta">From <b class="mono">' + esc(s.fromBin) + '</b> → To <b class="mono">' + esc(s.toBin || 'scan') + '</b></div>' +
+        '<label class="fld" style="margin-top:10px">To bin</label>' +
+        '<div class="fldrow"><input class="txt" id="bbTo" placeholder="Scan the TO bin" autocomplete="off" autocapitalize="characters" spellcheck="false"' + (s.toBin ? ' value="' + esc(s.toBin) + '" disabled' : '') + ' /><span class="okmark" id="bbToOk">' + (s.toBin ? '✓' : '') + '</span></div></div>' +
+      '<div class="sec">Items to place (' + s.items.length + ')</div>' +
+      s.items.map(function (it) { return '<div class="card" style="padding:12px;margin-bottom:8px"><div class="row"><div class="grow"><span class="sku">' + esc(it.sku) + '</span></div><div class="qty">×' + it.qty + '</div></div></div>'; }).join('');
+    var t = $('bbTo');
+    if (t && !s.toBin) { t.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); var v = t.value.trim().toUpperCase(); if (v) { s.toBin = v; renderBbTo(view); } } }); setTimeout(function () { t.focus(); }, 60); }
+    bottom('<button class="btn ghost" id="bbBack">Back</button><button class="btn go" id="bbCommit"' + (s.toBin ? '' : ' disabled') + '>Commit transfer</button>');
+    $('bbBack').onclick = function () { s.step = 'from'; s.toBin = ''; renderBbFrom(view); };
+    $('bbCommit').onclick = commitBb;
   }
-  function addTransferLine(view, sku) {
-    var qty = num($('qtyIn') && $('qtyIn').value) || 1;
-    api('POST', '/transfer/' + S.transfer.id + '/line', { sku: sku, qty: qty, fromBin: S.transfer.from, toBin: S.transfer.to }).then(function (line) {
-      S.transfer.lines.push({ id: line.id, sku: line.sku, qty: line.qty }); toast(line.sku + ' ×' + line.qty); renderTransferBuild(view);
-    }).catch(function (e) { toast(e.message, 'err'); });
-  }
-  function renderTransferLines() {
-    var el = $('xLines'); if (!el) return;
-    el.innerHTML = S.transfer.lines.length ? S.transfer.lines.map(function (l) {
-      return '<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><div class="grow"><span class="sku">' + esc(l.sku) + '</span></div><div class="qty">×' + l.qty + '</div></div>';
-    }).join('') : '<div class="empty">Scan products to add lines.</div>';
+  function commitBb() {
+    var s = S.bb;
+    toast('Committing…');
+    var btn = $('bbCommit'); if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
+    api('POST', '/transfer', { kind: 'bin', fromLocation: s.fromBin, toLocation: s.toBin }).then(function (tr) {
+      var chain = Promise.resolve();
+      s.items.forEach(function (it) { chain = chain.then(function () { return api('POST', '/transfer/' + tr.id + '/line', { sku: it.sku, productId: it.productId, qty: it.qty, fromBin: s.fromBin, toBin: s.toBin }); }); });
+      return chain.then(function () { return api('POST', '/commit/transfer', { transferId: tr.id }); });
+    }).then(function (r) { toast((r.cin7_ref || 'Transfer') + ' ✓', 'ok'); S.bb = null; while (S.stack.length > 1) S.stack.pop(); render(); })
+      .catch(function (e) { toast(e.message, 'err'); var b = $('bbCommit'); if (b) { b.disabled = false; b.textContent = 'Commit transfer'; } });
   }
 
   SCREENS = { home: homeScreen, pickEntry: pickEntryScreen, trEntry: trEntryScreen, pick: pickScreen, pickItem: pickItemScreen, lookup: lookupScreen, transfer: transferScreen };
