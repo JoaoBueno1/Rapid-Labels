@@ -1,14 +1,17 @@
 /**
  * wms-routes.js — Express API for the WMS PWA. Mounted under /api/wms/*.
  *
- * Wiring (NOT done yet — the feature is not live):
- *   const { registerWmsRoutes } = require('./features/wms/routes/wms-routes');
- *   registerWmsRoutes(app, supabaseBackend);
- * Until that line is added to server.js, none of this is reachable — the feature
- * is fully isolated on the dev branch as requested.
+ * Wired live in server.js:  registerWmsRoutes(app, supabaseBackend);
+ * Reachable in prod via the Vercel /api/* function (see vercel.json).
  *
  * Every write endpoint delegates to the engine, which delegates to the outbox, so
  * a double-submit or timeout-retry never double-moves stock.
+ *
+ * SAFETY: the 7 endpoints that move real Cin7 stock (receive, commit/pick,
+ * finalize, commit/build, commit/pack, commit/transfer, tr-dispatch) are gated
+ * behind W() and are OFF unless WMS_WRITE_ENABLED=true. Read/draft flows stay open
+ * so the PWA + Pack Station can be opened and walked end-to-end with zero Cin7
+ * footprint until a supervised live test deliberately flips the flag.
  */
 'use strict';
 
@@ -22,6 +25,14 @@ function registerWmsRoutes(app, sb) {
   if (!sb) { console.warn('⚠️  WMS routes: no Supabase backend — skipping'); return; }
   const A = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: String(e.message || e) }));
   const user = (req) => (req.body && req.body.user) || req.header('X-WMS-User') || 'operator';
+
+  // Live Cin7 writes are OFF by default. Flip WMS_WRITE_ENABLED=true only for a
+  // supervised test — every endpoint that moves real stock is gated behind W().
+  const writesOn = () => String(process.env.WMS_WRITE_ENABLED || '').toLowerCase() === 'true';
+  const W = (fn) => A(async (req, res) => {
+    if (!writesOn()) return res.status(403).json({ error: 'WMS live Cin7 writes are disabled. Set WMS_WRITE_ENABLED=true to enable.', wmsWriteDisabled: true });
+    return fn(req, res);
+  });
 
   // health
   app.get('/api/wms/health', (req, res) => res.json({ ok: true, feature: 'wms', ts: new Date().toISOString() }));
@@ -50,7 +61,7 @@ function registerWmsRoutes(app, sb) {
 
   // ── Receiving: read a PO, then putaway each line into a bin ──
   app.get('/api/wms/purchase/:number', A(async (req, res) => res.json(await receiving.getPurchaseLines(sb, req.params.number))));
-  app.post('/api/wms/receive', A(async (req, res) => {
+  app.post('/api/wms/receive', W(async (req, res) => {
     const { sku, productId, qty, toBin, poNumber } = req.body || {};
     res.json(await receiving.receiveLine(sb, { sku, productId, qty: Number(qty), toBin, poNumber }, user(req)));
   }));
@@ -81,7 +92,7 @@ function registerWmsRoutes(app, sb) {
   }));
 
   // ── Commit: pick ──
-  app.post('/api/wms/commit/pick', A(async (req, res) => {
+  app.post('/api/wms/commit/pick', W(async (req, res) => {
     const { parcelId } = req.body || {};
     res.json(await engine.commitPick(sb, Number(parcelId), user(req)));
   }));
@@ -97,7 +108,7 @@ function registerWmsRoutes(app, sb) {
     const { buildComponentId, binCode, qty } = req.body || {};
     res.json(await engine.recordComponentScan(sb, Number(buildComponentId), { binCode, qty: Number(qty) }, user(req)));
   }));
-  app.post('/api/wms/finalize', A(async (req, res) => {
+  app.post('/api/wms/finalize', W(async (req, res) => {
     const { waveId } = req.body || {};
     res.json(await engine.finalize(sb, Number(waveId), user(req)));
   }));
@@ -108,7 +119,7 @@ function registerWmsRoutes(app, sb) {
     const { waveId, fgSku, fgProductId, qty, warehouseId, putawayBin, components } = req.body || {};
     res.json(await engine.stageBuild(sb, { waveId, fgSku, fgProductId, qty: Number(qty), warehouseId, putawayBin, components }, user(req)));
   }));
-  app.post('/api/wms/commit/build', A(async (req, res) => {
+  app.post('/api/wms/commit/build', W(async (req, res) => {
     const { buildId } = req.body || {};
     res.json(await engine.commitBuild(sb, Number(buildId), user(req)));
   }));
@@ -160,7 +171,7 @@ function registerWmsRoutes(app, sb) {
   }));
 
   // ── Commit: pack ──
-  app.post('/api/wms/commit/pack', A(async (req, res) => {
+  app.post('/api/wms/commit/pack', W(async (req, res) => {
     const { parcelId, boxes } = req.body || {};
     res.json(await engine.commitPack(sb, Number(parcelId), boxes || [], user(req)));
   }));
@@ -181,7 +192,7 @@ function registerWmsRoutes(app, sb) {
   }));
   app.post('/api/wms/transfer/line/:lineId/scan', A(async (req, res) => res.json(await transfers.scanLine(sb, Number(req.params.lineId), { qty: Number((req.body || {}).qty) }))));
   app.delete('/api/wms/transfer/line/:lineId', A(async (req, res) => res.json(await transfers.removeLine(sb, Number(req.params.lineId)))));
-  app.post('/api/wms/commit/transfer', A(async (req, res) => res.json(await transfers.commitTransfer(sb, Number((req.body || {}).transferId), user(req)))));
+  app.post('/api/wms/commit/transfer', W(async (req, res) => res.json(await transfers.commitTransfer(sb, Number((req.body || {}).transferId), user(req)))));
 
   // ── TR pick: open an ordered TR, pick its lines, dispatch (ORDERED -> IN TRANSIT) ──
   app.post('/api/wms/tr/open', A(async (req, res) => {
@@ -199,7 +210,7 @@ function registerWmsRoutes(app, sb) {
     const { transferLineId, binCode, qty } = req.body || {};
     res.json(await transfers.recordTrScan(sb, Number(transferLineId), { binCode, qty: Number(qty) }, user(req)));
   }));
-  app.post('/api/wms/tr-dispatch', A(async (req, res) => res.json(await transfers.dispatchTr(sb, Number((req.body || {}).transferId), user(req)))));
+  app.post('/api/wms/tr-dispatch', W(async (req, res) => res.json(await transfers.dispatchTr(sb, Number((req.body || {}).transferId), user(req)))));
 
   // ── Maintenance: sync the owned bin/pickface registry + reconcile the outbox ──
   app.post('/api/wms/sync/bins', A(async (req, res) => res.json(await sync.syncBins(sb))));

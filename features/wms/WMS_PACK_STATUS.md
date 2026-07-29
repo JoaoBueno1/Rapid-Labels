@@ -18,6 +18,9 @@ architecture; this file is the practical "where we are / what's next"._
 - **API** `/api/wms/*` (`routes/wms-routes.js`), engine `lib/wms-engine.js` +
   `lib/wms-transfers.js`, Cin7 client `lib/cin7-wms-client.js`, exactly-once
   `lib/outbox.js`. Schema `wms.*` (`db/001_wms_core.sql`) is deployed + exposed.
+- **Live Cin7 writes are OFF by default** (`WMS_WRITE_ENABLED` unset). Read/draft
+  flows (open order, pick list, scan-to-draft, lookup, TR open) are always on; the 7
+  stock-moving endpoints return `403 {wmsWriteDisabled:true}` until the flag is set.
 
 ## End-to-end flows
 
@@ -70,20 +73,75 @@ chosen order/TR:**
    this is the one most likely to need adjusting.
 3. **Bin transfer commit** (bin→bin `stockTransfer`).
 
-**Still TODO / nice-to-have:**
-- Populate the pickface registry (`POST /api/wms/sync/pickface`) — today suggestions
-  fall back to `stock_locator` + availability bins (works, but the owned registry is
-  empty).
-- Wire the Pack Station "Send to booking" to the TMS booking screen (SO#/cartons/dims).
-- Non-Main-origin TRs have no bins/pickface (only Main has bins in Cin7) — the pick
-  works but with no pickface guidance; revisit if branch-origin TRs are picked here.
+**Hardening done 2026-07-30 (safe, no live Cin7 write involved):**
+- **Write kill-switch** — the 7 stock-moving endpoints (`receive`, `commit/pick`,
+  `finalize`, `commit/build`, `commit/pack`, `commit/transfer`, `tr-dispatch`) are
+  gated behind `W()` and 403 unless `WMS_WRITE_ENABLED=true`. Verified both ways
+  locally (OFF → 403, ON → handler runs).
+- **Outbox concurrent-safety** — `outbox.execute` now claims `pending→sent` with an
+  atomic compare-and-swap (`.eq('status', loaded)`); a same-`op_key` double-submit
+  loses the race and bails instead of issuing a second Cin7 write. Single-worker
+  behaviour unchanged.
+- **Reconciler** now knows `tr_dispatch` (was missing) so a timed-out TR dispatch that
+  actually landed can be drained, not stranded at `sent`.
+- **Pick guard** — `commitPick` throws if a scanned line's bin never resolved to a
+  Cin7 `LocationID`, instead of silently picking from the warehouse root.
+
+**Still TODO before go-live:**
+- **Auth** on `/api/wms/*` — there is none (only a spoofable `X-WMS-User`). On the
+  public Vercel URL the kill-switch is what keeps writes safe; add a real gate (shared
+  secret / session) before turning writes on outside a supervised test.
+- **Schedule** the reconciler (`POST /api/wms/reconcile`, ~60s) + registry sync
+  (`/sync/bins`, `/sync/pickface`) — nothing runs them yet; do it via a GitHub Action
+  (serverless `setInterval` is unreliable), and only after auth lands.
+- Populate the pickface registry (`POST /api/wms/sync/bins` + `/sync/pickface`) — both
+  read the mirror only (no Cin7 write); today suggestions fall back to `stock_locator`.
+- Wire Pack Station "Send to booking" to the TMS (SO#/cartons/dims) — today an
+  `alert()` stub; carton dims are also not yet persisted server-side.
+- Non-Main-origin TRs have no bins/pickface (only Main has bins in Cin7).
+
+**Behaviour to validate DURING the first supervised write (don't fix blind):**
+- `commitPick` POSTs a new fulfilment when we have none; the proven spike adopted an
+  existing one — check the sale's fulfilment count first (duplicate-fulfilment risk).
+- `commitBuild` writes the recipe with `Quantity:1` per component — correct only for
+  1:1 BOMs; pick a 1:1 FG first (e.g. the spike-proven one), defer multi-per-unit kits.
+- `tr-dispatch` IN TRANSIT payload (`SkipOrder:true`, `DepartureDate`, picked lines) is
+  a best guess — first diff it against a real IN-TRANSIT TR read (see runbook).
+- `recordTrScan` overwrites the ordered qty with the scanned qty — a short-pick is
+  silently swallowed; decide the policy before trusting dispatch.
 
 ## Running it
 - Server: `node server.js` (full node path on the office PC:
   `C:\Users\JoaoMarcos\.fnm\node-versions\v24.13.1\installation\node.exe server.js`).
-- PWA: `http://localhost:8383/wms` (this PC) or `http://<LAN-IP>:8383/wms` (handheld
-  on the same Wi-Fi). `.env` has `SUPABASE_*` + `CIN7_*`.
-- Note: on the Vercel deploy only `/api/*` is routed to Express (per `vercel.json`) —
-  the `/wms` static mount is local-only; on Vercel the PWA would live at
-  `/features/wms/pwa/wms.html` and long calls risk the serverless timeout. Use the
-  local/LAN URL for handheld testing.
+- PWA (local/LAN): `http://localhost:8383/wms` or `http://<LAN-IP>:8383/wms` (handheld
+  on the same Wi-Fi). Pack: `.../features/wms/pack/pack.html`. `.env` has `SUPABASE_*`
+  + `CIN7_*`.
+- **Production (Vercel)**: `vercel.json` now rewrites `/wms` → the PWA and `/pack` →
+  Pack Station, and `/api/:path*` → the Express app; `maxDuration` is 60s. So the prod
+  URLs are `https://<domain>/wms` and `https://<domain>/pack`. Heavy writes (`finalize`
+  fires 8-15 sequential Cin7 calls) can still exceed 60s under rate-limit backoff —
+  prefer the local/LAN server for the first live writes, or split `finalize` into
+  per-parcel `commit/build` + `commit/pick`.
+
+## Test-day runbook (when ready — WITH Joao, writes still gated)
+All prep steps below touch **zero** Cin7 writes; only the final step enables them.
+1. **Read-only smoke** (flag OFF): `GET /api/wms/health` → `{ok:true}`; open a known
+   **Advanced** SO in Pick and in Pack; walk a TR open; run a Stock lookup. Confirm the
+   draft rows in `wms.waves/parcels/parcel_lines` and that no `wms.outbox` rows exist.
+2. **Populate the registry**: `POST /api/wms/sync/bins` + `/sync/pickface` (mirror-only,
+   no Cin7 write). Then confirm every bin you'll touch — each pick bin, `MA-PRODUCTION`,
+   and the TR from/to — resolves to a non-null Cin7 `LocationID`. Abort on any null.
+3. **Inspect the risky payloads without writing**: `GET stockTransfer?TaskID=<a real,
+   already IN-TRANSIT TR>` and diff its shape against `dispatchTransfer`'s body
+   (confirm `SkipOrder`, `DepartureDate`, whether Lines echo full ordered qty). `GET
+   sale/fulfilment?SaleID=<test SO>` to see if a fulfilment already exists.
+4. **Pick the smallest test targets**: one small **Advanced, non-assembly** SO (1-2
+   lines, not already picked in Cin7); one low-value **ORDERED** TR that can be voided;
+   two Main-warehouse bins + a cheap SKU with confirmed on-hand for the bin move.
+5. **Enable writes**: set `WMS_WRITE_ENABLED=true` and restart the (local/LAN) server.
+   Test in order of reversibility: **bin transfer** → **commit/pick** (single
+   fulfilment) → **finalize** (multi-write) → **tr-dispatch** (least proven, throwaway
+   TR first). After each: check `GET /api/wms/outbox` (row `pending→sent→confirmed`),
+   `GET /api/wms/movements`, and the matching Cin7 record. If anything times out, `POST
+   /api/wms/reconcile` before retrying (never blind-retry a write).
+6. **Turn writes back OFF** (`WMS_WRITE_ENABLED` unset) when the session ends.

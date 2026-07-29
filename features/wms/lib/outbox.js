@@ -77,7 +77,20 @@ async function execute(sb, op_key, { doWrite, verify, movements, actor }) {
     // not landed → safe to (re)send below
   }
 
-  await patch(sb, op_key, { status: 'sent', sent_at: new Date().toISOString(), attempts: (row.attempts || 0) + 1 });
+  // Atomic claim: only ONE worker may flip this op into 'sent' from the exact status
+  // we loaded. A concurrent double-submit with the same op_key (double-tap, client
+  // timeout-retry mid-flight, a second device) loses the race here and bails instead
+  // of issuing a second Cin7 write. Single-worker behaviour is unchanged.
+  const { data: claimed } = await wms(sb).from('outbox')
+    .update({ status: 'sent', sent_at: new Date().toISOString(), attempts: (row.attempts || 0) + 1 })
+    .eq('op_key', op_key).eq('status', row.status).select('op_key');
+  if (!claimed || !claimed.length) {
+    const fresh = await load(sb, op_key);
+    if (fresh && (fresh.status === 'confirmed' || fresh.status === 'reconciled')) {
+      return { status: 'confirmed', alreadyDone: true, cin7_ref: fresh.cin7_ref, response: fresh.response };
+    }
+    throw new Error(`outbox.execute: op ${op_key} is being processed concurrently (status=${fresh && fresh.status}); not re-sending`);
+  }
   try {
     const out = await doWrite();
     await patch(sb, op_key, {

@@ -206,6 +206,11 @@ async function commitPick(sb, parcelId, user) {
   let taskId = parcel.cin7_task_id;
   if (!taskId) { taskId = await cin7.createFulfilment(wave.sale_id); await wms(sb).from('parcels').update({ cin7_task_id: taskId }).eq('id', parcelId); }
 
+  // Fail loud rather than pick from the warehouse root: a scanned bin that never
+  // resolved to a Cin7 LocationID would otherwise move stock out of the wrong place.
+  const unresolved = scanned.find((l) => l.from_bin && !l.from_bin_id);
+  if (unresolved) throw new Error(`Pick bin "${unresolved.from_bin}" for ${unresolved.sku} did not resolve to a Cin7 location — aborting (run /sync/bins first).`);
+
   const pickLines = scanned.map((l) => ({
     ProductID: l.product_id, SKU: l.sku, Quantity: Number(l.qty_scanned),
     Location: locString(l.from_bin), LocationID: l.from_bin_id, BatchSN: null,

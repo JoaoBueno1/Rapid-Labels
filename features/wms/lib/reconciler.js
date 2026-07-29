@@ -23,6 +23,7 @@ async function landed(row) {
   if (row.op_type === 'sale_pack') { const p = await cin7.getPack(t); return { done: p && p.Status === 'AUTHORISED' }; }
   if (row.op_type === 'fg_build') { const b = await cin7.getBuild(t); return { done: b && b.Status === 'COMPLETED', cin7_ref: b && b.AssemblyNumber }; }
   if (row.op_type === 'transfer') { const x = await cin7.getTransfer(t); return { done: x && /COMPLETED/i.test(x.Status || ''), cin7_ref: x && x.Number }; }
+  if (row.op_type === 'tr_dispatch') { const x = await cin7.getTransfer(t); return { done: x && /IN.?TRANSIT|COMPLETED/i.test(x.Status || ''), cin7_ref: x && x.Number }; }
   return { done: false };
 }
 
