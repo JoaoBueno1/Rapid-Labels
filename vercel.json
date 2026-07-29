@@ -1,5 +1,12 @@
 {
+  "functions": {
+    "api/index.js": { "maxDuration": 60 }
+  },
   "rewrites": [
+    { "source": "/wms", "destination": "/features/wms/pwa/wms.html" },
+    { "source": "/wms/", "destination": "/features/wms/pwa/wms.html" },
+    { "source": "/pack", "destination": "/features/wms/pack/pack.html" },
+    { "source": "/pack/", "destination": "/features/wms/pack/pack.html" },
     { "source": "/api/:path*", "destination": "/api" }
   ]
 }
