@@ -178,11 +178,19 @@ async function recordScan(sb, parcelLineId, { binCode, qty, sku, raw }, user) {
 
 // Suggest a source bin: pickface first, else the availability snapshot (overflow-aware).
 async function suggestBins(sb, sku) {
+  // Pickface = the product's home bin. Prefer the owned wms.pickface registry; fall
+  // back to the mirror's products.stock_locator (the company's convention, populated).
   const pf = await wms(sb).from('pickface').select('bin_code,rank').eq('sku', sku).order('rank');
+  let pickface = (pf.data || []).map((p) => p.bin_code);
+  if (!pickface.length) {
+    const { data: prod } = await sb.schema('cin7_mirror').from('products').select('stock_locator').eq('sku', sku).maybeSingle();
+    const loc = String((prod && prod.stock_locator) || '').trim();
+    if (/^[a-z]{2}-/i.test(loc)) pickface = [loc];
+  }
   const avail = await cin7.availability(sku);
   const bins = avail.filter((a) => a.Location === MAIN_WH_NAME && Number(a.Available) > 0)
     .map((a) => ({ bin: a.Bin || '', available: Number(a.Available), onHand: Number(a.OnHand) }));
-  return { pickface: (pf.data || []).map((p) => p.bin_code), bins };
+  return { pickface, bins };
 }
 
 // ── COMMIT: pick (write-after-confirm, exactly-once) ────────────────────────
@@ -354,24 +362,30 @@ async function getPickList(sb, waveId) {
   let comps = [];
   if (buildIds.length) comps = (await wms(sb).from('build_components').select('*').in('build_id', buildIds)).data || [];
 
-  // enrich component names from the product mirror (build_components has no name)
-  const compSkus = [...new Set(comps.map((c) => c.sku))];
-  const nameMap = {};
-  if (compSkus.length) {
-    const { data: prods } = await sb.schema('cin7_mirror').from('products').select('sku,name').in('sku', compSkus);
-    (prods || []).forEach((p) => { nameMap[p.sku] = p.name; });
+  // Enrich name + PICKFACE (products.stock_locator = the home/pickbay bin) for every
+  // item SKU — the card must tell the picker WHERE to pick from. Only a real bin code
+  // (MA-…) is a pickface; 'BOM'/'PRODUCTION'/'0' are not pick locations.
+  const allSkus = [...new Set(normal.map((l) => l.sku).concat(comps.map((c) => c.sku)))];
+  const nameMap = {}, pfMap = {};
+  if (allSkus.length) {
+    const { data: prods } = await sb.schema('cin7_mirror').from('products').select('sku,name,stock_locator').in('sku', allSkus);
+    (prods || []).forEach((p) => {
+      nameMap[p.sku] = p.name;
+      const loc = String(p.stock_locator || '').trim();
+      if (/^[a-z]{2}-/i.test(loc)) pfMap[p.sku] = loc;
+    });
   }
 
   const items = [];
   normal.forEach((l) => items.push({
     kind: 'line', id: l.id, sku: l.sku, name: l.name, qty: Number(l.qty_ordered),
-    qtyScanned: Number(l.qty_scanned), fromBin: l.from_bin,
+    qtyScanned: Number(l.qty_scanned), fromBin: l.from_bin, pickface: pfMap[l.sku] || null,
     picked: l.status === 'committed' || Number(l.qty_scanned) >= Number(l.qty_ordered),
   }));
   comps.forEach((c) => items.push({
     kind: 'component', id: c.id, forFg: (buildById[c.build_id] || {}).fg_sku || null,
     sku: c.sku, name: nameMap[c.sku] || c.sku, qty: Number(c.qty), fromBin: c.from_bin,
-    picked: !!c.from_bin,
+    pickface: pfMap[c.sku] || null, picked: !!c.from_bin,
   }));
   items.sort((a, b) => String(a.sku).localeCompare(String(b.sku), undefined, { numeric: true, sensitivity: 'base' }));
   return {
