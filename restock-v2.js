@@ -330,9 +330,14 @@
         const status = (r.__norm_status || r.status || 'configure').toLowerCase();
         const reserveQty = Number(r.__reserve_total ?? 0);
         const restock = r.restock_qty ?? '';
+        const restockNum = Number(restock);
+        // The Restock qty is the primary output — make it pop when > 0, and mute
+        // it to a dash when nothing needs restocking. (UX: highlight the answer)
+        const restockCellHtml = (Number.isFinite(restockNum) && restockNum > 0)
+          ? `<span class="restock-strong">${restockNum.toLocaleString()}</span>`
+          : `<span style="opacity:.35">—</span>`;
 
         let reserveCellHtml = formatReserveCell(reserveQty);
-        const restockNum = Number(restock);
         const showInfo = Number.isFinite(restockNum) && reserveQty > 0 && reserveQty < restockNum;
         if (showInfo) {
           const locs = (Array.isArray(r.__reserve_locations) ? r.__reserve_locations : [])
@@ -357,8 +362,8 @@
         const favOn = favorites.has(String(r.__stock_sku || r.sku));
         const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${skuKey}" onclick="restockToggleFavorite('${skuKey}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
         const actionButtons = `
-          <div class="action-buttons">
-            <button type="button" class="action-btn edit" onclick="openEditProductModal('${skuKey}')" title="Configure capacity" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;border:none;padding:6px 12px;border-radius:8px;font-weight:600;cursor:pointer;min-width:50px;height:28px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s;font-size:13px">⚙ Edit</button>
+          <div class="action-buttons" style="display:flex;gap:6px;justify-content:center;white-space:nowrap">
+            <button type="button" class="action-btn edit" onclick="openEditProductModal('${skuKey}')" title="Configure capacity" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;border:none;padding:6px 12px;border-radius:8px;font-weight:600;cursor:pointer;min-width:50px;height:28px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s;font-size:13px;white-space:nowrap">⚙ Edit</button>
             <button type="button" class="action-btn delete" onclick="openDeleteConfirmModal('${skuKey}')" title="Remove configuration" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;padding:6px 10px;border-radius:8px;font-weight:600;cursor:pointer;min-width:40px;height:28px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s;font-size:12px">✕</button>
           </div>`;
         const wrapText = (text, chunkSize) => { if (!text) return ''; const e = escapeHtml(text); const c = []; for (let j = 0; j < e.length; j += chunkSize) c.push(e.substring(j, j + chunkSize)); return c.join('<br>'); };
@@ -381,7 +386,7 @@
           <td>${capacityHtml}</td>
           <td>${statusChip(status, r.__setup_info)}</td>
           <td>${reserveCellHtml}</td>
-          <td>${restock}</td>
+          <td>${restockCellHtml}</td>
           <td>${qtyCtnHtml}</td>
           <td>${qtyPalletHtml}</td>
           <td class="print-only">${nearestHtml}</td>

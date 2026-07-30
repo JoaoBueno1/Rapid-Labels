@@ -23,7 +23,7 @@
   </header>
   <div class="main-container wide-container">
     <div class="page-header">
-      <div style="display: flex; align-items: center; gap: 0;">
+      <div style="display: flex; align-items: center; gap: 0; flex-wrap: nowrap; overflow-x: auto; max-width: 100%;">
         <!-- 3-view nav tabs -->
         <button class="rv2-nav-tab active" data-view="restock" onclick="switchRestockView('restock')">
           Re-Stock <span style="font-size:11px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:1px 8px;border-radius:999px;vertical-align:middle;margin-left:4px">V2</span>
@@ -49,7 +49,7 @@
       </div>
       <div class="header-actions">
         <div class="search-input-group" id="restockSearchGroup">
-          <input type="text" id="restockSearch" placeholder="Search SKU, Product, Pickface or scan" style="min-width: 420px" />
+          <input type="text" id="restockSearch" placeholder="Search SKU, Product, Pickface or scan" aria-label="Search SKU, Product or Pickface" style="width: 260px; max-width: 100%" />
           <button class="search-btn-small" onclick="runRestockSearch()">Search</button>
         </div>
       </div>
@@ -203,7 +203,7 @@
             <th style="white-space:nowrap">Qty/Pallet</th>
             <th class="print-only">Nearest Reserve</th>
             <th class="print-only" style="width: 80px; max-width: 80px;">Notes</th>
-            <th style="width:120px" class="no-print">Actions</th>
+            <th style="width:150px" class="no-print">Actions</th>
           </tr>
         </thead>
         <tbody id="restockTbody"><tr><td colspan="16" style="text-align:center;opacity:.7">Loading…</td></tr></tbody>
@@ -400,7 +400,7 @@
   #restockFilters.has-active .chip:not(.active):hover{ opacity:0.6; filter:grayscale(0.3); transform:scale(1) }
   .chip.active{ border-width:2px; font-weight:700; transform:scale(1.05); box-shadow:0 2px 8px rgba(0,0,0,0.15) }
       .reserve-none{color:#64748b;opacity:.8;font-style:italic}
-      .restock-strong{font-weight:700;color:#0f172a}
+      .restock-strong{font-weight:800;color:#3730a3;font-variant-numeric:tabular-nums;background:#eef2ff;border:1px solid #e0e7ff;border-radius:6px;padding:1px 8px;display:inline-block;min-width:26px}
   #restockTable th, #restockTable td{ text-align:center }
   .status-badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;line-height:1;border:1px solid transparent;text-transform:uppercase}
   .status-badge.low{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
@@ -432,7 +432,7 @@
   .reserve-cell:hover .reserve-pop, .reserve-cell.show .reserve-pop{ display:block }
   .reserve-pop .line{ display:block; margin:2px 0 }
   /* Custom tooltip popover for Pickface and Capacity */
-  .tip-cell{ display:inline-flex; align-items:center; gap:4px; position:relative; cursor:pointer }
+  .tip-cell{ display:inline-flex; align-items:center; gap:4px; position:relative; cursor:pointer; border-bottom:1px dotted #94a3b8 }
   .tip-pop{
     position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%);
     background:#1e293b; color:#f1f5f9; border-radius:8px;
@@ -504,7 +504,7 @@
   .col-hidden-11 #restockTable th:nth-child(12), .col-hidden-11 #restockTable td:nth-child(12) { display:none !important }
   .col-hidden-12 #restockTable th:nth-child(13), .col-hidden-12 #restockTable td:nth-child(13) { display:none !important }
   /* Nav tabs (Re-Stock V2 / Redistribute / Consolidate) */
-  .rv2-nav-tab{ padding:10px 20px; font-size:14px; font-weight:600; color:#64748b; background:none; border:none; border-bottom:3px solid transparent; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; gap:6px }
+  .rv2-nav-tab{ padding:10px 14px; font-size:14px; white-space:nowrap; flex:0 0 auto; font-weight:600; color:#64748b; background:none; border:none; border-bottom:3px solid transparent; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; gap:6px }
   .rv2-nav-tab:hover{ color:#334155; background:#f8fafc }
   .rv2-nav-tab.active{ color:#6366f1; border-bottom-color:#6366f1 }
   .rv2-nav-tab.active[data-view="priorities"]{ color:#b91c1c; border-bottom-color:#ef4444 }
