@@ -59,8 +59,10 @@ body { font-family: 'IBM Plex Sans', system-ui, sans-serif !important; color: #1
 #restockTable tbody td { border-bottom-color: #eef1f6 !important; color: #1a2230 !important; }
 #restockTable tbody tr:hover td { background: #f9fbfd !important; }
 
-/* ── Sync status card → flat ── */
-#syncStatusCard { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+/* ── Sync status → thin borderless line (no card) ── */
+#syncStatusCard { background: transparent !important; border: none !important; border-radius: 0 !important; padding: 3px 0 !important; }
+#syncStatusText { font-size: 12px !important; }
+#syncStatusDot { width: 8px !important; height: 8px !important; }
 
 /* ── Tooltip popovers → match the ink ── */
 .tip-pop { background: #1a2230 !important; }

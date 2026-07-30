@@ -24,8 +24,6 @@
     </div>
   </header>
   <div class="main-container wide-container">
-    <!-- Page title — aligned with the other logistics pages (pick-anomalies etc.) -->
-    <h1 style="font-size:20px;font-weight:600;color:#1a2230;letter-spacing:-.01em;margin:8px 0 14px">Re-Stock</h1>
     <div class="page-header">
       <div style="display: flex; align-items: center; gap: 0; flex-wrap: nowrap; overflow-x: auto; max-width: 100%;">
         <!-- 3-view nav tabs -->
@@ -60,7 +58,7 @@
     </div>
 
     <!-- Sync Status Card -->
-    <div id="syncStatusCard" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:10px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+    <div id="syncStatusCard" style="margin-top:2px;display:flex;align-items:center;gap:10px;padding:3px 0;font-size:12px">
       <div style="display:flex;align-items:center;gap:6px">
         <span id="syncStatusDot" style="width:10px;height:10px;border-radius:50%;background:#94a3b8;display:inline-block"></span>
         <span id="syncStatusText" style="font-size:13px;color:#475569;font-weight:500">Checking sync status…</span>
@@ -393,7 +391,7 @@
     (function(){
   const css = `
   /* Full-width layout (same as pick anomalies) */
-  .main-container.wide-container{ max-width:none!important; width:100%!important; text-align:left!important; align-self:stretch!important; padding:20px 24px!important; }
+  .main-container.wide-container{ max-width:none!important; width:100%!important; text-align:left!important; align-self:stretch!important; padding:6px 24px 20px!important; }
       .chip{padding:4px 10px;border:1px solid var(--border,#cbd5e1);border-radius:999px;background:#fff;color:#0f172a;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s ease;opacity:1}
   .status-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 5px;border-radius:999px;font-size:10px;font-weight:700;line-height:1;background:rgba(0,0,0,0.15);color:currentColor}
   #restockFilters .chip[data-status-filter="ALL"]{ background:#e2e8f0; color:#334155; border-color:#cbd5e1 }
