@@ -387,7 +387,6 @@
         const actionButtons = `
           <div class="action-buttons" style="display:flex;gap:6px;justify-content:center;white-space:nowrap">
             <button type="button" class="action-btn edit" onclick="openEditProductModal('${skuKey}')" title="Configure capacity" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;border:none;padding:6px 12px;border-radius:8px;font-weight:600;cursor:pointer;min-width:50px;height:28px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s;font-size:13px;white-space:nowrap">⚙ Edit</button>
-            <button type="button" class="action-btn delete" onclick="openDeleteConfirmModal('${skuKey}')" title="Remove configuration" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;padding:6px 10px;border-radius:8px;font-weight:600;cursor:pointer;min-width:40px;height:28px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s;font-size:12px">✕</button>
           </div>`;
         const wrapText = (text, chunkSize) => { if (!text) return ''; const e = escapeHtml(text); const c = []; for (let j = 0; j < e.length; j += chunkSize) c.push(e.substring(j, j + chunkSize)); return c.join('<br>'); };
         const notesHtml = r.__notes ? wrapText(r.__notes, 10) : '';
@@ -1471,44 +1470,9 @@
     currentEditingSku = null;
   };
 
-  window.openDeleteConfirmModal = function (productCode) {
-    const row = state.allRows.find(r => String(r.__stock_sku || r.sku) === String(productCode));
-    const dc = row ? (row.__5dc || '') : '';
-    const skuCode = row ? (row.__stock_sku || row.product || '') : '';
-    const displayLabel = dc ? `${dc} — ${skuCode}` : skuCode || 'this product';
-    const isConfigured = row && row.__norm_status !== 'NOT_CONFIGURED';
-    if (!isConfigured) {
-      showToast('This product is already not configured', 'info');
-      return;
-    }
-    document.getElementById('deleteConfirmText').innerHTML = `Remove capacity configuration for <strong>${escapeHtml(displayLabel)}</strong>?<br><br><span style="font-size:13px;color:#64748b">The product will become <strong>Not Configured</strong>. No data is deleted — you can reconfigure it anytime via Edit.</span>`;
-    document.getElementById('confirmDeleteBtn').dataset.productCode = productCode;
-    document.getElementById('deleteConfirmModal').classList.remove('hidden');
-  };
-
-  window.closeDeleteConfirmModal = function () {
-    document.getElementById('deleteConfirmModal').classList.add('hidden');
-  };
-
-  window.confirmDelete = async function () {
-    const productCode = document.getElementById('confirmDeleteBtn').dataset.productCode;
-    if (!productCode) return;
-    try {
-      await window.supabaseReady;
-      // Deconfigure: clear capacity fields (don't delete the row)
-      const { error } = await window.supabase.from('restock_setup').update({
-        pickface_qty: null, cap_min: null, cap_med: null, cap_max: null
-      }).eq('product', productCode);
-      if (error) {
-        // If row doesn't exist, nothing to deconfigure
-        showToast('Could not deconfigure: ' + error.message, 'error');
-        return;
-      }
-      showToast('Capacity removed — product is now Not Configured', 'success');
-      window.closeDeleteConfirmModal();
-      fetchData();
-    } catch (e) { showToast('Error: ' + e.message, 'error'); }
-  };
+  // Deconfigure is done entirely from the Edit modal (set Capacity to 0 → the row
+  // becomes Not Configured). The standalone ✕ delete button + its confirm modal
+  // were removed as redundant.
 
   async function loadProductSetupData(productCode) {
     try {
