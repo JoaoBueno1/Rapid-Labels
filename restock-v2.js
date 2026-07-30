@@ -559,6 +559,15 @@
   /* ═══════════════════════════════════════════════
      REBUILD filtered view helper
      ═══════════════════════════════════════════════ */
+  // Client-side search over the already-loaded rows (no refetch). (perf)
+  function applySearchFilter(rows) {
+    const q = (state.q || '').trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(r =>
+      `${r.__5dc || ''} ${r.__stock_sku || ''} ${r.product || ''} ${r.stock_locator || ''}`
+        .toLowerCase().includes(q));
+  }
+
   function rebuildView() {
     state.page = 1;
     let rows = applyLocationFilters(state.allRows.slice());
@@ -568,6 +577,7 @@
     rows = applyOnlyReserveInfoFilter(rows);
     rows = applyCapacityReviewFilter(rows);
     rows = applyPickfaceMismatchFilter(rows);
+    rows = applySearchFilter(rows);
     const arranged = stableSortByBusinessRules(rows);
     let visible = state.hideNoReserve ? arranged.filter(r => Number(r.__reserve_total || 0) > 0) : arranged;
     if (state.onlyNeedsAdjustment) {
@@ -1098,11 +1108,8 @@
         // Current runway: how many weeks does current on_hand last?
         row.__runway_weeks = avgWeekly && pickfaceOnHand > 0 ? Math.round((pickfaceOnHand / avgWeekly) * 10) / 10 : null;
 
-        // Search filter (client-side)
-        if (q) {
-          const haystack = `${display5DC} ${stockSku} ${displayProduct} ${pickfaceSource}`.toLowerCase();
-          if (!haystack.includes(q)) continue;
-        }
+        // Search is applied client-side in rebuildView() over state.allRows, so
+        // allRows stays complete and typing never triggers a refetch. (perf)
 
         rows.push(row);
       }
@@ -1180,7 +1187,7 @@
     if (matched) { handleKeywordFilter(matched); return; }
     state.onlyNeedsAdjustment = false;
     state.q = searchTerm;
-    fetchData();
+    rebuildView();
   };
 
   function handleKeywordFilter(keyword) {
@@ -1233,7 +1240,7 @@
   /* ═══════════════════════════════════════════════
      INPUT listener
      ═══════════════════════════════════════════════ */
-  const onInput = debounce(() => { state.q = (input && input.value) || ''; fetchData(); }, 350);
+  const onInput = debounce(() => { state.q = (input && input.value) || ''; rebuildView(); }, 150);
   if (input) {
     input.addEventListener('input', onInput);
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); window.runRestockSearch(); } });
@@ -1459,6 +1466,20 @@
       }
     } catch (e) { console.warn('Could not load setup for', productCode, e); }
   }
+
+  // ── A11y: mark modals as dialogs + close the top-most modal on Escape so a
+  // keyboard/screen-reader user is never trapped behind an overlay. ──
+  (function setupModalA11y() {
+    document.querySelectorAll('.modal').forEach(function (m) {
+      m.setAttribute('role', 'dialog');
+      m.setAttribute('aria-modal', 'true');
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      const open = Array.from(document.querySelectorAll('.modal:not(.hidden)')).pop();
+      if (open) { open.classList.add('hidden'); e.stopPropagation(); }
+    });
+  })();
 
   document.getElementById('addEditProductForm').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -2739,7 +2760,18 @@
   function getRestockStatus(sku) {
     if (!mapState.restockRows) mapState.restockRows = state.allRows;
     if (!mapState.restockRows || !sku) return null;
-    return mapState.restockRows.find(r => (r.__stock_sku || r.sku || '').toUpperCase() === sku.toUpperCase()) || null;
+    // Build a case-insensitive SKU→row index once instead of a linear .find()
+    // per bin per keystroke (was O(bins × rows) on the Map view). (perf)
+    if (mapState.restockBySkuSrc !== mapState.restockRows) {
+      const m = new Map();
+      for (const r of mapState.restockRows) {
+        const k = (r.__stock_sku || r.sku || '').toUpperCase();
+        if (k && !m.has(k)) m.set(k, r);
+      }
+      mapState.restockBySku = m;
+      mapState.restockBySkuSrc = mapState.restockRows;
+    }
+    return mapState.restockBySku.get(sku.toUpperCase()) || null;
   }
 
   /** Returns: 'full' | 'medium' | 'low' | 'over' | 'notconfigured' | 'empty' */
