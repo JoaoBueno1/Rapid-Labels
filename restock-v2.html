@@ -162,6 +162,8 @@
             </div>
             <button class="search-btn-small" type="button" onclick="openLocationsPrintModal()">Print Locations</button>
             <button class="search-btn-small" type="button" onclick="printRestock()">Print</button>
+            <button id="printSelectedBtn" class="search-btn-small" type="button" onclick="printSelected()" disabled style="opacity:.5">🖨️ Print selected (0)</button>
+            <button id="clearSelBtn" class="search-btn-small secondary" type="button" onclick="restockClearSelection()" style="display:none">Clear</button>
             <button class="search-btn-small" type="button" onclick="openColumnSettingsModal()" title="Column visibility settings" style="background:#64748b;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px">⚙ Columns</button>
           </div>
         </div>
@@ -190,7 +192,7 @@
       <table class="app-table" id="restockTable">
         <thead>
           <tr>
-            <th style="width:36px">★</th>
+            <th style="width:54px;white-space:nowrap"><input type="checkbox" id="rv2SelectAll" onclick="restockToggleSelectAllVisible(this)" title="Select all shown rows" aria-label="Select all shown rows" style="vertical-align:middle;cursor:pointer;width:15px;height:15px;accent-color:#6366f1"> ★</th>
             <th style="white-space:nowrap;font-size:12px">5DC</th>
             <th>SKU</th>
             <th>Product</th>
@@ -578,6 +580,23 @@
       const prevTitle = document.title;
       document.title = `Re-Stock V2 ${formatNowForFile()}`;
       try { if (window.restockPreparePrintView) window.restockPreparePrintView(); } catch {}
+      const restore = ()=>{
+        try { if (window.restockRestoreView) window.restockRestoreView(); } catch {}
+        document.title = prevTitle;
+        window.removeEventListener('afterprint', restore);
+      };
+      window.addEventListener('afterprint', restore);
+      setTimeout(()=> window.print(), 0);
+    }
+    function printSelected(){
+      const stamp = formatNow();
+      const ph = document.getElementById('restockPrintHeader');
+      if (ph) ph.textContent = `Re-Stock — Selected tasks — ${stamp}`;
+      const prevTitle = document.title;
+      let ok = false;
+      try { if (window.restockPreparePrintSelected) ok = window.restockPreparePrintSelected(); } catch {}
+      if (!ok) { alert('Tick at least one row to print selected.'); return; }
+      document.title = `Re-Stock Selected ${formatNowForFile()}`;
       const restore = ()=>{
         try { if (window.restockRestoreView) window.restockRestoreView(); } catch {}
         document.title = prevTitle;

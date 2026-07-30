@@ -23,6 +23,7 @@
     loading: false,
     rows: [],
     allRows: [],
+    selected: new Set(),   // __stock_sku of rows ticked for "Print selected"
     statusFilter: 'ALL', // ALL | LOW | MEDIUM | FULL | OVER | NOT_CONFIGURED
     hideNoReserve: false,
     onlyNeedsAdjustment: false,
@@ -225,6 +226,7 @@
     if (!rows || !rows.length) {
       setTbody('<tr><td colspan="16" style="text-align:center;opacity:.7">No results</td></tr>');
       updatePager(0);
+      updateSelectedUI();
       if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
       return;
     }
@@ -360,6 +362,8 @@
         const nearestLines = computeNearestReserveLines(r.stock_locator, r.__reserve_locations);
         const nearestHtml = nearestLines.length ? nearestLines.map(l => `<div>${escapeHtml(l)}</div>`).join('') : '';
         const favOn = favorites.has(String(r.__stock_sku || r.sku));
+        const isSel = state.selected && state.selected.has(r.__stock_sku || r.sku);
+        const selBox = `<input type="checkbox" class="rv2-sel" ${isSel ? 'checked' : ''} onclick="restockToggleSelect('${skuKey}', this.checked)" title="Select for print" style="vertical-align:middle;cursor:pointer;width:15px;height:15px;accent-color:#6366f1">`;
         const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${skuKey}" onclick="restockToggleFavorite('${skuKey}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
         const actionButtons = `
           <div class="action-buttons" style="display:flex;gap:6px;justify-content:center;white-space:nowrap">
@@ -376,7 +380,7 @@
         const qtyPalletHtml = qtyPalletVal != null ? `<span style="font-variant-numeric:tabular-nums">${qtyPalletVal}</span>` : '<span style="opacity:.35">—</span>';
 
         return `<tr>
-          <td>${star}</td>
+          <td style="white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:5px">${selBox}${star}</span></td>
           <td style="font-variant-numeric:tabular-nums;font-size:12px;font-weight:700">${fiveDC}</td>
           <td>${skuDisplay}</td>
           <td>${productHtml}</td>
@@ -398,6 +402,7 @@
       if (i + 30 < limited.length) chunks.push('<tr class="print-break"><td colspan="16"></td></tr>');
     }
     setTbody(chunks.join(''));
+    updateSelectedUI();
     if (window.styleRestockStatuses) setTimeout(window.styleRestockStatuses, 0);
   }
 
@@ -1279,6 +1284,52 @@
       if (__beforePrintCache) { state.page = __beforePrintCache.page; state.perPage = __beforePrintCache.perPage; render(__beforePrintCache.rows); }
       __beforePrintCache = null;
     } catch {}
+  };
+
+  /* ═══════════════════════════════════════════════
+     ROW SELECTION → print only the ticked rows (pre-selected task lists)
+     ═══════════════════════════════════════════════ */
+  function updateSelectedUI() {
+    const n = (state.selected && state.selected.size) || 0;
+    const btn = document.getElementById('printSelectedBtn');
+    if (btn) { btn.textContent = `🖨️ Print selected (${n})`; btn.disabled = n === 0; btn.style.opacity = n === 0 ? '.5' : '1'; }
+    const clr = document.getElementById('clearSelBtn');
+    if (clr) clr.style.display = n > 0 ? '' : 'none';
+    const all = document.getElementById('rv2SelectAll');
+    if (all) {
+      const rows = state.rows || [];
+      const selShown = rows.filter(r => state.selected.has(r.__stock_sku || r.sku)).length;
+      all.checked = rows.length > 0 && selShown === rows.length;
+      all.indeterminate = selShown > 0 && selShown < rows.length;
+    }
+  }
+  window.restockToggleSelect = function (sku, checked) {
+    if (!state.selected) state.selected = new Set();
+    if (checked) state.selected.add(sku); else state.selected.delete(sku);
+    updateSelectedUI();
+  };
+  window.restockToggleSelectAllVisible = function (cb) {
+    if (!state.selected) state.selected = new Set();
+    const on = !!(cb && cb.checked);
+    (state.rows || []).forEach(r => { const k = r.__stock_sku || r.sku; if (on) state.selected.add(k); else state.selected.delete(k); });
+    render(state.rows);
+  };
+  window.restockClearSelection = function () {
+    if (state.selected) state.selected.clear();
+    render(state.rows);
+  };
+  // Render ONLY the selected rows (sorted like the board) for printing.
+  window.restockPreparePrintSelected = function () {
+    try {
+      const sel = state.selected || new Set();
+      if (!sel.size) return false;
+      __beforePrintCache = { rows: state.rows.slice(), page: state.page, perPage: state.perPage };
+      const subset = stableSortByBusinessRules((state.allRows || []).filter(r => sel.has(r.__stock_sku || r.sku)));
+      state.page = 1;
+      state.perPage = subset.length || 1;
+      render(subset);
+      return true;
+    } catch { return false; }
   };
 
   /* ═══════════════════════════════════════════════
