@@ -292,8 +292,24 @@
         const runWeeks = r.__runway_weeks;
         const avgM = r.__avg_month_sales;
         let capacityHtml;
-        if (capacity === '' || capacity == null) {
-          capacityHtml = '<span style="opacity:.35">—</span>';
+        if (capacity === '' || capacity == null || Number(capacity) <= 0) {
+          // No pickface capacity set. If the SKU still has demand, show a
+          // consultative tooltip (same style as configured rows) that surfaces
+          // the demand and a suggested capacity, so the operator can consult it
+          // and decide what to configure — even from the printout. (user request)
+          if (avgM != null && avgM > 0) {
+            const avgWkCap = Math.round(avgM / 4.33);
+            const idealCap = Math.ceil(avgWkCap * 4);
+            const suggestTip = `<div style="text-align:left;min-width:220px">`
+              + `<div style="font-weight:700;margin-bottom:5px;border-bottom:1px solid #475569;padding-bottom:3px">📦 No pickface capacity set</div>`
+              + `<div style="display:flex;justify-content:space-between;gap:12px"><span>⏱️ AVG Demand:</span><span>${Math.round(avgM).toLocaleString()}/mth · ${avgWkCap}/wk</span></div>`
+              + `<div style="border-top:1px solid #475569;margin-top:5px;padding-top:5px">→ Suggested pickface: <b>~${idealCap} units</b> (≈ 4 weeks of demand)</div>`
+              + `<div style="margin-top:4px;font-size:11px;opacity:.85">Configure a capacity to enable restock &amp; coverage alerts.</div>`
+              + `</div>`;
+            capacityHtml = `<span class="tip-cell" onclick="toggleTip(this)" style="opacity:.6">—<div class="tip-pop">${suggestTip}</div></span>`;
+          } else {
+            capacityHtml = '<span style="opacity:.35">—</span>';
+          }
         } else if (capWeeks != null && avgM != null) {
           const avgWkCap = Math.round(avgM / 4.33);
           const capNum = Number(capacity);
@@ -330,11 +346,6 @@
         }
 
         const status = (r.__norm_status || r.status || 'configure').toLowerCase();
-        // A NOT_CONFIGURED row that still has real demand is a prime candidate to
-        // set up — flag it so it's easy to spot and activate straight from the table.
-        const demandHint = (String(r.__norm_status || '').toUpperCase() === 'NOT_CONFIGURED' && avgMth != null && avgMth > 0)
-          ? `<span title="Has demand but no pickface setup — configure it" style="display:inline-block;margin-left:4px;font-size:10px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:999px;padding:1px 6px;white-space:nowrap">⚡ demand</span>`
-          : '';
         const reserveQty = Number(r.__reserve_total ?? 0);
         const restock = r.restock_qty ?? '';
         const restockNum = Number(restock);
@@ -393,7 +404,7 @@
           <td>${pickfaceHtml}</td>
           <td>${onHand}</td>
           <td>${capacityHtml}</td>
-          <td>${statusChip(status, r.__setup_info)}${demandHint}</td>
+          <td>${statusChip(status, r.__setup_info)}</td>
           <td>${reserveCellHtml}</td>
           <td>${restockCellHtml}</td>
           <td>${qtyCtnHtml}</td>
