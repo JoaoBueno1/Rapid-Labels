@@ -268,8 +268,8 @@
           const tipHtml = `<div style="text-align:left;min-width:220px">`
             + `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid #475569;padding-bottom:3px">AVG Demand Breakdown</div>`
             + `<div style="display:flex;justify-content:space-between;gap:12px;opacity:.6;font-size:11px;margin-bottom:2px"><span></span><span>mth / 4wk</span></div>`
-            + `<div style="display:flex;justify-content:space-between;gap:12px"><span>📦 Sales Orders:</span><span>${salesMth} / ${salesWk}</span></div>`
-            + `<div style="display:flex;justify-content:space-between;gap:12px"><span>🚚 Transfers NET:</span><span>${xfrMth} / ${xfrWk}</span></div>`
+            + `<div style="display:flex;justify-content:space-between;gap:12px"><span>Sales Orders:</span><span>${salesMth} / ${salesWk}</span></div>`
+            + `<div style="display:flex;justify-content:space-between;gap:12px"><span>Transfers NET:</span><span>${xfrMth} / ${xfrWk}</span></div>`
             + `<div style="border-top:1px solid #475569;margin-top:3px;padding-top:3px;font-weight:700;display:flex;justify-content:space-between;gap:12px"><span>Total:</span><span>${mthStr} / ${wkStr}</span></div>`
             + `<div style="margin-top:6px;font-size:10px;opacity:.6">Rolling ~3-month average · refreshed monthly</div>`
             + `</div>`;
@@ -301,8 +301,8 @@
             const avgWkCap = Math.round(avgM / 4.33);
             const idealCap = Math.ceil(avgWkCap * 4);
             const suggestTip = `<div style="text-align:left;min-width:220px">`
-              + `<div style="font-weight:700;margin-bottom:5px;border-bottom:1px solid #475569;padding-bottom:3px">📦 No pickface capacity set</div>`
-              + `<div style="display:flex;justify-content:space-between;gap:12px"><span>⏱️ AVG Demand:</span><span>${Math.round(avgM).toLocaleString()}/mth · ${avgWkCap}/wk</span></div>`
+              + `<div style="font-weight:700;margin-bottom:5px;border-bottom:1px solid #475569;padding-bottom:3px">No pickface capacity set</div>`
+              + `<div style="display:flex;justify-content:space-between;gap:12px"><span>AVG Demand:</span><span>${Math.round(avgM).toLocaleString()}/mth · ${avgWkCap}/wk</span></div>`
               + `<div style="border-top:1px solid #475569;margin-top:5px;padding-top:5px">→ Suggested pickface: <b>~${idealCap} units</b> (≈ 4 weeks of demand)</div>`
               + `<div style="margin-top:4px;font-size:11px;opacity:.85">Configure a capacity to enable restock &amp; coverage alerts.</div>`
               + `</div>`;
@@ -319,7 +319,7 @@
           const fillPct = capNum > 0 ? Math.round((r.on_hand / capNum) * 100) : 0; // guard ÷0 → no Infinity% (bug #2)
           const restockEvery = Math.max(0.5, Math.floor(capWeeks * 2) / 2); // round to nearest 0.5
           const idealCap = Math.ceil(avgWkCap * 4);
-          const statusIcon = capWeeks < 3 ? '🔴' : capWeeks < 4 ? '🟡' : '🟢';
+          const statusIcon = capWeeks < 3 ? '<span style="color:#f87171">●</span>' : capWeeks < 4 ? '<span style="color:#fbbf24">●</span>' : '<span style="color:#4ade80">●</span>';
           let statusLine;
           if (capWeeks < 3) {
             statusLine = `Demand is ${avgWkCap}/wk but capacity only covers ${capWeeks} wk`
@@ -332,10 +332,10 @@
               + `<br>Good coverage — restock ~every ${restockEvery} wk`;
           }
           const capTipHtml = `<div style="text-align:left;min-width:220px">`
-            + `<div style="font-weight:700;margin-bottom:5px;border-bottom:1px solid #475569;padding-bottom:3px">📦 Current Setup</div>`
+            + `<div style="font-weight:700;margin-bottom:5px;border-bottom:1px solid #475569;padding-bottom:3px">Current Setup</div>`
             + `<div style="display:flex;justify-content:space-between;gap:12px"><span>Capacity:</span><span>${capacity} units</span></div>`
             + `<div style="display:flex;justify-content:space-between;gap:12px"><span>On Hand:</span><span>${r.on_hand} of ${capacity} (${fillPct}%)</span></div>`
-            + `<div style="border-top:1px solid #475569;margin-top:5px;padding-top:5px;font-weight:600">⏱️ AVG Demand: ${Math.round(avgM).toLocaleString()}/mth · ${avgWkCap}/wk</div>`
+            + `<div style="border-top:1px solid #475569;margin-top:5px;padding-top:5px;font-weight:600">AVG Demand: ${Math.round(avgM).toLocaleString()}/mth · ${avgWkCap}/wk</div>`
             + `<div style="margin-top:5px">→ Full pickface lasts <b>~${capWeeks} weeks</b></div>`
             + `<div>→ Need to restock every <b>~${restockEvery} weeks</b></div>`
             + `<div>→ Stock left: <b>~${runWeeks != null ? runWeeks : 0} weeks</b></div>`
@@ -649,7 +649,7 @@
     const h = Math.floor(diffMin / 60);
     const m = diffMin % 60;
     const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
-    el.textContent = `🛡️ Next sync in ${countdown}`;
+    el.textContent = `Next sync in ${countdown}`;
     el.title = `Next stock sync ~${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })} (every 1h from last sync). May vary ~5-15 min.`;
   }
 
@@ -1310,7 +1310,7 @@
   function updateSelectedUI() {
     const n = (state.selected && state.selected.size) || 0;
     const btn = document.getElementById('printSelectedBtn');
-    if (btn) { btn.textContent = `🖨️ Print selected (${n})`; btn.disabled = n === 0; btn.style.opacity = n === 0 ? '.5' : '1'; }
+    if (btn) { btn.textContent = `Print selected (${n})`; btn.disabled = n === 0; btn.style.opacity = n === 0 ? '.5' : '1'; }
     const clr = document.getElementById('clearSelBtn');
     if (clr) clr.style.display = n > 0 ? '' : 'none';
     const all = document.getElementById('rv2SelectAll');
@@ -2244,7 +2244,7 @@
         const chip = (key, label, count, active) =>
           `<button onclick="setConsolidateFilter('${key}')" style="padding:5px 12px;font-size:12px;font-weight:${active ? '700' : '500'};border-radius:999px;border:1px solid ${active ? '#6366f1' : '#e2e8f0'};background:${active ? '#eef2ff' : '#fff'};color:${active ? '#4338ca' : '#64748b'};cursor:pointer;transition:all .15s">${label} <span style="font-weight:700">${count}</span></button>`;
         filterBar.innerHTML = chip('clear', '⭐ Clear to Pickface', clearN, f === 'clear')
-          + chip('merge', '🔀 Consolidate Bins', mergeN, f === 'merge')
+          + chip('merge', 'Consolidate Bins', mergeN, f === 'merge')
           + chip('all', 'All', raw.length, f === 'all');
         filterBar.style.display = 'flex';
         filterBar.style.gap = '6px';
@@ -2273,19 +2273,19 @@
         const overflow = items.filter(r => !r.isRestockFromReserve);
         const restock = items.filter(r => r.isRestockFromReserve);
         const totalUnits = items.reduce((s, r) => s + r.totalToMove, 0);
-        kpiBar.innerHTML = _kpiChip('⬆️', 'Overflow', overflow.length, '#fefce8', '#854d0e', '#fef08a')
-          + _kpiChip('⬇️', 'Restock from Reserve', restock.length, '#eff6ff', '#1e40af', '#bfdbfe')
-          + _kpiChip('📦', 'Units to Move', totalUnits, '#f0fdf4', '#166534', '#bbf7d0');
+        kpiBar.innerHTML = _kpiChip('', 'Overflow', overflow.length, '#fefce8', '#854d0e', '#fef08a')
+          + _kpiChip('', 'Restock from Reserve', restock.length, '#eff6ff', '#1e40af', '#bfdbfe')
+          + _kpiChip('', 'Units to Move', totalUnits, '#f0fdf4', '#166534', '#bbf7d0');
         if (subtitle) subtitle.textContent = `${items.length} stock movements identified`;
       } else if (tab === 'consolidate') {
         const totalFree = items.reduce((s, c) => s + c.totalLocationsCanFree, 0);
         const clearCount = items.filter(c => c.hasClear).length;
         const mergeCount = items.filter(c => c.hasMerge).length;
         const clearLocs = items.reduce((s, c) => s + c.clearToPickface.length, 0);
-        kpiBar.innerHTML = _kpiChip('🔧', 'SKUs', items.length, '#eff6ff', '#0369a1', '#bae6fd')
-          + _kpiChip('📍', 'Locations to Free', totalFree, '#f0fdf4', '#166534', '#bbf7d0')
+        kpiBar.innerHTML = _kpiChip('', 'SKUs', items.length, '#eff6ff', '#0369a1', '#bae6fd')
+          + _kpiChip('', 'Locations to Free', totalFree, '#f0fdf4', '#166534', '#bbf7d0')
           + (clearCount > 0 ? _kpiChip('⭐', 'Clear to Pickface', clearLocs + ' locs', '#f0fdf4', '#166534', '#bbf7d0') : '')
-          + (mergeCount > 0 ? _kpiChip('🔀', 'Bin Merges', mergeCount, '#faf5ff', '#7e22ce', '#e9d5ff') : '');
+          + (mergeCount > 0 ? _kpiChip('', 'Bin Merges', mergeCount, '#faf5ff', '#7e22ce', '#e9d5ff') : '');
         if (subtitle) subtitle.textContent = `${totalFree} warehouse locations can be freed`;
       }
     }
@@ -2333,7 +2333,7 @@
 
   function _kpiChip(icon, label, value, bg, color, border) {
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:${bg};border:1px solid ${border};border-radius:10px;font-size:12px">
-      <span>${icon}</span>
+      ${icon ? `<span>${icon}</span>` : ''}
       <span style="color:${color};font-weight:700;font-size:16px;font-variant-numeric:tabular-nums">${value}</span>
       <span style="color:${color};font-weight:500">${label}</span>
     </div>`;
@@ -2383,7 +2383,7 @@
                 <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
                   <span style="font-size:13px;color:${c.text}"><strong>${Math.round(p.runwayDays)}</strong> days left</span>
                   <span style="font-size:12px;color:#64748b">${Math.round(p.avgMth)}/mth demand</span>
-                  <span style="font-size:12px;color:#64748b">📍 ${escapeHtml(p.pickface)}</span>
+                  <span style="font-size:12px;color:#64748b">${escapeHtml(p.pickface)}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                   <div style="flex:1;max-width:180px;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden">
@@ -2425,17 +2425,17 @@
                 <span style="margin-left:8px;padding:2px 8px;background:${statusColor};color:#fff;border-radius:999px;font-size:10px;font-weight:700">${ins.normStatus}</span>
               </div>
               <div style="font-size:13px;color:#475569;line-height:1.6">
-                📍 <strong>Pickface:</strong> <span style="color:#1e40af;font-weight:700">${escapeHtml(ins.pickface || '?')}</span>
+                <strong>Pickface:</strong> <span style="color:#1e40af;font-weight:700">${escapeHtml(ins.pickface || '?')}</span>
                 — ${ins.pickfaceOnHand} / ${ins.capMax} (${pct}%) · Needs <strong style="color:#1e40af">${ins.pickfaceDeficit}</strong> units
               </div>
               <div style="font-size:13px;color:#1e40af;margin-top:6px;line-height:1.6">
-                <strong>⬆️ Move to pickface:</strong> ${ins.totalToMove} units from reserve
+                <strong>Move to pickface:</strong> ${ins.totalToMove} units from reserve
               </div>
               <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
                 ${ins.reserveSources.map(s => `<span style="display:inline-block;padding:3px 8px;background:#dbeafe;color:#1e3a5f;border:1px solid #93c5fd;border-radius:4px;font-size:12px;font-weight:600">${escapeHtml(s.location)} → take ${s.take} (has ${s.qty})</span>`).join('')}
               </div>
               <div style="font-size:11px;color:#64748b;margin-top:6px;padding:4px 8px;background:#f1f5f9;border-radius:4px">
-                📋 Take from reserve → bring to <strong>${escapeHtml(ins.pickface || '?')}</strong>
+                Take from reserve → bring to <strong>${escapeHtml(ins.pickface || '?')}</strong>
               </div>
             </div>
           </div>
@@ -2510,7 +2510,7 @@
           return `
           <div style="padding:10px;background:#f0f9ff;border-radius:6px;margin-bottom:4px">
             <div style="font-size:12px;color:#0369a1;font-weight:600;margin-bottom:6px">
-              🔀 Merge → <span style="background:#0369a1;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">${escapeHtml(target)}</span>
+              Merge → <span style="background:#0369a1;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">${escapeHtml(target)}</span>
               ${c.palletsFormed > 0 ? `<span style="color:#059669;margin-left:6px">(${c.palletsFormed} full pallet${c.palletsFormed > 1 ? 's' : ''})</span>` : ''}
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
@@ -2624,7 +2624,7 @@
           rowsHtml += `<tr>
             <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${firstRow ? num : ''}</td>
             <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;font-weight:600">${firstRow ? escapeHtml(c.sku) : ''}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;color:#0369a1;font-weight:600">🔀 Merge Bins</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;color:#0369a1;font-weight:600">Merge Bins</td>
             <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px">${merges}</td>
             <td style="padding:6px 10px;border-bottom:1px solid #ddd;font-size:12px;text-align:center">${locsFreed}</td>
             <td style="padding:6px 10px;border-bottom:1px solid #ddd;width:50px"></td>

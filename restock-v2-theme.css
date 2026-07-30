@@ -1,0 +1,71 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Re-Stock V2 — Returns design overlay (loaded LAST, wins via !important).
+   Aligns Re-Stock with the same "our-face" palette as Returns / Pick-Anomalies:
+     bg #f4f6f9 · card #fff · ink #1a2230 · muted #5b6b86 / #7a8aa2 / #8a97ab
+     border #e2e7ef / #d3dae6 · accent #0aa5e6 (hover #0893cc) · IBM Plex Sans
+   Design only — no class names or JS are changed; the loud gradients, indigo
+   accent and full-pill "capsules" are flattened into calm, systematic tags.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Page chrome + type ── */
+html, body { background: #f4f6f9 !important; }
+body { font-family: 'IBM Plex Sans', system-ui, sans-serif !important; color: #1a2230 !important; }
+.main-container.wide-container { background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
+
+.site-header { background: #fff !important; color: #1a2230 !important; border-bottom: 1px solid #e2e7ef !important; box-shadow: 0 1px 0 rgba(20,28,42,.02) !important; }
+.site-header .brand { color: #1a2230 !important; font-weight: 600 !important; opacity: 1 !important; }
+.site-header .nav-link, .site-header .back-link { color: #5b6b86 !important; opacity: 1 !important; }
+.site-header .nav-link:hover, .site-header .back-link:hover { background: #eef1f6 !important; color: #0893cc !important; }
+
+/* ── Nav tabs → flat, cyan active (kept semantic colours for the alert views) ── */
+.rv2-nav-tab { color: #6b7a92 !important; font-weight: 500 !important; }
+.rv2-nav-tab:hover { color: #1a2230 !important; background: transparent !important; }
+.rv2-nav-tab.active { color: #0aa5e6 !important; border-bottom-color: #0aa5e6 !important; }
+.rv2-nav-tab.active[data-view="priorities"] { color: #c0392b !important; border-bottom-color: #c0392b !important; }
+.rv2-nav-tab.active[data-view="redistribute"] { color: #b46a00 !important; border-bottom-color: #e0a100 !important; }
+.rv2-nav-tab.active[data-view="consolidate"] { color: #0893cc !important; border-bottom-color: #0aa5e6 !important; }
+.rv2-nav-tab.active[data-view="map"] { color: #1b8a4b !important; border-bottom-color: #1b8a4b !important; }
+
+/* ── Filter chips → calm, cyan active ── */
+.chip { border-radius: 999px !important; }
+.chip.active { transform: none !important; box-shadow: none !important; border-width: 1px !important; }
+#restockFilters .chip[data-status-filter="ALL"].active { background: #0aa5e6 !important; color: #fff !important; border-color: #0aa5e6 !important; }
+
+/* ── Status "capsules" → flat tags, Returns colours (not loud full pills) ── */
+.status-badge { font-size: 10px !important; font-weight: 600 !important; letter-spacing: .04em !important; padding: 2px 8px !important; border-radius: 6px !important; }
+.status-badge.low { background: #fdeceb !important; color: #c0392b !important; border-color: #f6c9c4 !important; }
+.status-badge.medium { background: #fef6e7 !important; color: #b46a00 !important; border-color: #fbe3b3 !important; }
+.status-badge.full { background: #eaf7f0 !important; color: #1b8a4b !important; border-color: #c4ebd4 !important; }
+.status-badge.over { background: #eaf4fb !important; color: #1667c9 !important; border-color: #c4e0f5 !important; }
+.status-badge.configure, .status-badge.not-configured { background: #f0f3f8 !important; color: #5b6b86 !important; border-color: #e2e7ef !important; }
+
+/* ── Buttons → flat white / flat cyan (kill the gradients + heavy shadows) ── */
+.search-btn-small { background: #fff !important; color: #1a2230 !important; border: 1px solid #d3dae6 !important; border-radius: 7px !important; font-weight: 500 !important; box-shadow: none !important; }
+.search-btn-small:hover { border-color: #0aa5e6 !important; background: #fff !important; }
+.search-btn-small.secondary { color: #5b6b86 !important; }
+.action-btn.edit { background: #0aa5e6 !important; box-shadow: none !important; letter-spacing: 0 !important; font-weight: 500 !important; }
+.action-btn.edit:hover { background: #0893cc !important; }
+
+/* ── Restock output pill → cyan family (calmer than indigo) ── */
+.restock-strong { color: #0b6ea8 !important; background: #eaf4fb !important; border-color: #c4e0f5 !important; }
+
+/* ── Search input → cyan focus ── */
+#restockSearch { border: 1px solid #d3dae6 !important; border-radius: 7px !important; }
+#restockSearch:focus { border-color: #0aa5e6 !important; box-shadow: 0 0 0 3px rgba(10,165,230,.14) !important; outline: none !important; }
+
+/* ── Table → Returns light chrome ── */
+.table-wrapper { border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+#restockTable thead th { background: #f7f9fc !important; color: #7a8aa2 !important; font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: .05em !important; border-bottom: 1px solid #e2e7ef !important; }
+#restockTable tbody td { border-bottom-color: #eef1f6 !important; color: #1a2230 !important; }
+#restockTable tbody tr:hover td { background: #f9fbfd !important; }
+
+/* ── Sync status card → flat ── */
+#syncStatusCard { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+
+/* ── Tooltip popovers → match the ink ── */
+.tip-pop { background: #1a2230 !important; }
+.tip-pop::after { border-bottom-color: #1a2230 !important; }
+
+/* ── Map/insights accent tints that were indigo/blue → cyan ── */
+.map-area-btn.active { background: #0aa5e6 !important; border-color: #0aa5e6 !important; }
+.rv2-nav-tab.active[data-view="shelfCheck"], .rv2-nav-tab.active[data-view="pickfaceCheck"] { color: #0aa5e6 !important; border-bottom-color: #0aa5e6 !important; }

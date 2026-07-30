@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Re-Stock V2 - Rapid Label</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="restock-v2-theme.css" />
   <link rel="icon" type="image/svg+xml" href="icon-192.svg">
   <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
   <script src="favorites-migration.js"></script>
@@ -23,30 +25,30 @@
   </header>
   <div class="main-container wide-container">
     <!-- Page title — aligned with the other logistics pages (pick-anomalies etc.) -->
-    <h1 style="font-size:22px;font-weight:800;color:#0f172a;margin:8px 0 12px;display:flex;align-items:center;gap:8px">📦 Re-Stock</h1>
+    <h1 style="font-size:20px;font-weight:600;color:#1a2230;letter-spacing:-.01em;margin:8px 0 14px">Re-Stock</h1>
     <div class="page-header">
       <div style="display: flex; align-items: center; gap: 0; flex-wrap: nowrap; overflow-x: auto; max-width: 100%;">
         <!-- 3-view nav tabs -->
         <button class="rv2-nav-tab active" data-view="restock" onclick="switchRestockView('restock')">
-          Re-Stock <span style="font-size:11px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:1px 8px;border-radius:999px;vertical-align:middle;margin-left:4px">V2</span>
+          Re-Stock <span style="font-size:11px;background:#eaf4fb;color:#0b6ea8;border:1px solid #c4e0f5;padding:1px 7px;border-radius:999px;vertical-align:middle;margin-left:4px;font-weight:600">V2</span>
         </button>
         <button class="rv2-nav-tab" data-view="priorities" onclick="switchRestockView('priorities')">
-          🧠 Priorities <span id="insightCountPriorities" class="rv2-nav-badge" style="background:#ef4444">0</span>
+          Priorities <span id="insightCountPriorities" class="rv2-nav-badge" style="background:#ef4444">0</span>
         </button>
         <button class="rv2-nav-tab" data-view="redistribute" onclick="switchRestockView('redistribute')">
-          📊 Redistribute <span id="insightCountRedistribute" class="rv2-nav-badge" style="background:#f59e0b">0</span>
+          Redistribute <span id="insightCountRedistribute" class="rv2-nav-badge" style="background:#f59e0b">0</span>
         </button>
         <button class="rv2-nav-tab" data-view="consolidate" onclick="switchRestockView('consolidate')">
-          🔧 Consolidate <span id="insightCountConsolidate" class="rv2-nav-badge" style="background:#0ea5e9">0</span>
+          Consolidate <span id="insightCountConsolidate" class="rv2-nav-badge" style="background:#0ea5e9">0</span>
         </button>
         <button class="rv2-nav-tab" data-view="map" onclick="switchRestockView('map')">
-          🗺️ Map
+          Map
         </button>
         <button class="rv2-nav-tab" data-view="shelfCheck" onclick="switchRestockView('shelfCheck')">
-          📦 Shelf Check
+          Shelf Check
         </button>
         <button class="rv2-nav-tab" data-view="pickfaceCheck" onclick="switchRestockView('pickfaceCheck')">
-          🏷️ Pick Face Check
+          Pick Face Check
         </button>
       </div>
       <div class="header-actions">
@@ -67,7 +69,7 @@
       <span id="syncStatusAge" style="font-size:12px;color:#94a3b8;font-weight:400"></span>
       <span style="color:#cbd5e1">|</span>
       <span id="syncStatusTime" style="font-size:13px;color:#64748b;font-weight:500"></span>
-      <span id="syncCountdown" style="font-size:11px;color:#94a3b8;margin-left:4px" title="Stock sync every 1h at :00">🛡️ Auto 1h</span>
+      <span id="syncCountdown" style="font-size:11px;color:#94a3b8;margin-left:4px" title="Stock sync every 1h at :00">Auto 1h</span>
     </div>
 
     <!-- Restock View (table + filters) -->
@@ -162,7 +164,7 @@
             </div>
             <button class="search-btn-small" type="button" onclick="openLocationsPrintModal()">Print Locations</button>
             <button class="search-btn-small" type="button" onclick="printRestock()">Print</button>
-            <button id="printSelectedBtn" class="search-btn-small" type="button" onclick="printSelected()" disabled style="opacity:.5">🖨️ Print selected (0)</button>
+            <button id="printSelectedBtn" class="search-btn-small" type="button" onclick="printSelected()" disabled style="opacity:.5">Print selected (0)</button>
             <button id="clearSelBtn" class="search-btn-small secondary" type="button" onclick="restockClearSelection()" style="display:none">Clear</button>
             <button class="search-btn-small" type="button" onclick="openColumnSettingsModal()" title="Column visibility settings" style="background:#64748b;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px">⚙ Columns</button>
           </div>
@@ -252,7 +254,7 @@
         <span style="font-weight:700;font-size:14px;color:#0f172a">📦 Shelf / Reserve Stocktake</span>
         <div style="display:flex;gap:4px;flex-wrap:wrap" id="shelfAisleBtns"></div>
         <div style="flex:1"></div>
-        <button id="shelfPrintBtn" onclick="printShelfCheck()" class="search-btn-small" style="display:none">🖨️ Print Aisle</button>
+        <button id="shelfPrintBtn" onclick="printShelfCheck()" class="search-btn-small" style="display:none">Print Aisle</button>
       </div>
       <div id="shelfSyncInfo" style="display:none;background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:11px;color:#92400e;display:none">
         ⚠️ <strong>Stock levels from Cin7 snapshot</strong> · <span id="shelfSyncLabel">Last sync: Unknown</span> — Actual stock may differ.
@@ -268,7 +270,7 @@
         <span style="font-weight:700;font-size:14px;color:#0f172a">🏷️ Pick Face Stocktake</span>
         <div style="display:flex;gap:4px;flex-wrap:wrap" id="pfAisleBtns"></div>
         <div style="flex:1"></div>
-        <button id="pfPrintBtn" onclick="printPickfaceCheck()" class="search-btn-small" style="display:none">🖨️ Print Aisle</button>
+        <button id="pfPrintBtn" onclick="printPickfaceCheck()" class="search-btn-small" style="display:none">Print Aisle</button>
       </div>
       <div id="pfSyncInfo" style="display:none;background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:11px;color:#92400e;display:none">
         ⚠️ <strong>Stock levels from Cin7 snapshot</strong> · <span id="pfSyncLabel">Last sync: Unknown</span> — Actual stock may differ.
@@ -286,7 +288,7 @@
         <div id="insightsSubtitle" style="font-size:12px;color:#64748b"></div>
         <div style="display:flex;align-items:center;gap:8px">
           <span id="insightsSelCount" style="display:none;font-size:12px;font-weight:600;color:#6366f1;padding:3px 10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px"></span>
-          <button id="insightsPrintBtn" onclick="printInsightTasks()" style="display:none;padding:6px 14px;font-size:12px;font-weight:600;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f8fafc'">🖨️ Print Tasks</button>
+          <button id="insightsPrintBtn" onclick="printInsightTasks()" style="display:none;padding:6px 14px;font-size:12px;font-weight:600;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f8fafc'">Print Tasks</button>
         </div>
       </div>
       <div style="padding:0">
