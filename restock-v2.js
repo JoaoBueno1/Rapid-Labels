@@ -269,7 +269,7 @@
             + `<div style="display:flex;justify-content:space-between;gap:12px"><span>📦 Sales Orders:</span><span>${salesMth} / ${salesWk}</span></div>`
             + `<div style="display:flex;justify-content:space-between;gap:12px"><span>🚚 Transfers NET:</span><span>${xfrMth} / ${xfrWk}</span></div>`
             + `<div style="border-top:1px solid #475569;margin-top:3px;padding-top:3px;font-weight:700;display:flex;justify-content:space-between;gap:12px"><span>Total:</span><span>${mthStr} / ${wkStr}</span></div>`
-            + `<div style="margin-top:6px;font-size:10px;opacity:.6">Period: Aug 2025 – Feb 2026 (6.53 mths)</div>`
+            + `<div style="margin-top:6px;font-size:10px;opacity:.6">Rolling ~3-month average · refreshed monthly</div>`
             + `</div>`;
           avgMthHtml = `<span class="tip-cell" onclick="toggleTip(this)"><span style="font-variant-numeric:tabular-nums">${mthStr}<span style="opacity:.45;margin:0 2px">/</span>${wkStr}</span><div class="tip-pop">${tipHtml}</div></span>`;
         } else {
@@ -294,7 +294,8 @@
           capacityHtml = '<span style="opacity:.35">—</span>';
         } else if (capWeeks != null && avgM != null) {
           const avgWkCap = Math.round(avgM / 4.33);
-          const fillPct = Math.round((r.on_hand / Number(capacity)) * 100);
+          const capNum = Number(capacity);
+          const fillPct = capNum > 0 ? Math.round((r.on_hand / capNum) * 100) : 0; // guard ÷0 → no Infinity% (bug #2)
           const restockEvery = Math.max(0.5, Math.floor(capWeeks * 2) / 2); // round to nearest 0.5
           const idealCap = Math.ceil(avgWkCap * 4);
           const statusIcon = capWeeks < 3 ? '🔴' : capWeeks < 4 ? '🟡' : '🟢';
@@ -949,16 +950,26 @@
           // Try to match bins to the configured pickface
           let matched = false;
 
+          // When a bin exactly equals the configured pickface (the normal case),
+          // match ONLY that bin — never also fold suffix-matching bins into the
+          // pickface on_hand, which would over-attribute reserve stock and mis-read
+          // status/restock. The suffix heuristic is kept ONLY for pickfaces stored
+          // without an exact bin (e.g. missing the "MA-" prefix). (bug #4)
+          const exactExists = stocks.some(s => {
+            const nb = normalizeLocation((s.bin || '').trim());
+            return nb && nb === normPickface;
+          });
+
           for (const s of stocks) {
             const binVal = (s.bin || '').trim();
             const normBin = normalizeLocation(binVal);
 
-            // Match strategies: exact, suffix, contains
-            const isPickface = normBin && (
-              normBin === normPickface ||
-              normPickface.endsWith(normBin) ||
-              normBin.endsWith(normPickface)
-            );
+            // Exact first; suffix fallback only when no bin matches exactly.
+            const isPickface = normBin && (exactExists
+              ? normBin === normPickface
+              : (normBin === normPickface ||
+                 normPickface.endsWith(normBin) ||
+                 normBin.endsWith(normPickface)));
 
             if (isPickface) {
               pickfaceOnHand += Number(s.on_hand) || 0;
@@ -1022,7 +1033,10 @@
         const reserveTotal = reserveLocations.reduce((sum, l) => sum + (l.qty || 0), 0);
 
         // ── Capacity / Status ──
-        const pickfaceSpace = setup ? setup.pickface_qty : null;
+        // Displayed Capacity = cap_max (the SAME value the restock target,
+        // capacity_weeks and fill% math all use) so the column, the fill% and the
+        // restock number can never disagree with each other. (bug #2)
+        const pickfaceSpace = setup ? setup.max : null;
         let restockQty = 0;
         let normStatus = '';
         let setupInfo = null;
@@ -1033,11 +1047,15 @@
           setupInfo = { sku: stockSku, hasSetup: !!setup, min: setup ? setup.min : undefined, med: setup ? setup.med : undefined, max: setup ? setup.max : undefined };
         } else {
           const on = pickfaceOnHand;
-          if (on < setup.min) normStatus = 'LOW';
-          else if (on >= setup.min && on < setup.med) normStatus = 'MEDIUM';
-          else if (on >= setup.med && on <= setup.max) normStatus = 'FULL';
-          else if (on > setup.max) normStatus = 'OVER';
-          else normStatus = 'CONFIGURE';
+          // An EMPTY pickface is never FULL — it always needs restock. This guards
+          // against legacy/blank Min/Med (=0) rows that would otherwise read an
+          // on_hand of 0 as FULL and silently hide the stockout from every
+          // LOW/MEDIUM alert, counter and insight. (bug #1)
+          if (on <= 0) normStatus = 'LOW';
+          else if (on < setup.min) normStatus = 'LOW';
+          else if (on < setup.med) normStatus = 'MEDIUM';
+          else if (on <= setup.max) normStatus = 'FULL';
+          else normStatus = 'OVER';
           restockQty = Math.max(0, setup.max - pickfaceOnHand);
         }
 
@@ -1513,10 +1531,12 @@
       _showDeconfigureNotice();
       return true; // allow save
     }
-    // If capacity > 0, enforce proper values
-    if (d.cap_min < 0) { showFieldError('productCapMinError', 'Must be ≥ 0'); ok = false; }
-    if (d.cap_med < 0) { showFieldError('productCapMedError', 'Must be ≥ 0'); ok = false; }
-    if (d.cap_max < 0) { showFieldError('productCapMaxError', 'Must be ≥ 0'); ok = false; }
+    // If capacity > 0, enforce proper values. Min and Med MUST be set (≥ 1): a
+    // blank Min/Med (parsed as 0) makes an empty pickface read FULL and hides
+    // stockouts from every alert, so treat 0/blank as invalid. (bug #1)
+    if (d.cap_min < 1) { showFieldError('productCapMinError', 'Required (≥ 1)'); ok = false; }
+    if (d.cap_med < 1) { showFieldError('productCapMedError', 'Required (≥ 1)'); ok = false; }
+    if (d.cap_max < 1) { showFieldError('productCapMaxError', 'Must be ≥ 1'); ok = false; }
     if (d.cap_min > d.cap_med) { showFieldError('productCapMinError', 'Min > Med'); ok = false; }
     if (d.cap_med > d.cap_max) { showFieldError('productCapMedError', 'Med > Max'); ok = false; }
     if (d.cap_min > d.cap_max) { showFieldError('productCapMinError', 'Min > Max'); ok = false; }
@@ -2227,12 +2247,13 @@
       </label>
     </div>`;
 
+    // += (not =) so the "Select all on page" control above is not discarded. (bug #3)
     if (tab === 'priorities') {
-      html = renderPriorityCards(pageItems);
+      html += renderPriorityCards(pageItems);
     } else if (tab === 'redistribute') {
-      html = renderRedistributeCards(pageItems);
+      html += renderRedistributeCards(pageItems);
     } else {
-      html = renderConsolidateCards(pageItems);
+      html += renderConsolidateCards(pageItems);
     }
 
     // Pagination
