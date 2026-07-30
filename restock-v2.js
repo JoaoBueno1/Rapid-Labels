@@ -330,6 +330,11 @@
         }
 
         const status = (r.__norm_status || r.status || 'configure').toLowerCase();
+        // A NOT_CONFIGURED row that still has real demand is a prime candidate to
+        // set up — flag it so it's easy to spot and activate straight from the table.
+        const demandHint = (String(r.__norm_status || '').toUpperCase() === 'NOT_CONFIGURED' && avgMth != null && avgMth > 0)
+          ? `<span title="Has demand but no pickface setup — configure it" style="display:inline-block;margin-left:4px;font-size:10px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:999px;padding:1px 6px;white-space:nowrap">⚡ demand</span>`
+          : '';
         const reserveQty = Number(r.__reserve_total ?? 0);
         const restock = r.restock_qty ?? '';
         const restockNum = Number(restock);
@@ -388,7 +393,7 @@
           <td>${pickfaceHtml}</td>
           <td>${onHand}</td>
           <td>${capacityHtml}</td>
-          <td>${statusChip(status, r.__setup_info)}</td>
+          <td>${statusChip(status, r.__setup_info)}${demandHint}</td>
           <td>${reserveCellHtml}</td>
           <td>${restockCellHtml}</td>
           <td>${qtyCtnHtml}</td>
