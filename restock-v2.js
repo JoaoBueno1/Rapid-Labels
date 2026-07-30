@@ -306,7 +306,10 @@
               + `<div style="border-top:1px solid #475569;margin-top:5px;padding-top:5px">→ Suggested pickface: <b>~${idealCap} units</b> (≈ 4 weeks of demand)</div>`
               + `<div style="margin-top:4px;font-size:11px;opacity:.85">Configure a capacity to enable restock &amp; coverage alerts.</div>`
               + `</div>`;
-            capacityHtml = `<span class="tip-cell" onclick="toggleTip(this)" style="opacity:.6">—<div class="tip-pop">${suggestTip}</div></span>`;
+            // Red alert marker (⚡ + red left bar, same language as a critical
+            // coverage alert) so a "has demand but no capacity" row is spotted at
+            // a glance; clicking it opens the consultative tooltip.
+            capacityHtml = `<span class="tip-cell" onclick="toggleTip(this)" title="Has demand but no pickface capacity set" style="border-left:3px solid #ef4444;padding-left:6px;color:#dc2626;font-weight:800;font-size:14px">⚡<div class="tip-pop">${suggestTip}</div></span>`;
           } else {
             capacityHtml = '<span style="opacity:.35">—</span>';
           }
