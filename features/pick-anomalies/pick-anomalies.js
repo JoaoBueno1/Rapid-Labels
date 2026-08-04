@@ -235,19 +235,19 @@
     done.style.display = 'none';
     wrap.style.display = 'flex';
 
-    // Author = the operator responsible for / who approved the wrong pick. It's a
-    // FREE-TEXT input (not a closed <select>) so any name can be typed — approvers
-    // aren't always in the scanner roster; the roster is only autocomplete suggestions.
+    // Author = the operator who made the mistake on this order. OPTIONAL — the first
+    // option is "None" (value ''); a select of our operator roster. Chosen fresh per
+    // order (the person varies, so we never carry the previous order's selection).
     const roster = operatorRoster();
-    const authList = document.getElementById('paAuthorList');
-    if (authList) {
-      authList.innerHTML = roster.map(op => '<option value="' + escAttr(op) + '"></option>').join('');
-    }
     const auth = document.getElementById('paReviewAuthor');
-    if (auth) auth.value = '';   // fresh per order (the responsible person varies)
+    if (auth) {
+      auth.innerHTML = '<option value="">Who erred? — None</option>' +
+        roster.map(op => '<option value="' + escAttr(op) + '">' + esc(op) + '</option>').join('');
+      auth.value = '';
+    }
     const reasonEl = document.getElementById('paReviewReason');
     if (reasonEl) {
-      reasonEl.innerHTML = '<option value="">Reason…</option>' +
+      reasonEl.innerHTML = '<option value="">Reason (required)…</option>' +
         REVIEW_REASONS.map(function (r) { return '<option value="' + r[0] + '">' + esc(r[1]) + '</option>'; }).join('');
       reasonEl.value = '';
     }
@@ -1713,8 +1713,8 @@
     const author = authorEl ? authorEl.value.trim() : '';
     const reason = reasonEl ? reasonEl.value.trim() : '';
     const note = noteEl ? noteEl.value.trim() : '';
-    if (!author) { alert('Select the Author — the operator who approved the wrong pick.'); if (authorEl) authorEl.focus(); return; }
-    if (!reason) { alert('Select a reason.'); if (reasonEl) reasonEl.focus(); return; }
+    // Author is OPTIONAL — "None" is a valid choice. Only the reason is required.
+    if (!reason) { alert('Choose a reason for the anomaly.'); if (reasonEl) reasonEl.focus(); return; }
     if (reason === 'other' && !note) { alert('For "Other", please add a note describing the reason.'); if (noteEl) noteEl.focus(); return; }
 
     const reviewBtn = document.getElementById('paReviewBtn');

@@ -1263,10 +1263,9 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
  * Mark an order as reviewed (all picks verified by operator)
  */
 async function markOrderReviewed(orderNumber, { author, reason, note } = {}) {
-  const cleanAuthor = String(author || '').trim();
+  const cleanAuthor = String(author || '').trim();   // '' = None (not assigned) — OPTIONAL
   const cleanReason = String(reason || '').trim();
   const cleanNote = String(note || '').trim();
-  if (!cleanAuthor) throw new Error('author (responsible operator) is required');
   if (!cleanReason) throw new Error('reason is required');
   // Mirror the frontend rule server-side so direct API calls can't store an
   // "other" resolution with no explanation.
@@ -1275,18 +1274,18 @@ async function markOrderReviewed(orderNumber, { author, reason, note } = {}) {
     await sbPatch('pick_anomaly_orders', `order_number=eq.${encodeURIComponent(orderNumber)}`, {
       reviewed: true,
       reviewed_at: new Date().toISOString(),
-      reviewed_by: cleanAuthor,
+      reviewed_by: cleanAuthor || null,   // who erred on this order; null = None
       review_reason: cleanReason,
       review_note: cleanNote || null,
     });
     await logAction({
       order_number: orderNumber,
       action: 'reviewed',
-      // author = operator responsible for / who approved the wrong pick
-      details: `Reviewed — author: ${cleanAuthor}, reason: ${cleanReason}${cleanNote ? ` (${cleanNote})` : ''}`,
+      // author = operator who made the mistake on this order (optional)
+      details: `Reviewed — author: ${cleanAuthor || '(none)'}, reason: ${cleanReason}${cleanNote ? ` (${cleanNote})` : ''}`,
       user_email: 'operator',
     });
-    console.log(`✅ Order ${orderNumber} reviewed — author ${cleanAuthor}, reason ${cleanReason}`);
+    console.log(`✅ Order ${orderNumber} reviewed — author ${cleanAuthor || '(none)'}, reason ${cleanReason}`);
     return { success: true };
   } catch (err) {
     console.warn(`⚠️ Failed to mark ${orderNumber} as reviewed:`, err.message);
@@ -2215,7 +2214,7 @@ function registerPickAnomalyRoutes(app) {
     try {
       const { orderNumber, author, reason, note } = req.body;
       if (!orderNumber) return res.status(400).json({ success: false, error: 'orderNumber required' });
-      if (!author || !String(author).trim()) return res.status(400).json({ success: false, error: 'author (responsible operator) required' });
+      // author is optional (None allowed); only reason is required
       if (!reason || !String(reason).trim()) return res.status(400).json({ success: false, error: 'reason required' });
       await markOrderReviewed(orderNumber, { author, reason, note });
       res.json({ success: true, orderNumber });

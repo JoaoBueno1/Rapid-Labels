@@ -178,17 +178,19 @@
         <span id="paBatchSummary">0 selected</span>
         <button type="button" class="search-btn-small" onclick="PA.fixSelected()">🔧 Fix Selected</button>
         <div style="flex:1"></div>
-        <!-- Resolution: author (operator) + reason are REQUIRED to mark reviewed -->
+        <!-- Resolution: REASON is required; AUTHOR (who erred) is optional (None allowed) -->
         <div class="pa-resolution" id="paResolution" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input id="paReviewAuthor" list="paAuthorList" type="text" autocomplete="off" maxlength="60"
-                 placeholder="Author (who approved)…"
-                 title="Author — the operator who approved the wrong pick. Type any name; known operators appear as suggestions."
-                 style="padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:190px" />
-          <datalist id="paAuthorList"></datalist>
-          <select id="paReviewReason" title="Reason for the anomaly" onchange="PA._onReasonChange()" style="padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;max-width:250px">
-            <option value="">Reason…</option>
+          <span style="font-size:12px;color:#6b7280;font-weight:700">Resolution:</span>
+          <select id="paReviewAuthor" title="Who erred — the operator who made the mistake on THIS order. Optional: leave as None if you're not assigning it to anyone."
+                  style="padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;max-width:220px">
+            <option value="">Who erred? — None</option>
           </select>
-          <input type="text" id="paReviewNote" placeholder="Note (optional)" maxlength="200" style="padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:160px" />
+          <select id="paReviewReason" title="Reason for the anomaly — required" onchange="PA._onReasonChange()"
+                  style="padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;max-width:250px">
+            <option value="">Reason (required)…</option>
+          </select>
+          <input type="text" id="paReviewNote" placeholder="Note (optional)" maxlength="200"
+                 style="padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:150px" />
           <button type="button" id="paReviewBtn" class="search-btn-small" onclick="PA.reviewOrder()">☑️ Mark Reviewed</button>
         </div>
         <div class="pa-resolution-done" id="paResolutionDone" style="display:none;font-size:13px;color:#374151"></div>
@@ -241,7 +243,7 @@
     </div>
   </div>
 
-  <script src="pick-anomalies.js?v=20260804d"></script>
+  <script src="pick-anomalies.js?v=20260805a"></script>
   <!-- Analytics v2 deps: Chart.js (charts) + html2canvas & jsPDF (PNG/PDF export) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
