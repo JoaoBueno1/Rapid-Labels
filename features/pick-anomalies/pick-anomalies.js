@@ -16,6 +16,9 @@
     d.textContent = s;
     return d.innerHTML;
   };
+  // Attribute-safe: esc() escapes &<> but NOT quotes; a quoted attribute (title="…",
+  // value="…") also needs " and ' escaped or free text can break out of the attribute.
+  const escAttr = (s) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
   const formatDate = (iso) => {
     if (!iso) return '—';
@@ -147,7 +150,26 @@
     stats: null,  // Global KPI stats (all orders, not just current page)
     scanner: {},          // SO -> { op, date } from the scanner report (Pick Productivity)
     scannerLoaded: false,
+    operators: [],        // distinct operator names for the "Reviewed by" (author) selector
+    operatorsLoaded: false,
   };
+
+  /* Resolution reason categories (code -> label). The CODE is stored in
+     pick_anomaly_orders.review_reason (for monitoring/aggregation); the label
+     is display-only. Edit this list to add/rename reasons. */
+  const REVIEW_REASONS = [
+    ['wrong_pick',              'Wrong pick — picked from the wrong bin'],
+    ['wrong_location',          'Wrong location — stock in the wrong bin'],
+    ['approved_wrong_location', 'Approved with wrong location'],
+    ['locator_data_wrong',      'Locator / data wrong in Cin7'],
+    ['overflow_alt_bin',        'Overflow — valid alternate bin (not a real error)'],
+    ['label_barcode',           'Label / barcode issue'],
+    ['restock_pending',         'Restock / transfer pending'],
+    ['other',                   'Other (add a note)'],
+  ];
+  const REASON_LABEL = Object.fromEntries(REVIEW_REASONS);
+  // Expose so the Analytics module (pa-analytics.js) can label reason codes without duplicating the list.
+  try { window.PA_REVIEW_REASONS = REVIEW_REASONS; } catch (_) {}
 
   /* Scanner report map — links an order to the operator who scanned it.
      Fetched once; server-backed (same source as the Pick Productivity page). */
@@ -158,6 +180,88 @@
       if (r.ok) { const d = await r.json(); state.scanner = d.scanned || {}; }
     } catch (_) { /* non-fatal: column falls back to "manual" */ }
     state.scannerLoaded = true;
+  }
+
+  /* Operator roster for the Author selector — distinct scanner names,
+     canonicalised server-side. Fetched once. */
+  async function ensureOperators() {
+    if (state.operatorsLoaded) return;
+    try {
+      const r = await fetch('/api/pick-anomalies/operators');
+      if (r.ok) { const d = await r.json(); state.operators = d.operators || []; }
+    } catch (_) { /* non-fatal: selector just shows fewer names */ }
+    state.operatorsLoaded = true;
+  }
+
+  /* Combined operator roster for the author selector: the /operators endpoint UNION
+     the operator names already loaded in state.scanner. This keeps the selector
+     usable even if /operators is empty/fails (scanner_activity not yet ingested,
+     transient 500) — otherwise the required author dropdown would be placeholder-
+     only and NO order could ever be marked reviewed. Case-canonicalised. */
+  function operatorRoster() {
+    const score = (s) => (s === s.toUpperCase() ? 0 : (s === s.toLowerCase() ? 1 : 2));
+    const canon = {};
+    const add = (name) => {
+      const o = String(name || '').trim();
+      if (!o) return;
+      const lo = o.toLowerCase();
+      if (!(lo in canon) || score(o) > score(canon[lo])) canon[lo] = o;
+    };
+    (state.operators || []).forEach(add);
+    Object.values(state.scanner || {}).forEach((s) => add(s && s.op));
+    return Object.values(canon).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  }
+
+  /* Render the resolution controls (author + reason + note) in the modal footer.
+     Shows the input form when the order is NOT yet reviewed, else a read-only
+     summary "✅ Reviewed by X · reason · note". */
+  function renderResolutionControls(order) {
+    const wrap = document.getElementById('paResolution');
+    const done = document.getElementById('paResolutionDone');
+    if (!wrap || !done) return;
+
+    if (order.reviewed) {
+      wrap.style.display = 'none';
+      done.style.display = '';
+      const who = order.reviewed_by ? esc(order.reviewed_by) : '';
+      const reason = order.review_reason ? esc(REASON_LABEL[order.review_reason] || order.review_reason) : '';
+      const note = order.review_note ? ' · ' + esc(order.review_note) : '';
+      done.innerHTML = '<span class="pa-badge pa-badge-correct">✅ Reviewed</span>' +
+        (who ? ' · Author: <strong>' + who + '</strong>' : '') +
+        (reason ? ' · ' + reason : '') + note;
+      return;
+    }
+
+    done.style.display = 'none';
+    wrap.style.display = 'flex';
+
+    // Author = the operator responsible for / who approved the wrong pick. It's a
+    // FREE-TEXT input (not a closed <select>) so any name can be typed — approvers
+    // aren't always in the scanner roster; the roster is only autocomplete suggestions.
+    const roster = operatorRoster();
+    const authList = document.getElementById('paAuthorList');
+    if (authList) {
+      authList.innerHTML = roster.map(op => '<option value="' + escAttr(op) + '"></option>').join('');
+    }
+    const auth = document.getElementById('paReviewAuthor');
+    if (auth) auth.value = '';   // fresh per order (the responsible person varies)
+    const reasonEl = document.getElementById('paReviewReason');
+    if (reasonEl) {
+      reasonEl.innerHTML = '<option value="">Reason…</option>' +
+        REVIEW_REASONS.map(function (r) { return '<option value="' + r[0] + '">' + esc(r[1]) + '</option>'; }).join('');
+      reasonEl.value = '';
+    }
+    const noteEl = document.getElementById('paReviewNote');
+    if (noteEl) noteEl.value = '';
+    const btn = document.getElementById('paReviewBtn');
+    if (btn) { btn.disabled = false; btn.innerHTML = '☑️ Mark Reviewed'; btn.classList.remove('pa-btn-reviewed'); }
+  }
+
+  /* When "Other" is chosen, jump focus to the note (it becomes required). */
+  function _onReasonChange() {
+    const reasonEl = document.getElementById('paReviewReason');
+    const noteEl = document.getElementById('paReviewNote');
+    if (reasonEl && noteEl && reasonEl.value === 'other') noteEl.focus();
   }
 
   /* ═══════════════════════════════════════════════
@@ -598,10 +702,16 @@
           : `<span class="pa-badge pa-badge-anomaly">⚠️ ${anom} anomal${anom > 1 ? 'ies' : 'y'}</span>`;
       }
 
-      // Reviewed column
-      const reviewedHtml = isReviewed
-        ? '<span class="pa-badge pa-badge-correct">✅ Reviewed</span>'
-        : '<span class="pa-badge" style="opacity:0.5">—</span>';
+      // Reviewed column — show the author, with the reason on hover
+      let reviewedHtml;
+      if (isReviewed) {
+        const rBy = o.reviewed_by ? esc(o.reviewed_by) : 'Reviewed';
+        const rReason = o.review_reason ? (REASON_LABEL[o.review_reason] || o.review_reason) : '';
+        const tip = escAttr([o.reviewed_by, rReason, o.review_note].filter(Boolean).join(' — '));
+        reviewedHtml = `<span class="pa-badge pa-badge-correct" title="${tip}">✅ ${rBy}</span>`;
+      } else {
+        reviewedHtml = '<span class="pa-badge" style="opacity:0.5">—</span>';
+      }
 
       return `<tr class="${rowClass}" style="cursor:pointer">
         <td><input type="checkbox" class="pa-bulk-check" data-idx="${idx}" onclick="event.stopPropagation(); PA.toggleBulk(${idx}, this.checked)" ${state.selectedBulk.has(idx) ? 'checked' : ''} /></td>
@@ -696,19 +806,10 @@
     document.getElementById('tabCountAnomalies').textContent = anomalies + fgAnomalyCount;
     document.getElementById('tabCountCorrect').textContent = correct + fgCorrectCount;
 
-    // Review button state
-    const reviewBtn = document.getElementById('paReviewBtn');
-    if (reviewBtn) {
-      if (order.reviewed) {
-        reviewBtn.disabled = true;
-        reviewBtn.innerHTML = '✅ Reviewed';
-        reviewBtn.classList.add('pa-btn-reviewed');
-      } else {
-        reviewBtn.disabled = false;
-        reviewBtn.innerHTML = '☑️ Mark Reviewed';
-        reviewBtn.classList.remove('pa-btn-reviewed');
-      }
-    }
+    // Resolution controls (author + reason + note). Render now with whatever we
+    // have, then re-render once the operator roster finishes loading (lazy).
+    renderResolutionControls(order);
+    ensureOperators().then(() => { if (state.selectedOrder === order) renderResolutionControls(order); });
 
     // Calculate accuracy
     const totalItems = picks.length + fgAnomalyCount + fgCorrectCount;
@@ -1605,38 +1706,44 @@
     const order = state.selectedOrder;
     if (!order) return;
 
-    // Optimistic update — update UI immediately
+    // Require an author (operator) + a reason — a review is now a resolution.
+    const authorEl = document.getElementById('paReviewAuthor');
+    const reasonEl = document.getElementById('paReviewReason');
+    const noteEl = document.getElementById('paReviewNote');
+    const author = authorEl ? authorEl.value.trim() : '';
+    const reason = reasonEl ? reasonEl.value.trim() : '';
+    const note = noteEl ? noteEl.value.trim() : '';
+    if (!author) { alert('Select the Author — the operator who approved the wrong pick.'); if (authorEl) authorEl.focus(); return; }
+    if (!reason) { alert('Select a reason.'); if (reasonEl) reasonEl.focus(); return; }
+    if (reason === 'other' && !note) { alert('For "Other", please add a note describing the reason.'); if (noteEl) noteEl.focus(); return; }
+
     const reviewBtn = document.getElementById('paReviewBtn');
-    if (reviewBtn) {
-      reviewBtn.disabled = true;
-      reviewBtn.innerHTML = '⏳ Saving...';
-    }
+    if (reviewBtn) { reviewBtn.disabled = true; reviewBtn.innerHTML = '⏳ Saving...'; }
 
     try {
       const res = await fetch('/api/pick-anomalies/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderNumber: order.order_number }),
+        body: JSON.stringify({ orderNumber: order.order_number, author, reason, note }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      // Update local state
+      // Update local state with the full resolution
       order.reviewed = true;
       order.reviewed_at = new Date().toISOString();
+      order.reviewed_by = author;
+      order.review_reason = reason;
+      order.review_note = note || null;
 
-      // Update modal button — confirmed
-      if (reviewBtn) {
-        reviewBtn.innerHTML = '✅ Reviewed';
-        reviewBtn.classList.add('pa-btn-reviewed');
-      }
+      // Swap the form for the read-only "Reviewed by X · reason" summary
+      renderResolutionControls(order);
 
       // Refresh table + KPIs
       renderOrdersTable();
       loadStats();
     } catch (err) {
       console.error('Review error:', err);
-      // Revert button on error
       if (reviewBtn) {
         reviewBtn.disabled = false;
         reviewBtn.innerHTML = '☑️ Mark Reviewed';
@@ -2265,6 +2372,7 @@
     fixSelected,
     confirmFix,
     reviewOrder,
+    _onReasonChange,
     printReport,
     toggleBulk,
     toggleBulkAll,

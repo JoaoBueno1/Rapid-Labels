@@ -39,6 +39,7 @@
     hidden: {},            // cardId -> true
     charts: {},            // chartId -> Chart instance
     lastData: null,
+    lastResol: null,       // last resolutions-summary payload (reason/author breakdown)
   };
 
   /* ───────── date helpers ───────── */
@@ -110,6 +111,8 @@
           ${card('bins',      '📍 Problem Bins',            false, 'canvas')}
           ${card('customers', '🏢 Anomalies by Customer',   false, 'canvas')}
           ${card('funnel',    '🧭 Review → Fix Funnel',     false, 'html')}
+          ${card('resReason', '🧩 Resolutions by Reason',   false, 'html')}
+          ${card('resAuthor', '🙋 Resolutions by Author',   false, 'html')}
           ${card('sections',  '🗺 Warehouse Section Heatmap', false, 'html')}
           ${card('routes',    '🔁 Repeat Routes (locator errors)', true, 'html')}
           ${card('fixes',     '🛠 Corrections / Fixes Log', true,  'html')}
@@ -157,6 +160,7 @@
     trend: 'Anomaly Rate Over Time', corrTrend: 'Corrections Over Time', etypes: 'Error Type Distribution',
     etypeTrend: 'Error Type Trend', skus: 'Repeat Offender SKUs', bins: 'Problem Bins',
     customers: 'Anomalies by Customer', funnel: 'Review → Fix Funnel', sections: 'Section Heatmap',
+    resReason: 'Resolutions by Reason', resAuthor: 'Resolutions by Author',
     routes: 'Repeat Routes', fixes: 'Corrections / Fixes Log',
   };
   function toggleCardsMenu() {
@@ -183,10 +187,15 @@
     if (state.granularity !== 'auto') qs.set('granularity', state.granularity);
     if (state.onlyFixed) qs.set('onlyFixed', '1');
     try {
-      const res = await fetch('/api/pick-anomalies/analytics-v2?' + qs.toString());
-      const data = await res.json();
+      const rangeQs = new URLSearchParams({ from: state.from, to: state.to }).toString();
+      const [data, resol] = await Promise.all([
+        fetch('/api/pick-anomalies/analytics-v2?' + qs.toString()).then(r => r.json()),
+        // Resolutions (reason + author) — separate endpoint; non-fatal if it fails.
+        fetch('/api/pick-anomalies/resolutions-summary?' + rangeQs).then(r => r.json()).catch(() => null),
+      ]);
       if (!data.success) throw new Error(data.error || 'failed');
       state.lastData = data;
+      state.lastResol = (resol && resol.success) ? resol : null;
       renderAll(data.analytics, data.meta);
     } catch (err) {
       console.error('analytics-v2 load error', err);
@@ -207,6 +216,7 @@
     renderBarList('bins', a.topBins, 'bin', C.purple);
     renderBarList('customers', a.byCustomer, 'customer', C.teal);
     renderFunnel(a.reviewFunnel);
+    renderResolutions(state.lastResol);
     renderSections(a.sectionHeatmap);
     renderRoutes(a.repeatRoutes);
     renderFixes(a.corrections.list, a.summary);
@@ -350,6 +360,38 @@
         <span class="pav2-funnel-l">${s.l}</span>
         <div class="pav2-funnel-bar"><div style="width:${pct}%;background:${s.c}"></div></div>
         <span class="pav2-funnel-v">${fmt(s.v)} <em>${pct}%</em></span>
+      </div>`;
+    }).join('');
+  }
+
+  /* Resolutions — ranked horizontal bars (magnitude by category), one hue each.
+     Reuses the funnel-bar look. Fills in as anomalies get reviewed with reason+author. */
+  function renderResolutions(resol) {
+    const reasonMap = {};
+    (window.PA_REVIEW_REASONS || []).forEach(([code, label]) => {
+      reasonMap[code] = { full: label, short: label.split(' — ')[0] };
+    });
+    renderResBars('pav2html-resReason', (resol && resol.byReason) || {}, C.accent,
+      (k) => reasonMap[k] || { full: k, short: k });
+    renderResBars('pav2html-resAuthor', (resol && resol.byAuthor) || {}, C.navy,
+      (k) => ({ full: k, short: k }));
+  }
+
+  function renderResBars(elId, obj, color, disp) {
+    const el = $(elId); if (!el) return;
+    const entries = Object.entries(obj).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) {
+      el.innerHTML = '<div class="pav2-empty">No resolutions yet — they build up here as you review anomalies with a reason + author.</div>';
+      return;
+    }
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+    const max = entries[0][1];
+    el.innerHTML = entries.map(([k, v]) => {
+      const d = disp(k), pct = Math.round((v / total) * 100), w = Math.max(2, Math.round((v / max) * 100));
+      return `<div class="pav2-funnel-row">
+        <span class="pav2-funnel-l" title="${esc(d.full)}">${esc(d.short)}</span>
+        <div class="pav2-funnel-bar"><div style="width:${w}%;background:${color}"></div></div>
+        <span class="pav2-funnel-v">${fmt(v)} <em>${pct}%</em></span>
       </div>`;
     }).join('');
   }

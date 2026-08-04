@@ -148,6 +148,9 @@ const SB_HEADERS = {
   'Prefer': 'return=minimal',
 };
 
+// In-memory cache for the operator roster (distinct scanner names) — 10 min TTL.
+let _opCache = { at: 0, ops: null };
+
 async function sbGet(table, query = '') {
   const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`;
   const res = await fetch(url, { headers: { ...SB_HEADERS, 'Prefer': '' } });
@@ -1259,19 +1262,31 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
 /**
  * Mark an order as reviewed (all picks verified by operator)
  */
-async function markOrderReviewed(orderNumber, userEmail) {
+async function markOrderReviewed(orderNumber, { author, reason, note } = {}) {
+  const cleanAuthor = String(author || '').trim();
+  const cleanReason = String(reason || '').trim();
+  const cleanNote = String(note || '').trim();
+  if (!cleanAuthor) throw new Error('author (responsible operator) is required');
+  if (!cleanReason) throw new Error('reason is required');
+  // Mirror the frontend rule server-side so direct API calls can't store an
+  // "other" resolution with no explanation.
+  if (cleanReason === 'other' && !cleanNote) throw new Error('a note is required when reason is "other"');
   try {
-    await sbPatch('pick_anomaly_orders', `order_number=eq.${orderNumber}`, {
+    await sbPatch('pick_anomaly_orders', `order_number=eq.${encodeURIComponent(orderNumber)}`, {
       reviewed: true,
       reviewed_at: new Date().toISOString(),
+      reviewed_by: cleanAuthor,
+      review_reason: cleanReason,
+      review_note: cleanNote || null,
     });
     await logAction({
       order_number: orderNumber,
       action: 'reviewed',
-      details: 'Order marked as reviewed',
-      user_email: userEmail || 'operator',
+      // author = operator responsible for / who approved the wrong pick
+      details: `Reviewed — author: ${cleanAuthor}, reason: ${cleanReason}${cleanNote ? ` (${cleanNote})` : ''}`,
+      user_email: 'operator',
     });
-    console.log(`✅ Order ${orderNumber} marked as reviewed`);
+    console.log(`✅ Order ${orderNumber} reviewed — author ${cleanAuthor}, reason ${cleanReason}`);
     return { success: true };
   } catch (err) {
     console.warn(`⚠️ Failed to mark ${orderNumber} as reviewed:`, err.message);
@@ -2198,12 +2213,84 @@ function registerPickAnomalyRoutes(app) {
    */
   app.post('/api/pick-anomalies/review', async (req, res) => {
     try {
-      const { orderNumber, userEmail } = req.body;
+      const { orderNumber, author, reason, note } = req.body;
       if (!orderNumber) return res.status(400).json({ success: false, error: 'orderNumber required' });
-      await markOrderReviewed(orderNumber, userEmail);
+      if (!author || !String(author).trim()) return res.status(400).json({ success: false, error: 'author (responsible operator) required' });
+      if (!reason || !String(reason).trim()) return res.status(400).json({ success: false, error: 'reason required' });
+      await markOrderReviewed(orderNumber, { author, reason, note });
       res.json({ success: true, orderNumber });
     } catch (err) {
       console.error('❌ Review error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
+   * GET /api/pick-anomalies/operators
+   * Distinct, case-canonicalised operator names from the scanner report — used to
+   * populate the "Reviewed by" (author) selector. Cached 10 min in-memory.
+   */
+  app.get('/api/pick-anomalies/operators', async (req, res) => {
+    try {
+      const now = Date.now();
+      if (!_opCache.ops || now - _opCache.at > 10 * 60 * 1000) {
+        // Bound the scan to the last year (uses the scan_date index) — the roster
+        // is recently-active operators, not the entire unbounded history.
+        const since = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+        const rows = await sbGetAll('scanner_activity', `select=op&scan_date=gte.${since}`);
+        // Prefer the best-cased variant (antonc / AntonC -> AntonC) — mirror the ingest script.
+        const score = (s) => (s === s.toUpperCase() ? 0 : (s === s.toLowerCase() ? 1 : 2));
+        const canon = {};
+        for (const r of rows) {
+          const o = String(r.op || '').trim();
+          if (!o) continue;
+          const lo = o.toLowerCase();
+          if (!(lo in canon) || score(o) > score(canon[lo])) canon[lo] = o;
+        }
+        _opCache = { at: now, ops: Object.values(canon).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())) };
+      }
+      res.json({ success: true, operators: _opCache.ops });
+    } catch (err) {
+      console.error('❌ Operators list error:', err);
+      res.status(500).json({ success: false, operators: [], error: err.message });
+    }
+  });
+
+  /**
+   * GET /api/pick-anomalies/resolutions-summary?days=90
+   * Monitoring: counts of reviewed anomaly orders by reason and by author
+   * (the operator responsible for / who approved the wrong pick).
+   */
+  app.get('/api/pick-anomalies/resolutions-summary', async (req, res) => {
+    try {
+      // Accept an explicit from/to range (aligns with the analytics tab); else fall
+      // back to a rolling last-N-days window. reviewed_at is UTC — an approximate
+      // calendar match is fine for a summary.
+      let filter;
+      if (req.query.from || req.query.to) {
+        const from = String(req.query.from || '2000-01-01').slice(0, 10);
+        const to = String(req.query.to || new Date().toISOString().slice(0, 10)).slice(0, 10);
+        filter = `reviewed_at=gte.${from}T00:00:00&reviewed_at=lte.${to}T23:59:59.999`;
+      } else {
+        const days = Math.max(1, Math.min(365, parseInt(req.query.days, 10) || 90));
+        const since = new Date(Date.now() - days * 86400000).toISOString();
+        filter = `reviewed_at=gte.${encodeURIComponent(since)}`;
+      }
+      const rows = await sbGetAll('pick_anomaly_orders',
+        `select=review_reason,reviewed_by,reviewed_at&reviewed=is.true&${filter}`);
+      // Only count rows that actually carry the resolution data — legacy reviews
+      // (reviewed=true from the old flow, no reason/author) are excluded so the
+      // breakdown reflects real resolutions and fills in as they're recorded.
+      const byReason = {}, byAuthor = {};
+      let resolved = 0;
+      for (const r of rows) {
+        if (r.review_reason) byReason[r.review_reason] = (byReason[r.review_reason] || 0) + 1;
+        if (r.reviewed_by) byAuthor[r.reviewed_by] = (byAuthor[r.reviewed_by] || 0) + 1;
+        if (r.review_reason || r.reviewed_by) resolved++;
+      }
+      res.json({ success: true, total: rows.length, resolved, byReason, byAuthor });
+    } catch (err) {
+      console.error('❌ Resolutions summary error:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
