@@ -150,8 +150,9 @@
     stats: null,  // Global KPI stats (all orders, not just current page)
     scanner: {},          // SO -> { op, date } from the scanner report (Pick Productivity)
     scannerLoaded: false,
-    operators: [],        // distinct operator names for the "Reviewed by" (author) selector
+    operators: [],        // author roster (collection_operators) for the "who erred" selector
     operatorsLoaded: false,
+    operatorsAt: 0,       // when the roster was last fetched (for staleness refresh)
   };
 
   /* Resolution reason categories (code -> label). The CODE is stored in
@@ -185,12 +186,15 @@
   /* Author roster from /operators (the Collections `collection_operators` table).
      Fetched once. */
   async function ensureOperators() {
-    if (state.operatorsLoaded) return;
+    // Re-fetch if never loaded or the roster is >60s stale, so operators just added
+    // in the DB appear without a full page reload.
+    if (state.operatorsLoaded && Date.now() - (state.operatorsAt || 0) < 60000) return;
     try {
       const r = await fetch('/api/pick-anomalies/operators');
       if (r.ok) { const d = await r.json(); state.operators = d.operators || []; }
     } catch (_) { /* non-fatal: selector just shows fewer names */ }
     state.operatorsLoaded = true;
+    state.operatorsAt = Date.now();
   }
 
   /* Author roster = the Collections operator list (loaded into state.operators via

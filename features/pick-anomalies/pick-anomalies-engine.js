@@ -148,9 +148,6 @@ const SB_HEADERS = {
   'Prefer': 'return=minimal',
 };
 
-// In-memory cache for the operator roster (distinct scanner names) — 10 min TTL.
-let _opCache = { at: 0, ops: null };
-
 async function sbGet(table, query = '') {
   const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`;
   const res = await fetch(url, { headers: { ...SB_HEADERS, 'Prefer': '' } });
@@ -2232,12 +2229,11 @@ function registerPickAnomalyRoutes(app) {
    */
   app.get('/api/pick-anomalies/operators', async (req, res) => {
     try {
-      const now = Date.now();
-      if (!_opCache.ops || now - _opCache.at > 10 * 60 * 1000) {
-        const rows = await sbGetAll('collection_operators', 'select=name&active=is.true&order=name');
-        _opCache = { at: now, ops: [...new Set(rows.map(r => String(r.name || '').trim()).filter(Boolean))] };
-      }
-      res.json({ success: true, operators: _opCache.ops });
+      // Tiny table (~40 rows) — queried live each call so an operator just added in
+      // the DB shows up immediately (no stale cache).
+      const rows = await sbGetAll('collection_operators', 'select=name&active=is.true&order=name');
+      const operators = [...new Set(rows.map(r => String(r.name || '').trim()).filter(Boolean))];
+      res.json({ success: true, operators });
     } catch (err) {
       console.error('❌ Operators list error:', err);
       res.status(500).json({ success: false, operators: [], error: err.message });
