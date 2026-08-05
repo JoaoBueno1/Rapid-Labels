@@ -2226,27 +2226,16 @@ function registerPickAnomalyRoutes(app) {
 
   /**
    * GET /api/pick-anomalies/operators
-   * Distinct, case-canonicalised operator names from the scanner report — used to
-   * populate the "Reviewed by" (author) selector. Cached 10 min in-memory.
+   * Author roster = the Collections operator table (`collection_operators`, active
+   * staff) — the same curated list the Collections page uses, far fuller than the
+   * scanner names. Populates the "who erred" (author) selector. Cached 10 min.
    */
   app.get('/api/pick-anomalies/operators', async (req, res) => {
     try {
       const now = Date.now();
       if (!_opCache.ops || now - _opCache.at > 10 * 60 * 1000) {
-        // Bound the scan to the last year (uses the scan_date index) — the roster
-        // is recently-active operators, not the entire unbounded history.
-        const since = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-        const rows = await sbGetAll('scanner_activity', `select=op&scan_date=gte.${since}`);
-        // Prefer the best-cased variant (antonc / AntonC -> AntonC) — mirror the ingest script.
-        const score = (s) => (s === s.toUpperCase() ? 0 : (s === s.toLowerCase() ? 1 : 2));
-        const canon = {};
-        for (const r of rows) {
-          const o = String(r.op || '').trim();
-          if (!o) continue;
-          const lo = o.toLowerCase();
-          if (!(lo in canon) || score(o) > score(canon[lo])) canon[lo] = o;
-        }
-        _opCache = { at: now, ops: Object.values(canon).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())) };
+        const rows = await sbGetAll('collection_operators', 'select=name&active=is.true&order=name');
+        _opCache = { at: now, ops: [...new Set(rows.map(r => String(r.name || '').trim()).filter(Boolean))] };
       }
       res.json({ success: true, operators: _opCache.ops });
     } catch (err) {

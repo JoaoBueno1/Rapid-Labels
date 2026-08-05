@@ -182,8 +182,8 @@
     state.scannerLoaded = true;
   }
 
-  /* Operator roster for the Author selector — distinct scanner names,
-     canonicalised server-side. Fetched once. */
+  /* Author roster from /operators (the Collections `collection_operators` table).
+     Fetched once. */
   async function ensureOperators() {
     if (state.operatorsLoaded) return;
     try {
@@ -193,23 +193,12 @@
     state.operatorsLoaded = true;
   }
 
-  /* Combined operator roster for the author selector: the /operators endpoint UNION
-     the operator names already loaded in state.scanner. This keeps the selector
-     usable even if /operators is empty/fails (scanner_activity not yet ingested,
-     transient 500) — otherwise the required author dropdown would be placeholder-
-     only and NO order could ever be marked reviewed. Case-canonicalised. */
+  /* Author roster = the Collections operator list (loaded into state.operators via
+     /operators — the `collection_operators` table). Already curated + sorted; we do
+     NOT union scanner names (that duplicated people under different spellings, e.g.
+     AntonC vs Antony). Author is optional (None), so an empty roster is fine. */
   function operatorRoster() {
-    const score = (s) => (s === s.toUpperCase() ? 0 : (s === s.toLowerCase() ? 1 : 2));
-    const canon = {};
-    const add = (name) => {
-      const o = String(name || '').trim();
-      if (!o) return;
-      const lo = o.toLowerCase();
-      if (!(lo in canon) || score(o) > score(canon[lo])) canon[lo] = o;
-    };
-    (state.operators || []).forEach(add);
-    Object.values(state.scanner || {}).forEach((s) => add(s && s.op));
-    return Object.values(canon).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    return (state.operators || []).slice();
   }
 
   /* Render the resolution controls (author + reason + note) in the modal footer.
