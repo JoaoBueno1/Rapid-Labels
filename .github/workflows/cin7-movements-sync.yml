@@ -17,6 +17,10 @@ on:
     - cron: '50 */6 * * *'   # every 6 hours at :50 (gentle on the shared cap)
   workflow_dispatch: {}
 
+concurrency:
+  group: cin7-movements-sync
+  cancel-in-progress: false
+
 jobs:
   movements:
     runs-on: ubuntu-latest

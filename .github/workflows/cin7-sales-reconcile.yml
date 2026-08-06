@@ -13,8 +13,12 @@ name: Cin7 Sales Reconcile
 
 on:
   schedule:
-    - cron: '40 */6 * * *'   # every 6 hours at :40
+    - cron: '40 15 * * *'   # every 6 hours at :40
   workflow_dispatch: {}
+
+concurrency:
+  group: cin7-sales-reconcile
+  cancel-in-progress: false
 
 jobs:
   reconcile-sales:

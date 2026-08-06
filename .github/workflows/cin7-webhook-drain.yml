@@ -10,8 +10,12 @@ name: Cin7 Webhook Drain (backstop)
 
 on:
   schedule:
-    - cron: '15 */2 * * *'   # every 2 hours at :15 (offset from other syncs)
+    - cron: '25 */2 * * *'   # every 2 hours at :15 (offset from other syncs)
   workflow_dispatch: {}
+
+concurrency:
+  group: cin7-webhook-drain
+  cancel-in-progress: false
 
 jobs:
   drain:

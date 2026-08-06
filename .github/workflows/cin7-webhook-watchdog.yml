@@ -10,8 +10,12 @@ name: Cin7 Webhook Watchdog
 
 on:
   schedule:
-    - cron: '20 6 * * *'   # daily ~06:20 UTC (~16:20 AEST)
+    - cron: '20 6,18 * * *'   # daily ~06:20 UTC (~16:20 AEST)
   workflow_dispatch: {}
+
+concurrency:
+  group: cin7-webhook-watchdog
+  cancel-in-progress: false
 
 jobs:
   watchdog:

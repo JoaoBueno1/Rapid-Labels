@@ -19,6 +19,10 @@ on:
     - cron: '0 * * * *'
   workflow_dispatch: {}
 
+concurrency:
+  group: cin7-stock-sync
+  cancel-in-progress: false
+
 jobs:
   stock-sync:
     runs-on: ubuntu-latest

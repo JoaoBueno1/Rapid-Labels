@@ -13,6 +13,10 @@ on:
     - cron: '45 */2 * * *'   # every 2 hours at :45 (offset from other jobs)
   workflow_dispatch: {}
 
+concurrency:
+  group: cin7-transfers-sync
+  cancel-in-progress: false
+
 jobs:
   transfers:
     runs-on: ubuntu-latest

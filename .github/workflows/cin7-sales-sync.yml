@@ -14,8 +14,12 @@ name: Cin7 Sales Sync
 
 on:
   schedule:
-    - cron: '15 */2 * * *'   # every 2 hours at :15 (offset from transfers :45)
+    - cron: '10 */2 * * *'   # every 2 hours at :15 (offset from transfers :45)
   workflow_dispatch: {}
+
+concurrency:
+  group: cin7-sales-sync
+  cancel-in-progress: false
 
 jobs:
   sales-sync:

@@ -14,7 +14,7 @@ name: Cin7 Daily Maintenance
 on:
   schedule:
     # Full rebuild at 2 AM AEST (16:00 UTC previous day)
-    - cron: '0 16 * * *'
+    - cron: '15 16 * * *'
   workflow_dispatch:
     inputs:
       task:
@@ -26,6 +26,10 @@ on:
           - full
           - products
           - locations
+
+concurrency:
+  group: cin7-daily
+  cancel-in-progress: false
 
 jobs:
   daily-sync:

@@ -20,8 +20,12 @@ name: Order Pipeline Sync
 on:
   schedule:
     # Every hour at :15 (offset from Stock :00 and Pick Anomalies :30)
-    - cron: '15 * * * *'
+    - cron: '35 * * * *'
   workflow_dispatch: {}
+
+concurrency:
+  group: order-pipeline-sync
+  cancel-in-progress: false
 
 jobs:
   pipeline-sync:
