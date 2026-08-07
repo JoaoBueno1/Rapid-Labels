@@ -54,6 +54,27 @@ death spiral. Fix (all YAML, reversible):
 | cin7-daily (products/locations) | `15 16 * * *` | medium | poll — product + location master (not webhook-fed) | de-collided off :00 |
 | cin7-webhook-watchdog | `20 6,18 * * *` | ~1 | **reactivates Cin7 auto-disabled webhooks** — guards the whole real-time path | 2×/day (was daily) |
 
+## What each sync writes → which page/feature it affects
+
+| Workflow | Writes (table) | Feeds (page / feature) |
+|---|---|---|
+| Cin7 Sync Scheduler | `stock_snapshot` (bin-level levels) | Replenishment, Restock, Cyclic Count, coverage "Have stock", pick-anomaly stock-check |
+| Cin7 Availability | `stock_availability` (SKU×location rollup) | Chase list "Have stock" + backorder detection |
+| Cin7 Daily Maintenance | `products`, `locations` (master) | Whole app: labels/search/product names, Replenishment names, **weight/dims for freight** |
+| Cin7 Movements | `stock_movements` (transfer/adjustment/purchase/assembly) | Movements audit tab, reconciliation, Pick Anomalies (assembly builds) |
+| Cin7 Open Detail | `sales_orders` rep/location + `sale_lines` | Open Orders / chase (who/where, per-line backorder) |
+| Cin7 Sales Reconcile | `sales_orders` status | Open Orders (un-sticks phantom-open orders) |
+| Cin7 Sales Sync | `sales_orders` headers | Open Orders / chase (new + modified orders) |
+| Cin7 Transfers Reconcile | `stock_transfers` (closes phantoms) | Branch Transfers control tower (open counts) |
+| Cin7 Transfers Sync | `stock_transfers` headers | Branch Transfers control tower |
+| Cin7 Webhook Drain | processes `webhook_events` | Real-time backstop for everything (pick anomalies, movement ledger) |
+| Cin7 Webhook Watchdog | `webhook_health_log` | Guardian — keeps the real-time webhook feed alive |
+| Order Pipeline Sync | `order_pipeline` | Warehouse dashboard pick/pack/ship board |
+| Pick Anomalies Sync | `pick_anomaly_orders` | Pick Anomalies page (backstop; ship-time is webhook-real-time) |
+
+> Sales *ship* movements + pick-anomaly analysis are already real-time via webhooks, so the polling
+> jobs above are mostly backstops for the non-webhook data (stock levels, products, transfers).
+
 ## Deferred improvements (higher blast-radius — do carefully, verify each)
 
 1. **429 circuit-breaker** in the shared Cin7 client: after N consecutive 429/403, exit cleanly
