@@ -1,0 +1,110 @@
+# ============================================================
+# Excel Sync — build the datasets the company spreadsheets read
+# ============================================================
+# Builds each dataset from cin7_mirror and stores it in
+# excel_sync.dataset_rows. Every workbook binding then reads that ONE snapshot,
+# so two tabs refreshed minutes apart cannot disagree, and adding a spreadsheet
+# costs no extra Cin7 call — this job never touches the Cin7 API at all.
+#
+# Runs AFTER cin7-sales-detail-month (19:00 UTC) so the month is complete before
+# the sales dataset is built. Deliberately no Microsoft Graph step yet: nothing
+# writes to a real workbook until the bindings carry real file/sheet names.
+#
+# Required GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY
+# ============================================================
+
+name: Excel Sync
+
+on:
+  schedule:
+    # 20:00 UTC Sun–Thu = 06:00 Mon–Fri in Sydney, an hour after the sales
+    # detail sync. The day shift is deliberate — do not "fix" 0-4 to 1-5.
+    - cron: '0 20 * * 0-4'
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: 'Dataset to build (blank = all)'
+        required: false
+        default: ''
+      month:
+        description: 'Month for monthly-sales (YYYY-MM, blank = current)'
+        required: false
+        default: ''
+      force:
+        description: 'Publish even if a validation gate fails'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: excel-sync
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: features/excel-sync
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'      # tomllib needs >= 3.11
+
+      - run: pip install -r requirements.txt
+
+      - name: Register workbook bindings
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python -m engine register
+
+      - name: Build and publish datasets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DATASET: ${{ github.event.inputs.dataset }}
+          MONTH: ${{ github.event.inputs.month }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          set -o pipefail
+          FLAGS="--publish"
+          [ "$FORCE" = "true" ] && FLAGS="$FLAGS --force"
+          [ -n "$MONTH" ] && MONTH_FLAG="--month $MONTH" || MONTH_FLAG=""
+
+          if [ -n "$DATASET" ]; then
+            LIST="$DATASET"
+          else
+            LIST=$(python -c "from engine import pivot; print(' '.join(pivot.list_specs()))")
+          fi
+
+          # A blocked dataset must not stop the others — each is independent, and
+          # the run log records which one failed for the Sync Monitor to show.
+          rc=0
+          for slug in $LIST; do
+            echo "::group::$slug"
+            python -m engine build "$slug" $MONTH_FLAG $FLAGS || rc=1
+            echo "::endgroup::"
+          done
+          exit $rc
+
+      - name: Snapshot the built tabs as an artifact
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          for slug in $(python -c "from engine import pivot; print(' '.join(pivot.list_specs()))"); do
+            python -m engine build "$slug" --out out || true
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: excel-sync-tabs
+          path: features/excel-sync/out/
+          retention-days: 14
+          if-no-files-found: warn

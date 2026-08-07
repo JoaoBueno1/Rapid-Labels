@@ -79,6 +79,41 @@ class Client:
                 return out
             offset += PAGE
 
+    def _send(self, path, body, method='POST', extra=None):
+        headers = self._headers()
+        headers['Content-Type'] = 'application/json'
+        headers['Content-Profile'] = self.schema      # writes need this, not Accept-Profile
+        headers.update(extra or {})
+        req = urllib.request.Request(f'{self.base}/rest/v1/{path}',
+                                     data=json.dumps(body).encode(), method=method,
+                                     headers=headers)
+        self.calls += 1
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                raw = r.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            raise SystemExit(f'{method} {path} -> {e.code}: {e.read().decode()[:400]}')
+
+    def rpc(self, fn, payload):
+        return self._send(f'rpc/{fn}', payload)
+
+    def upsert(self, table, rows, on_conflict):
+        if not rows:
+            return None
+        return self._send(f'{table}?on_conflict={on_conflict}', rows,
+                          extra={'Prefer': 'resolution=merge-duplicates,return=minimal'})
+
+    def insert(self, table, rows, returning='representation'):
+        if not rows:
+            return None
+        return self._send(table, rows, extra={'Prefer': f'return={returning}'})
+
+    def patch(self, table, filters, patch):
+        qs = '&'.join(f'{k}={v}' for k, v in filters)
+        return self._send(f'{table}?{qs}', patch, method='PATCH',
+                          extra={'Prefer': 'return=minimal'})
+
     def select_in(self, table, columns, column, values, chunk=150):
         """Fetch rows whose `column` is in `values`, batched so the URL stays sane.
 

@@ -21,11 +21,35 @@ def _fmt(v):
 
 
 def cmd_list(_):
+    print('datasets (built once, stored in excel_sync.dataset_rows):')
     for slug in pivot.list_specs():
         spec = pivot.load_spec(slug)
-        wb = spec.get('workbook', {})
+        cols = ', '.join(m['header'] for m in spec['metrics'])
         print(f"  {slug:<16} {spec.get('title', '')}")
-        print(f"                   source={spec['source']}  →  {wb.get('file', 'TBD')} / {wb.get('sheet', 'TBD')}")
+        print(f"  {'':<16} source={spec['source']}  columns: {cols}")
+    bindings = pivot.list_bindings()
+    print(f'\nbindings (workbook tabs consuming them): {len(bindings) or "none yet"}')
+    for slug in bindings:
+        b = pivot.load_binding(slug)
+        wb = b['workbook']
+        state = 'enabled' if b.get('enabled') else 'disabled'
+        print(f"  {slug:<16} {b['dataset']} → {wb.get('file')} / {wb.get('sheet')}  [{state}]")
+    if not bindings:
+        print('  add one: see specs/bindings/README.md')
+    return 0
+
+
+def cmd_register(_):
+    """Mirror the binding files into ops.sync_registry so the monitor lists them."""
+    from . import publish
+    bindings = [pivot.load_binding(s) for s in pivot.list_bindings()]
+    if not bindings:
+        print('  no bindings to register')
+        return 0
+    n = publish.register_bindings(bindings)
+    print(f'  registered {n} Excel binding(s) in ops.sync_registry')
+    for b in bindings:
+        print(f"    excel-{b['slug']:<20} {b['dataset']} → {b['workbook'].get('file')}")
     return 0
 
 
@@ -95,6 +119,21 @@ def cmd_build(args):
         xl = pivot.write_xlsx(built, spec, meta, os.path.join(args.out, stem + '.xlsx'))
         print(f'  wrote {xl}' if xl else '  (openpyxl missing — csv only)')
 
+    if args.publish:
+        from . import publish as pub
+        with pub.Run('excel-dataset-' + args.slug) as run:
+            if not ok and not args.force:
+                run.finish('blocked', 'validation gates failed')
+                print('\n  BLOCKED — nothing published')
+                return 1
+            digest, changed, written = pub.publish_dataset(spec, rows, meta, built)
+            run.rows_written = len(rows)
+            run.stats = {'checksum': digest, 'changed': changed,
+                         'groups': len(built['groups']), 'keys': len(built['keys'])}
+            run.finish('success')
+        print(f"\n  published {len(rows)} rows to excel_sync.dataset_rows"
+              f"  checksum={digest[:12]}  {'CHANGED' if changed else 'unchanged since last build'}")
+
     if not ok:
         print('\n  BLOCKED — not fit to publish')
         return 1
@@ -105,13 +144,18 @@ def cmd_build(args):
 def main(argv=None):
     p = argparse.ArgumentParser(prog='excel-sync')
     sub = p.add_subparsers(dest='cmd', required=True)
-    sub.add_parser('list', help='show the report specs').set_defaults(fn=cmd_list)
+    sub.add_parser('list', help='show datasets and the workbook bindings').set_defaults(fn=cmd_list)
+    sub.add_parser('register', help='mirror bindings into ops.sync_registry').set_defaults(fn=cmd_register)
 
-    b = sub.add_parser('build', help='build a report from the mirror')
+    b = sub.add_parser('build', help='build a dataset from the mirror')
     b.add_argument('slug')
     b.add_argument('--month', help='YYYY-MM (defaults to the current Sydney month)')
     b.add_argument('--out', help='directory to write csv/xlsx into')
     b.add_argument('--verify', help='Cin7 export to diff against')
+    b.add_argument('--publish', action='store_true',
+                   help='store the dataset in Supabase for the workbooks to read')
+    b.add_argument('--force', action='store_true',
+                   help='publish even if a gate failed (records the run as blocked)')
     b.add_argument('--show', type=int, default=8, help='how many differing cells to print')
     b.add_argument('--tolerance', type=float, default=1.0, help='max %% off the export')
     b.set_defaults(fn=cmd_build)

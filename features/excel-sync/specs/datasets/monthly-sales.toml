@@ -4,14 +4,6 @@ source = "monthly_sales"
 source_report = "Cin7 → Reports → Sale Order Details"
 period_label = "This month"
 
-# Filled in once the target workbook is confirmed. Nothing writes to a real
-# workbook in phase 1 — see features/excel-sync/README.md.
-[workbook]
-file = "TBD"
-sheet = "TBD"
-anchor = "A1"
-write_mode = "replace_range"
-
 [layout]
 kind = "pivot_2row_header"
 key = "sku"

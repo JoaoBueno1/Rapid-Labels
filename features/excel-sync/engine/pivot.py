@@ -10,25 +10,64 @@ import csv
 import os
 import tomllib
 
-SPEC_DIR = os.path.join(os.path.dirname(__file__), '..', 'specs')
+SPECS = os.path.join(os.path.dirname(__file__), '..', 'specs')
+DATASET_DIR = os.path.join(SPECS, 'datasets')
+BINDING_DIR = os.path.join(SPECS, 'bindings')
+
+# Datasets and bindings are separate on purpose. Several company workbooks want
+# the same numbers — stock availability, monthly sales — in different tabs,
+# column subsets and cadences. One dataset is built and stored once; each
+# workbook is a binding that reads it. Connecting a new spreadsheet is then a
+# file in specs/bindings/, with no new query, sync or Cin7 call.
 
 
-def load_spec(slug):
-    path = os.path.join(SPEC_DIR, f'{slug}.toml')
+def _load(path, slug, required):
     if not os.path.exists(path):
         raise SystemExit(f'No spec at {path}')
     with open(path, 'rb') as fh:
         spec = tomllib.load(fh)
-    for need in ('slug', 'source', 'layout', 'metrics'):
+    for need in required:
         if need not in spec:
-            raise SystemExit(f'{slug}.toml is missing [{need}]')
+            raise SystemExit(f'{os.path.basename(path)} is missing [{need}]')
     if spec['slug'] != slug:
-        raise SystemExit(f"{slug}.toml declares slug='{spec['slug']}'")
+        raise SystemExit(f"{os.path.basename(path)} declares slug='{spec['slug']}'")
     return spec
 
 
+def load_spec(slug):
+    return _load(os.path.join(DATASET_DIR, f'{slug}.toml'), slug,
+                 ('slug', 'source', 'layout', 'metrics'))
+
+
+def load_binding(slug):
+    return _load(os.path.join(BINDING_DIR, f'{slug}.toml'), slug,
+                 ('slug', 'dataset', 'workbook'))
+
+
 def list_specs():
-    return sorted(f[:-5] for f in os.listdir(SPEC_DIR) if f.endswith('.toml'))
+    return sorted(f[:-5] for f in os.listdir(DATASET_DIR) if f.endswith('.toml'))
+
+
+def list_bindings():
+    if not os.path.isdir(BINDING_DIR):
+        return []
+    return sorted(f[:-5] for f in os.listdir(BINDING_DIR) if f.endswith('.toml'))
+
+
+def binding_view(spec, binding):
+    """A binding may take a subset of the dataset's columns, in its own order.
+    Returns a spec-shaped dict the pivot can build from unchanged."""
+    wanted = binding.get('columns')
+    if not wanted:
+        return spec
+    by_header = {m['header']: m for m in spec['metrics']}
+    missing = [h for h in wanted if h not in by_header]
+    if missing:
+        raise SystemExit(f"binding '{binding['slug']}' asks for columns the "
+                         f"'{spec['slug']}' dataset does not produce: {missing}")
+    view = dict(spec)
+    view['metrics'] = [by_header[h] for h in wanted]
+    return view
 
 
 def build(rows, spec):

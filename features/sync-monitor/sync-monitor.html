@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sync Monitor — Rapid Led</title>
+  <link rel="icon" href="/logo/rapidled_icon_500_v2.png" type="image/png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="sync-monitor.css?v=20260808a" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="left">
+        <a class="back-link" href="/index.html">← Back</a>
+        <a class="brand" href="/index.html">JSlab.dev</a>
+      </div>
+      <nav class="site-nav">
+        <a href="/index.html" class="nav-link">Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="sm-main">
+
+    <div class="sm-top">
+      <div class="sm-tabs" role="tablist">
+        <button class="sm-tab active" data-kind="cin7_to_system" role="tab">
+          Cin7 → Our System <span class="sm-tab-count" id="cntCin7">—</span>
+        </button>
+        <button class="sm-tab" data-kind="system_to_excel" role="tab">
+          Excel Sync <span class="sm-tab-count" id="cntExcel">—</span>
+        </button>
+      </div>
+      <div class="sm-top-right">
+        <span class="sm-updated" id="smUpdated"></span>
+        <button class="sm-refresh" id="smRefresh" type="button">Refresh</button>
+      </div>
+    </div>
+
+    <!-- roll-up: how many are healthy right now -->
+    <div class="sm-summary" id="smSummary"></div>
+
+    <div class="sm-note" id="smNote" hidden></div>
+
+    <div class="sm-grid" id="smGrid">
+      <div class="sm-empty">Loading…</div>
+    </div>
+
+    <p class="sm-foot">
+      Health comes from how fresh each sync's <em>target table</em> actually is, not from
+      whether a job reported success — so a sync that runs green but writes nothing still
+      shows up as stale. Next run is computed from the schedule. All times shown in your
+      local timezone.
+    </p>
+
+  </main>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="sync-monitor.js?v=20260808a"></script>
+</body>
+</html>
