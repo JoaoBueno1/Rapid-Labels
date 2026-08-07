@@ -49,4 +49,5 @@ jobs:
           CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
           MOVE_SINCE_DAYS: '1'
           MOVE_THROTTLE_MS: '4500'
+          MOVE_TIME_BUDGET_MS: '1200000'   # 20min wall-clock cap (job timeout is 30min) — defers overflow
         run: node cin7-stock-sync/sync-movements.js --type=all

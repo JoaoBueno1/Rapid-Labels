@@ -21,6 +21,11 @@ const { createClient } = require('@supabase/supabase-js');
 const ACC = process.env.CIN7_ACCOUNT_ID, CK = process.env.CIN7_API_KEY;
 const BASE = 'https://inventory.dearsystems.com/ExternalApi/v2';
 const THROTTLE = parseInt(process.env.MOVE_THROTTLE_MS || '2800', 10);
+const START = Date.now();
+// Wall-clock budget across ALL types (0 = off). Keeps the GH job well under its timeout:
+// once reached, the run stops and defers the rest to the next (idempotent) run.
+const TIME_BUDGET_MS = parseInt(process.env.MOVE_TIME_BUDGET_MS || '0', 10);
+const overBudget = () => TIME_BUDGET_MS && (Date.now() - START > TIME_BUDGET_MS);
 const DRY = process.argv.includes('--dry');
 const arg = k => (process.argv.find(a => a.startsWith(`--${k}=`)) || '').split('=')[1];
 const TYPE = arg('type') || 'all';
@@ -161,22 +166,47 @@ async function runType(t) {
   const cap = parseInt(arg('limit') || '0', 10);
   if (cap > 0) headers = headers.slice(0, cap);
   console.log(`\n[${t}] ${headers.length} tasks modified since ${since}${cap ? ` (capped ${cap})` : ''}`);
-  let total = 0;
+  let total = 0, done = 0, failed = 0, consec = 0;
+  // Per-task resilience: a bad task (Cin7 400, or 429 after retries) must NOT kill the
+  // whole run. Skip it and continue; stop the type after MAX_CONSEC consecutive errors
+  // (Cin7 is throttling/broken — defer the rest to the next idempotent run).
+  const MAX_CONSEC = 4;
   for (const h of headers) {
-    const det = await cin7(c.detail(h[c.idKey]));
-    const mv = c.parse(det);
-    if (DRY) { mv.slice(0, 4).forEach(m => console.log(`   ${m.movement_type} ${m.sku} ${m.quantity > 0 ? '+' : ''}${m.quantity} ${m.from_location || ''}->${m.to_location || ''} bin=${m.from_bin || m.to_bin || '-'} ref=${m.reference_number}`)); }
-    else if (mv.length) {
-      await cm.from('stock_movements').delete().eq('cin7_task_id', h[c.idKey]).eq('source', 'movements-sync');
-      for (let i = 0; i < mv.length; i += 500) { const { error } = await cm.from('stock_movements').insert(mv.slice(i, i + 500)); if (error) throw new Error(`${t} insert: ${error.message}`); }
+    if (overBudget()) { console.warn(`  ⏱️ ${t}: time budget reached — stopping; ${headers.length - done - failed} deferred to next run`); break; }
+    try {
+      const det = await cin7(c.detail(h[c.idKey]));
+      const mv = c.parse(det);
+      if (DRY) { mv.slice(0, 4).forEach(m => console.log(`   ${m.movement_type} ${m.sku} ${m.quantity > 0 ? '+' : ''}${m.quantity} ${m.from_location || ''}->${m.to_location || ''} bin=${m.from_bin || m.to_bin || '-'} ref=${m.reference_number}`)); }
+      else if (mv.length) {
+        await cm.from('stock_movements').delete().eq('cin7_task_id', h[c.idKey]).eq('source', 'movements-sync');
+        for (let i = 0; i < mv.length; i += 500) { const { error } = await cm.from('stock_movements').insert(mv.slice(i, i + 500)); if (error) throw new Error(`insert: ${error.message}`); }
+      }
+      total += mv.length; done++; consec = 0;
+    } catch (e) {
+      failed++; consec++;
+      console.warn(`  ⚠️ skip ${t} ${h[c.idKey]}: ${e.message}`);
+      // Stop early on a sustained throttle burst (consecutive) OR when the type is
+      // mostly failing (e.g. an endpoint 400ing many tasks) — don't grind the timeout.
+      if (consec >= MAX_CONSEC || (failed >= 8 && failed >= done)) {
+        console.warn(`  ⏸️ ${t}: too many Cin7 errors (${failed} failed / ${done} ok) — stopping early; ${headers.length - done - failed} deferred to next run`);
+        break;
+      }
     }
-    total += mv.length;
   }
-  console.log(`[${t}] ${total} movimentos ${DRY ? '(dry)' : 'ledgered'}.`);
+  console.log(`[${t}] ${total} movimentos ${DRY ? '(dry)' : 'ledgered'} · ${done} ok · ${failed} skipped.`);
 }
 
 (async () => {
   const types = TYPE === 'all' ? ['transfer', 'adjustment', 'purchase'] : [TYPE];
-  for (const t of types) { if (!CFG[t]) { console.error('tipo invalido:', t); process.exit(1); } await runType(t); }
+  for (const t of types) {
+    if (!CFG[t]) { console.error('tipo invalido:', t); process.exit(1); }
+    if (overBudget()) { console.warn(`⏱️ time budget reached — skipping remaining type(s): ${types.slice(types.indexOf(t)).join(', ')}`); break; }
+    // A failed list-fetch (e.g. 429 on the list call) defers THIS type, not the whole job.
+    try { await runType(t); }
+    catch (e) { console.error(`❌ [${t}] list/process error: ${e.message} — deferring type to next run`); }
+  }
+  // The sync is idempotent (delete+reinsert per task) and re-runs catch up, so throttle/
+  // transient Cin7 errors DEFER (exit 0) instead of failing the job. verify-coverage.js is
+  // the real freshness alarm if the ledger ever goes genuinely stale.
   process.exit(0);
-})().catch(e => { console.error('❌', e.message); process.exit(1); });
+})().catch(e => { console.error('❌ fatal:', e.message); process.exit(1); });
