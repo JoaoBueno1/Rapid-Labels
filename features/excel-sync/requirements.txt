@@ -1,0 +1,3 @@
+# Everything else is stdlib on purpose (urllib for PostgREST, tomllib for the
+# specs, csv for output) so a CI run needs no resolver and no lockfile.
+openpyxl>=3.1

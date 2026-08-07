@@ -1,0 +1,48 @@
+slug = "monthly-sales"
+title = "Monthly sales by SKU x warehouse"
+source = "monthly_sales"
+source_report = "Cin7 → Reports → Sale Order Details"
+period_label = "This month"
+
+# Filled in once the target workbook is confirmed. Nothing writes to a real
+# workbook in phase 1 — see features/excel-sync/README.md.
+[workbook]
+file = "TBD"
+sheet = "TBD"
+anchor = "A1"
+write_mode = "replace_range"
+
+[layout]
+kind = "pivot_2row_header"
+key = "sku"
+group = "location"
+group_order = "alpha"
+drop_empty_groups = true    # only warehouses with a sale become columns
+preamble = true             # Cin7 puts 4 metadata lines above the header
+
+[[fixed]]
+header = "SKU"
+field = "sku"
+
+[[metrics]]
+header = "Quantity"
+field = "quantity"
+
+# GST-INCLUSIVE. sale_lines.total is ex-GST and alone lands on exactly 1/1.1 of
+# the export; total + tax matched 1,470 of 1,471 qty-identical cells. Never
+# use * 1.1 — it would break on a tax-exempt line.
+[[metrics]]
+header = "Total"
+field = "total"
+round = 2
+tolerance = 0.02
+
+# `Discount` is deliberately absent: dropped 2026-08-07, no downstream use, and
+# its aggregation across lines was ambiguous (17 of 1,631 cells).
+
+[validate]
+# Refuse to publish a month whose orders are not fully detailed. A tab that is
+# 6% low reads as normal; a tab that did not update does not.
+min_detail_coverage_pct = 99
+expect_rows_between = [200, 4000]
+min_groups = 5
