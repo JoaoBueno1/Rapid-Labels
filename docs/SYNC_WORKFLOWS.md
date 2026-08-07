@@ -53,6 +53,7 @@ death spiral. Fix (all YAML, reversible):
 | cin7-sales-reconcile | `40 15 * * *` | medium (backlog) | backstop — status is webhook-real-time | → daily |
 | cin7-daily (products/locations) | `15 16 * * *` | medium | poll — product + location master (not webhook-fed) | de-collided off :00 |
 | cin7-webhook-watchdog | `20 6,18 * * *` | ~1 | **reactivates Cin7 auto-disabled webhooks** — guards the whole real-time path | 2×/day (was daily) |
+| cin7-sales-detail-month | `0 19 * * 0-4` | medium (self-draining) | poll — sale detail for the **whole current month**, any status, refetching what Cin7 changed → monthly-sales Excel report | weekdays 05:00 Sydney; overlaps open-detail so net cost ≈ 0 |
 
 ## What each sync writes → which page/feature it affects
 
@@ -71,6 +72,7 @@ death spiral. Fix (all YAML, reversible):
 | Cin7 Webhook Watchdog | `webhook_health_log` | Guardian — keeps the real-time webhook feed alive |
 | Order Pipeline Sync | `order_pipeline` | Warehouse dashboard pick/pack/ship board |
 | Pick Anomalies Sync | `pick_anomaly_orders` | Pick Anomalies page (backstop; ship-time is webhook-real-time) |
+| Cin7 Sales Detail (month) | `sale_lines` + `sales_orders` rep/location | Monthly-sales Excel report (SKU × warehouse) — see [EXCEL_SYNC_REPORTS.md](EXCEL_SYNC_REPORTS.md) |
 
 > Sales *ship* movements + pick-anomaly analysis are already real-time via webhooks, so the polling
 > jobs above are mostly backstops for the non-webhook data (stock levels, products, transfers).

@@ -1,0 +1,79 @@
+# ============================================================
+# Cin7 Sales Detail — current month (weekdays, pre-shift)
+# ============================================================
+# Fills sale_lines + location_name for EVERY order in the month, whatever its
+# status, and REFRESHES any order Cin7 changed after our last pull. This is the
+# feed for the monthly-sales Excel report (SKU x warehouse).
+#
+# Why a separate job from cin7-open-detail-sync (:05 every 6h):
+#   - that one filters order_status='AUTHORISED', so ESTIMATING / DRAFT /
+#     ORDERING / NOT AVAILABLE orders never land — 237 of 265 holes in Aug-2026;
+#   - and it only takes detail_synced_at IS NULL, so nothing is ever refreshed —
+#     1,075 orders in the month had detail older than their last Cin7 change.
+# It stays as-is (it serves the chase view every 6h); this job covers the report.
+# They overlap, so once this has run the open-detail pass finds almost nothing —
+# net Cin7 cost barely moves.
+#
+# DETAIL_MONTH_BACK=1 keeps the PREVIOUS month in the window too: it costs no
+# Cin7 calls once that month is fully detailed, and it is what catches an order
+# voided (or edited) after its month closed.
+#
+# Required GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY,
+#                          CIN7_ACCOUNT_ID, CIN7_API_KEY
+# ============================================================
+
+name: Cin7 Sales Detail (month)
+
+on:
+  schedule:
+    # 19:00 UTC Sun–Thu = 05:00 Mon–Fri in Sydney (AEST +10 / AEDT +11), so the
+    # workbook is current before the shift starts. The day shift in the cron is
+    # deliberate — do not "fix" 0-4 to 1-5.
+    - cron: '0 19 * * 0-4'
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month to sync (YYYY-MM), or "current"'
+        required: false
+        default: 'current'
+      dry_run:
+        description: 'Report the work without fetching or writing'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: cin7-sales-detail-month
+  cancel-in-progress: false
+
+jobs:
+  detail-month:
+    runs-on: ubuntu-latest
+    # Longer than the other syncs on purpose: the first pass of a month is
+    # ~1,300 orders at ~24/min. Steady-state runs finish in well under 15 min.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Sync sale detail for the month
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
+          CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
+          # 2500ms = 24/min. Runs at 19:00 UTC, a free minute in the cron map,
+          # leaving headroom under the shared 60/min Cin7 account cap.
+          BACKFILL_THROTTLE_MS: '2500'
+          DETAIL_MONTH: ${{ github.event.inputs.month || 'current' }}
+          DETAIL_MONTH_BACK: '1'
+          DETAIL_MONTH_CAP: '2000'
+        run: |
+          node cin7-stock-sync/backfill-sales.js detail-month \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}

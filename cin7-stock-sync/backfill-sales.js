@@ -20,8 +20,13 @@
  *      BACKFILL_DETAIL_DAYS    (default 14 — window for the detail pass)
  *      BACKFILL_PICK_ANOMALIES (default 1 — also feed pick_anomaly_orders)
  *
+ *   detail-month — every order with order_date in the month (any status except
+ *              voided/cancelled), fetched if it has no detail OR if Cin7 changed
+ *              it after our last pull. Feeds the monthly-sales Excel report.
+ *
  * Usage:  node cin7-stock-sync/backfill-sales.js headers
  *         node cin7-stock-sync/backfill-sales.js detail
+ *         node cin7-stock-sync/backfill-sales.js detail-month --dry-run
  */
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
@@ -30,6 +35,7 @@ const SINCE = process.env.BACKFILL_SINCE || '2025-08-01T00:00:00Z';
 const THROTTLE = parseInt(process.env.BACKFILL_THROTTLE_MS || '4000', 10);
 const DETAIL_DAYS = parseInt(process.env.BACKFILL_DETAIL_DAYS || '14', 10);
 const RUN_PA = (process.env.BACKFILL_PICK_ANOMALIES || '1') === '1';
+const DRY_RUN = process.argv.includes('--dry-run');
 const ACC = process.env.CIN7_ACCOUNT_ID, CK = process.env.CIN7_API_KEY;
 const BASE = 'https://inventory.dearsystems.com/ExternalApi/v2';
 
@@ -108,6 +114,27 @@ function mapLines(det, o) {
     quantity: num(ln.Quantity), price: num(ln.Price), discount: num(ln.Discount), tax: num(ln.Tax), total: num(ln.Total),
     backorder_quantity: num(ln.BackorderQuantity),
   })).filter(l => l.sku);
+}
+
+// sale_lines is upserted on (order_number, line_no) — insert/update only, never
+// delete. So when Cin7 SHRINKS or re-orders an order's lines, the rows left over
+// from the longer previous version survive and silently inflate every total built
+// from them (SO-281413: 149 rows / qty 491 in the mirror vs 100 / 349 in Cin7).
+// Harmless while orders were fetched exactly once; real as soon as we refresh.
+// Prune anything outside the set we just wrote.
+//
+// NOTE line_no is the index in Cin7's RAW line array while mapLines() drops
+// lines with no SKU — so kept line_no values are sparse and `line_no >=
+// kept.length` would delete valid rows. Match on the exact set instead.
+async function pruneStaleLines(orderNumber, det, kept) {
+  const raw = (det.Order?.Lines || []).length;
+  if (!raw) return;                       // nothing authoritative to prune against
+  let q = cm.from('sale_lines').delete().eq('order_number', orderNumber);
+  q = kept.length
+    ? q.not('line_no', 'in', `(${kept.map(l => l.line_no).join(',')})`)
+    : q.gte('line_no', 0);                // order has only non-SKU lines now
+  const { error } = await q;
+  if (error) console.warn(`  ⚠️ ${orderNumber}: prune failed — ${error.message}`);
 }
 
 async function upsertChunked(table, rows, conflict) {
@@ -235,12 +262,118 @@ async function runSync() {
   console.log(`✅ Header sync done — ${total} orders upserted (modified ≤ ${hours}h ago).`);
 }
 
+// Detail for a whole MONTH — every order in the window whatever its status, and
+// re-fetched whenever Cin7 changed it after our last pull. This is what the
+// monthly-sales report needs and what `detail-open` cannot give it: that pass
+// filters order_status='AUTHORISED' (so ESTIMATING/DRAFT/ORDERING never land)
+// and only takes detail_synced_at IS NULL (so nothing is ever refreshed).
+//
+// The staleness test compares two COLUMNS (cin7_updated > detail_synced_at),
+// which PostgREST cannot express — so the month's headers are pulled once
+// (~2 pages) and the candidate set is chosen here. Cheap: scope is one month.
+//
+// Env: DETAIL_MONTH       'YYYY-MM' | 'current'  (default current, Sydney time)
+//      DETAIL_MONTH_BACK  extra previous months to include (default 0)
+//      DETAIL_MONTH_CAP   max orders fetched per run (default 2000)
+// Flag: --dry-run  → report the work, touch nothing.
+async function runDetailMonth() {
+  const CAP = parseInt(process.env.DETAIL_MONTH_CAP || '2000', 10);
+  const BACK = parseInt(process.env.DETAIL_MONTH_BACK || '0', 10);
+
+  // Business timezone, not UTC: this job runs ~19:00 UTC, which is already the
+  // next day in Sydney — a UTC "current month" would flip a day early.
+  const todaySyd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  const baseYm = (process.env.DETAIL_MONTH && process.env.DETAIL_MONTH !== 'current')
+    ? process.env.DETAIL_MONTH : todaySyd.slice(0, 7);
+
+  const [by, bm] = baseYm.split('-').map(Number);
+  const startYm = new Date(Date.UTC(by, bm - 1 - BACK, 1));
+  const start = `${startYm.getUTCFullYear()}-${String(startYm.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  const end = new Date(Date.UTC(by, bm, 0)).toISOString().slice(0, 10);
+
+  console.log(`🗓  Detail (month) — window ${start} … ${end}${BACK ? ` (${BACK} extra month(s) back)` : ''}, cap ${CAP}${DRY_RUN ? '  [DRY RUN]' : ''}`);
+
+  // 1) pull the window's headers (paged; ~2 pages for a month)
+  const all = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await cm.from('sales_orders')
+      .select('order_number, sale_id, order_date, status, detail_synced_at, cin7_updated')
+      .gte('order_date', start).lte('order_date', end)
+      .order('order_number', { ascending: true }).range(from, from + 999);
+    if (error) throw new Error('query: ' + error.message);
+    all.push(...data);
+    if (data.length < 1000) break;
+  }
+
+  // 2) choose the candidates. Only VOIDED/CANCELLED are out — the report drops
+  //    those (confirmed with the business) so a call on them is pure waste.
+  //
+  //    Do NOT filter on ESTIMATING/ESTIMATED here. Those orders sit at quote
+  //    stage and MOST have an empty Order.Lines (Cin7 keeps the items under
+  //    Quote.Lines), which makes them look excludable — but not all: SO-282226
+  //    is ESTIMATING with Order.Lines populated (R3603-WH, qty 214) and the
+  //    Cin7 report counts it. Status is the wrong discriminator; Order.Lines is
+  //    the fact. Orders that genuinely have none contribute zero on their own,
+  //    so fetching them is cheap insurance against silently dropping real sales.
+  const OUT_OF_SCOPE = ['VOIDED', 'CANCELLED'];
+  const live = all.filter(o => !OUT_OF_SCOPE.includes(o.status));
+  // FORCE re-reads the whole month even when detail looks current. Needed after
+  // a change to what we store per line (e.g. the stale-line prune), where the
+  // freshness test would otherwise report "nothing to do" over bad rows.
+  const FORCE = process.env.DETAIL_MONTH_FORCE === '1';
+  const missing = FORCE ? live : live.filter(o => !o.detail_synced_at);
+  const stale = FORCE ? [] : live.filter(o => o.detail_synced_at && o.cin7_updated
+    && new Date(o.cin7_updated) > new Date(o.detail_synced_at));
+  const noId = [...missing, ...stale].filter(o => !o.sale_id);
+
+  // oldest first, missing before stale (missing is a hole, stale is a refresh)
+  const byDate = (a, b) => String(a.order_date).localeCompare(String(b.order_date));
+  const queue = [...missing.sort(byDate), ...stale.sort(byDate)]
+    .filter(o => o.sale_id).slice(0, CAP);
+
+  console.log(`   orders in window ....... ${all.length}  →  in report scope: ${live.length}  (dropped ${all.length - live.length}: voided/cancelled)`);
+  console.log(`   missing detail ......... ${missing.length}`);
+  console.log(`   stale detail ........... ${stale.length}   (cin7_updated > detail_synced_at)`);
+  if (noId.length) console.log(`   skipped, no sale_id .... ${noId.length}`);
+  console.log(`   → to fetch this run .... ${queue.length}${queue.length < missing.length + stale.length ? `  (capped; re-run for the rest)` : ''}`);
+
+  if (DRY_RUN) {
+    console.log('   DRY RUN — nothing fetched, nothing written.');
+    queue.slice(0, 8).forEach(o => console.log(`     ${o.order_number}  ${o.order_date}  ${o.status}  ${o.detail_synced_at ? 'stale' : 'missing'}`));
+    return;
+  }
+
+  // 3) fetch + upsert, one order at a time (shared throttle handles the pacing)
+  let enriched = 0, lineRows = 0, failed = 0;
+  for (const o of queue) {
+    let det;
+    try { det = await cin7(`sale?ID=${o.sale_id}`); }
+    catch (e) {
+      // Mark attempted so a permanently bad order can't pin the queue forever.
+      console.warn(`  ✗ ${o.order_number}: ${e.message} — marking attempted`);
+      await cm.from('sales_orders').update({ detail_synced_at: new Date().toISOString() }).eq('order_number', o.order_number);
+      failed++; continue;
+    }
+    await cm.from('sales_orders').update(mapDetail(det)).eq('order_number', o.order_number);
+    const lines = mapLines(det, o);
+    if (lines.length) { await upsertChunked('sale_lines', lines, 'order_number,line_no'); lineRows += lines.length; }
+    await pruneStaleLines(o.order_number, det, lines);
+    enriched++;
+    if (enriched % 50 === 0) console.log(`  … ${enriched}/${queue.length} orders, ${lineRows} lines`);
+  }
+  const left = (missing.length + stale.length - noId.length) - queue.length;
+  console.log(`✅ Detail (month) — ${enriched} orders enriched, ${lineRows} lines upserted, ${failed} failed, ${left} left for the next run.`);
+}
+
 const mode = process.argv[2];
 (async () => {
   if (mode === 'headers') await runHeaders();
   else if (mode === 'detail') await runDetail();
   else if (mode === 'detail-open') await runDetailOpen();
+  else if (mode === 'detail-month') await runDetailMonth();
   else if (mode === 'sync') await runSync();
-  else { console.log('Usage: node cin7-stock-sync/backfill-sales.js headers|detail|detail-open|sync'); process.exit(1); }
+  else { console.log('Usage: node cin7-stock-sync/backfill-sales.js headers|detail|detail-open|detail-month|sync'); process.exit(1); }
   process.exit(0);
 })().catch(e => { console.error('❌ Backfill error:', e.message); process.exit(1); });
