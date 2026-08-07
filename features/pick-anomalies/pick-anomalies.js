@@ -216,11 +216,11 @@
     if (order.reviewed) {
       wrap.style.display = 'none';
       done.style.display = '';
-      const who = order.reviewed_by ? esc(order.reviewed_by) : '';
+      const who = order.reviewed_by ? esc(order.reviewed_by) : '<em style="color:#9ca3af">none</em>';
       const reason = order.review_reason ? esc(REASON_LABEL[order.review_reason] || order.review_reason) : '';
       const note = order.review_note ? ' · ' + esc(order.review_note) : '';
       done.innerHTML = '<span class="pa-badge pa-badge-correct">✅ Reviewed</span>' +
-        (who ? ' · Author: <strong>' + who + '</strong>' : '') +
+        ' · Author: <strong>' + who + '</strong>' +
         (reason ? ' · ' + reason : '') + note;
       return;
     }
@@ -695,13 +695,15 @@
           : `<span class="pa-badge pa-badge-anomaly">⚠️ ${anom} anomal${anom > 1 ? 'ies' : 'y'}</span>`;
       }
 
-      // Reviewed column — show the author, with the reason on hover
+      // Reviewed column — show the author; when author is None, fall back to the
+      // short reason so the cell still says WHY it was cleared. Full detail on hover.
       let reviewedHtml;
       if (isReviewed) {
-        const rBy = o.reviewed_by ? esc(o.reviewed_by) : 'Reviewed';
-        const rReason = o.review_reason ? (REASON_LABEL[o.review_reason] || o.review_reason) : '';
-        const tip = escAttr([o.reviewed_by, rReason, o.review_note].filter(Boolean).join(' — '));
-        reviewedHtml = `<span class="pa-badge pa-badge-correct" title="${tip}">✅ ${rBy}</span>`;
+        const rReasonFull = o.review_reason ? (REASON_LABEL[o.review_reason] || o.review_reason) : '';
+        const rReasonShort = rReasonFull ? rReasonFull.split(' — ')[0] : '';
+        const label = o.reviewed_by ? esc(o.reviewed_by) : (rReasonShort ? esc(rReasonShort) : 'Reviewed');
+        const tip = escAttr([o.reviewed_by || 'no author', rReasonFull, o.review_note].filter(Boolean).join(' — '));
+        reviewedHtml = `<span class="pa-badge pa-badge-correct" title="${tip}">✅ ${label}</span>`;
       } else {
         reviewedHtml = '<span class="pa-badge" style="opacity:0.5">—</span>';
       }
