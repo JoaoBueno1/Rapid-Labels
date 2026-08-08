@@ -13,7 +13,7 @@ import argparse
 import os
 import sys
 
-from . import pivot, sources, verify
+from . import flat, pivot, sources, verify
 
 
 def _fmt(v):
@@ -147,6 +147,84 @@ def cmd_build(args):
     return 0
 
 
+def cmd_render(args):
+    """Build the exact block a workbook tab will receive, and diff it against the
+    tab as it stands today. This is the binding-level equivalent of `--verify`:
+    proof before anything is ever written through Graph."""
+    binding = pivot.load_binding(args.slug)
+    lay = binding['layout']
+    print(f"▶ {args.slug} — {binding.get('title','')}")
+    print(f"  {binding['dataset']}  →  {binding['workbook']['file']} / {binding['workbook']['sheet']}")
+    print(f"  locations: {', '.join(lay['locations'])}"
+          + ("  (SUMMED)" if len(lay['locations']) > 1 else ""))
+
+    rows = flat.fetch_dataset(binding['dataset'])
+    built = flat.build(rows, binding)
+    rng = flat.a1(lay['data_anchor'], len(built['grid']), len(built['cols']))
+    print(f"  block ......... {len(built['grid'])} rows x {len(built['cols'])} cols  →  {rng}")
+    if built['missing_locations']:
+        print(f"  ! locations with no rows in the dataset: {built['missing_locations']}")
+
+    if args.workbook:
+        import openpyxl
+        wb = openpyxl.load_workbook(os.path.expanduser(args.workbook), data_only=True)
+        sheet = binding['workbook']['sheet']
+        if sheet not in wb.sheetnames:
+            raise SystemExit(f"workbook has no sheet {sheet!r}")
+        ws = wb[sheet]
+        import re
+        m = re.match(r'^([A-Z]+)(\d+)$', lay['data_anchor'].upper())
+        c0 = 0
+        for ch in m.group(1):
+            c0 = c0 * 26 + (ord(ch) - 64)
+        r0 = int(m.group(2))
+        cur = {}
+        r = r0
+        while r <= ws.max_row:
+            k = ws.cell(r, c0).value
+            if k in (None, ''):
+                break
+            cur[str(k).strip()] = [ws.cell(r, c0 + i).value for i in range(1, len(built['cols']))]
+            r += 1
+        print(f"\n  ── tab today: {len(cur)} rows   vs   ours: {len(built['grid'])}")
+        ours = {row[0]: row[1:] for row in built['grid']}
+        both = [k for k in cur if k in ours]
+        print(f"     SKUs in both {len(both)} | only in tab {len(set(cur) - set(ours))}"
+              f" | only in ours {len(set(ours) - set(cur))}")
+        # compare the column every formula actually reads
+        idx = next((i for i, c in enumerate(built['cols'][1:])
+                    if c['field'] in ('available', 'quantity')), None)
+        if idx is not None and both:
+            name = built['cols'][idx + 1]['header']
+            same = 0
+            diffs = []
+            for k in both:
+                a = cur[k][idx]
+                b = ours[k][idx]
+                a = 0 if a in (None, '') else float(a)
+                b = 0 if b in (None, '') else float(b)
+                if abs(a - b) < 0.005:
+                    same += 1
+                else:
+                    diffs.append((k, a, b))
+            print(f"     '{name}' identical on {same}/{len(both)} ({100*same/len(both):.1f}%)"
+                  f"  — the column the VLOOKUPs read")
+            diffs.sort(key=lambda d: -abs(d[2] - d[1]))
+            for k, a, b in diffs[:args.show]:
+                print(f"        {k:<28} tab={a:>10.0f}  ours={b:>10.0f}  Δ={b-a:+.0f}")
+
+    if args.out:
+        os.makedirs(args.out, exist_ok=True)
+        import csv
+        path = os.path.join(args.out, args.slug + '.csv')
+        with open(path, 'w', newline='', encoding='utf-8') as fh:
+            w = csv.writer(fh)
+            w.writerow([c['header'] for c in built['cols']])
+            w.writerows(built['grid'])
+        print(f"\n  wrote {path}")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='excel-sync')
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -165,6 +243,13 @@ def main(argv=None):
     b.add_argument('--show', type=int, default=8, help='how many differing cells to print')
     b.add_argument('--tolerance', type=float, default=1.0, help='max %% off the export')
     b.set_defaults(fn=cmd_build)
+
+    r = sub.add_parser('render', help='build a workbook tab block and diff it against the tab')
+    r.add_argument('slug')
+    r.add_argument('--workbook', help='path to the .xlsx to diff against')
+    r.add_argument('--out', help='directory to write the block as csv')
+    r.add_argument('--show', type=int, default=8)
+    r.set_defaults(fn=cmd_render)
 
     args = p.parse_args(argv)
     return args.fn(args)

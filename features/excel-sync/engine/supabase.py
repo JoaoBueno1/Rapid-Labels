@@ -98,6 +98,11 @@ class Client:
     def rpc(self, fn, payload):
         return self._send(f'rpc/{fn}', payload)
 
+    def rpc_range(self, fn, payload, offset, limit):
+        """A set-returning function still obeys the Data API's row cap, so a
+        dataset of 12k rows has to be paged like any table."""
+        return self._send(f'rpc/{fn}?offset={offset}&limit={limit}', payload)
+
     def upsert(self, table, rows, on_conflict):
         if not rows:
             return None
