@@ -40,16 +40,22 @@ def cmd_list(_):
 
 
 def cmd_register(_):
-    """Mirror the binding files into ops.sync_registry so the monitor lists them."""
+    """Mirror datasets and bindings into ops.sync_registry so the monitor lists them."""
     from . import publish
+    specs = [pivot.load_spec(s) for s in pivot.list_specs()]
+    publish.register_datasets(specs)
+    print(f'  registered {len(specs)} dataset build(s)')
+    for s in specs:
+        print(f"    excel-dataset-{s['slug']}")
+
     bindings = [pivot.load_binding(s) for s in pivot.list_bindings()]
-    if not bindings:
-        print('  no bindings to register')
-        return 0
-    n = publish.register_bindings(bindings)
-    print(f'  registered {n} Excel binding(s) in ops.sync_registry')
-    for b in bindings:
-        print(f"    excel-{b['slug']:<20} {b['dataset']} → {b['workbook'].get('file')}")
+    if bindings:
+        publish.register_bindings(bindings)
+        print(f'  registered {len(bindings)} workbook binding(s)')
+        for b in bindings:
+            print(f"    excel-{b['slug']:<20} {b['dataset']} → {b['workbook'].get('file')}")
+    else:
+        print('  no workbook bindings yet — see specs/bindings/README.md')
     return 0
 
 

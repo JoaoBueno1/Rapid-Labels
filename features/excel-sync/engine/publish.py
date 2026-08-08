@@ -33,18 +33,18 @@ def checksum(rows, metrics):
 
 def publish_dataset(spec, rows, meta, built, sb=None):
     """Replace the dataset in one atomic call. Returns (checksum, changed)."""
-    sb = sb or supabase.Client(schema=XS)
+    sb = sb or supabase.Client(schema='public')
     metrics = spec['metrics']
     digest = checksum(rows, metrics)
 
-    prev = sb.select('datasets', 'slug,checksum', filters=[('slug', f'eq.{spec["slug"]}')])
+    prev = [d for d in (sb.rpc('excel_datasets', {}) or []) if d['slug'] == spec['slug']]
     changed = not prev or prev[0].get('checksum') != digest
 
     payload = [{'sku': r['sku'], 'location': r['location'],
                 'metrics': {m['field']: r.get(m['field']) for m in metrics}}
                for r in rows]
 
-    written = sb.rpc('replace_dataset', {
+    written = sb.rpc('excel_publish_dataset', {
         'p_slug': spec['slug'],
         'p_title': spec.get('title', spec['slug']),
         'p_grain': 'sku x location',
@@ -67,7 +67,7 @@ class Run:
 
     def __init__(self, slug, trigger=None, sb=None):
         self.slug = slug
-        self.sb = sb or supabase.Client(schema=OPS)
+        self.sb = sb or supabase.Client(schema='public')
         self.trigger = trigger or ('cron' if os.environ.get('GITHUB_ACTIONS') else 'manual')
         self.run_id = None
         self.stats = {}
@@ -83,10 +83,8 @@ class Run:
             rid = os.environ.get('GITHUB_RUN_ID', '')
             run_url = f'{srv}/{repo}/actions/runs/{rid}' if repo and rid else None
         try:
-            got = self.sb.insert('sync_runs', [{
-                'slug': self.slug, 'status': 'running',
-                'trigger': self.trigger, 'run_url': run_url}])
-            self.run_id = got[0]['run_id'] if got else None
+            self.run_id = self.sb.rpc('ops_run_start', {
+                'p_slug': self.slug, 'p_trigger': self.trigger, 'p_run_url': run_url})
         except SystemExit as e:
             # Run logging must never be the reason a sync fails.
             print(f'  ! could not open run log: {e}')
@@ -96,13 +94,13 @@ class Run:
         if self.run_id is None:
             return
         try:
-            self.sb.patch('sync_runs', [('run_id', f'eq.{self.run_id}')], {
-                'status': status,
-                'ended_at': 'now()',
-                'duration_ms': int((time.time() - self.t0) * 1000),
-                'rows_written': self.rows_written,
-                'error': (error or '')[:2000] or None,
-                'stats': self.stats,
+            self.sb.rpc('ops_run_finish', {
+                'p_run_id': self.run_id,
+                'p_status': status,
+                'p_duration_ms': int((time.time() - self.t0) * 1000),
+                'p_rows_written': self.rows_written,
+                'p_error': (error or '')[:2000] or None,
+                'p_stats': self.stats,
             })
         except SystemExit as e:
             print(f'  ! could not close run log: {e}')
@@ -114,12 +112,43 @@ class Run:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+def register_datasets(specs, sb=None):
+    """Put each dataset build on the Sync Monitor's Excel tab.
+
+    Freshness comes from the RUN LOG, not excel_sync.datasets.built_at: that
+    column would be read as max() over the whole table, so both datasets would
+    report the same age and a stalled one would hide behind a healthy one.
+    """
+    sb = sb or supabase.Client(schema='public')
+    rows = []
+    for s in specs:
+        cols = ', '.join(m['header'] for m in s['metrics'])
+        rows.append({
+            'slug': 'excel-dataset-' + s['slug'],
+            'kind': 'system_to_excel',
+            'title': s.get('title', s['slug']),
+            'what_it_does': f"Builds {cols} per SKU x warehouse from the mirror, "
+                            f"for every workbook bound to it.",
+            'source': f"cin7_mirror ({s['source']})",
+            'target': f"excel_sync.dataset_rows [{s['slug']}]",
+            'feeds': [f"Excel bindings on {s['slug']}"],
+            'cron_utc': s.get('cron_utc', '0 20 * * 0-4'),
+            'sla_minutes': int(s.get('sla_minutes', 1560)),
+            'freshness_table': None,
+            'freshness_col': None,
+            'workflow_file': 'excel-sync.yml',
+            'enabled': True,
+            'sort_order': int(s.get('sort_order', 200)),
+        })
+    return sb.rpc('ops_register_bindings', {'p_rows': rows})
+
+
 def register_bindings(bindings, sb=None):
     """Mirror the binding TOMLs into ops.sync_registry so the monitor lists them.
 
     Git stays the source of truth; the table is just what the page reads.
     """
-    sb = sb or supabase.Client(schema=OPS)
+    sb = sb or supabase.Client(schema='public')
     rows = []
     for b in bindings:
         wb = b.get('workbook', {})
@@ -139,5 +168,4 @@ def register_bindings(bindings, sb=None):
             'enabled': bool(b.get('enabled', False)),
             'sort_order': int(b.get('sort_order', 200)),
         })
-    sb.upsert('sync_registry', rows, 'slug')
-    return len(rows)
+    return sb.rpc('ops_register_bindings', {'p_rows': rows})

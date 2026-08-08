@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS ops.sync_registry (
   freshness_table TEXT,                   -- schema-qualified; NULL = run-log only
   freshness_col   TEXT,
   workflow_file   TEXT,                   -- .github/workflows/<file>
+  -- TRUE for syncs whose target only moves when the warehouse is working.
+  -- Their age is then measured in BUSINESS minutes: Friday 17:00 to Monday
+  -- 08:00 is 63 wall-clock hours, so a plain SLA would paint them red every
+  -- weekend — and a board that cries wolf every weekend gets ignored.
+  business_hours_only BOOLEAN DEFAULT FALSE,
   enabled         BOOLEAN DEFAULT TRUE,
   sort_order      INT     DEFAULT 100,
   runbook_url     TEXT,
@@ -59,6 +64,24 @@ CREATE INDEX IF NOT EXISTS idx_ops_runs_started ON ops.sync_runs (started_at DES
 -- an exception handler on purpose: a table that gets renamed later degrades that
 -- one card to 'unknown' instead of breaking the page for everything else.
 -- ───────────────────────────────────────────────────────────────────
+-- Wall-clock minutes between two instants, minus whole weekend days in Sydney.
+-- Keeps an SLA meaning what it looks like it means — "6 hours of operation",
+-- not "6 hours of clock".
+CREATE OR REPLACE FUNCTION ops.business_minutes(p_from TIMESTAMPTZ, p_to TIMESTAMPTZ)
+RETURNS NUMERIC LANGUAGE sql IMMUTABLE AS $$
+  SELECT GREATEST(0,
+    EXTRACT(EPOCH FROM (p_to - p_from)) / 60.0
+    - COALESCE((
+        SELECT count(*) * 1440
+          FROM generate_series(
+                 date_trunc('day', p_from AT TIME ZONE 'Australia/Sydney'),
+                 date_trunc('day', p_to   AT TIME ZONE 'Australia/Sydney'),
+                 interval '1 day') d
+         WHERE EXTRACT(ISODOW FROM d) IN (6,7)
+           AND d > date_trunc('day', p_from AT TIME ZONE 'Australia/Sydney')
+      ), 0));
+$$;
+
 CREATE OR REPLACE FUNCTION ops.sync_health()
 RETURNS TABLE (
   slug TEXT, kind TEXT, title TEXT, what_it_does TEXT, source TEXT, target TEXT,
@@ -85,7 +108,12 @@ BEGIN
     v_at := NULL;
     IF r.freshness_table IS NOT NULL AND r.freshness_col IS NOT NULL THEN
       BEGIN
-        EXECUTE format('SELECT max(%I) FROM %s', r.freshness_col, r.freshness_table)
+        -- Ignore future-dated rows. cin7_mirror.stock_movements.detected_at
+        -- carries Cin7 task dates that run ahead of today (seen 11 days out),
+        -- and a plain max() there yields a NEGATIVE age that passes every SLA —
+        -- the card would stay green even if the sync died.
+        EXECUTE format('SELECT max(%I) FROM %s WHERE %I <= now()',
+                       r.freshness_col, r.freshness_table, r.freshness_col)
           INTO v_at;
       EXCEPTION WHEN OTHERS THEN
         v_at := NULL;                       -- table/column gone → 'unknown'
@@ -101,8 +129,10 @@ BEGIN
       v_at := COALESCE(v_run.ended_at, v_run.started_at);
     END IF;
 
-    v_age := CASE WHEN v_at IS NULL THEN NULL
-                  ELSE EXTRACT(EPOCH FROM (now() - v_at)) / 60.0 END;
+    v_age := CASE
+      WHEN v_at IS NULL          THEN NULL
+      WHEN r.business_hours_only THEN ops.business_minutes(v_at, now())
+      ELSE EXTRACT(EPOCH FROM (now() - v_at)) / 60.0 END;
 
     v_status := CASE
       WHEN NOT r.enabled                                   THEN 'disabled'
@@ -191,11 +221,16 @@ VALUES
   ARRAY['Movements audit','Pick Anomalies'],'50 */6 * * *',900,
   'cin7_mirror.stock_movements','detected_at','cin7-movements-sync.yml',90),
 
- ('cin7-webhook-drain','cin7_to_system','Cin7 Webhook Drain',
-  'Backstop that processes any webhook event the real-time path dropped.',
-  'cin7_mirror.webhook_events','processed events',
-  ARRAY['Pick Anomalies','Movements'],'25 */2 * * *',240,
-  'cin7_mirror.webhook_events','processed_at','cin7-webhook-drain.yml',100),
+ -- Freshness watches received_at, not processed_at. The drain is a BACKSTOP:
+ -- when the real-time path is healthy it has nothing to process, so
+ -- processed_at stops advancing and the card would cry stale while everything
+ -- is fine. "Are webhooks still arriving?" is both the honest signal and the
+ -- thing anyone reading this board actually wants to know.
+ ('cin7-webhook-drain','cin7_to_system','Cin7 Webhook Feed',
+  'Webhooks arriving from Cin7, plus the 2-hourly drain that catches any the real-time path dropped.',
+  'Cin7 webhooks','cin7_mirror.webhook_events',
+  ARRAY['Pick Anomalies','Movements'],'25 */2 * * *',360,
+  'cin7_mirror.webhook_events','received_at','cin7-webhook-drain.yml',100),
 
  ('cin7-webhook-watchdog','cin7_to_system','Cin7 Webhook Watchdog',
   'Reactivates webhooks Cin7 auto-disabled — guards the whole real-time path.',
@@ -228,6 +263,14 @@ ON CONFLICT (slug) DO UPDATE SET
 
 UPDATE ops.sync_registry SET enabled = FALSE WHERE slug = 'wms-reconcile';
 
+-- These five only move when the warehouse is working: no shipments, no
+-- webhooks, no movements, no anomalies. Measured in wall-clock they go red
+-- every Saturday. Verified 2026-08-08 (Sat 11:00 Sydney): all five last wrote
+-- Friday 16:02-17:22, and the board reported 12 healthy with zero false alarms.
+UPDATE ops.sync_registry SET business_hours_only = TRUE
+ WHERE slug IN ('cin7-webhook-drain','cin7-movements','pick-anomalies-sync',
+                'cin7-open-detail','cin7-sales-detail-month');
+
 -- ───────────────────────────────────────────────────────────────────
 -- 5) RLS + GRANTS — the page reads with the anon key; jobs write with service.
 -- ───────────────────────────────────────────────────────────────────
@@ -248,4 +291,31 @@ GRANT ALL    ON ALL TABLES IN SCHEMA ops TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ops TO service_role;
 GRANT EXECUTE ON FUNCTION ops.sync_health() TO anon, authenticated, service_role;
 
-SELECT slug, kind, cron_utc, sla_minutes FROM ops.sync_registry ORDER BY sort_order;
+-- ───────────────────────────────────────────────────────────────────
+-- 6) PUBLIC WRAPPER — the only thing the app is allowed to call.
+--
+-- `public` is already in the Data API, so routing through it keeps `ops` out of
+-- "Exposed schemas" entirely. Two wins beyond convenience: the deployment loses
+-- a manual UI toggle (the kind of step that breaks when someone rebuilds this
+-- in six months), and the app gets one read-only function instead of raw access
+-- to both tables.
+-- ───────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.sync_health()
+RETURNS TABLE (
+  slug TEXT, kind TEXT, title TEXT, what_it_does TEXT, source TEXT, target TEXT,
+  feeds TEXT[], cron_utc TEXT, sla_minutes INT, workflow_file TEXT,
+  enabled BOOLEAN, sort_order INT, runbook_url TEXT,
+  data_at TIMESTAMPTZ, age_minutes NUMERIC, status TEXT,
+  last_run_at TIMESTAMPTZ, last_run_status TEXT, last_run_ms INT,
+  last_run_url TEXT, last_error TEXT, rows_written INT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ops, public, cin7_mirror
+AS $$ SELECT * FROM ops.sync_health(); $$;
+
+GRANT EXECUTE ON FUNCTION public.sync_health() TO anon, authenticated, service_role;
+
+SELECT slug, status, round(age_minutes) AS age_min, cron_utc
+  FROM public.sync_health() ORDER BY sort_order;

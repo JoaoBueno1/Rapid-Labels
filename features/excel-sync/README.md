@@ -52,11 +52,18 @@ and `ops`.
 
 1. Run `db/001_ops_registry.sql` then `db/002_excel_sync.sql` in the Supabase
    SQL editor (both idempotent).
-2. Supabase → Settings → API → **Exposed schemas**: add `ops` and `excel_sync`,
-   so the Sync Monitor page can read them with the anon key.
+2. `python -m engine register` — puts the dataset builds on the monitor.
 3. Add `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` to GitHub Actions secrets if not
    already there, and push — `.github/workflows/excel-sync.yml` takes it from
    there (20:00 UTC Sun–Thu = 06:00 Mon–Fri Sydney).
+
+**No "Exposed schemas" change is needed.** `ops` and `excel_sync` stay private;
+everything goes through a handful of `public.*` functions — `sync_health`,
+`excel_datasets`, `excel_dataset_rows` for reads, and `excel_publish_dataset`,
+`ops_run_start`, `ops_run_finish`, `ops_register_bindings` for writes (those four
+are revoked from anon/authenticated and granted only to service_role). That drops
+a manual UI step from the deploy and keeps the API surface to named functions
+rather than raw table access.
 
 ## Where things live
 

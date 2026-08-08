@@ -174,7 +174,11 @@
     const note = document.getElementById('smNote');
     note.hidden = true;
     try {
-      const { data, error } = await sb.schema('ops').rpc('sync_health');
+      // public.sync_health() is a thin wrapper over ops.sync_health(). Going
+      // through public keeps ops/excel_sync out of the Data API entirely — the
+      // page needs one function, not raw table access — and removes a manual
+      // "Exposed schemas" toggle from the deployment.
+      const { data, error } = await sb.rpc('sync_health');
       if (error) throw error;
       ROWS = data || [];
       document.getElementById('smUpdated').textContent = 'updated ' + new Date().toLocaleTimeString();
@@ -182,10 +186,10 @@
     } catch (e) {
       document.getElementById('smGrid').innerHTML = '';
       note.hidden = false;
-      note.innerHTML = `<strong>Could not read ops.sync_health().</strong>
+      note.innerHTML = `<strong>Could not read public.sync_health().</strong>
         <p>${esc(e.message || e)}</p>
-        <p>Run <code>features/excel-sync/db/001_ops_registry.sql</code> in the Supabase SQL editor,
-           and make sure <code>ops</code> is listed under Settings → API → Exposed schemas.</p>`;
+        <p>Run <code>features/excel-sync/db/001_ops_registry.sql</code> in the Supabase SQL editor.
+           No "Exposed schemas" change is needed — the wrapper lives in <code>public</code>.</p>`;
     }
   }
 
