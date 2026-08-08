@@ -79,7 +79,9 @@ DECLARE
   v_status  TEXT;
   v_run     RECORD;
 BEGIN
-  FOR r IN SELECT * FROM ops.sync_registry ORDER BY sort_order, slug LOOP
+  -- Alias and qualify: sort_order/slug are also OUT parameter names of this
+  -- function, and an unqualified reference makes plpgsql abort on ambiguity.
+  FOR r IN SELECT * FROM ops.sync_registry reg ORDER BY reg.sort_order, reg.slug LOOP
     v_at := NULL;
     IF r.freshness_table IS NOT NULL AND r.freshness_col IS NOT NULL THEN
       BEGIN
