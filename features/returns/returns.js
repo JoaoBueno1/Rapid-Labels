@@ -15,6 +15,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&am
 const money = n => (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
 const fmtDT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return fmtD(iso); return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
+const fmtT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
 const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', completed: 'Completed', void: 'Voided' }[s] || s);
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
@@ -88,7 +89,7 @@ function rtRenderActive() {
     <td>${esc(r.customer_name || '—')}</td>
     <td class="num" style="color:#5b6b86">${esc(r.customer_id || '—')}</td>
     <td>${esc(r.origin_order || '—')}</td>
-    <td>${esc(r.operator || '—')}</td>
+    <td>${esc(r.operator || '—')}${r.created_at ? `<div class="sub">${fmtT(r.created_at)}</div>` : ''}</td>
     <td class="r num">${(r.returns_lines || []).length}</td>
     <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">
@@ -518,15 +519,26 @@ function rtRenderTLines() {
     <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 26))}</div></td>
     <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="rt-frozen">${esc(l.reason || '—')}</td>
-    <td class="r">${qtyEditable ? `<input class="rt-input r" type="number" min="0" step="1" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" />` : `<span class="rt-frozen num">${l.qty}</span>`}</td>
-    <td class="r"><input class="rt-input r" type="number" min="0" step="0.01" value="${l.unit}" oninput="rtTSet(${i},'unit',this.value)" /></td>
-    <td class="r num">${money((Number(l.qty) || 0) * (Number(l.unit) || 0))}</td>
+    <td class="r">${qtyEditable ? `<input class="rt-input r" type="text" inputmode="numeric" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" />` : `<span class="rt-frozen num">${l.qty}</span>`}</td>
+    <td class="r"><input class="rt-input r" type="text" inputmode="decimal" value="${l.unit}" oninput="rtTSet(${i},'unit',this.value)" /></td>
+    <td class="r num" id="rtTTot${i}">${money((Number(l.qty) || 0) * (Number(l.unit) || 0))}</td>
     <td><input class="rt-input" placeholder="e.g. Returns / Faulty" value="${esc(l.moved)}" oninput="rtTSet(${i},'moved',this.value)" /></td>
     <td class="r"><button class="rt-line-x" title="Split for credit vs warranty" onclick="rtTSplit(${i})">⧉</button>${l._split ? `<button class="rt-line-x" title="Remove split" onclick="rtTRemove(${i})">×</button>` : ''}</td>
   </tr>`; }).join('');
   $('rtTTotal').textContent = money(RT.tlines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit) || 0), 0));
 }
-function rtTSet(i, k, v) { RT.tlines[i][k] = v; if (k === 'qty' || k === 'unit') rtRenderTLines(); }
+function rtTSet(i, k, v) {
+  RT.tlines[i][k] = v;
+  // Update the totals in place — do NOT re-render the table on every keystroke, or the
+  // input the user is typing in gets destroyed (losing focus + rejecting decimals).
+  if (k === 'qty' || k === 'unit') {
+    const l = RT.tlines[i];
+    const cell = $('rtTTot' + i);
+    if (cell) cell.textContent = money((Number(l.qty) || 0) * (Number(l.unit) || 0));
+    const tot = $('rtTTotal');
+    if (tot) tot.textContent = money(RT.tlines.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.unit) || 0), 0));
+  }
+}
 function rtTSplit(i) {
   const l = RT.tlines[i];
   if ((Number(l.qty) || 0) <= 1) return toast('Nothing to split — quantity is 1', 'err');
