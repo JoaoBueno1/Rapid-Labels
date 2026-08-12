@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260810a" />
+  <link rel="stylesheet" href="returns.css?v=20260810b" />
 </head>
 <body>
   <header class="rt-header">
@@ -299,27 +299,45 @@
     </div>
   </div>
 
-  <!-- ═══ PUT-AWAY CONFIRM MODAL ═══ -->
+  <!-- ═══ PUT-AWAY MODAL (Stage 3) ═══ -->
   <div class="rt-modal" id="rtPutawayModal">
-    <div class="rt-modal-box" style="max-width:460px">
+    <div class="rt-modal-box rt-modal-lg">
       <div class="rt-modal-head">
-        <h3>Put away — <span id="rtPutawayName"></span></h3>
+        <h3 id="rtPutawayTitle">Put away</h3>
         <button class="rt-x" onclick="rtPutawayClose()">×</button>
       </div>
       <div class="rt-modal-body">
-        <p class="rt-hint" style="margin-top:0">Confirm the goods are shelved. This records who put them away and where, then moves the return to History.</p>
-        <div class="rt-field">
-          <label>Put away by</label>
-          <input type="text" id="rtPutawayBy" class="rt-input" placeholder="Your name" autocomplete="off" />
+        <!-- STAGES 1 + 2 (read-only) -->
+        <div class="rt-stage rt-stage-done">
+          <div class="rt-stage-tag">① Created &amp; ② Treated <span class="rt-stage-lock">read-only</span></div>
+          <div id="rtPutawayInfo"></div>
         </div>
-        <div class="rt-field" style="margin-top:10px">
-          <label>Location <small style="text-transform:none;color:#9aa6ba">(where you put it)</small></label>
-          <input type="text" id="rtPutawayLoc" class="rt-input" placeholder="e.g. Returns / Faulty / bin code" autocomplete="off" />
+        <!-- STAGE 3 (put away) -->
+        <div class="rt-stage rt-stage-active">
+          <div class="rt-stage-tag rt-stage-tag-next">③ Stage 3 — Put away <span class="rt-stage-hint">shelve the goods, then confirm</span></div>
+          <div class="rt-lines-head"><span>Items to shelve</span><span class="rt-hint" style="margin:0">the office's decision per line</span></div>
+          <div class="rt-table-wrap">
+            <table class="rt-table rt-lines">
+              <thead><tr><th style="width:12%">5DC</th><th style="width:24%">SKU</th><th style="width:34%">Product</th><th style="width:8%" class="r">Qty</th><th style="width:22%">Disposition</th></tr></thead>
+              <tbody id="rtPutLinesBody"></tbody>
+            </table>
+          </div>
+          <div class="rt-form-grid" style="margin-top:12px">
+            <div class="rt-field rt-putawayby">
+              <label>Put away by <span class="rt-req">*</span></label>
+              <input type="text" id="rtPutawayBy" class="rt-input" autocomplete="off" placeholder="Start typing name…" oninput="rtOperInput('rtPutawayBy','rtPutawayByAc')" onfocus="rtOperInput('rtPutawayBy','rtPutawayByAc')" />
+              <div class="rt-ac" id="rtPutawayByAc"></div>
+            </div>
+            <div class="rt-field">
+              <label>Location <small style="text-transform:none;color:#9aa6ba">(where you put it)</small></label>
+              <input type="text" id="rtPutawayLoc" class="rt-input" placeholder="e.g. Returns / Faulty / bin code" autocomplete="off" />
+            </div>
+          </div>
         </div>
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtPutawayClose()">Cancel</button>
-        <button class="rt-btn rt-btn-primary" id="rtPutawayBtn" onclick="rtDoPutaway()">Confirm put-away</button>
+        <button class="rt-btn rt-btn-primary" id="rtPutawayBtn" onclick="rtDoPutaway()">Confirm put-away &amp; complete</button>
       </div>
     </div>
   </div>
@@ -331,6 +349,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260810a"></script>
+  <script src="returns.js?v=20260810b"></script>
 </body>
 </html>

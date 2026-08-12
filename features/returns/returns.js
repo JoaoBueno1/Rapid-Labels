@@ -36,6 +36,7 @@ function rtGoPage(kind, d) { if (kind === 'active') { RT.activePage += d; rtRend
     if (!e.target.closest('.rt-cust')) $('rtCustAc').classList.remove('show');
     if (!e.target.closest('.rt-oper')) $('rtOperatorAc') && $('rtOperatorAc').classList.remove('show');
     if (!e.target.closest('.rt-actby')) $('rtActByAc') && $('rtActByAc').classList.remove('show');
+    if (!e.target.closest('.rt-putawayby')) $('rtPutawayByAc') && $('rtPutawayByAc').classList.remove('show');
     if (!e.target.closest('.rt-prod-cell') && !e.target.closest('.rt-dc5-cell') && !e.target.closest('#rtProdAc')) $('rtProdAc').style.display = 'none';
   });
 })();
@@ -96,19 +97,29 @@ function rtRenderActive() {
   if (other.length) html += rtActiveSection({ key: 'other', dot: '', sts: [], title: 'Other', hint: '' }, other);
   $('rtActiveBody').innerHTML = rows.length ? html : '<div class="rt-empty">No active returns. Click "+ New return" to create one.</div>';
 }
-const RT_ACT_HEAD = '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Account</th><th>Sales order</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
+function rtActHead(rec) {
+  return '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Account</th><th>Sales order</th><th>Received by</th>'
+    + (rec ? '<th>Treated by</th><th>Put away by</th>' : '')
+    + '<th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
+}
 function rtActiveSection(d, list) {
-  const body = list.map(rtActiveRow).join('') || '<tr><td colspan="9" class="rt-sec-empty">Nothing here right now.</td></tr>';
+  const rec = d.key === 'putaway';   // the put-away queue shows the full record so far
+  const cols = rec ? 11 : 9;
+  const body = list.map(r => rtActiveRow(r, rec)).join('') || `<tr><td colspan="${cols}" class="rt-sec-empty">Nothing here right now.</td></tr>`;
   return `<div class="rt-sec-block">
     <div class="rt-sec-hd"><span class="rt-dot st-${d.dot || ''}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
-    <div class="rt-table-wrap"><table class="rt-table">${RT_ACT_HEAD}<tbody>${body}</tbody></table></div>
+    <div class="rt-table-wrap"><table class="rt-table">${rtActHead(rec)}<tbody>${body}</tbody></table></div>
   </div>`;
 }
-function rtActiveRow(r) {
+function rtActiveRow(r, rec) {
   const isPut = r.status === 'to_putaway';
   const actions = isPut
     ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtConfirmPutaway('${r.id}')">Confirm put-away</button> <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>`
     : `${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button> ` : ''}<button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button> <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">${r.status === 'in_treatment' ? 'Continue' : 'Treat'}</button>${r.status === 'pending' ? ` <button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}`;
+  const recCells = rec
+    ? `<td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>`
+      + `<td>${r.putaway_by ? `${esc(r.putaway_by)}<div class="sub">${fmtDT(r.putaway_at)}${r.putaway_location ? ' · ' + esc(r.putaway_location) : ''}</div>` : '—'}</td>`
+    : '';
   return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtDT(r.created_at)}</td>
@@ -116,15 +127,35 @@ function rtActiveRow(r) {
     <td class="num" style="color:#5b6b86">${esc(r.customer_id || '—')}</td>
     <td>${esc(r.origin_order || '—')}</td>
     <td>${esc(r.operator || '—')}${r.created_at ? `<div class="sub">${fmtT(r.created_at)}</div>` : ''}</td>
+    ${recCells}
     <td class="r num">${(r.returns_lines || []).length}</td>
     <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">${actions}</td>
   </tr>`;
 }
-function rtConfirmPutaway(id) {
+async function rtConfirmPutaway(id) {
   const r = RT.active.find(x => String(x.id) === String(id)); if (!r) return;
   RT.putawayId = id;
-  $('rtPutawayName').textContent = r.return_no;
+  const [ln, tl] = await Promise.all([
+    sb().from('returns_lines').select('*').eq('return_id', id).order('line_no'),
+    sb().from('returns_treatment_lines').select('*').eq('return_id', id).order('line_no'),
+  ]);
+  const lines = ln.data || [], tlines = tl.data || [];
+  $('rtPutawayTitle').innerHTML = `Put away — ${esc(r.return_no)} <span class="rt-step">① Created ▸ ② Treated ▸ <b>③ Put away</b></span>`;
+  $('rtPutawayInfo').innerHTML = `
+    <div class="rt-kv-grid">
+      <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')} ${r.customer_id ? '(' + esc(r.customer_id) + ')' : ''}</b></div>
+      <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
+      <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}${r.created_at ? ' · ' + fmtDT(r.created_at) : ''}</b></div>
+      <div class="rt-kv"><span>Treated by</span><b>${r.treated_by ? esc(r.treated_by) + (r.treated_at ? ' · ' + fmtDT(r.treated_at) : '') : '—'}</b></div>
+      <div class="rt-kv"><span>Credit note</span><b>${esc(r.treatment_ref || '—')}</b></div>
+      <div class="rt-kv"><span>Credit $</span><b>${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</b></div>
+    </div>`;
+  const src = tlines.length ? tlines : lines;
+  $('rtPutLinesBody').innerHTML = src.map(l => {
+    const disp = l.return_status || l.condition || l.reason || '—';
+    return `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(disp)}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="rt-sec-empty">No line detail.</td></tr>';
   $('rtPutawayBy').value = ''; $('rtPutawayLoc').value = '';
   $('rtPutawayModal').classList.add('active');
   setTimeout(() => $('rtPutawayBy').focus(), 60);
