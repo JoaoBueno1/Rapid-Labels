@@ -98,8 +98,7 @@ function rtRenderActive() {
 }
 const RT_ACT_HEAD = '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Account</th><th>Sales order</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
 function rtActiveSection(d, list) {
-  const example = d.key === 'putaway' && !list.length;
-  const body = list.map(rtActiveRow).join('') || (example ? rtPutawayExampleRow() : '<tr><td colspan="9" class="rt-sec-empty">Nothing here right now.</td></tr>');
+  const body = list.map(rtActiveRow).join('') || '<tr><td colspan="9" class="rt-sec-empty">Nothing here right now.</td></tr>';
   return `<div class="rt-sec-block">
     <div class="rt-sec-hd"><span class="rt-dot st-${d.dot || ''}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
     <div class="rt-table-wrap"><table class="rt-table">${RT_ACT_HEAD}<tbody>${body}</tbody></table></div>
@@ -120,15 +119,6 @@ function rtActiveRow(r) {
     <td class="r num">${(r.returns_lines || []).length}</td>
     <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">${actions}</td>
-  </tr>`;
-}
-function rtPutawayExampleRow() {
-  return `<tr class="rt-row st-to_putaway rt-example" title="Example — a real one appears here once the office completes a return">
-    <td class="num"><strong>RET-0000</strong></td><td>—</td>
-    <td>Example customer</td>
-    <td class="num">—</td><td>—</td><td>Office name<div class="sub">14:32</div></td><td class="r num">2</td>
-    <td class="rt-status to_putaway">Ready to put away</td>
-    <td class="r rt-actions"><button class="rt-btn rt-btn-sm rt-btn-primary" disabled>Confirm put-away</button></td>
   </tr>`;
 }
 function rtConfirmPutaway(id) {
