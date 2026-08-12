@@ -89,6 +89,13 @@ tr.rt-row.st-in_treatment:hover td { background: #e3effc; }
 tr.rt-row.st-to_putaway:hover td { background: #dcf6e7; }
 .rt-status.to_putaway { color: #0e8f57; }
 .rt-example td { opacity: .6; font-style: italic; }
+/* History rows also colour by status */
+tr.rt-row.st-completed td { background: #eefaf2; }
+tr.rt-row.st-void td { background: #f4f6f8; }
+tr.rt-row.st-completed td:first-child { box-shadow: inset 3px 0 0 #1b8a4b; }
+tr.rt-row.st-void td:first-child { box-shadow: inset 3px 0 0 #9aa6ba; }
+tr.rt-row.st-completed:hover td { background: #e2f6ea; }
+tr.rt-row.st-void:hover td { background: #eceff2; }
 .rt-actions { white-space: nowrap; }
 .rt-actions .rt-btn { margin-left: 5px; }
 

@@ -63,9 +63,9 @@ async function loadReturns() {
     const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,condition,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no,return_status)').order('created_at', { ascending: false });
     const rows = r.data || [];
     RT.active = rows.filter(x => x.status !== 'completed' && x.status !== 'void');
-    RT.history = rows.filter(x => x.status === 'completed' || x.status === 'void');   // voided kept here for audit
+    RT.history = rows;   // History now lists ALL returns — a searchable, filterable archive
     RT.activePage = 1; RT.histPage = 1;
-    $('rtSub').textContent = `${RT.active.length} active · ${RT.history.length} in history`;
+    $('rtSub').textContent = `${RT.active.length} active · ${rows.length} total`;
     rtRenderActive(); rtRenderHistory();
   } catch (e) { toast('Could not load returns: ' + e.message, 'err'); }
 }
@@ -84,36 +84,36 @@ function rtRenderActive() {
   $('rtActiveCount').textContent = `${rows.length} return(s)`;
   if ($('rtActivePager')) $('rtActivePager').innerHTML = '';
   // Active is split by stage so the warehouse and the office each see their own queue.
+  // Two sections only: the office queue (Pending + In treatment, told apart by row
+  // colour) and the warehouse queue (Ready to put away).
   const defs = [
-    { st: 'pending',      title: 'Awaiting office',  hint: 'Received — the office needs to treat these' },
-    { st: 'in_treatment', title: 'In treatment',      hint: 'The office is working on these' },
-    { st: 'to_putaway',   title: 'Ready to put away', hint: 'Office done — warehouse to shelve the goods and confirm' },
+    { key: 'office',  dot: 'pending',    sts: ['pending', 'in_treatment'], title: 'Awaiting office',   hint: 'Received — the office to treat these' },
+    { key: 'putaway', dot: 'to_putaway', sts: ['to_putaway'],              title: 'Ready to put away', hint: 'Office done — warehouse to shelve the goods and confirm' },
   ];
-  const known = defs.map(d => d.st);
+  const known = defs.flatMap(d => d.sts);
   const other = rows.filter(r => !known.includes(r.status));
-  let html = defs.map(d => rtActiveSection(d, rows.filter(r => r.status === d.st))).join('');
-  if (other.length) html += rtActiveSection({ st: 'other', title: 'Other', hint: '' }, other);
+  let html = defs.map(d => rtActiveSection(d, rows.filter(r => d.sts.includes(r.status)))).join('');
+  if (other.length) html += rtActiveSection({ key: 'other', dot: '', sts: [], title: 'Other', hint: '' }, other);
   $('rtActiveBody').innerHTML = rows.length ? html : '<div class="rt-empty">No active returns. Click "+ New return" to create one.</div>';
 }
 const RT_ACT_HEAD = '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Account</th><th>Sales order</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
 function rtActiveSection(d, list) {
-  const example = d.st === 'to_putaway' && !list.length;
+  const example = d.key === 'putaway' && !list.length;
   const body = list.map(rtActiveRow).join('') || (example ? rtPutawayExampleRow() : '<tr><td colspan="9" class="rt-sec-empty">Nothing here right now.</td></tr>');
   return `<div class="rt-sec-block">
-    <div class="rt-sec-hd"><span class="rt-dot st-${d.st}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
+    <div class="rt-sec-hd"><span class="rt-dot st-${d.dot || ''}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
     <div class="rt-table-wrap"><table class="rt-table">${RT_ACT_HEAD}<tbody>${body}</tbody></table></div>
   </div>`;
 }
 function rtActiveRow(r) {
   const isPut = r.status === 'to_putaway';
-  const dest = isPut ? rtPutDest(r) : '';
   const actions = isPut
     ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtConfirmPutaway('${r.id}')">Confirm put-away</button> <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>`
     : `${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button> ` : ''}<button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button> <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">${r.status === 'in_treatment' ? 'Continue' : 'Treat'}</button>${r.status === 'pending' ? ` <button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}`;
   return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtDT(r.created_at)}</td>
-    <td>${esc(r.customer_name || '—')}${dest ? `<div class="sub">&rarr; put to: ${esc(dest)}</div>` : ''}</td>
+    <td>${esc(r.customer_name || '—')}</td>
     <td class="num" style="color:#5b6b86">${esc(r.customer_id || '—')}</td>
     <td>${esc(r.origin_order || '—')}</td>
     <td>${esc(r.operator || '—')}${r.created_at ? `<div class="sub">${fmtT(r.created_at)}</div>` : ''}</td>
@@ -122,51 +122,62 @@ function rtActiveRow(r) {
     <td class="r rt-actions" onclick="event.stopPropagation()">${actions}</td>
   </tr>`;
 }
-function rtPutDest(r) {
-  const locs = [...new Set((r.returns_treatment_lines || []).map(t => t.moved_to_location).filter(Boolean))];
-  return locs.join(', ') || (r.treatment_location_notes || '');
-}
 function rtPutawayExampleRow() {
   return `<tr class="rt-row st-to_putaway rt-example" title="Example — a real one appears here once the office completes a return">
     <td class="num"><strong>RET-0000</strong></td><td>—</td>
-    <td>Example customer<div class="sub">&rarr; put to: Returns / Faulty</div></td>
+    <td>Example customer</td>
     <td class="num">—</td><td>—</td><td>Office name<div class="sub">14:32</div></td><td class="r num">2</td>
     <td class="rt-status to_putaway">Ready to put away</td>
     <td class="r rt-actions"><button class="rt-btn rt-btn-sm rt-btn-primary" disabled>Confirm put-away</button></td>
   </tr>`;
 }
-async function rtConfirmPutaway(id) {
+function rtConfirmPutaway(id) {
   const r = RT.active.find(x => String(x.id) === String(id)); if (!r) return;
-  const who = (prompt(`Confirm put-away for ${r.return_no}.\nYour name:`) || '').trim();
-  if (!who) return;
+  RT.putawayId = id;
+  $('rtPutawayName').textContent = r.return_no;
+  $('rtPutawayBy').value = ''; $('rtPutawayLoc').value = '';
+  $('rtPutawayModal').classList.add('active');
+  setTimeout(() => $('rtPutawayBy').focus(), 60);
+}
+function rtPutawayClose() { $('rtPutawayModal').classList.remove('active'); }
+async function rtDoPutaway() {
+  const id = RT.putawayId; if (!id) return;
+  const r = RT.active.find(x => String(x.id) === String(id));
+  const by = ($('rtPutawayBy').value || '').trim();
+  const loc = ($('rtPutawayLoc').value || '').trim();
+  if (!by) { toast('Enter who put it away', 'err'); return rtInvalid('rtPutawayBy'); }
+  const btn = $('rtPutawayBtn'); btn.disabled = true;
   try {
-    // status first (works even before the 004 columns exist), then a best-effort put-away stamp
+    // status first (works even before the 004 columns exist), then the best-effort put-away stamp
     const { error } = await sb().from('returns_active').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
-    await sb().from('returns_active').update({ putaway_by: who, putaway_at: new Date().toISOString() }).eq('id', id);
-    toast(`${r.return_no} put away — moved to History`, 'ok');
-    await loadReturns();
-  } catch (e) { toast('Put-away failed: ' + e.message, 'err'); }
+    await sb().from('returns_active').update({ putaway_by: by, putaway_at: new Date().toISOString(), putaway_location: loc || null }).eq('id', id);
+    toast(`${r ? r.return_no : 'Return'} put away — moved to History`, 'ok');
+    rtPutawayClose(); await loadReturns();
+  } catch (e) { toast('Put-away failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
 }
 function rtRenderHistory() {
   const q = ($('rtHistSearch').value || '').toLowerCase();
-  let rows = RT.history;
-  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''}`.toLowerCase().includes(q));
-  $('rtHistCount').textContent = `${rows.length} completed`;
+  const sf = ($('rtHistStatus') && $('rtHistStatus').value) || '';
+  let rows = RT.history;                         // History now lists ALL returns, newest first
+  if (sf) rows = rows.filter(r => r.status === sf);
+  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''} ${r.operator || ''} ${r.treated_by || ''} ${r.putaway_by || ''}`.toLowerCase().includes(q));
+  $('rtHistCount').textContent = `${rows.length} return(s)`;
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
-  $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
+  $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row st-${r.status} ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
-    <td>${esc(r.treatment_ref || '—')}</td>
-    <td class="r num">${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</td>
-    <td>${r.status === 'void' ? '—' : (fmtDT(r.treated_at) + (r.treated_by ? ' · ' + esc(r.treated_by) : ''))}</td>
     <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
+    <td>${r.operator ? `${esc(r.operator)}<div class="sub">${fmtT(r.created_at)}</div>` : '—'}</td>
+    <td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>
+    <td>${r.putaway_by ? `${esc(r.putaway_by)}<div class="sub">${fmtDT(r.putaway_at)}${r.putaway_location ? ' · ' + esc(r.putaway_location) : ''}</div>` : '—'}</td>
+    <td class="r num">${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">
-      <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print form</button>
       <button class="rt-btn rt-btn-sm" onclick="rtView('${r.id}')">View</button>
+      <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>
     </td>
-  </tr>`).join('') || '<tr><td colspan="8" class="rt-empty">Nothing in history yet.</td></tr>';
+  </tr>`).join('') || '<tr><td colspan="9" class="rt-empty">No returns match.</td></tr>';
 }
 function rtHdr(id) { return RT.active.concat(RT.history).find(r => r.id === id); }
 
@@ -570,7 +581,6 @@ function rtRenderTLines() {
     <td class="r">${qtyEditable ? `<input class="rt-input r" type="text" inputmode="numeric" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" />` : `<span class="rt-frozen num">${l.qty}</span>`}</td>
     <td class="r"><input class="rt-input r" type="text" inputmode="decimal" value="${l.unit}" oninput="rtTSet(${i},'unit',this.value)" /></td>
     <td class="r num" id="rtTTot${i}">${money((Number(l.qty) || 0) * (Number(l.unit) || 0))}</td>
-    <td><input class="rt-input" placeholder="e.g. Returns / Faulty" value="${esc(l.moved)}" oninput="rtTSet(${i},'moved',this.value)" /></td>
     <td class="r"><button class="rt-line-x" title="Split for credit vs warranty" onclick="rtTSplit(${i})">⧉</button>${l._split ? `<button class="rt-line-x" title="Remove split" onclick="rtTRemove(${i})">×</button>` : ''}</td>
   </tr>`; }).join('');
   $('rtTTotal').textContent = money(RT.tlines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit) || 0), 0));
@@ -627,7 +637,6 @@ async function rtSaveAct(complete) {
   try {
     const upd = {
       treatment_ref: ($('rtActRef').value || '').trim() || null,
-      treatment_location_notes: ($('rtActMoved').value || '').trim() || null,
       treatment_notes: ($('rtActNotes').value || '').trim() || null,
       customer_emailed: ($('rtActEmailed').value || '') || null,
       warehouse: ($('rtActWarehouse').value || '').trim() || null,
@@ -639,7 +648,7 @@ async function rtSaveAct(complete) {
     // replace credit lines safely: insert new first, then drop the old ones by id
     const { data: oldT } = await sb().from('returns_treatment_lines').select('id').eq('return_id', r.id);
     const oldTIds = (oldT || []).map(o => o.id);
-    const rows = RT.tlines.filter(l => l.sku).map((l, idx) => ({ return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name, qty: Number(l.qty) || 0, reason: l.reason || null, return_status: l.return_status || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0), moved_to_location: l.moved || null }));
+    const rows = RT.tlines.filter(l => l.sku).map((l, idx) => ({ return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name, qty: Number(l.qty) || 0, reason: l.reason || null, return_status: l.return_status || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0) }));
     if (rows.length) { const { error } = await sb().from('returns_treatment_lines').insert(rows); if (error) throw error; }
     if (oldTIds.length) await sb().from('returns_treatment_lines').delete().in('id', oldTIds);
     // header LAST — a line failure above never leaves a wrong 'completed' status

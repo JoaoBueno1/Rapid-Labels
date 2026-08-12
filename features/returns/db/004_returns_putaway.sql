@@ -12,4 +12,5 @@
 
 ALTER TABLE public.returns_active
   ADD COLUMN IF NOT EXISTS putaway_by TEXT,
-  ADD COLUMN IF NOT EXISTS putaway_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS putaway_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS putaway_location TEXT;

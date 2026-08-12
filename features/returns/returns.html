@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260722d" />
+  <link rel="stylesheet" href="returns.css?v=20260810a" />
 </head>
 <body>
   <header class="rt-header">
@@ -41,13 +41,21 @@
     <section id="rtHistory" class="rt-panel" style="display:none">
       <div class="rt-toolbar">
         <button class="rt-btn" onclick="rtExportCsv()">⬇ Export CSV</button>
-        <input type="text" id="rtHistSearch" class="rt-input" placeholder="Search completed returns…" oninput="RT.histPage=1;rtRenderHistory()" />
+        <input type="text" id="rtHistSearch" class="rt-input" placeholder="Search returns…" oninput="RT.histPage=1;rtRenderHistory()" />
+        <select id="rtHistStatus" class="rt-input" style="max-width:200px" onchange="RT.histPage=1;rtRenderHistory()">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="in_treatment">In treatment</option>
+          <option value="to_putaway">Ready to put away</option>
+          <option value="completed">Completed</option>
+          <option value="void">Voided</option>
+        </select>
         <span class="rt-count" id="rtHistCount"></span>
       </div>
       <div class="rt-table-wrap">
         <table class="rt-table">
           <thead><tr>
-            <th>Return #</th><th>Created</th><th>Customer</th><th>Treatment ref</th><th class="r">Value</th><th>Treated</th><th>Status</th><th class="r">Actions</th>
+            <th>Return #</th><th>Date</th><th>Customer</th><th>Status</th><th>Received by</th><th>Treated by</th><th>Put away</th><th class="r">Value</th><th class="r">Actions</th>
           </tr></thead>
           <tbody id="rtHistBody"></tbody>
         </table>
@@ -195,10 +203,6 @@
               <label>Warehouse</label>
               <input type="text" id="rtActWarehouse" class="rt-input" placeholder="Where it was received / handled" />
             </div>
-            <div class="rt-field rt-field-full">
-              <label>Moved to (general)</label>
-              <input type="text" id="rtActMoved" class="rt-input" placeholder="Where did the goods go overall" />
-            </div>
           </div>
 
           <div class="rt-lines-head">
@@ -208,10 +212,10 @@
           <div class="rt-table-wrap">
             <table class="rt-table rt-lines">
               <thead><tr>
-                <th style="width:7%">5DC</th><th style="width:15%">Product</th><th style="width:18%">Return status</th><th style="width:12%">Reason</th><th style="width:7%" class="r">Qty</th><th style="width:9%" class="r">Unit $ <small>(opt.)</small></th><th style="width:10%" class="r">Credit $</th><th style="width:14%">Moved to</th><th style="width:6%"></th>
+                <th style="width:7%">5DC</th><th style="width:15%">Product</th><th style="width:18%">Return status</th><th style="width:12%">Reason</th><th style="width:7%" class="r">Qty</th><th style="width:9%" class="r">Unit $ <small>(opt.)</small></th><th style="width:12%" class="r">Credit $</th><th style="width:6%"></th>
               </tr></thead>
               <tbody id="rtTLinesBody"></tbody>
-              <tfoot><tr><td colspan="6" class="r"><strong>Total credit</strong></td><td class="r"><strong id="rtTTotal">0.00</strong></td><td colspan="2"></td></tr></tfoot>
+              <tfoot><tr><td colspan="6" class="r"><strong>Total credit</strong></td><td class="r"><strong id="rtTTotal">0.00</strong></td><td></td></tr></tfoot>
             </table>
           </div>
           <div class="rt-field rt-field-full" style="margin-top:10px">
@@ -295,6 +299,31 @@
     </div>
   </div>
 
+  <!-- ═══ PUT-AWAY CONFIRM MODAL ═══ -->
+  <div class="rt-modal" id="rtPutawayModal">
+    <div class="rt-modal-box" style="max-width:460px">
+      <div class="rt-modal-head">
+        <h3>Put away — <span id="rtPutawayName"></span></h3>
+        <button class="rt-x" onclick="rtPutawayClose()">×</button>
+      </div>
+      <div class="rt-modal-body">
+        <p class="rt-hint" style="margin-top:0">Confirm the goods are shelved. This records who put them away and where, then moves the return to History.</p>
+        <div class="rt-field">
+          <label>Put away by</label>
+          <input type="text" id="rtPutawayBy" class="rt-input" placeholder="Your name" autocomplete="off" />
+        </div>
+        <div class="rt-field" style="margin-top:10px">
+          <label>Location <small style="text-transform:none;color:#9aa6ba">(where you put it)</small></label>
+          <input type="text" id="rtPutawayLoc" class="rt-input" placeholder="e.g. Returns / Faulty / bin code" autocomplete="off" />
+        </div>
+      </div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtPutawayClose()">Cancel</button>
+        <button class="rt-btn rt-btn-primary" id="rtPutawayBtn" onclick="rtDoPutaway()">Confirm put-away</button>
+      </div>
+    </div>
+  </div>
+
   <!-- product autocomplete overlay (shared) -->
   <div class="rt-ac rt-ac-float" id="rtProdAc" style="display:none"></div>
 
@@ -302,6 +331,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260722e"></script>
+  <script src="returns.js?v=20260810a"></script>
 </body>
 </html>
