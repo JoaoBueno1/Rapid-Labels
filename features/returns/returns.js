@@ -464,7 +464,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Credit note #</span><b>${esc(r.treatment_ref || '—')}</b></div>
       <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Emailed</span><b>${esc(r.customer_emailed || '—')}</b></div>
-      <div class="rt-kv"><span>Moved to</span><b>${esc(r.treatment_location_notes || '—')}</b></div>
+      <div class="rt-kv"><span>Put away by</span><b>${r.putaway_by ? esc(r.putaway_by) + ' · ' + fmtDT(r.putaway_at) + (r.putaway_location ? ' · ' + esc(r.putaway_location) : '') : '—'}</b></div>
       <div class="rt-kv"><span>Treated by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtDT(r.treated_at) : ''}</b></div>
       ${r.treatment_notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
     </div>
@@ -535,7 +535,6 @@ async function rtAction(id) {
   const fromT = tlines.length > 0;
   RT.tlines = (fromT ? tlines : lines).map((l, idx) => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || '', unit: fromT ? (l.unit_value != null ? l.unit_value : '') : '', moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false }));
   $('rtActRef').value = r.treatment_ref || '';
-  $('rtActMoved').value = r.treatment_location_notes || '';
   $('rtActNotes').value = r.treatment_notes || '';
   $('rtActBy').value = r.treated_by || '';
   $('rtActEmailed').value = r.customer_emailed || '';
