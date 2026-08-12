@@ -33,14 +33,7 @@
         <input type="text" id="rtSearch" class="rt-input" placeholder="Search return #, customer, order…" oninput="RT.activePage=1;rtRenderActive()" />
         <span class="rt-count" id="rtActiveCount"></span>
       </div>
-      <div class="rt-table-wrap">
-        <table class="rt-table">
-          <thead><tr>
-            <th>Return #</th><th>Date</th><th>Business</th><th>Account</th><th>Sales order</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th>
-          </tr></thead>
-          <tbody id="rtActiveBody"></tbody>
-        </table>
-      </div>
+      <div id="rtActiveBody" class="rt-sections"></div>
       <div class="rt-pager" id="rtActivePager"></div>
     </section>
 

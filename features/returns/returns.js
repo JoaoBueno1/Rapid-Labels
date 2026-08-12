@@ -16,7 +16,7 @@ const money = n => (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDig
 const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
 const fmtDT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return fmtD(iso); return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
 const fmtT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
-const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', completed: 'Completed', void: 'Voided' }[s] || s);
+const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', to_putaway: 'Ready to put away', completed: 'Completed', void: 'Voided' }[s] || s);
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
 function rtInvalid(id) { const el = $(id); if (!el) return; el.classList.add('rt-invalid'); try { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} el.addEventListener('input', function h() { el.classList.remove('rt-invalid'); el.removeEventListener('input', h); }); }
@@ -82,23 +82,71 @@ function rtRenderActive() {
   let rows = RT.active;
   if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.customer_id || ''} ${r.origin_order || ''} ${r.operator || ''}`.toLowerCase().includes(q));
   $('rtActiveCount').textContent = `${rows.length} return(s)`;
-  const pg = paginate(rows, RT.activePage); rows = pg.slice; $('rtActivePager').innerHTML = pagerHtml('active', pg);
-  $('rtActiveBody').innerHTML = rows.map(r => `<tr class="rt-row" onclick="rtView('${r.id}')">
+  if ($('rtActivePager')) $('rtActivePager').innerHTML = '';
+  // Active is split by stage so the warehouse and the office each see their own queue.
+  const defs = [
+    { st: 'pending',      title: 'Awaiting office',  hint: 'Received — the office needs to treat these' },
+    { st: 'in_treatment', title: 'In treatment',      hint: 'The office is working on these' },
+    { st: 'to_putaway',   title: 'Ready to put away', hint: 'Office done — warehouse to shelve the goods and confirm' },
+  ];
+  const known = defs.map(d => d.st);
+  const other = rows.filter(r => !known.includes(r.status));
+  let html = defs.map(d => rtActiveSection(d, rows.filter(r => r.status === d.st))).join('');
+  if (other.length) html += rtActiveSection({ st: 'other', title: 'Other', hint: '' }, other);
+  $('rtActiveBody').innerHTML = rows.length ? html : '<div class="rt-empty">No active returns. Click "+ New return" to create one.</div>';
+}
+const RT_ACT_HEAD = '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Account</th><th>Sales order</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
+function rtActiveSection(d, list) {
+  const example = d.st === 'to_putaway' && !list.length;
+  const body = list.map(rtActiveRow).join('') || (example ? rtPutawayExampleRow() : '<tr><td colspan="9" class="rt-sec-empty">Nothing here right now.</td></tr>');
+  return `<div class="rt-sec-block">
+    <div class="rt-sec-hd"><span class="rt-dot st-${d.st}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
+    <div class="rt-table-wrap"><table class="rt-table">${RT_ACT_HEAD}<tbody>${body}</tbody></table></div>
+  </div>`;
+}
+function rtActiveRow(r) {
+  const isPut = r.status === 'to_putaway';
+  const dest = isPut ? rtPutDest(r) : '';
+  const actions = isPut
+    ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtConfirmPutaway('${r.id}')">Confirm put-away</button> <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>`
+    : `${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button> ` : ''}<button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button> <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">${r.status === 'in_treatment' ? 'Continue' : 'Treat'}</button>${r.status === 'pending' ? ` <button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}`;
+  return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtDT(r.created_at)}</td>
-    <td>${esc(r.customer_name || '—')}</td>
+    <td>${esc(r.customer_name || '—')}${dest ? `<div class="sub">&rarr; put to: ${esc(dest)}</div>` : ''}</td>
     <td class="num" style="color:#5b6b86">${esc(r.customer_id || '—')}</td>
     <td>${esc(r.origin_order || '—')}</td>
     <td>${esc(r.operator || '—')}${r.created_at ? `<div class="sub">${fmtT(r.created_at)}</div>` : ''}</td>
     <td class="r num">${(r.returns_lines || []).length}</td>
     <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
-    <td class="r rt-actions" onclick="event.stopPropagation()">
-      ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button>` : ''}
-      <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>
-      <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">Action</button>
-      ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}
-    </td>
-  </tr>`).join('') || '<tr><td colspan="9" class="rt-empty">No active returns. Click “+ New return” to create one.</td></tr>';
+    <td class="r rt-actions" onclick="event.stopPropagation()">${actions}</td>
+  </tr>`;
+}
+function rtPutDest(r) {
+  const locs = [...new Set((r.returns_treatment_lines || []).map(t => t.moved_to_location).filter(Boolean))];
+  return locs.join(', ') || (r.treatment_location_notes || '');
+}
+function rtPutawayExampleRow() {
+  return `<tr class="rt-row st-to_putaway rt-example" title="Example — a real one appears here once the office completes a return">
+    <td class="num"><strong>RET-0000</strong></td><td>—</td>
+    <td>Example customer<div class="sub">&rarr; put to: Returns / Faulty</div></td>
+    <td class="num">—</td><td>—</td><td>Office name<div class="sub">14:32</div></td><td class="r num">2</td>
+    <td class="rt-status to_putaway">Ready to put away</td>
+    <td class="r rt-actions"><button class="rt-btn rt-btn-sm rt-btn-primary" disabled>Confirm put-away</button></td>
+  </tr>`;
+}
+async function rtConfirmPutaway(id) {
+  const r = RT.active.find(x => String(x.id) === String(id)); if (!r) return;
+  const who = (prompt(`Confirm put-away for ${r.return_no}.\nYour name:`) || '').trim();
+  if (!who) return;
+  try {
+    // status first (works even before the 004 columns exist), then a best-effort put-away stamp
+    const { error } = await sb().from('returns_active').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+    await sb().from('returns_active').update({ putaway_by: who, putaway_at: new Date().toISOString() }).eq('id', id);
+    toast(`${r.return_no} put away — moved to History`, 'ok');
+    await loadReturns();
+  } catch (e) { toast('Put-away failed: ' + e.message, 'err'); }
 }
 function rtRenderHistory() {
   const q = ($('rtHistSearch').value || '').toLowerCase();
@@ -560,7 +608,7 @@ function rtTRemove(i) {
 function rtAskComplete() {
   const by = ($('rtActBy').value || '').trim();
   if (!by) { toast('Enter who treated it (Treated by)', 'err'); return rtInvalid('rtActBy'); }
-  $('rtCompleteMsg').innerHTML = 'Complete this return and move it to <strong>History</strong>?';
+  $('rtCompleteMsg').innerHTML = 'Finish the office treatment and send it to the warehouse to <strong>put away</strong>?';
   $('rtCompleteModal').classList.add('active');
 }
 function rtCompleteClose() { $('rtCompleteModal').classList.remove('active'); }
@@ -584,7 +632,7 @@ async function rtSaveAct(complete) {
       customer_emailed: ($('rtActEmailed').value || '') || null,
       warehouse: ($('rtActWarehouse').value || '').trim() || null,
       treated_by: by || null,
-      status: complete ? 'completed' : 'in_treatment',
+      status: complete ? 'to_putaway' : 'in_treatment',
       updated_at: new Date().toISOString(),
     };
     if (complete) upd.treated_at = new Date().toISOString();
@@ -597,7 +645,7 @@ async function rtSaveAct(complete) {
     // header LAST — a line failure above never leaves a wrong 'completed' status
     const { error: eu } = await sb().from('returns_active').update(upd).eq('id', r.id);
     if (eu) throw eu;
-    toast(complete ? `${r.return_no} completed` : 'Progress saved', 'ok');
+    toast(complete ? `${r.return_no} sent to put-away` : 'Progress saved', 'ok');
     rtCloseAct(); await loadReturns();
   } catch (e) { toast('Save failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
 }

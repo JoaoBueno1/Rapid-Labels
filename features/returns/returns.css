@@ -65,6 +65,30 @@ textarea.rt-input { resize: vertical; }
 
 /* Clickable rows + row action buttons */
 .rt-row { cursor: pointer; }
+
+/* Active — stage sections (Awaiting office / In treatment / Ready to put away) */
+.rt-sections { display: flex; flex-direction: column; gap: 22px; }
+.rt-sec-hd { display: flex; align-items: center; gap: 9px; margin: 2px 2px 8px; }
+.rt-sec-name { font-size: 14px; font-weight: 700; color: #1b2733; }
+.rt-sec-count { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 20px; background: #eef2f6; color: #5b6b86; }
+.rt-sec-hint { font-size: 12px; color: #8493a6; }
+.rt-sec-empty { color: #9aa6ba; font-size: 13px; text-align: center; padding: 12px; }
+.rt-dot { width: 10px; height: 10px; border-radius: 50%; background: #c7d0da; flex: 0 0 auto; }
+.rt-dot.st-pending { background: #e0930d; }
+.rt-dot.st-in_treatment { background: #1667c9; }
+.rt-dot.st-to_putaway { background: #12a150; }
+/* colour the whole row by its stage, with a left accent bar */
+tr.rt-row.st-pending td { background: #fff8ee; }
+tr.rt-row.st-in_treatment td { background: #eef5fd; }
+tr.rt-row.st-to_putaway td { background: #eafaf1; }
+tr.rt-row.st-pending td:first-child { box-shadow: inset 3px 0 0 #e0930d; }
+tr.rt-row.st-in_treatment td:first-child { box-shadow: inset 3px 0 0 #1667c9; }
+tr.rt-row.st-to_putaway td:first-child { box-shadow: inset 3px 0 0 #12a150; }
+tr.rt-row.st-pending:hover td { background: #fff2dd; }
+tr.rt-row.st-in_treatment:hover td { background: #e3effc; }
+tr.rt-row.st-to_putaway:hover td { background: #dcf6e7; }
+.rt-status.to_putaway { color: #0e8f57; }
+.rt-example td { opacity: .6; font-style: italic; }
 .rt-actions { white-space: nowrap; }
 .rt-actions .rt-btn { margin-left: 5px; }
 
