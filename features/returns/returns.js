@@ -112,7 +112,7 @@ function rtRenderHistory() {
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.treatment_ref || '—')}</td>
     <td class="r num">${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</td>
-    <td>${r.status === 'void' ? '—' : (fmtD(r.treated_at) + (r.treated_by ? ' · ' + esc(r.treated_by) : ''))}</td>
+    <td>${r.status === 'void' ? '—' : (fmtDT(r.treated_at) + (r.treated_by ? ' · ' + esc(r.treated_by) : ''))}</td>
     <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">
       <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print form</button>
@@ -416,7 +416,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Emailed</span><b>${esc(r.customer_emailed || '—')}</b></div>
       <div class="rt-kv"><span>Moved to</span><b>${esc(r.treatment_location_notes || '—')}</b></div>
-      <div class="rt-kv"><span>Treated by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtD(r.treated_at) : ''}</b></div>
+      <div class="rt-kv"><span>Treated by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtDT(r.treated_at) : ''}</b></div>
       ${r.treatment_notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
     </div>
     ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th>Return status</th><th class="r">Qty</th><th>Reason</th><th class="r">Credit $</th><th>Moved to</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td>${esc(t.return_status || '')}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td><td class="r num">${money(t.line_value)}</td><td>${esc(t.moved_to_location || '')}</td></tr>`).join('')}</tbody></table>` : ''}
