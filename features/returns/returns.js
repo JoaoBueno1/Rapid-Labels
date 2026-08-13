@@ -115,7 +115,7 @@ function rtActiveRow(r, rec) {
   const isPut = r.status === 'to_putaway';
   const actions = isPut
     ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtConfirmPutaway('${r.id}')">Confirm put-away</button> <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>`
-    : `${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button> ` : ''}<button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button> <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">${r.status === 'in_treatment' ? 'Continue' : 'Treat'}</button>${r.status === 'pending' ? ` <button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}`;
+    : `${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button> ` : ''}<button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button> <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">${r.status === 'in_treatment' ? 'Continue' : 'Action'}</button>${r.status === 'pending' ? ` <button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}`;
   const recCells = rec
     ? `<td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>`
       + `<td>${r.putaway_by ? `${esc(r.putaway_by)}<div class="sub">${fmtDT(r.putaway_at)}${r.putaway_location ? ' · ' + esc(r.putaway_location) : ''}</div>` : '—'}</td>`
