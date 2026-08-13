@@ -225,6 +225,54 @@ def cmd_render(args):
     return 0
 
 
+def cmd_apply(args):
+    """Build every binding for a workbook and write them in one pass."""
+    from .delivery import local_xlsx
+    path = os.path.expanduser(args.workbook)
+    if not os.path.exists(path):
+        raise SystemExit(f'not found: {path}')
+
+    parts = local_xlsx.inspect_parts(path)
+    print(f"▶ {os.path.basename(path)}")
+    print(f"  parts: {parts['total']}  drawings={len(parts['drawings'])} "
+          f"media={len(parts['media'])} customXml={len(parts['customXml'])}"
+          + ("   ← these are LOST on write" if (parts['drawings'] or parts['media']) else ""))
+    if local_xlsx.is_synced_path(path):
+        print("  ⚠ this path is CLOUD-SYNCED — writing it publishes to everyone")
+
+    jobs = []
+    for slug in args.bindings:
+        binding = pivot.load_binding(slug)
+        lay = binding['layout']
+        rows = flat.fetch_dataset(binding['dataset'])
+        built = flat.build(rows, binding)
+        rng = flat.a1(lay['data_anchor'], len(built['grid']), len(built['cols']))
+        print(f"  {slug:<18} {binding['workbook']['sheet']:<11} {len(built['grid']):>5} rows → {rng}"
+              + ("  (SUMMED)" if len(lay['locations']) > 1 else ""))
+        jobs.append({
+            'sheet': binding['workbook']['sheet'],
+            'anchor': lay['data_anchor'],
+            'grid': built['grid'],
+            'status_cell': binding.get('status', {}).get('cell'),
+            'status_text': local_xlsx.status_text(rows=len(built['grid'])),
+        })
+
+    rep = local_xlsx.write_blocks(
+        path, jobs, backup_dir=args.backup_dir,
+        allow_synced=args.i_know_this_is_live, dry_run=args.dry_run)
+
+    print(f"\n  {'would write' if args.dry_run else 'wrote'}:")
+    for s in rep['sheets']:
+        note = f"  cleared {s['rows_cleared']} leftover rows" if s['rows_cleared'] else ""
+        print(f"    {s['sheet']:<11} {s['rows']} rows at {s['anchor']} "
+              f"(last row {s['prev_last_row']} → {s['new_last_row']}){note}")
+        if s['status_cell']:
+            print(f"    {'':11} status → {s['status_cell']}")
+    if rep['backup']:
+        print(f"  backup: {rep['backup']}")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='excel-sync')
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -250,6 +298,15 @@ def main(argv=None):
     r.add_argument('--out', help='directory to write the block as csv')
     r.add_argument('--show', type=int, default=8)
     r.set_defaults(fn=cmd_render)
+
+    a = sub.add_parser('apply', help='write the blocks into a workbook on disk')
+    a.add_argument('workbook', help='path to the .xlsx to write')
+    a.add_argument('--bindings', nargs='+', required=True, help='binding slugs to apply')
+    a.add_argument('--backup-dir', default='out/backups')
+    a.add_argument('--dry-run', action='store_true')
+    a.add_argument('--i-know-this-is-live', action='store_true',
+                   help='required to write inside a cloud-synced folder')
+    a.set_defaults(fn=cmd_apply)
 
     args = p.parse_args(argv)
     return args.fn(args)
