@@ -240,6 +240,39 @@ async function sbPatch(table, query, body) {
   }
 }
 
+async function sbDelete(table, query) {
+  const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`;
+  const res = await fetch(url, { method: 'DELETE', headers: SB_HEADERS });
+  if (!res.ok && res.status !== 404) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`Supabase DELETE ${table}: ${res.status} ${txt}`);
+  }
+}
+
+/**
+ * IDEMPOTENCY CLAIM — insert a correction row BEFORE any stock is moved.
+ * Relies on UNIQUE(order_number, pick_id): a second concurrent or re-fired
+ * correction for the same pick loses the INSERT race (409) and returns false,
+ * so the Cin7 stock transfer is NEVER created twice. This is the root-cause fix
+ * for the SO-282849 double-completed moves (the old code created+completed the
+ * Cin7 transfer FIRST and only hit the unique guard on the trailing insert —
+ * too late, stock had already moved twice).
+ * Returns true if the claim was won, false if the pick was already claimed.
+ */
+async function sbClaimCorrection(body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/pick_anomaly_corrections`, {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },   // no on_conflict → unique violation = 409
+    body: JSON.stringify(body),
+  });
+  if (res.status === 409) return false;   // already corrected / in progress
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`Supabase claim pick_anomaly_corrections: ${res.status} ${txt}`);
+  }
+  return true;
+}
+
 /**
  * Fetch stock_locator for a batch of SKUs from Supabase cin7_mirror.products
  */
@@ -1176,24 +1209,59 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
   // Reference field (header level, searchable in Cin7)
   // Format: PA | SO-12345 | 24 Feb 2026
   const reference = `PA | ${orderNumber || 'UNKNOWN'} | ${readableDate}`;
+  const correctedAt = now.toISOString();
+
+  // ── IDEMPOTENCY CLAIM (before ANY stock moves) ──────────────────────────────
+  // Record the correction FIRST. UNIQUE(order_number, pick_id) makes a second
+  // concurrent/re-fired correction for the same pick lose the race here and abort
+  // BEFORE a Cin7 transfer is created — so stock can never move twice.
+  const canClaim = !!(orderNumber && pickId);
+  if (canClaim) {
+    const won = await sbClaimCorrection({
+      order_number: orderNumber,
+      pick_id: pickId,
+      sku,
+      product_id: productId || null,   // H1: needed to build the reversal transfer line
+      from_bin: expectedBin,
+      to_bin: pickedBin,
+      qty,
+      transfer_status: 'PENDING',      // upgraded to COMPLETED/DRAFT after the Cin7 call
+      corrected_at: correctedAt,
+    });
+    if (!won) {
+      throw new Error(`Correction skipped: ${orderNumber} pick ${pickId} (${sku} ×${qty}) is already corrected or in progress — refusing to move stock twice.`);
+    }
+  } else {
+    console.warn(`⚠️ Correction for ${sku} has no order/pickId — cannot dedup-guard; proceeding without claim.`);
+  }
 
   // Step 1: Create transfer as DRAFT with Reference + Line Comments
-  await delay(RATE_DELAY);
-  const result = await cin7Post('stockTransfer', {
-    Status: 'DRAFT',
-    From: fromBinId,
-    To: toBinId,
-    Reference: reference,
-    Lines: [{
-      ProductID: productId,
-      TransferQuantity: qty,
-      Comments: lineComment,
-    }],
-  });
+  let result, transferId = null, transferRef = null, transferStatus = 'DRAFT';
+  try {
+    await delay(RATE_DELAY);
+    result = await cin7Post('stockTransfer', {
+      Status: 'DRAFT',
+      From: fromBinId,
+      To: toBinId,
+      Reference: reference,
+      Lines: [{
+        ProductID: productId,
+        TransferQuantity: qty,
+        Comments: lineComment,
+      }],
+    });
+  } catch (err) {
+    // No transfer was created (no stock moved) → release the claim so a legit
+    // retry can re-run this correction from scratch.
+    if (canClaim) {
+      try { await sbDelete('pick_anomaly_corrections', `order_number=eq.${encodeURIComponent(orderNumber)}&pick_id=eq.${encodeURIComponent(pickId)}&transfer_id=is.null`); }
+      catch (e) { console.warn(`⚠️ Failed to release correction claim after create error:`, e.message); }
+    }
+    throw err;
+  }
 
-  const transferId = result?.TaskID || result?.ID || result?.StockTransferID || null;
-  let transferRef = result?.Number || result?.Reference || null;
-  let transferStatus = 'DRAFT';
+  transferId = result?.TaskID || result?.ID || result?.StockTransferID || null;
+  transferRef = result?.Number || result?.Reference || null;
 
   // Step 2: Complete the transfer (PUT requires full object + CompletionDate)
   if (transferId) {
@@ -1222,25 +1290,18 @@ async function createCorrectionTransfer({ productId, sku, qty, expectedBin, pick
     }
   }
 
-  // Save correction to Supabase (full audit trail)
-  const correctedAt = now.toISOString();
-  if (orderNumber && pickId) {
+  // Finalize the claimed row with the transfer outcome (or record it if unclaimed).
+  if (canClaim) {
     try {
-      await sbPost('pick_anomaly_corrections', {
-        order_number: orderNumber,
-        pick_id: pickId,
-        sku,
-        product_id: productId || null,   // H1: needed to build the reversal transfer line
-        from_bin: expectedBin,
-        to_bin: pickedBin,
-        qty,
-        transfer_id: transferId ? String(transferId) : null,
-        transfer_ref: transferRef,
-        transfer_status: transferStatus,
-        corrected_at: correctedAt,
-      });
+      await sbPatch('pick_anomaly_corrections',
+        `order_number=eq.${encodeURIComponent(orderNumber)}&pick_id=eq.${encodeURIComponent(pickId)}`,
+        {
+          transfer_id: transferId ? String(transferId) : null,
+          transfer_ref: transferRef,
+          transfer_status: transferStatus,
+        });
     } catch (err) {
-      console.warn(`⚠️ Failed to save correction record:`, err.message);
+      console.warn(`⚠️ Failed to finalize correction record:`, err.message);
     }
   }
 
@@ -1572,7 +1633,15 @@ function registerPickAnomalyRoutes(app) {
         return res.status(400).json({ success: false, error: 'transfers/items array required' });
       }
       const results = [];
+      const seenKeys = new Set();   // intra-batch dedup: same pick twice in one payload → run once
       for (const t of list) {
+        const dedupKey = t.pickId
+          || `${t.orderNumber}|${t.sku}|${t.expectedBin || t.fromBin}|${t.pickedBin || t.toBin}|${t.qty}`;
+        if (seenKeys.has(dedupKey)) {
+          results.push({ sku: t.sku, pickId: t.pickId, success: false, skipped: true, error: 'Duplicate pick in this batch — skipped to avoid a double stock move.' });
+          continue;
+        }
+        seenKeys.add(dedupKey);
         // M4 backstop: only block real OVERFLOW picks (+ unknown confidence) — they
         // risk a double-move. Confirmed structural / non-overflow suspects pass.
         if ((t.isOverflow || t.anomalyConfidence == null) && !force) {
