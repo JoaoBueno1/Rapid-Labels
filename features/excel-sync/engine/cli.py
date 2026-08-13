@@ -12,6 +12,7 @@ a swappable adapter, not part of this path.
 import argparse
 import os
 import sys
+from datetime import datetime
 
 from . import flat, pivot, sources, verify
 
@@ -273,6 +274,76 @@ def cmd_apply(args):
     return 0
 
 
+def cmd_master(args):
+    """Build one workbook holding every dataset, one tab each.
+
+    Not part of the delivery path — the branch workbooks are written directly,
+    because linking them to an external master would mean rewiring 6,600 internal
+    formulas AND relying on cross-file links, which barely refresh in Excel for
+    the web. This exists as a single place to eyeball the data, and as a possible
+    Power Query source.
+    """
+    import openpyxl
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
+    out = os.path.expanduser(args.out)
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    summary = []
+
+    for slug in (args.datasets or pivot.list_specs()):
+        spec = pivot.load_spec(slug)
+        fn = sources.SOURCES[spec['source']]
+        rows, meta = fn(month=args.month)
+        built = pivot.build(rows, spec)
+        title = spec.get('sheet_name', slug.replace('-', ' ').upper())[:31]
+        ws = wb.create_sheet(title)
+
+        for r in pivot.preamble_rows(spec, meta):
+            ws.append(r)
+        ws.append(built['group_row'])
+        ws.append(built['header_row'])
+        hdr_rows = (ws.max_row - 1, ws.max_row)
+        for line in built['grid']:
+            ws.append(line)
+
+        bold = Font(bold=True)
+        for rr in hdr_rows:
+            for c in ws[rr]:
+                c.font = bold
+        ws.freeze_panes = ws.cell(row=hdr_rows[1] + 1, column=len(spec.get('fixed', [])) + 1)
+        ws.column_dimensions['A'].width = 26
+        # first column of each warehouse block gets a little room for the label
+        for i in range(len(spec.get('fixed', [])) + 1, len(built['header_row']) + 1):
+            ws.column_dimensions[get_column_letter(i)].width = 13
+
+        summary.append((title, len(built['grid']), len(built['groups']), meta.get('period') or '-'))
+        print(f"  {title:<16} {len(built['grid']):>6} rows x {len(built['groups'])} warehouses"
+              f"  {meta.get('period') or ''}")
+
+    idx = wb.create_sheet('README', 0)
+    idx.append(['Rapid Labels — Excel Sync master'])
+    idx.append([f'Built {datetime.now().strftime("%d-%b-%Y %H:%M")} from cin7_mirror via Supabase.'])
+    idx.append([])
+    idx.append(['Tab', 'Rows', 'Warehouses', 'Period'])
+    for row in summary:
+        idx.append(list(row))
+    idx.append([])
+    idx.append(['Source of truth is excel_sync.dataset_rows in Supabase, not this file.'])
+    idx.append(['The branch workbooks are written directly and do NOT read from here.'])
+    for c in idx[1] + idx[4]:
+        c.font = Font(bold=True)
+    idx.column_dimensions['A'].width = 62
+    for col in 'BCD':
+        idx.column_dimensions[col].width = 14
+
+    os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
+    wb.save(out)
+    print(f"\n  wrote {out}")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='excel-sync')
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -307,6 +378,12 @@ def main(argv=None):
     a.add_argument('--i-know-this-is-live', action='store_true',
                    help='required to write inside a cloud-synced folder')
     a.set_defaults(fn=cmd_apply)
+
+    m = sub.add_parser('master', help='one workbook with every dataset as a tab')
+    m.add_argument('--out', default='out/RapidLED-Master.xlsx')
+    m.add_argument('--datasets', nargs='+')
+    m.add_argument('--month')
+    m.set_defaults(fn=cmd_master)
 
     args = p.parse_args(argv)
     return args.fn(args)
