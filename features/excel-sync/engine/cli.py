@@ -15,6 +15,16 @@ import sys
 
 from . import flat, pivot, sources, verify
 
+# A Windows console defaults to cp1252, which cannot encode the arrows and
+# bullets this output uses — `list` died on a UnicodeEncodeError before printing
+# its bindings. CI is UTF-8 already; this is for the machine the first real
+# write will be run from.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
+
 
 def _fmt(v):
     return f'{round(v):,}'.replace(',', ' ') if isinstance(v, (int, float)) else str(v)
@@ -225,6 +235,51 @@ def cmd_render(args):
     return 0
 
 
+def cmd_graph_login(_):
+    """One browser sign-in; after this the nightly run renews its own token."""
+    from .delivery import auth
+    auth.device_login()
+    return 0
+
+
+def cmd_deliver(args):
+    """Write bindings into their workbook tabs. Dry run unless --write.
+
+    Runs are logged to ops.sync_runs only when something is actually written —
+    a dry run is a rehearsal and has no business showing up on the monitor as a
+    sync that happened.
+    """
+    from . import delivery, publish as pub
+
+    slugs = [args.slug] if args.slug else pivot.list_bindings()
+    rc = 0
+    for slug in slugs:
+        binding = pivot.load_binding(slug)
+        if not args.write:
+            res = delivery.deliver(binding, write=False, force=args.force,
+                                   mode=args.mode, file_override=args.file,
+                                   transport=args.transport, root=args.root)
+            rc = rc or (1 if res.get('status') == 'blocked' else 0)
+            continue
+
+        with pub.Run('excel-' + slug) as run:
+            res = delivery.deliver(binding, write=True, force=args.force,
+                                   mode=args.mode, file_override=args.file,
+                                   transport=args.transport, root=args.root)
+            run.rows_written = res.get('rows')
+            run.stats = {k: v for k, v in res.items()
+                         if k in ('address', 'cols', 'batches', 'clear',
+                                  'formula_cells_on_tab', 'file', 'sheet')}
+            if res.get('wrote'):
+                run.finish('success')
+            elif res.get('status') == 'disabled':
+                run.finish('skipped', 'binding disabled')
+            else:
+                run.finish('blocked', res.get('error', res.get('status')))
+                rc = 1
+    return rc
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='excel-sync')
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -250,6 +305,33 @@ def main(argv=None):
     r.add_argument('--out', help='directory to write the block as csv')
     r.add_argument('--show', type=int, default=8)
     r.set_defaults(fn=cmd_render)
+
+    sub.add_parser('graph-login',
+                   help='sign in once so the nightly run can refresh its own token'
+                   ).set_defaults(fn=cmd_graph_login)
+
+    d = sub.add_parser('deliver', help='write a binding into its workbook tab')
+    d.add_argument('slug', nargs='?', help='binding slug (omit for all bindings)')
+    # Writing is opt-in, and it is the only irreversible thing this repo does.
+    d.add_argument('--write', action='store_true',
+                   help='actually write. Without it this is a rehearsal that proves '
+                        'every gate and touches nothing.')
+    d.add_argument('--file', help='write to THIS workbook instead of the binding\'s — '
+                                  'how a single binding is aimed at one copy')
+    d.add_argument('--root', help='look for every workbook under THIS folder instead of the '
+                                  'synced library — how all 21 bindings are aimed at a folder '
+                                  'of test copies at once. Falls back to <root>/<file> when '
+                                  'the library subfolders are not reproduced.')
+    d.add_argument('--force', action='store_true',
+                   help='ignore the disabled flag and a header mismatch. Never ignores '
+                        'the formula guard.')
+    d.add_argument('--mode', choices=['auto', 'app', 'delegated'], default=None,
+                   help='graph only: force an auth door (default: app-only if possible)')
+    d.add_argument('--transport', choices=['local', 'graph'], default=None,
+                   help="'local' drives Excel over the OneDrive-synced copy and needs no "
+                        "tenant permission; 'graph' writes to SharePoint over HTTP and is "
+                        'blocked until an admin consents. Default: EXCEL_SYNC_TRANSPORT.')
+    d.set_defaults(fn=cmd_deliver)
 
     args = p.parse_args(argv)
     return args.fn(args)
