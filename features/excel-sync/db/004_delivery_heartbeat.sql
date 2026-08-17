@@ -102,13 +102,13 @@ AS $$
        AND r.slug NOT LIKE 'excel-dataset-%'
   ),
   last_run AS (
-    SELECT DISTINCT ON (s.slug) s.slug, s.status, s.error, s.rows_written, s.finished_at
+    SELECT DISTINCT ON (s.slug) s.slug, s.status, s.error, s.rows_written, s.ended_at
       FROM ops.sync_runs s
-     WHERE s.finished_at IS NOT NULL
-     ORDER BY s.slug, s.finished_at DESC
+     WHERE s.ended_at IS NOT NULL
+     ORDER BY s.slug, s.ended_at DESC
   ),
   last_good AS (
-    SELECT s.slug, max(s.finished_at) AS last_ok
+    SELECT s.slug, max(s.ended_at) AS last_ok
       FROM ops.sync_runs s
      WHERE s.status = 'success'
      GROUP BY s.slug
