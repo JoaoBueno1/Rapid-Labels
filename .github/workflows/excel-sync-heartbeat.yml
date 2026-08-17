@@ -1,0 +1,66 @@
+# ============================================================
+# Excel Sync — delivery heartbeat
+# ============================================================
+# Asks, from the cloud, whether the Windows PC that writes the branch workbooks
+# actually delivered this morning.
+#
+# Every other guard lives ON that PC — the header gate, the formula guard, the
+# staleness gate, the run log, the exit code. They share one blind spot: a
+# machine that is off, asleep, logged out, or whose scheduled task was disabled
+# runs nothing and therefore reports nothing. A dead machine and a quiet night
+# are indistinguishable from the inside.
+#
+# A FAILED RUN OF THIS JOB IS THE NOTIFICATION. GitHub emails the repo owner on
+# a workflow failure and pushes it through the mobile app. That is the only push
+# channel this estate has, it costs no new secret, and it lands somewhere a
+# person already looks.
+#
+# Deliberately its OWN file rather than a step in excel-sync.yml: a broken
+# dataset build must not mask a dead delivery machine, and the two have
+# different owners and different fixes.
+#
+# Required GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY
+# ============================================================
+
+name: Excel Sync Heartbeat
+
+on:
+  schedule:
+    # 22:00 UTC Sun–Thu = 08:00 Brisbane Mon–Fri, one hour after the 07:00
+    # delivery. The day shift mirrors excel-sync.yml and is deliberate: it
+    # catches a missed delivery the same morning rather than 23 hours later.
+    # Do not "fix" 0-4 to 1-5.
+    - cron: '0 22 * * 0-4'
+  workflow_dispatch:
+    inputs:
+      max_minutes:
+        description: 'Business minutes a successful delivery may be stale'
+        required: false
+        default: '1620'
+
+concurrency:
+  group: excel-sync-heartbeat
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: features/excel-sync
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'      # tomllib needs >= 3.11
+
+      - run: pip install -r requirements.txt
+
+      - name: Check the delivery machine reported in
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python tools/heartbeat.py --max-minutes "${{ github.event.inputs.max_minutes || '1620' }}"

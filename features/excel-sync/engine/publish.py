@@ -169,8 +169,22 @@ def register_bindings(bindings, sb=None):
             'feeds': b.get('feeds', []),
             'cron_utc': b.get('cron_utc'),
             'sla_minutes': b.get('sla_minutes'),
-            'freshness_table': 'excel_sync.datasets',
-            'freshness_col': 'built_at',
+            # NULL/NULL on purpose: health comes from this binding's OWN run
+            # rows, which only the delivery machine writes.
+            #
+            # These pointed at excel_sync.datasets.built_at, which the CLOUD
+            # writes every night. A binding is delivered by a Windows PC over a
+            # synced folder — so with that PC switched off for a week, all 21
+            # rows would have kept reporting healthy off the back of a dataset
+            # build that never reached a workbook. The freshness of the source
+            # is not evidence that the delivery happened.
+            'freshness_table': None,
+            'freshness_col': None,
+            # Delivery runs 07:00 Brisbane on weekdays. Wall-clock ageing would
+            # mark every binding late by Monday morning purely for the weekend;
+            # business minutes make Monday 08:00 look back at Friday 07:00 as
+            # ~25 hours rather than 73.
+            'business_hours_only': True,
             'workflow_file': 'excel-sync.yml',
             'enabled': bool(b.get('enabled', False)),
             'sort_order': int(b.get('sort_order', 200)),
