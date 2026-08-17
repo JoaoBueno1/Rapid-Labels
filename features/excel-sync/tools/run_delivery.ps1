@@ -92,15 +92,27 @@ try {
   # stderr merged deliberately: a refusal explains itself there, and a log
   # holding only the happy path is worse than no log.
   #
-  # Kept in a variable and counted from THERE, not re-read from the log. The log
-  # accumulates every run of the day, so grepping the file counted yesterday's
-  # refusals as today's - and worse, the summary line written below ends in
-  # "0 refused", which Select-String matched case-insensitively against its own
-  # pattern. The first real run reported "1 REFUSED" and exited 1 with nothing
-  # actually wrong.
-  $out = & python @cmd *>&1
+  # Streamed line by line, NOT buffered into a variable and written at the end.
+  # Buffering it hid a 19-minute run behind a log holding nothing but its own
+  # header, so there was no way to tell a slow run from a hung one - and on
+  # 18 Aug that cost a wrong diagnosis of "it hung" when it was simply running.
+  # A log you cannot watch is not a log.
+  #
+  # Add-Content -Encoding utf8 per line rather than Tee-Object, because
+  # Tee-Object on PS 5.1 writes UTF-16 with no -Encoding switch. Mixed against
+  # the UTF-8 header above it produced a file where the counting below matched
+  # nothing: the 18 Aug run wrote 20 tabs and reported "0 written | 0 refused".
+  # The summary is what the alerting will read, so it has to be true.
+  #
+  # Counting comes from $out, not from re-reading the log, because the log
+  # accumulates every run of the day - and its own summary line ends in
+  # "0 refused", which a case-insensitive match once counted as a refusal.
+  $out = & python @cmd *>&1 | ForEach-Object {
+    $line = $_.ToString()
+    Add-Content -Path $log -Value $line -Encoding utf8
+    $line
+  }
   $rc = $LASTEXITCODE
-  $out | Tee-Object -FilePath $log -Append | Out-Null
   $out | ForEach-Object { Write-Output $_ }
 } finally {
   Pop-Location
@@ -108,14 +120,25 @@ try {
 
 $wrote   = @($out | Select-String -Pattern 'OK . \d+ rows in').Count
 $refused = @($out | Select-String -Pattern 'REFUSE ').Count
-(" exit {0} | {1} written | {2} refused" -f $rc, $wrote, $refused) | Add-Content -Path $log -Encoding utf8
+$failed  = @($out | Select-String -Pattern '^\s*FAILED ').Count
+# The expected count is not a magic number: it is how many bindings exist on
+# disk. A run that writes 20 of 21 looks like a success to anything counting
+# only errors, and 20 of 21 is exactly what 18 Aug produced.
+$expected = @(Get-ChildItem (Join-Path $engine 'specs\bindings') -Filter '*.toml').Count
+$summary = " exit {0} | {1}/{2} written | {3} refused | {4} failed" -f $rc, $wrote, $expected, $refused, $failed
+$summary | Add-Content -Path $log -Encoding utf8
 
-if ($rc -ne 0 -or $refused -gt 0) {
-  Write-Output "excel-sync: $wrote written, $refused REFUSED, exit $rc - see $log"
+# A rehearsal writes nothing by definition, so the shortfall check applies only
+# to a real run. Without this the dry run reports 0/21 and exits 1, which trains
+# whoever watches it to ignore a red exit - the one habit this must not create.
+$short = (-not $DryRun) -and ($wrote -lt $expected)
+$bad = ($rc -ne 0) -or ($refused -gt 0) -or ($failed -gt 0) -or $short
+if ($bad) {
+  Write-Output "excel-sync: $wrote/$expected written, $refused refused, $failed failed, exit $rc - see $log"
   # Non-zero so Task Scheduler shows the run as failed rather than as a silent
   # success. A refusal is correct behaviour and still needs to be seen.
   exit 1
 }
 
-Write-Output "excel-sync: $wrote written, exit $rc - see $log"
+Write-Output "excel-sync: $wrote/$expected written - see $log"
 exit 0
