@@ -1,13 +1,12 @@
 # Excel Sync — onde paramos (2026-08-13)
 
-> Ponto de retomada. O que está pronto, o que está travado e o que fazer quando
-> destravar. Docs relacionados:
+> Ponto de retomada. Docs relacionados:
 > [EXCEL_SYNC_ARCHITECTURE.md](EXCEL_SYNC_ARCHITECTURE.md) ·
 > [EXCEL_SYNC_REPORTS.md](EXCEL_SYNC_REPORTS.md) ·
 > [EXCEL_SYNC_DELIVERY.md](EXCEL_SYNC_DELIVERY.md) ·
 > [../features/excel-sync/README.md](../features/excel-sync/README.md)
 
-## Resumo em uma linha
+## A virada: não precisamos mais do Microsoft Graph
 
 As 21 bindings existem, foram geradas a partir dos arquivos reais e passam em
 ensaio. Falta **uma migração colada no Supabase** para o primeiro write de
@@ -330,182 +329,152 @@ Corrigido lá.
 `monthly-sales` segue bloqueado por causa do `SO-280868` (pedido dividido pelo Cin7)
 — e isso é **conhecimento de negócio, não permissão**. Dá para resolver hoje, sem
 depender de ninguém do TI. Ver [../features/excel-sync/README.md](../features/excel-sync/README.md).
+As planilhas das filiais ficam numa biblioteca do SharePoint que **sincroniza para o
+PC**. Escrever o arquivo local **é** escrever no SharePoint — o cliente do OneDrive
+sobe sozinho, com o login que já existe naquela máquina.
+
+O script não fala com a Microsoft. Ele grava um arquivo em disco. Por isso **não
+precisa de Graph, de app no Entra, nem de consentimento de admin** — que era o que
+estava travando desde 08-Ago.
+
+**O preço, dito claro:** aquele PC precisa estar ligado e logado, com OneDrive
+rodando. O Graph continua sendo melhor (roda no GitHub Actions, sem PC), e quando o
+consentimento sair a gente troca o adapter sem mexer em mais nada.
 
 ---
 
-## ✅ Pronto e verificado
+## ✅ Pronto e provado
 
-### Dados
-| | |
-|---|---|
-| `cin7_mirror` | espelho do Cin7, 15 syncs, saudável |
-| `excel_sync.dataset_rows` | 2 datasets materializados, lidos pela chave anon |
-| `stock-level` | 12.657 linhas × 17 warehouses — **7/7 métricas em 100,00%** contra o export do Cin7 |
-| `monthly-sales` | 1.630 linhas × 10 warehouses — 1.624/1.630 células (99,63%), valor 100,21% |
+### Escrita cirúrgica — a peça que faltava
+`engine/delivery/surgical.py`. Um `.xlsx` é um ZIP de XML. Em vez de desmontar e
+remontar tudo, ele **troca só o XML das abas que escrevemos** e copia o resto byte a
+byte.
 
-### Sync novo
-`cin7-sales-detail-month` (`backfill-sales.js detail-month`) — busca todo pedido do
-mês, qualquer status, e **re-busca quando o Cin7 muda**. Levou a reconciliação de
-93,5% para 99,63%. Corrigiu também um bug latente: `sale_lines` nunca apagava linha
-removida pelo Cin7 (SO-281413 tinha 149 linhas contra 100 reais).
+Medido no arquivo real do Coffs, comparando os dois métodos:
 
-### Painel
-**Quality & Compliance → Sync Monitor**, 2 abas, 17 cards. Saúde vem do **frescor da
-tabela de destino**, não de log de execução — por isso cobre os 15 workflows desde o
-dia 1. Cinco syncs medidos em **minutos úteis**, senão ficariam vermelhos todo fim de
-semana.
+| | openpyxl | **cirúrgico** |
+|---|---:|---:|
+| partes perdidas | **20** | **1** *(calcChain, de propósito)* |
+| código de barras `TR-48681` (Print Layout) | perdido | ✅ hash idêntico |
+| printerSettings (3 abas) | perdidos | ✅ idênticos |
+| customXml, sharedStrings | perdidos | ✅ idênticos |
+| 41 abas · 32.336 fórmulas | ok | ok |
+| precisa do Excel instalado | não | **não** |
 
-### Bindings da primeira planilha
-`Coffs Harbour Aug 26.xlsx`, três abas mapeadas e **provadas contra o arquivo real**:
+> O `calcChain.xml` sai de propósito: ele indexa fórmulas por posição e uma entrada
+> velha faz o Excel pedir reparo. O Excel reconstrói ao abrir.
 
-| Binding | Aba | Fonte | Conferência |
-|---|---|---|---|
-| `coffs-soh-main` | SOH Main | Main Warehouse **+ Gateway somados** | 2.907 vs 2.933 linhas, Available 73,8% |
-| `coffs-soh-dear` | SOH Dear | Coffs Harbour | 1.204 vs 1.204, Available **92,2%** |
-| `coffs-sales-mtd` | Sales MTD | Coffs Harbour, mês corrente | 117 vs 68, Quantity 63,2% |
+> ⚠️ Cuidado ao medir: `openpyxl` reporta `_images = 0` na `Print Layout` **mesmo no
+> arquivo original** — ele não modela aquele desenho. Quem prova é o hash do
+> `xl/media/image1.png`, não o openpyxl.
 
-As diferenças são **atraso do arquivo**, não erro de mapeamento — o arquivo é de
-03-Ago. Prova: dos 68 SKUs em comum no Sales MTD, 43 idênticos, 25 maiores e **zero
-menores**. Acumulado do mês só pode subir.
+**Dependências da escrita: nenhuma.** `surgical.py` usa só `zipfile`/`re`, e o acesso
+ao Supabase é `urllib`. `openpyxl` só é preciso para `render --workbook` e `master`.
 
-### Contrato descoberto lendo o arquivo
-- As três abas de destino **não têm fórmula nenhuma** — são colagem pura.
-- Só duas colunas são consumidas de fora, e a posição delas é crítica:
-  - `VLOOKUP(...,'SOH Main'!B:F,5)` → **coluna F, Available** — 2.556 fórmulas em 16 abas
-  - `VLOOKUP(...,'SOH Dear'!B:F,5)` → **coluna F** — 2.994 fórmulas na aba `Coffs`
-  - `VLOOKUP(...,'Sales MTD'!A:B,2)` → **coluna B, Quantity** — 1.052 fórmulas em 13 abas
-- Célula **I1** do SOH Main diz *"Include gateway With Totals"* → aquela aba é
-  **Main + Gateway somados**, confirmado com o negócio.
-- Células de status já existem e serão escritas automaticamente:
-  `H1` (SOH Main), `H1` (SOH Dear), `G1` (Sales MTD).
+### Resultado no arquivo real (cópia)
+```
+SOH Main    2.919 linhas  B3:F2921   (Main Warehouse + Gateway somados)
+SOH Dear    1.215 linhas  B3:F1217   (Coffs Harbour)
+Sales MTD     188 linhas  A7:D194    (Coffs Harbour, mês corrente)
+linha após cada bloco: limpa
+'Coffs' → SOH Dear: 787 SKUs achados antes → 792 depois, 0 perdidos
+```
+
+### Travas de segurança
+- `local_xlsx.assert_writable()` **recusa** qualquer caminho dentro de pasta
+  cloud-sincronizada sem `--i-know-this-is-live`. Testado contra o arquivo real: recusou.
+- Todo run copia o arquivo para backup antes de tocar.
+
+### Master
+`python -m engine master` gera um workbook com `STOCK LEVEL` (3.705 × 17 warehouses)
+e `MONTHLY SALES` (1.103 × 10), no mesmo layout do export do Cin7.
+
+**O master NÃO entra no fluxo de entrega.** As branches são escritas direto. Ligá-las a
+um master externo exigiria reescrever as **6.600 fórmulas internas** delas e passaria a
+depender de link entre arquivos, que praticamente não atualiza no Excel Online. O master
+serve para conferência e como possível fonte de Power Query. Está escrito na aba README
+dele para ninguém confundir daqui a seis meses.
+
+### As 7 filiais
+`~/Library/CloudStorage/OneDrive-RapidLED/Shortcuts/WorkDocs - Inventory Stock Orders/`
+
+| Arquivo | SOH Main | SOH Dear | Sales MTD |
+|---|:--:|:--:|:--:|
+| Brisbane Aug 26 | ✓ | ✓ | ✓ |
+| Cairns - Aug 26 | ✓ | — | ✓ |
+| Coffs Harbour Aug 26 | ✓ | ✓ | ✓ |
+| Hobart Aug 26 | ✓ | ✓ | ✓ |
+| Melbourne Aug 26 | ✓ | ✓ | ✓ |
+| Sunshine Coast Aug 26 | ✓ | — | ✓ |
+| Sydney Aug 26 | ✓ | ✓ | ✓ |
+
+Só Coffs tem binding hoje (`coffs-soh-main`, `coffs-soh-dear`, `coffs-sales-mtd`).
+Faltam 6 filiais — é copiar o TOML e trocar a localização.
 
 ---
 
-## ⛔ Travado: consentimento de admin
+## ⛔ Aberto
 
-### Estado no Entra ID
-
-| | |
-|---|---|
-| App | **Rapid labels - Excel sync** |
-| Client ID | `8c4aa84e-db46-4d6c-b629-922e7ca22243` |
-| Tenant ID | `59ec4380-0cab-455d-a6e2-f10314801005` |
-| Tenant | `rapidled.com.au` |
-| Tipo | Single tenant, sem redirect URI (daemon) ✅ |
-| Segredo | criado ✅ |
-| Permissão | `Sites.Selected` · **Application** ✅ |
-| Consentimento | ⛔ **Not granted for RapidLED** |
-
-> Client ID e Tenant ID **não são segredos** — podem ficar aqui e no workflow.
-
-`joao@rapidled.com.au` cria app registration mas **não consente**: botão cinza, e o
-link direto devolve `AADSTS90094 — This operation can only be performed by an
-administrator`.
-
-### Link para aprovar
-
-```
-https://login.microsoftonline.com/59ec4380-0cab-455d-a6e2-f10314801005/adminconsent?client_id=8c4aa84e-db46-4d6c-b629-922e7ca22243
-```
-
-Quem pode: **Global Administrator**, **Privileged Role Administrator** ou
-**Cloud Application Administrator**. Ver em Entra → *Roles & admins*.
-
-> Se existir uma segunda conta administrativa (`admin.joao@…`), a própria tela de erro
-> oferece **"Have an admin account? Sign in with that account"** e resolve na hora.
-
-### Texto para encaminhar
-
-> Preciso de consentimento de admin para o app **Rapid labels - Excel sync**
-> (`8c4aa84e-db46-4d6c-b629-922e7ca22243`).
->
-> É um serviço que roda de madrugada e atualiza três abas de dados nas planilhas de
-> estoque das filiais no SharePoint. Hoje isso é feito à mão colando export do Cin7,
-> e as planilhas estão de 5 a 12 dias desatualizadas.
->
-> A permissão é **`Sites.Selected`**, não `Files.ReadWrite.All`. A diferença importa:
-> `Sites.Selected` **não dá acesso a nada por si só** — depois do consentimento ainda
-> é preciso liberar explicitamente cada site do SharePoint. Se o segredo vazar, o
-> alcance é apenas o site liberado.
+1. **O Excel abre sem pedir reparo?** Único teste que não dá para fazer por aqui.
+   Arquivo: `~/Downloads/Coffs CIRURGICO.xlsx`. Se pedir reparo, ajustar o gerador de
+   XML **antes** de qualquer coisa ir para produção.
+2. **Cairns, Sunshine Coast e Sydney não têm `SOH Dear`** — confirmar se `SOH Main`
+   sozinho basta nelas.
+3. **Bindings das outras 6 filiais.**
+4. **Consentimento no Entra** — não bloqueia mais nada, mas segue pendente se um dia
+   quiserem rodar sem depender do PC. Ver [EXCEL_SYNC_DELIVERY.md](EXCEL_SYNC_DELIVERY.md).
 
 ---
 
-## Secrets
+## Amanhã, no Windows
 
-**Nenhum segredo neste repositório.** Só os nomes e onde cada um mora.
-
-### GitHub Actions → Settings → Secrets and variables → Actions
-| Nome | Estado |
-|---|---|
-| `SUPABASE_URL` | ✅ já existe |
-| `SUPABASE_SERVICE_KEY` | ✅ já existe |
-| `CIN7_ACCOUNT_ID` / `CIN7_API_KEY` | ✅ já existem |
-| `GRAPH_CLIENT_SECRET` | ⛔ **falta** — o *Value* do client secret |
-
-`GRAPH_TENANT_ID` e `GRAPH_CLIENT_ID` **não precisam ser secret** — vão como env
-comum no workflow, já que não são sigilosos.
-
-### `.env` local (gitignored) — para testar sem o Actions
-Hoje só tem Supabase e Cin7. Para eu validar a autenticação daqui, falta:
-
+### 1. Python
+Instalar Python 3.11+ marcando **"Add python.exe to PATH"**. A escrita não precisa de
+biblioteca nenhuma; só instale `openpyxl` se for usar `master` ou `render --workbook`:
 ```
-GRAPH_TENANT_ID=59ec4380-0cab-455d-a6e2-f10314801005
-GRAPH_CLIENT_ID=8c4aa84e-db46-4d6c-b629-922e7ca22243
-GRAPH_CLIENT_SECRET=<o Value do secret>
+pip install openpyxl
 ```
 
-> O *Value* só é exibido **uma vez** na criação. Se tiver se perdido, apaga e cria
-> outro em Certificates & secrets — não há como recuperar.
+### 2. Credenciais do Supabase
+`.env` na raiz do repo, ou variáveis de ambiente:
+```
+SUPABASE_URL=<a mesma que já está no .env do Mac>
+SUPABASE_SERVICE_KEY=<idem>
+```
+**Só leitura do mirror.** Nada de Microsoft aqui.
+
+### 3. Descobrir o caminho sincronizado
+No Explorer, a biblioteca aparece normalmente como:
+```
+C:\Users\<usuario>\OneDrive - RapidLED\Shortcuts\WorkDocs - Inventory Stock Orders\
+```
+Confirmar com `dir` antes de apontar o script.
+
+### 4. Testar numa CÓPIA primeiro
+```
+copy "...\Coffs Harbour Aug 26.xlsx" "%USERPROFILE%\Desktop\teste.xlsx"
+python -m engine apply "%USERPROFILE%\Desktop\teste.xlsx" ^
+    --bindings coffs-soh-main coffs-soh-dear coffs-sales-mtd
+```
+Abrir no Excel e conferir. **Só depois** apontar para o arquivo real, e aí é obrigatório
+o `--i-know-this-is-live` (a trava existe justamente para não acontecer sem querer).
+
+### 5. Agendar
+Task Scheduler → tarefa diária → ação: `python -m engine apply ...`
+com *Start in* na pasta `features/excel-sync`.
+
+> A tarefa precisa rodar **com o usuário logado** — se marcar "run whether user is
+> logged on or not", o script grava mas o OneDrive não está rodando para subir.
 
 ---
 
-## Sequência quando o consentimento sair
+## Decisões tomadas (não re-discutir)
 
-1. **Liberar o site** — `Sites.Selected` sozinha não dá acesso a nada. Uma chamada,
-   uma vez por site:
-   ```
-   POST https://graph.microsoft.com/v1.0/sites/{siteId}/permissions
-   { "roles": ["write"],
-     "grantedToIdentities": [{ "application": {
-        "id": "8c4aa84e-db46-4d6c-b629-922e7ca22243",
-        "displayName": "Rapid labels - Excel sync" } }] }
-   ```
-   Exige token com `Sites.FullControl.All`. Como o Graph Explorer foi bloqueado, o
-   caminho é elevar o **próprio app** temporariamente: adicionar
-   `Sites.FullControl.All` (Application) → consentir → fazer o POST acima →
-   **remover a permissão**, deixando só `Sites.Selected`. O passo de remoção não é
-   opcional.
-2. **Teste de leitura** — pegar token e listar o arquivo. Sem escrever nada.
-3. **Escrever numa CÓPIA**, num site de teste. Conferir as três abas.
-4. **Apontar para produção**, um workbook por vez.
-
-O arquivo é resolvido direto pela URL via `/shares`; não é preciso caçar ID:
-```
-https://rapidled.sharepoint.com/:x:/r/_layouts/15/Doc.aspx?sourcedoc=%7BC67CA800-01C0-400C-BD07-A274774F304B%7D&file=Coffs%20Harbour%20Aug%2026.xlsx
-```
-
-> ⚠️ O arquivo está hoje no **site raiz** (`rapidled.sharepoint.com`, sem `/sites/…`).
-> Liberar o raiz dá escrita em tudo que estiver nele. Recomendado criar um site
-> dedicado (ex.: `Branch Workbooks`) e mover os arquivos: uma liberação passa a cobrir
-> todas as filiais, e o alcance fica contido. Criar site **não exige role**.
-
----
-
-## A construir enquanto isso (não depende do consentimento)
-
-- [ ] `engine/delivery/graph.py` — token client-credentials, resolução por `/shares`,
-      sessão de workbook, escrita em lotes (~1 MB: 1 chamada para o Sales MTD, 3 para
-      o SOH Main), limpeza do excedente quando a contagem de linhas encolhe, e a
-      célula de status.
-- [ ] Snapshot da aba (valores **e** fórmulas) antes da primeira escrita, para
-      conferência e restauração.
-- [ ] Guardar a extensão escrita por binding, para saber o que limpar.
-- [ ] Bindings das demais filiais — mesma estrutura, só muda a localização.
-
-## Decisões já tomadas (não re-discutir)
-
-- **Push via Graph**, não Power Query: o requisito é estar atual **sem ninguém abrir**,
-  e conexão Power Query a API REST só atualiza com o arquivo aberto no Excel desktop.
+- **Escrita local via OneDrive sincronizado**, não Graph — Graph fica para quando o
+  consentimento sair.
+- **Escrita cirúrgica**, não openpyxl — openpyxl destrói o código de barras e a config
+  de impressão de abas que a gente nem toca.
+- **Sem master no fluxo** — as branches são escritas direto.
 - **Escrita direta na aba existente**, não numa aba de dados separada.
 - **`Sites.Selected`**, não `Files.ReadWrite.All`.
 - Primeira escrita real vai numa **cópia** — é o único risco irreversível do projeto.
@@ -579,3 +548,5 @@ chegaram completas).
 > O que **não** é alternativa: Power Query (só atualiza com o arquivo aberto) e
 > pedir `Files.ReadWrite.All` **application** (mais amplo que o `Sites.Selected`
 > que já foi recusado).
+- `Discount` fora de escopo.
+- Primeira escrita real sempre numa cópia.

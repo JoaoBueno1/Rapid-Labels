@@ -12,6 +12,7 @@ a swappable adapter, not part of this path.
 import argparse
 import os
 import sys
+from datetime import datetime
 
 from . import flat, pivot, sources, verify
 
@@ -278,6 +279,122 @@ def cmd_deliver(args):
                 run.finish('blocked', res.get('error', res.get('status')))
                 rc = 1
     return rc
+def cmd_apply(args):
+    """Build every binding for a workbook and write them in one pass."""
+    from .delivery import local_xlsx
+    path = os.path.expanduser(args.workbook)
+    if not os.path.exists(path):
+        raise SystemExit(f'not found: {path}')
+
+    parts = local_xlsx.inspect_parts(path)
+    print(f"▶ {os.path.basename(path)}")
+    print(f"  parts: {parts['total']}  drawings={len(parts['drawings'])} "
+          f"media={len(parts['media'])} customXml={len(parts['customXml'])}"
+          + ("   ← these are LOST on write" if (parts['drawings'] or parts['media']) else ""))
+    if local_xlsx.is_synced_path(path):
+        print("  ⚠ this path is CLOUD-SYNCED — writing it publishes to everyone")
+
+    jobs = []
+    for slug in args.bindings:
+        binding = pivot.load_binding(slug)
+        lay = binding['layout']
+        rows = flat.fetch_dataset(binding['dataset'])
+        built = flat.build(rows, binding)
+        rng = flat.a1(lay['data_anchor'], len(built['grid']), len(built['cols']))
+        print(f"  {slug:<18} {binding['workbook']['sheet']:<11} {len(built['grid']):>5} rows → {rng}"
+              + ("  (SUMMED)" if len(lay['locations']) > 1 else ""))
+        jobs.append({
+            'sheet': binding['workbook']['sheet'],
+            'anchor': lay['data_anchor'],
+            'grid': built['grid'],
+            'status_cell': binding.get('status', {}).get('cell'),
+            'status_text': local_xlsx.status_text(rows=len(built['grid'])),
+        })
+
+    rep = local_xlsx.write_blocks(
+        path, jobs, backup_dir=args.backup_dir,
+        allow_synced=args.i_know_this_is_live, dry_run=args.dry_run)
+
+    print(f"\n  {'would write' if args.dry_run else 'wrote'}:")
+    for s in rep['sheets']:
+        note = f"  cleared {s['rows_cleared']} leftover rows" if s['rows_cleared'] else ""
+        print(f"    {s['sheet']:<11} {s['rows']} rows at {s['anchor']} "
+              f"(last row {s['prev_last_row']} → {s['new_last_row']}){note}")
+        if s['status_cell']:
+            print(f"    {'':11} status → {s['status_cell']}")
+    if rep['backup']:
+        print(f"  backup: {rep['backup']}")
+    return 0
+
+
+def cmd_master(args):
+    """Build one workbook holding every dataset, one tab each.
+
+    Not part of the delivery path — the branch workbooks are written directly,
+    because linking them to an external master would mean rewiring 6,600 internal
+    formulas AND relying on cross-file links, which barely refresh in Excel for
+    the web. This exists as a single place to eyeball the data, and as a possible
+    Power Query source.
+    """
+    import openpyxl
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
+    out = os.path.expanduser(args.out)
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    summary = []
+
+    for slug in (args.datasets or pivot.list_specs()):
+        spec = pivot.load_spec(slug)
+        fn = sources.SOURCES[spec['source']]
+        rows, meta = fn(month=args.month)
+        built = pivot.build(rows, spec)
+        title = spec.get('sheet_name', slug.replace('-', ' ').upper())[:31]
+        ws = wb.create_sheet(title)
+
+        for r in pivot.preamble_rows(spec, meta):
+            ws.append(r)
+        ws.append(built['group_row'])
+        ws.append(built['header_row'])
+        hdr_rows = (ws.max_row - 1, ws.max_row)
+        for line in built['grid']:
+            ws.append(line)
+
+        bold = Font(bold=True)
+        for rr in hdr_rows:
+            for c in ws[rr]:
+                c.font = bold
+        ws.freeze_panes = ws.cell(row=hdr_rows[1] + 1, column=len(spec.get('fixed', [])) + 1)
+        ws.column_dimensions['A'].width = 26
+        # first column of each warehouse block gets a little room for the label
+        for i in range(len(spec.get('fixed', [])) + 1, len(built['header_row']) + 1):
+            ws.column_dimensions[get_column_letter(i)].width = 13
+
+        summary.append((title, len(built['grid']), len(built['groups']), meta.get('period') or '-'))
+        print(f"  {title:<16} {len(built['grid']):>6} rows x {len(built['groups'])} warehouses"
+              f"  {meta.get('period') or ''}")
+
+    idx = wb.create_sheet('README', 0)
+    idx.append(['Rapid Labels — Excel Sync master'])
+    idx.append([f'Built {datetime.now().strftime("%d-%b-%Y %H:%M")} from cin7_mirror via Supabase.'])
+    idx.append([])
+    idx.append(['Tab', 'Rows', 'Warehouses', 'Period'])
+    for row in summary:
+        idx.append(list(row))
+    idx.append([])
+    idx.append(['Source of truth is excel_sync.dataset_rows in Supabase, not this file.'])
+    idx.append(['The branch workbooks are written directly and do NOT read from here.'])
+    for c in idx[1] + idx[4]:
+        c.font = Font(bold=True)
+    idx.column_dimensions['A'].width = 62
+    for col in 'BCD':
+        idx.column_dimensions[col].width = 14
+
+    os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
+    wb.save(out)
+    print(f"\n  wrote {out}")
+    return 0
 
 
 def main(argv=None):
@@ -332,6 +449,20 @@ def main(argv=None):
                         "tenant permission; 'graph' writes to SharePoint over HTTP and is "
                         'blocked until an admin consents. Default: EXCEL_SYNC_TRANSPORT.')
     d.set_defaults(fn=cmd_deliver)
+    a = sub.add_parser('apply', help='write the blocks into a workbook on disk')
+    a.add_argument('workbook', help='path to the .xlsx to write')
+    a.add_argument('--bindings', nargs='+', required=True, help='binding slugs to apply')
+    a.add_argument('--backup-dir', default='out/backups')
+    a.add_argument('--dry-run', action='store_true')
+    a.add_argument('--i-know-this-is-live', action='store_true',
+                   help='required to write inside a cloud-synced folder')
+    a.set_defaults(fn=cmd_apply)
+
+    m = sub.add_parser('master', help='one workbook with every dataset as a tab')
+    m.add_argument('--out', default='out/RapidLED-Master.xlsx')
+    m.add_argument('--datasets', nargs='+')
+    m.add_argument('--month')
+    m.set_defaults(fn=cmd_master)
 
     args = p.parse_args(argv)
     return args.fn(args)
