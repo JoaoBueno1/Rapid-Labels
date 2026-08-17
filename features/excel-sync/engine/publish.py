@@ -85,9 +85,16 @@ class Run:
         try:
             self.run_id = self.sb.rpc('ops_run_start', {
                 'p_slug': self.slug, 'p_trigger': self.trigger, 'p_run_url': run_url})
-        except SystemExit as e:
-            # Run logging must never be the reason a sync fails.
-            print(f'  ! could not open run log: {e}')
+        except Exception as e:                       # noqa: BLE001
+            # Run logging must never be the reason a sync fails — and it used to
+            # be. This caught SystemExit only, which is what supabase._send
+            # raises for an HTTP error. A connection-level failure (DNS down,
+            # laptop offline, TLS, read timeout) raises URLError or
+            # TimeoutError, escaped this handler, and killed the whole delivery
+            # from inside the bookkeeping that is supposed to be incidental to
+            # it. Catch everything: a lost run row is a monitoring gap, an
+            # aborted delivery is an outage.
+            print(f'  ! could not open run log: {type(e).__name__}: {e}')
         return self
 
     def finish(self, status, error=None):
@@ -102,8 +109,8 @@ class Run:
                 'p_error': (error or '')[:2000] or None,
                 'p_stats': self.stats,
             })
-        except SystemExit as e:
-            print(f'  ! could not close run log: {e}')
+        except Exception as e:                       # noqa: BLE001
+            print(f'  ! could not close run log: {type(e).__name__}: {e}')
 
     def __exit__(self, exc_type, exc, tb):
         if exc is not None:

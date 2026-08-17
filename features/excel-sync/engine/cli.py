@@ -254,30 +254,58 @@ def cmd_deliver(args):
 
     slugs = [args.slug] if args.slug else pivot.list_bindings()
     rc = 0
+    failed = []
     for slug in slugs:
-        binding = pivot.load_binding(slug)
-        if not args.write:
-            res = delivery.deliver(binding, write=False, force=args.force,
-                                   mode=args.mode, file_override=args.file,
-                                   transport=args.transport, root=args.root)
-            rc = rc or (1 if res.get('status') == 'blocked' else 0)
-            continue
+        # One binding must never take out the rest.
+        #
+        # The transport raises SystemExit for conditions that are about ONE
+        # workbook — Excel already open on it, OneDrive down, the file missing.
+        # Uncaught, the first one ended the loop. Bindings run alphabetically,
+        # so a branch manager leaving Brisbane open overnight killed 18 of the
+        # 21 tabs, and the 18 got no run row at all: silence that reads exactly
+        # like a night when nothing needed doing. deliver_all() already had this
+        # guard; the CLI path did not, and the CLI path is what the 07:00 task
+        # calls.
+        try:
+            binding = pivot.load_binding(slug)
+            if not args.write:
+                res = delivery.deliver(binding, write=False, force=args.force,
+                                       mode=args.mode, file_override=args.file,
+                                       transport=args.transport, root=args.root)
+                rc = rc or (1 if res.get('status') == 'blocked' else 0)
+                continue
 
-        with pub.Run('excel-' + slug) as run:
-            res = delivery.deliver(binding, write=True, force=args.force,
-                                   mode=args.mode, file_override=args.file,
-                                   transport=args.transport, root=args.root)
-            run.rows_written = res.get('rows')
-            run.stats = {k: v for k, v in res.items()
-                         if k in ('address', 'cols', 'batches', 'clear',
-                                  'formula_cells_on_tab', 'file', 'sheet')}
-            if res.get('wrote'):
-                run.finish('success')
-            elif res.get('status') == 'disabled':
-                run.finish('skipped', 'binding disabled')
-            else:
-                run.finish('blocked', res.get('error', res.get('status')))
-                rc = 1
+            with pub.Run('excel-' + slug) as run:
+                res = delivery.deliver(binding, write=True, force=args.force,
+                                       mode=args.mode, file_override=args.file,
+                                       transport=args.transport, root=args.root)
+                run.rows_written = res.get('rows')
+                run.stats = {k: v for k, v in res.items()
+                             if k in ('address', 'cols', 'batches', 'clear',
+                                      'formula_cells_on_tab', 'file', 'sheet',
+                                      'path', 'transport')}
+                if res.get('wrote'):
+                    run.finish('success')
+                elif res.get('status') == 'disabled':
+                    run.finish('skipped', 'binding disabled')
+                else:
+                    run.finish('blocked', res.get('error', res.get('status')))
+                    rc = 1
+        except SystemExit as e:
+            failed.append((slug, str(e)))
+            print(f'  FAILED {slug}: {e}')
+            rc = 1
+        except Exception as e:                       # noqa: BLE001
+            # Same reasoning one level out: an unexpected error in one binding
+            # is not a reason to abandon the other twenty.
+            failed.append((slug, f'{type(e).__name__}: {e}'))
+            print(f'  FAILED {slug}: {type(e).__name__}: {e}')
+            rc = 1
+
+    if failed:
+        print(f'\n  {len(failed)} of {len(slugs)} binding(s) failed outright:')
+        for slug, why in failed:
+            print(f'    {slug}: {why.splitlines()[0][:120]}')
     return rc
 def cmd_apply(args):
     """Build every binding for a workbook and write them in one pass."""
