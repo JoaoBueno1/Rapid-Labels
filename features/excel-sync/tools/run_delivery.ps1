@@ -29,10 +29,16 @@
 
 .PARAMETER Root
   Aim every binding at a folder of COPIES instead of the live library. Test mode
-  also passes -Force, because the bindings ship disabled. Running with no
+  also passes --force, because the bindings ship disabled. Running with no
   arguments against the live library therefore does nothing until somebody
   enables them one at a time in specs/bindings/ - going live is a deliberate
   act, not the absence of a flag.
+
+  --force covers the disabled flag and the staleness gate ONLY. It does not
+  override the header gate or the formula guard. That distinction was not
+  always true and the trial was running without the header guard because of it
+  (see engine/delivery/__init__.py, gate 2) - a rehearsal that switches off the
+  guard it exists to trust is worse than no rehearsal.
 
 .PARAMETER DryRun
   Rehearse: prove every gate, write nothing.

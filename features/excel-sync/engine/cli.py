@@ -440,8 +440,9 @@ def main(argv=None):
                                   'of test copies at once. Falls back to <root>/<file> when '
                                   'the library subfolders are not reproduced.')
     d.add_argument('--force', action='store_true',
-                   help='ignore the disabled flag and a header mismatch. Never ignores '
-                        'the formula guard.')
+                   help='ignore the disabled flag and the staleness gate. Does NOT override '
+                        'the header gate or the formula guard — those two protect against '
+                        'silent corruption and have no legitimate override.')
     d.add_argument('--mode', choices=['auto', 'app', 'delegated'], default=None,
                    help='graph only: force an auth door (default: app-only if possible)')
     d.add_argument('--transport', choices=['local', 'graph'], default=None,

@@ -252,18 +252,38 @@ def deliver(binding, sb=None, write=False, force=False, mode=None,
                     for v in (live.get('values') or [[]])[0]]
         want_hdr = [str(h).strip() for h in headers]
 
-        if live_hdr != want_hdr and not force:
+        # NOT overridable by --force, and that is the whole point of it.
+        #
+        # It used to be. Proven on 2026-08-17 by inserting a 'Notes' column into
+        # a copy's SOH Main and running with --force: the gate saw the mismatch,
+        # said so, and wrote anyway. Every column landed one to the left of its
+        # own header — the tab then read
+        #     SKU | Notes | Quantity on hand | Allocated | On order | Available
+        #      ↑     on_hand    allocated       on_order    available
+        # and the 1,716 formulas doing VLOOKUP(...,A:E,5) returned On order while
+        # believing it was Available. Plausible numbers, wrong field, no #REF!,
+        # no #N/A, nothing to notice.
+        #
+        # The trial runs with --force, because the bindings ship disabled and
+        # --force is what gets past that. So the flag that makes a rehearsal
+        # possible was also switching off the guard the rehearsal exists to
+        # trust. Those two things must never share a flag.
+        #
+        # There is no legitimate force here either: if the header moved, the
+        # answer is to re-run tools/survey_workbooks.py and regenerate the
+        # binding, not to write through it.
+        if live_hdr != want_hdr:
             out['status'] = 'blocked'
             out['error'] = f'header mismatch at {hdr_addr}: sheet has {live_hdr}, binding wants {want_hdr}'
-            say(f'  REFUSE — header row moved or renamed.')
+            say('  REFUSE — header row moved or renamed.')
             say(f'    sheet   {live_hdr}')
             say(f'    binding {want_hdr}')
-            say('    a shifted column breaks every VLOOKUP that reads this tab.')
+            say('    a shifted column breaks every VLOOKUP that reads this tab,')
+            say('    silently — the numbers stay plausible. --force does NOT override this.')
+            say('    fix: python tools/survey_workbooks.py --emit-bindings out/bindings')
             _record(sb, slug, None, None, None, None, None,
                     handle.get('location'), handle.get('id'), 'blocked', out['error'])
             return out
-        if live_hdr != want_hdr:
-            say(f'  ! header mismatch overridden by --force: {live_hdr}')
 
         layout_hash = graph._layout_hash(live_hdr)
 
