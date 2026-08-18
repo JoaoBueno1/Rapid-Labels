@@ -439,6 +439,24 @@ def deliver(binding, sb=None, write=False, force=False, mode=None,
         g.close()
 
 
+
+def _data_age_minutes(meta):
+    """Minutes since the SOURCE was last synced, from the dataset's own meta.
+
+    None when the dataset predates this being recorded — treated as unknown, and
+    said so, never as fine.
+    """
+    raw = ((meta or {}).get('meta') or {}).get('data_at')
+    if not raw:
+        return None
+    try:
+        when = datetime.datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    return (datetime.datetime.now(datetime.timezone.utc)
+            - when.astimezone(datetime.timezone.utc)).total_seconds() / 60.0
+
+
 def _dataset_age(sb, binding, force, say):
     """Refuse to deliver a dataset older than the binding's own SLA.
 
@@ -472,6 +490,39 @@ def _dataset_age(sb, binding, force, say):
     say(f'  dataset {slug} built {age_min / 60:.1f}h ago '
         f'({meta.get("row_count")} rows, limit {limit / 60:.0f}h)'
         + (f', covers {_period_label(meta)}' if _period_label(meta) else ''))
+
+    # How old the DATA is, which is a different question from how long ago we
+    # built. A build reads whatever the mirror holds and stamps a brand-new
+    # built_at over it, so if the Cin7 sync died on Friday the nightly job keeps
+    # cheerfully republishing Friday's numbers and every gate above this one
+    # passes. The tab then says "Updated today" over figures of unknown age —
+    # which is the precise failure this whole project exists to stop, arriving
+    # through the machinery meant to stop it.
+    data_age = _data_age_minutes(meta)
+    if data_age is not None:
+        say(f'  source data last synced {data_age / 60:.1f}h ago')
+        if data_age > limit:
+            # NOT overridable by --force, and deliberately unlike the build-age
+            # gate above it. Forcing past a stale BUILD is a defensible manual
+            # catch-up: the numbers are fine, the job simply has not run. Forcing
+            # past a stale SOURCE means knowingly writing old figures under a
+            # stamp that says today — which is the single thing this project
+            # exists to prevent. There is no version of that a person should be
+            # able to ask for with a flag they are already passing for another
+            # reason entirely.
+            m = (f'the MIRROR is {data_age / 60:.1f}h stale (limit {limit / 60:.0f}h). '
+                 f'The dataset rebuilt on top of it, so its own age looks fine — '
+                 f'this is old data wearing a fresh timestamp')
+            say(f'  REFUSE — {m}')
+            say('    fix the Cin7 sync first; rebuilding will not help,')
+            say('    and --force does NOT override this.')
+            return meta, m
+    else:
+        # Said out loud rather than passed over: a dataset built before this
+        # check existed carries no data_at, and silence would read as health.
+        say('  ! dataset carries no source timestamp — data age UNKNOWN. '
+            'Rebuild to record it.')
+
     if age_min <= limit:
         return meta, None
     msg = (f'dataset {slug} is {age_min / 60:.1f}h old, past its '
