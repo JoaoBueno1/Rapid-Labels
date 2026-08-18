@@ -69,11 +69,21 @@ def _stamp(rows):
 #
 # Row count is the cheapest tamper check there is: 1 247 today and 3 tomorrow is
 # obvious to someone who understands nothing else on this page.
+# Spelled out, never abbreviated. This block is read by branch managers to
+# answer one question — "is this today's number?" — and `Tue 18 Aug` asks them
+# to decode three shortenings before they can. Written in full it is read at a
+# glance, which is the entire job. English throughout: these are Australian
+# workbooks and the operators read English.
+DAYS = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+MONTHS = ('January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December')
+
+
 def _pretty_date(iso):
     """'2026-08-01' -> '1 Aug 2026'. No leading zero: this is read, not sorted."""
     try:
         d = datetime.date.fromisoformat(str(iso).strip())
-        return f'{d.day} {d:%b %Y}'
+        return f'{d.day} {MONTHS[d.month - 1]} {d.year}'
     except (ValueError, TypeError):
         return str(iso).strip()
 
@@ -85,7 +95,7 @@ def _period_label(meta):
         return None
     if '..' in str(p):
         a, b = str(p).split('..', 1)
-        return f'{_pretty_date(a)} - {_pretty_date(b)}'
+        return f'{_pretty_date(a)} to {_pretty_date(b)}'
     return str(p)
 
 
@@ -115,7 +125,9 @@ def _now_label():
     """
     now = datetime.datetime.now(datetime.timezone.utc).astimezone(BRISBANE)
     hour = now.hour % 12 or 12
-    return f"{now:%a} {now.day} {now:%b %Y}, {hour}:{now:%M} {now:%p}".replace('AM', 'am').replace('PM', 'pm') + ' (Brisbane)'
+    ampm = 'am' if now.hour < 12 else 'pm'
+    return (f'{DAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]} {now.year} '
+            f'at {hour}:{now:%M} {ampm} (Brisbane time)')
 
 
 def _status_grid(meta, rows):

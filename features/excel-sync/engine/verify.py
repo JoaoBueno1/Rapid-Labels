@@ -7,6 +7,34 @@ obvious. Better to block the write than to publish a quiet wrong number.
 """
 
 
+
+def _period_elapsed_fraction(meta):
+    """How much of the dataset's period has actually happened, 0..1.
+
+    None when the dataset has no period (stock is a snapshot, not a window) or
+    the period is already over — in both cases the configured floor applies
+    unchanged.
+    """
+    import datetime
+    p = (meta or {}).get('period')
+    if not p or '..' not in str(p):
+        return None
+    try:
+        a, b = str(p).split('..', 1)
+        start = datetime.date.fromisoformat(a.strip())
+        end = datetime.date.fromisoformat(b.strip())
+    except ValueError:
+        return None
+    today = datetime.date.today()
+    if today >= end:
+        return None                      # period complete: expect the full count
+    if today < start:
+        return 0.0
+    total = (end - start).days + 1
+    done = (today - start).days + 1
+    return max(0.0, min(1.0, done / total))
+
+
 def check(meta, spec, built):
     """Return (ok, [(level, message)]). level is 'block' or 'warn'."""
     v = spec.get('validate', {})
@@ -22,8 +50,32 @@ def check(meta, spec, built):
     lo_hi = v.get('expect_rows_between')
     if lo_hi:
         n = len(built['keys'])
-        lvl = 'ok' if lo_hi[0] <= n <= lo_hi[1] else 'block'
-        out.append((lvl, f'{n} rows (expected {lo_hi[0]}–{lo_hi[1]})'))
+        lo, hi = lo_hi[0], lo_hi[1]
+
+        # A month-to-date dataset legitimately starts near empty, and a floor
+        # tuned to a full month blocks the whole first week of every month.
+        #
+        # Worked through for 1 September: monthly-sales expects 200-4000 rows.
+        # On the 1st the month holds a handful of orders, the gate blocks, and
+        # nothing publishes. The 1st still delivers August from inside the 26h
+        # SLA; from the 2nd the dataset is stale and all seven sales bindings
+        # refuse every morning until September crosses 200 rows — a multi-day
+        # alert storm, entirely predictable, landing in month-end reporting. An
+        # alarm that cries wolf on the 1st of every month is dead by November.
+        #
+        # So the floor is scaled by how much of the period has actually elapsed.
+        # It still catches the thing it exists to catch: a source that came back
+        # empty or broken. It stops firing for the calendar simply turning over.
+        elapsed = _period_elapsed_fraction(meta)
+        if elapsed is not None and elapsed < 1.0:
+            scaled = max(1, int(lo * elapsed))
+            if scaled != lo:
+                out.append(('ok', f'period {elapsed * 100:.0f}% elapsed — '
+                                  f'row floor scaled {lo} -> {scaled}'))
+                lo = scaled
+
+        lvl = 'ok' if lo <= n <= hi else 'block'
+        out.append((lvl, f'{n} rows (expected {lo}–{hi})'))
 
     mg = v.get('min_groups')
     if mg is not None:
