@@ -60,11 +60,24 @@ DEFAULT_FOLDER = os.path.expanduser(
 # as "tab not present" when the tab was there under another name — so match by
 # pattern and let the file say which one it is.
 KINDS = [
-    # kind            matches                                        dataset
-    ('branch-stock',  re.compile(r'^SOH\s+(?!Main\b)\S', re.I),      'stock-level'),
-    ('main-stock',    re.compile(r'^SOH\s+Main\s*$', re.I),          'stock-level'),
-    ('branch-sales',  re.compile(r'^Sales\s+MTD\s*$', re.I),         'monthly-sales'),
+    # kind             matches                                          dataset
+    ('branch-stock',   re.compile(r'^SOH\s+(?!Main)\S', re.I),       'stock-level'),
+    ('main-stock',     re.compile(r'^SOH\s+Main\s*$', re.I),           'stock-level'),
+    ('supplier-stock', re.compile(r'^SOH\s+Sydney\s*$', re.I),         'stock-level'),
+    ('branch-sales',   re.compile(r'^Sales\s+MTD\s*$', re.I),          'monthly-sales'),
 ]
+
+# Hobart and Melbourne each carry a `SOH Sydney` tab holding SYDNEY's stock -
+# 1,487 and 1,484 rows, group header "Sydney", read by 51 formulas each.
+# Sydney supplies both branches, the same relationship that makes Sydney's own
+# Sales MTD cover SYD+MEL+HOB.
+#
+# It was first classified as a leftover because 51 formula reads is nothing
+# beside SOH Dear's 3,018. That was wrong. A tab can be small and still be
+# load-bearing, and 'how many formulas read it' measures how much of the
+# workbook leans on it, not whether anybody needs it. The right question was
+# what the tab is FOR, and its group header answered that from the start.
+SUPPLIER_BRANCHES = ('Hobart', 'Melbourne')
 
 # Branch name inside the workbook -> the Cin7 location it is about. Coffs is the
 # one already bound; the rest are asserted here and verified against the tab's
@@ -331,6 +344,12 @@ def survey_file(path):
            'sheets': wbv.sheetnames, 'tabs': []}
 
     for kind, pattern, dataset in KINDS:
+        # Sydney's own workbook uses `SOH Sydney` as its BRANCH tab, so it must
+        # not also be bound as a supplier tab.
+        if kind == 'supplier-stock' and rec['branch'] not in SUPPLIER_BRANCHES:
+            continue
+        if kind == 'branch-stock' and rec['branch'] in SUPPLIER_BRANCHES:
+            pattern = re.compile(r'^SOH\s+(?!Main|Sydney)\S', re.I)
         matches = [s for s in wbv.sheetnames if pattern.match(s.strip())]
         if not matches:
             rec['tabs'].append({'kind': kind, 'error': 'NO TAB MATCHES', 'dataset': dataset})
@@ -549,8 +568,13 @@ def emit_bindings(recs, outdir):
                     extra = '\nround = 2'
                 cols.append(f'[[columns]]{note}\nfield = "{field}"\nheader = "{label}"{extra}')
             override = LOCATION_OVERRIDES.get((r['branch'], kind))
+            # A supplier tab is about the SUPPLIER, not the branch whose workbook
+            # it sits in. Defaulting to the branch put Hobart's stock into a tab
+            # headed "Sydney" — the tab's own group header row said so and the
+            # generator ignored it.
             locs = (', '.join(f'"{x}"' for x in override) if override
                     else '"Main Warehouse", "Gateway"' if kind == 'main-stock'
+                    else '"Sydney"' if kind == 'supplier-stock'
                     else f'"{BRANCHES[r["branch"]]}"')
             what = ('Main Warehouse + Gateway stock on hand, summed.' if kind == 'main-stock'
                     else f'{r["branch"]} stock on hand.' if kind == 'branch-stock'

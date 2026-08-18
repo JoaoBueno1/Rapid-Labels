@@ -42,7 +42,7 @@ folder = "Inventory Management/Inventory Stock Orders"
 [layout]
 kind = "flat"
 key = "sku"
-data_anchor = "A3"          # header row 2; 2928 data rows at survey time
+data_anchor = "A3"          # header row 2; 2914 data rows at survey time
 locations = ["Main Warehouse", "Gateway"]
 
 [[columns]]
@@ -62,7 +62,7 @@ field = "on_order"
 header = "On order"
 
 [[columns]]
-# Column E. READ BY 1716 FORMULAS via A:E,5.
+# Column E. READ BY 1666 FORMULAS via A:E,5.
 # Its position inside that range is load-bearing; do not reorder.
 field = "available"
 header = "Available"

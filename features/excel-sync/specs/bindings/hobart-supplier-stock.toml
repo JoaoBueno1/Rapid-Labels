@@ -1,7 +1,7 @@
-slug = "hobart-main-stock"
-title = "Hobart — SOH Main"
+slug = "hobart-supplier-stock"
+title = "Hobart — SOH Sydney"
 dataset = "stock-level"
-what_it_does = "Main Warehouse + Gateway stock on hand, summed."
+what_it_does = "Hobart sales for the current month, SKU by SKU."
 feeds = ["Order Template", "weekly order tabs"]
 
 # ── Scheduling and the on/off switch ────────────────────────────────────────
@@ -35,21 +35,23 @@ enabled = true
 # and delivery failing loudly is the correct outcome — not something to paper
 # over with a wildcard.
 file = "Hobart Aug 26.xlsx"
-sheet = "SOH Main"
+sheet = "SOH Sydney"
 library = "Rapid LED - Data"
 folder = "Inventory Management/Inventory Stock Orders"
 
 [layout]
 kind = "flat"
 key = "sku"
-data_anchor = "A3"          # header row 2; 2928 data rows at survey time
-locations = ["Main Warehouse", "Gateway"]
+data_anchor = "A3"          # header row 2; 1487 data rows at survey time
+locations = ["Sydney"]
 
 [[columns]]
 field = "sku"
 header = "SKU"
 
 [[columns]]
+# Column B. READ BY 51 FORMULAS via A:B,2.
+# Its position inside that range is load-bearing; do not reorder.
 field = "on_hand"
 header = "Quantity on hand"
 
@@ -62,8 +64,6 @@ field = "on_order"
 header = "On order"
 
 [[columns]]
-# Column E. READ BY 1720 FORMULAS via A:E,5.
-# Its position inside that range is load-bearing; do not reorder.
 field = "available"
 header = "Available"
 
@@ -74,4 +74,5 @@ header = "Available"
 # stamp alone never answered — Brisbane showed June figures under an
 # "Updated 10-Aug" stamp because the two came from different hands.
 cell = "G1"
-# block = "??"   no empty 2x4 found near the stamp (['G3', 'H3', 'G4', 'H4'])
+# chosen — tab had no stamp; first free column right of the data
+block = "G3"

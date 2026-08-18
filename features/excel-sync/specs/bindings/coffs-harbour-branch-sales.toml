@@ -50,7 +50,7 @@ field = "sku"
 header = "SKU"
 
 [[columns]]
-# Column B. READ BY 1140 FORMULAS via A:B,2.
+# Column B. READ BY 1134 FORMULAS via A:B,2.
 # Its position inside that range is load-bearing; do not reorder.
 field = "quantity"
 header = "Quantity"

@@ -42,7 +42,7 @@ folder = "Inventory Management/Inventory Stock Orders"
 [layout]
 kind = "flat"
 key = "sku"
-data_anchor = "B3"          # header row 2; 1215 data rows at survey time
+data_anchor = "B3"          # header row 2; 1216 data rows at survey time
 locations = ["Coffs Harbour"]
 
 [[columns]]
