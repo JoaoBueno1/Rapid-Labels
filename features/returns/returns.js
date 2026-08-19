@@ -5,18 +5,22 @@
  */
 'use strict';
 
-const RT = { customers: [], operators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1, so: null, soLoadedNumber: null, voidId: null };
+const RT = { customers: [], operators: [], _baseOperators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1, so: null, soLoadedNumber: null, voidId: null };
 const PAGE_SIZE = 25;
 const REASONS = ['Faulty', 'Product Left Over / Change of Mind', 'Incorrect Item Supplied', 'Incorrect Item Ordered', 'Freight Damage', 'Other'];
 const CONDITIONS = ['Resaleable', 'Not Resaleable', 'Faulty'];                                   // warehouse assessment (internal)
 const RET_STATUSES = ['Accepted for Credit Assessment', 'Accepted for Warranty Assessment', 'Return Not Accepted']; // printed on customer receipt
+// Fixed warehouse list (management uses returns across all sites) — new-return selector + filters.
+const WAREHOUSES = ['Sunshine Coast', 'Main Warehouse', 'Melbourne', 'Cairns', 'Coffs Harbour', 'Hobart', 'Sydney', 'Brisbane'];
+// Pre-select the office disposition from stage-1 condition (fully editable — faulty/warranty can still be refused).
+const DISPO_BY_CONDITION = { 'Resaleable': 'Accepted for Credit Assessment', 'Not Resaleable': 'Accepted for Credit Assessment', 'Faulty': 'Accepted for Warranty Assessment' };
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
 const fmtDT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return fmtD(iso); return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
 const fmtT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
-const statusLabel = s => ({ pending: 'Pending', in_treatment: 'In treatment', to_putaway: 'Ready to put away', completed: 'Completed', void: 'Voided' }[s] || s);
+const statusLabel = s => ({ pending: 'Pending', in_treatment: 'Processing', to_putaway: 'Ready to put away', completed: 'Completed', void: 'Voided' }[s] || s);
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
 function rtInvalid(id) { const el = $(id); if (!el) return; el.classList.add('rt-invalid'); try { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} el.addEventListener('input', function h() { el.classList.remove('rt-invalid'); el.removeEventListener('input', h); }); }
@@ -55,9 +59,18 @@ async function loadCustomers() { try { const r = await fetch('/api/customers'); 
 async function loadOperators() {
   try {
     const r = await sb().from('collection_operators').select('*');
-    RT.operators = [...new Set((r.data || []).map(o => o.name || o.operator || o.operator_name).filter(Boolean))].sort();
-    $('rtOperators').innerHTML = RT.operators.map(o => `<option value="${esc(o)}">`).join('');
+    RT._baseOperators = [...new Set((r.data || []).map(o => o.name || o.operator || o.operator_name).filter(Boolean))];
+    rtRefreshOperatorPool();
   } catch (_) {}
+}
+// The name fields accept ANY typed name (new staff) AND autocomplete. As more people
+// use it, every name already seen on a return (received/processed/put-away by) joins
+// the suggestion pool — union of the collection_operators list + names seen in returns.
+function rtRefreshOperatorPool() {
+  const s = new Set(RT._baseOperators || []);
+  (RT.history || []).forEach(r => [r.operator, r.treated_by, r.putaway_by].forEach(n => { const t = String(n || '').trim(); if (t) s.add(t); }));
+  RT.operators = [...s].sort((a, b) => a.localeCompare(b));
+  const dl = $('rtOperators'); if (dl) dl.innerHTML = RT.operators.map(o => `<option value="${esc(o)}">`).join('');
 }
 async function loadReturns() {
   try {
@@ -66,6 +79,7 @@ async function loadReturns() {
     RT.active = rows.filter(x => x.status !== 'completed' && x.status !== 'void');
     RT.history = rows;   // History now lists ALL returns — a searchable, filterable archive
     RT.activePage = 1; RT.histPage = 1;
+    rtRefreshOperatorPool();   // grow the name suggestions with everyone seen on a return
     $('rtSub').textContent = `${RT.active.length} active · ${rows.length} total`;
     rtRenderActive(); rtRenderHistory();
   } catch (e) { toast('Could not load returns: ' + e.message, 'err'); }
@@ -80,15 +94,17 @@ function rtTab(t) {
 // ─── Lists ───
 function rtRenderActive() {
   const q = ($('rtSearch').value || '').toLowerCase();
+  const wf = ($('rtWhFilter') && $('rtWhFilter').value) || '';
   let rows = RT.active;
-  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.customer_id || ''} ${r.origin_order || ''} ${r.operator || ''}`.toLowerCase().includes(q));
+  if (wf) rows = rows.filter(r => r.warehouse === wf);
+  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.customer_id || ''} ${r.origin_order || ''} ${r.operator || ''} ${r.warehouse || ''}`.toLowerCase().includes(q));
   $('rtActiveCount').textContent = `${rows.length} return(s)`;
   if ($('rtActivePager')) $('rtActivePager').innerHTML = '';
   // Active is split by stage so the warehouse and the office each see their own queue.
   // Two sections only: the office queue (Pending + In treatment, told apart by row
   // colour) and the warehouse queue (Ready to put away).
   const defs = [
-    { key: 'office',  dot: 'pending',    sts: ['pending', 'in_treatment'], title: 'Awaiting office',   hint: 'Received — the office to treat these' },
+    { key: 'office',  dot: 'pending',    sts: ['pending', 'in_treatment'], title: 'Awaiting office',   hint: 'Received — the office to process these' },
     { key: 'putaway', dot: 'to_putaway', sts: ['to_putaway'],              title: 'Ready to put away', hint: 'Office done — warehouse to shelve the goods and confirm' },
   ];
   const known = defs.flatMap(d => d.sts);
@@ -98,13 +114,13 @@ function rtRenderActive() {
   $('rtActiveBody').innerHTML = rows.length ? html : '<div class="rt-empty">No active returns. Click "+ New return" to create one.</div>';
 }
 function rtActHead(rec) {
-  return '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Account</th><th>Sales order</th><th>Received by</th>'
-    + (rec ? '<th>Treated by</th><th>Put away by</th>' : '')
+  return '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Account</th><th>Sales order</th><th>Received by</th>'
+    + (rec ? '<th>Processed by</th><th>Put away by</th>' : '')
     + '<th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
 }
 function rtActiveSection(d, list) {
   const rec = d.key === 'putaway';   // the put-away queue shows the full record so far
-  const cols = rec ? 11 : 9;
+  const cols = rec ? 12 : 10;
   const body = list.map(r => rtActiveRow(r, rec)).join('') || `<tr><td colspan="${cols}" class="rt-sec-empty">Nothing here right now.</td></tr>`;
   return `<div class="rt-sec-block">
     <div class="rt-sec-hd"><span class="rt-dot st-${d.dot || ''}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
@@ -124,6 +140,7 @@ function rtActiveRow(r, rec) {
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
+    <td>${esc(r.warehouse || '—')}</td>
     <td class="num" style="color:#5b6b86">${esc(r.customer_id || '—')}</td>
     <td>${esc(r.origin_order || '—')}</td>
     <td>${esc(r.operator || '—')}${r.created_at ? `<div class="sub">${fmtT(r.created_at)}</div>` : ''}</td>
@@ -141,15 +158,14 @@ async function rtConfirmPutaway(id) {
     sb().from('returns_treatment_lines').select('*').eq('return_id', id).order('line_no'),
   ]);
   const lines = ln.data || [], tlines = tl.data || [];
-  $('rtPutawayTitle').innerHTML = `Put away — ${esc(r.return_no)} <span class="rt-step">① Created ▸ ② Treated ▸ <b>③ Put away</b></span>`;
+  $('rtPutawayTitle').innerHTML = `Put away — ${esc(r.return_no)} <span class="rt-step">① Created ▸ ② Processed ▸ <b>③ Put away</b></span>`;
   $('rtPutawayInfo').innerHTML = `
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')} ${r.customer_id ? '(' + esc(r.customer_id) + ')' : ''}</b></div>
       <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}${r.created_at ? ' · ' + fmtDT(r.created_at) : ''}</b></div>
-      <div class="rt-kv"><span>Treated by</span><b>${r.treated_by ? esc(r.treated_by) + (r.treated_at ? ' · ' + fmtDT(r.treated_at) : '') : '—'}</b></div>
+      <div class="rt-kv"><span>Processed by</span><b>${r.treated_by ? esc(r.treated_by) + (r.treated_at ? ' · ' + fmtDT(r.treated_at) : '') : '—'}</b></div>
       <div class="rt-kv"><span>Credit note</span><b>${esc(r.treatment_ref || '—')}</b></div>
-      <div class="rt-kv"><span>Credit $</span><b>${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</b></div>
     </div>`;
   const src = tlines.length ? tlines : lines;
   $('rtPutLinesBody').innerHTML = src.map(l => {
@@ -180,20 +196,22 @@ async function rtDoPutaway() {
 function rtRenderHistory() {
   const q = ($('rtHistSearch').value || '').toLowerCase();
   const sf = ($('rtHistStatus') && $('rtHistStatus').value) || '';
+  const wf = ($('rtHistWh') && $('rtHistWh').value) || '';
   let rows = RT.history;                         // History now lists ALL returns, newest first
   if (sf) rows = rows.filter(r => r.status === sf);
-  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''} ${r.operator || ''} ${r.treated_by || ''} ${r.putaway_by || ''}`.toLowerCase().includes(q));
+  if (wf) rows = rows.filter(r => r.warehouse === wf);
+  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''} ${r.operator || ''} ${r.treated_by || ''} ${r.putaway_by || ''} ${r.warehouse || ''}`.toLowerCase().includes(q));
   $('rtHistCount').textContent = `${rows.length} return(s)`;
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
   $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row st-${r.status} ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
+    <td>${esc(r.warehouse || '—')}</td>
     <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
     <td>${r.operator ? `${esc(r.operator)}<div class="sub">${fmtT(r.created_at)}</div>` : '—'}</td>
     <td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>
     <td>${r.putaway_by ? `${esc(r.putaway_by)}<div class="sub">${fmtDT(r.putaway_at)}${r.putaway_location ? ' · ' + esc(r.putaway_location) : ''}</div>` : '—'}</td>
-    <td class="r num">${rtCredit(r) ? '$' + money(rtCredit(r)) : '—'}</td>
     <td class="r rt-actions" onclick="event.stopPropagation()">
       <button class="rt-btn rt-btn-sm" onclick="rtView('${r.id}')">View</button>
       <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>
@@ -220,6 +238,7 @@ async function rtOpenForm(row) {
   $('rtRep').value = row ? (row.rep || '') : '';
   $('rtOrigin').value = row ? (row.origin_order || '') : '';
   $('rtOperator').value = row ? (row.operator || '') : '';
+  if ($('rtNewWarehouse')) $('rtNewWarehouse').value = row ? (row.warehouse || '') : '';
   $('rtNotes').value = row ? (row.notes || '') : '';
   if (row) {
     const r = await sb().from('returns_lines').select('*').eq('return_id', row.id).order('line_no');
@@ -273,7 +292,7 @@ function rtProdInput(i, inp) {
     try {
       const like = `%${q}%`;
       const r = await sb().schema('cin7_mirror').from('products').select('sku,name,attribute1,price_tier1').or(`sku.ilike.${like},name.ilike.${like},attribute1.ilike.${like}`).limit(8);
-      ac.innerHTML = (r.data || []).map(p => `<div class="rt-ac-item" onclick='rtPickProd(${JSON.stringify(p).replace(/'/g, "&#39;")})'><strong>${esc(p.sku)}</strong>${p.attribute1 ? ` <span class="sub">5DC ${esc(p.attribute1)}</span>` : ''}<div class="sub">${esc((p.name || '').slice(0, 60))}${p.price_tier1 != null ? ' · $' + money(p.price_tier1) : ''}</div></div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match</div>';
+      ac.innerHTML = (r.data || []).filter(p => !rtIsCarton(p.sku)).map(p => `<div class="rt-ac-item" onclick='rtPickProd(${JSON.stringify(p).replace(/'/g, "&#39;")})'><strong>${esc(p.sku)}</strong>${p.attribute1 ? ` <span class="sub">5DC ${esc(p.attribute1)}</span>` : ''}<div class="sub">${esc((p.name || '').slice(0, 60))}</div></div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match</div>';
       ac.style.display = 'block';
     } catch (e) { ac.style.display = 'none'; }
   }, 200);
@@ -294,7 +313,7 @@ function rtDc5Input(i, inp) {
   _prodTimer = setTimeout(async () => {
     try {
       const r = await sb().schema('cin7_mirror').from('products').select('sku,name,attribute1,price_tier1').ilike('attribute1', `${q}%`).limit(8);
-      ac.innerHTML = (r.data || []).map(p => `<div class="rt-ac-item" onclick='rtPickProd(${JSON.stringify(p).replace(/'/g, "&#39;")})'><strong>5DC ${esc(p.attribute1)}</strong> <span class="sub">${esc(p.sku)}</span><div class="sub">${esc((p.name || '').slice(0, 60))}${p.price_tier1 != null ? ' · $' + money(p.price_tier1) : ''}</div></div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match</div>';
+      ac.innerHTML = (r.data || []).filter(p => !rtIsCarton(p.sku)).map(p => `<div class="rt-ac-item" onclick='rtPickProd(${JSON.stringify(p).replace(/'/g, "&#39;")})'><strong>5DC ${esc(p.attribute1)}</strong> <span class="sub">${esc(p.sku)}</span><div class="sub">${esc((p.name || '').slice(0, 60))}</div></div>`).join('') || '<div class="rt-ac-item" style="color:#9aa6ba">No match</div>';
       ac.style.display = 'block';
     } catch (e) { ac.style.display = 'none'; }
   }, 200);
@@ -306,12 +325,14 @@ async function rtSaveNew() {
   const name = RT.sel ? (RT.sel.name || '').trim() : '';
   const contact = ($('rtContact').value || '').trim();
   const operator = ($('rtOperator').value || '').trim();
+  const warehouse = (($('rtNewWarehouse') && $('rtNewWarehouse').value) || '').trim();
   RT.lines.forEach(l => l._invalid = false);
   const withSku = RT.lines.filter(l => l.sku);
   const lines = withSku.filter(l => (Number(l.qty) || 0) > 0 && l.reason && l.condition);
   if (!name) { toast('Pick the business from the list (Cin7)', 'err'); return rtInvalid('rtCustName'); }
   if (!contact) { toast('Enter the customer name (contact)', 'err'); return rtInvalid('rtContact'); }
   if (!operator) { toast('Enter who received it (Received by)', 'err'); return rtInvalid('rtOperator'); }
+  if (!warehouse) { toast('Pick the warehouse', 'err'); return rtInvalid('rtNewWarehouse'); }
   if (!withSku.length) { toast('Add at least one product line', 'err'); return; }
   if (lines.length !== withSku.length) {
     withSku.forEach(l => { if (!((Number(l.qty) || 0) > 0) || !l.reason || !l.condition) l._invalid = true; });
@@ -327,7 +348,7 @@ async function rtSaveNew() {
       rep: ($('rtRep').value || '').trim() || null,
       invoice_number: ($('rtInvoice').value || '').trim() || null,
       customer_reference: ($('rtCustRef').value || '').trim() || null,
-      origin_order: ($('rtOrigin').value || '').trim() || null, operator, notes: ($('rtNotes').value || '').trim() || null,
+      origin_order: ($('rtOrigin').value || '').trim() || null, operator, warehouse: warehouse || null, notes: ($('rtNotes').value || '').trim() || null,
     };
     let id, return_no, oldLineIds = [];
     if (RT.editId) {
@@ -340,7 +361,7 @@ async function rtSaveNew() {
       const { data, error } = await sb().from('returns_active').insert({ ...hdr, status: 'pending' }).select('id,return_no').single();
       if (error) throw error; id = data.id; return_no = data.return_no;
     }
-    const lineRows = lines.map((l, idx) => ({ return_id: id, line_no: idx + 1, sku: l.sku, product_name: l.name, dc5: l.dc5 || null, qty: Number(l.qty) || 0, reason: l.reason || null, condition: l.condition || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0) }));
+    const lineRows = lines.map((l, idx) => ({ return_id: id, line_no: idx + 1, sku: l.sku, product_name: l.name, dc5: l.dc5 || null, qty: Number(l.qty) || 0, reason: l.reason || null, condition: l.condition || null, unit_value: 0, line_value: 0 }));   // no monetary values on returns (by request)
     const { error: e2 } = await sb().from('returns_lines').insert(lineRows); if (e2) throw e2;
     if (oldLineIds.length) await sb().from('returns_lines').delete().in('id', oldLineIds);   // safe: new rows already in
     toast(`${return_no} ${RT.editId ? 'updated' : 'created'}`, 'ok');
@@ -398,9 +419,8 @@ function rtSoRender() {
     <td class="r"><input class="rt-input r" type="number" min="0" max="${l.ordered}" step="1" placeholder="0" value="${l.rqty}" oninput="rtSoSet(${i},'rqty',this.value)" /></td>
     <td><select class="rt-input" onchange="rtSoSet(${i},'reason',this.value)"><option value="">— reason —</option>${REASONS.map(r => `<option ${l.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td><select class="rt-input" onchange="rtSoSet(${i},'condition',this.value)"><option value="">— condition —</option>${CONDITIONS.map(r => `<option ${l.condition === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
-    <td class="r num">${money(l.price)}</td>
     <td class="r"><button class="rt-rm" title="Remove line" onclick="rtSoRemove(${i})">×</button></td>
-  </tr>`).join('') || '<tr><td colspan="8" class="rt-empty">No items left — close and add manually.</td></tr>';
+  </tr>`).join('') || '<tr><td colspan="7" class="rt-empty">No items left — close and add manually.</td></tr>';
   rtSoUpdateBtn();
 }
 function rtSoUpdateBtn() {
@@ -490,16 +510,16 @@ async function rtView(id) {
   const lines = ln.data || [], tlines = tl.data || [];
   const rowsC = lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc(l.product_name || '')}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('');
   const treatBlock = (r.status === 'completed' || r.status === 'in_treatment') ? `
-    <div class="rt-sec-title">Treatment</div>
+    <div class="rt-sec-title">Processing</div>
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Credit note #</span><b>${esc(r.treatment_ref || '—')}</b></div>
       <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Emailed</span><b>${esc(r.customer_emailed || '—')}</b></div>
       <div class="rt-kv"><span>Put away by</span><b>${r.putaway_by ? esc(r.putaway_by) + ' · ' + fmtDT(r.putaway_at) + (r.putaway_location ? ' · ' + esc(r.putaway_location) : '') : '—'}</b></div>
-      <div class="rt-kv"><span>Treated by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtDT(r.treated_at) : ''}</b></div>
+      <div class="rt-kv"><span>Processed by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtDT(r.treated_at) : ''}</b></div>
       ${r.treatment_notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
     </div>
-    ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th>Return status</th><th class="r">Qty</th><th>Reason</th><th class="r">Credit $</th><th>Moved to</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td>${esc(t.return_status || '')}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td><td class="r num">${money(t.line_value)}</td><td>${esc(t.moved_to_location || '')}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th>Return status</th><th class="r">Qty</th><th>Reason</th><th>Moved to</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td>${esc(t.return_status || '')}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td><td>${esc(t.moved_to_location || '')}</td></tr>`).join('')}</tbody></table>` : ''}
   ` : '';
   $('rtViewBody').innerHTML = `
     <div class="rt-view-head">
@@ -564,13 +584,15 @@ async function rtAction(id) {
   // credit lines: existing treatment lines, or seed from stage-1. Value starts BLANK
   // on first treatment (lots of discounts → varies); shows the saved value on reopen.
   const fromT = tlines.length > 0;
-  RT.tlines = (fromT ? tlines : lines).map((l, idx) => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || '', unit: fromT ? (l.unit_value != null ? l.unit_value : '') : '', moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false }));
+  // Pre-select the disposition from stage-1 condition (Resaleable→Credit, Faulty→Warranty).
+  // First treatment only; on reopen keep the saved status. Always editable (can be refused).
+  RT.tlines = (fromT ? tlines : lines).map((l, idx) => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || (fromT ? '' : (DISPO_BY_CONDITION[l.condition] || '')), moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false }));
   $('rtActRef').value = r.treatment_ref || '';
   $('rtActNotes').value = r.treatment_notes || '';
   $('rtActBy').value = r.treated_by || '';
   $('rtActEmailed').value = r.customer_emailed || '';
   $('rtActWarehouse').value = r.warehouse || '';
-  $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Treatment</b></span>`;
+  $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Processing</b></span>`;
   $('rtActStage1').innerHTML = `
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')} ${r.customer_id ? '(' + esc(r.customer_id) + ')' : ''}</b></div>
@@ -599,24 +621,10 @@ function rtRenderTLines() {
     <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
     <td class="rt-frozen">${esc(l.reason || '—')}</td>
     <td class="r">${qtyEditable ? `<input class="rt-input r" type="text" inputmode="numeric" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" />` : `<span class="rt-frozen num">${l.qty}</span>`}</td>
-    <td class="r"><input class="rt-input r" type="text" inputmode="decimal" value="${l.unit}" oninput="rtTSet(${i},'unit',this.value)" /></td>
-    <td class="r num" id="rtTTot${i}">${money((Number(l.qty) || 0) * (Number(l.unit) || 0))}</td>
     <td class="r"><button class="rt-line-x" title="Split for credit vs warranty" onclick="rtTSplit(${i})">⧉</button>${l._split ? `<button class="rt-line-x" title="Remove split" onclick="rtTRemove(${i})">×</button>` : ''}</td>
   </tr>`; }).join('');
-  $('rtTTotal').textContent = money(RT.tlines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit) || 0), 0));
 }
-function rtTSet(i, k, v) {
-  RT.tlines[i][k] = v;
-  // Update the totals in place — do NOT re-render the table on every keystroke, or the
-  // input the user is typing in gets destroyed (losing focus + rejecting decimals).
-  if (k === 'qty' || k === 'unit') {
-    const l = RT.tlines[i];
-    const cell = $('rtTTot' + i);
-    if (cell) cell.textContent = money((Number(l.qty) || 0) * (Number(l.unit) || 0));
-    const tot = $('rtTTotal');
-    if (tot) tot.textContent = money(RT.tlines.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.unit) || 0), 0));
-  }
-}
+function rtTSet(i, k, v) { RT.tlines[i][k] = v; }   // no values on this stage — just status/qty
 function rtTSplit(i) {
   const l = RT.tlines[i];
   if ((Number(l.qty) || 0) <= 1) return toast('Nothing to split — quantity is 1', 'err');
@@ -637,7 +645,7 @@ function rtTRemove(i) {
 // Complete is optional-treatment: warn before moving to History (esp. if untreated)
 function rtAskComplete() {
   const by = ($('rtActBy').value || '').trim();
-  if (!by) { toast('Enter who treated it (Treated by)', 'err'); return rtInvalid('rtActBy'); }
+  if (!by) { toast('Enter who processed it (Processed by)', 'err'); return rtInvalid('rtActBy'); }
   $('rtCompleteMsg').innerHTML = 'Finish the office treatment and send it to the warehouse to <strong>put away</strong>?';
   $('rtCompleteModal').classList.add('active');
 }
@@ -647,7 +655,7 @@ function rtCompleteConfirm() { rtCompleteClose(); rtSaveAct(true); }
 async function rtSaveAct(complete) {
   const r = RT.actRow; if (!r) return;
   const by = ($('rtActBy').value || '').trim();
-  if (complete && !by) return toast('Enter who treated it (Treated by)', 'err');   // only Treated by is required
+  if (complete && !by) return toast('Enter who processed it (Processed by)', 'err');   // only Treated by is required
   // split quantities must add back up to what was received
   const grp = {};
   RT.tlines.forEach(l => { const g = grp[l._grp] || (grp[l._grp] = { recv: l._recv || 0, sum: 0, sku: l.sku }); g.sum += Number(l.qty) || 0; });
@@ -668,7 +676,7 @@ async function rtSaveAct(complete) {
     // replace credit lines safely: insert new first, then drop the old ones by id
     const { data: oldT } = await sb().from('returns_treatment_lines').select('id').eq('return_id', r.id);
     const oldTIds = (oldT || []).map(o => o.id);
-    const rows = RT.tlines.filter(l => l.sku).map((l, idx) => ({ return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name, qty: Number(l.qty) || 0, reason: l.reason || null, return_status: l.return_status || null, unit_value: Number(l.unit) || 0, line_value: (Number(l.qty) || 0) * (Number(l.unit) || 0) }));
+    const rows = RT.tlines.filter(l => l.sku).map((l, idx) => ({ return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name, qty: Number(l.qty) || 0, reason: l.reason || null, return_status: l.return_status || null, unit_value: 0, line_value: 0 }));   // no monetary values on returns (by request)
     if (rows.length) { const { error } = await sb().from('returns_treatment_lines').insert(rows); if (error) throw error; }
     if (oldTIds.length) await sb().from('returns_treatment_lines').delete().in('id', oldTIds);
     // header LAST — a line failure above never leaves a wrong 'completed' status
@@ -690,12 +698,12 @@ const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.q
 function rtExportCsv() {
   const rows = RT.history;
   if (!rows.length) return toast('No completed returns to export', 'err');
-  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Sales order', 'Cust. reference', 'Products (qty × sku / reason / condition)', 'Total Qty', 'Credit Note', 'Return status', 'Emailed', 'Received by', 'Treated by', 'Treated Date', 'Credit $', 'Comments', 'Treatment Notes'];
+  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Sales order', 'Cust. reference', 'Products (qty × sku / reason / condition)', 'Total Qty', 'Credit Note', 'Return status', 'Emailed', 'Received by', 'Processed by', 'Processed Date', 'Comments', 'Processing Notes'];
   const lines = [headers.map(csvCell).join(',')];
   rows.forEach(r => lines.push([
     fmtD(r.created_at), r.return_no, r.customer_name, r.contact_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.invoice_number, r.origin_order, r.customer_reference,
     rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, rtStatuses(r), r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
-    rtCredit(r) ? money(rtCredit(r)) : '', r.notes, r.treatment_notes,
+    r.notes, r.treatment_notes,
   ].map(csvCell).join(',')));
   const csv = '﻿' + lines.join('\r\n'); // BOM so Excel reads UTF-8
   const stamp = new Date().toISOString().slice(0, 10);
