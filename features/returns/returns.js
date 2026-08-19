@@ -18,8 +18,8 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => (Number(n) || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
-const fmtDT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return fmtD(iso); return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
-const fmtT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: false }).format(d); };
+const fmtDT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return fmtD(iso); return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).format(d).replace(/\b([ap])m\b/i, (_, p) => p.toUpperCase() + 'M'); };
+const fmtT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: true }).format(d).replace(/\b([ap])m\b/i, (_, p) => p.toUpperCase() + 'M'); };
 const statusLabel = s => ({ pending: 'Pending', in_treatment: 'Processing', to_putaway: 'Ready to put away', completed: 'Completed', void: 'Voided' }[s] || s);
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
@@ -32,17 +32,20 @@ function pagerHtml(kind, pg) { if (pg.total <= PAGE_SIZE) return `<span class="r
 function rtGoPage(kind, d) { if (kind === 'active') { RT.activePage += d; rtRenderActive(); } else { RT.histPage += d; rtRenderHistory(); } }
 
 // ─── Init ───
+// Close any open autocomplete on an outside click. Attached SYNCHRONOUSLY (not behind
+// the async data load) so it always fires — even while customers/returns are loading.
+document.addEventListener('click', e => {
+  if (!e.target.closest('.rt-cust') && $('rtCustAc')) $('rtCustAc').classList.remove('show');
+  if (!e.target.closest('.rt-oper') && $('rtOperatorAc')) $('rtOperatorAc').classList.remove('show');
+  if (!e.target.closest('.rt-actby') && $('rtActByAc')) $('rtActByAc').classList.remove('show');
+  if (!e.target.closest('.rt-putawayby') && $('rtPutawayByAc')) $('rtPutawayByAc').classList.remove('show');
+  if (!e.target.closest('.rt-prod-cell') && !e.target.closest('.rt-dc5-cell') && !e.target.closest('#rtProdAc') && $('rtProdAc')) $('rtProdAc').style.display = 'none';
+});
+
 (async function init() {
   try { if (window.supabaseReady) await window.supabaseReady; } catch (_) {}
   if (!sb()) { $('rtSub').textContent = 'Supabase not available'; return; }
   await Promise.all([loadCustomers(), loadOperators(), loadReturns()]);
-  document.addEventListener('click', e => {
-    if (!e.target.closest('.rt-cust')) $('rtCustAc').classList.remove('show');
-    if (!e.target.closest('.rt-oper')) $('rtOperatorAc') && $('rtOperatorAc').classList.remove('show');
-    if (!e.target.closest('.rt-actby')) $('rtActByAc') && $('rtActByAc').classList.remove('show');
-    if (!e.target.closest('.rt-putawayby')) $('rtPutawayByAc') && $('rtPutawayByAc').classList.remove('show');
-    if (!e.target.closest('.rt-prod-cell') && !e.target.closest('.rt-dc5-cell') && !e.target.closest('#rtProdAc')) $('rtProdAc').style.display = 'none';
-  });
 })();
 
 // operator autocomplete (shared by New-return operator + Action Treated-by)
@@ -115,7 +118,7 @@ function rtRenderActive() {
 }
 function rtActHead(rec) {
   return '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Account</th><th>Sales order</th><th>Received by</th>'
-    + (rec ? '<th>Processed by</th><th>Put away by</th>' : '')
+    + (rec ? '<th>Invoice</th><th>Processed by</th>' : '')
     + '<th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
 }
 function rtActiveSection(d, list) {
@@ -133,8 +136,8 @@ function rtActiveRow(r, rec) {
     ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtConfirmPutaway('${r.id}')">Confirm put-away</button> <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>`
     : `${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button> ` : ''}<button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button> <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">${r.status === 'in_treatment' ? 'Continue' : 'Action'}</button>${r.status === 'pending' ? ` <button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}`;
   const recCells = rec
-    ? `<td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>`
-      + `<td>${r.putaway_by ? `${esc(r.putaway_by)}<div class="sub">${fmtDT(r.putaway_at)}${r.putaway_location ? ' · ' + esc(r.putaway_location) : ''}</div>` : '—'}</td>`
+    ? `<td>${esc(r.invoice_number || '—')}</td>`
+      + `<td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>`
     : '';
   return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
@@ -590,8 +593,6 @@ async function rtAction(id) {
   $('rtActRef').value = r.treatment_ref || '';
   $('rtActNotes').value = r.treatment_notes || '';
   $('rtActBy').value = r.treated_by || '';
-  $('rtActEmailed').value = r.customer_emailed || '';
-  $('rtActWarehouse').value = r.warehouse || '';
   $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Processing</b></span>`;
   $('rtActStage1').innerHTML = `
     <div class="rt-kv-grid">
@@ -666,8 +667,6 @@ async function rtSaveAct(complete) {
     const upd = {
       treatment_ref: ($('rtActRef').value || '').trim() || null,
       treatment_notes: ($('rtActNotes').value || '').trim() || null,
-      customer_emailed: ($('rtActEmailed').value || '') || null,
-      warehouse: ($('rtActWarehouse').value || '').trim() || null,
       treated_by: by || null,
       status: complete ? 'to_putaway' : 'in_treatment',
       updated_at: new Date().toISOString(),
