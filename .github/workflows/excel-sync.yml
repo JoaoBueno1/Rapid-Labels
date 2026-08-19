@@ -17,9 +17,28 @@ name: Excel Sync
 
 on:
   schedule:
-    # 20:00 UTC Sun–Thu = 06:00 Mon–Fri in Sydney, an hour after the sales
-    # detail sync. The day shift is deliberate — do not "fix" 0-4 to 1-5.
-    - cron: '0 20 * * 0-4'
+    # Hourly through the working day, at minute 55. Two things fix that minute
+    # and neither is cosmetic.
+    #
+    # NOT minute 0: cin7-sync runs '0 * * * *' and rebuilds stock_snapshot by
+    # TRUNCATE-then-reload (cin7-stock-sync/sync-service.js, clearStockSnapshot).
+    # Reading the mirror while it is being reloaded yields a partial snapshot
+    # that is internally consistent and quietly wrong — the worst shape a bug
+    # can take here. Minute 55 leaves the reload the rest of the hour to finish.
+    #
+    # NOT minutes 0/10/20/30/40/50 either: wms-reconcile runs '*/10 * * * *'.
+    # 5, 15, 25, 35 and 45 are taken by other cin7-* jobs. 55 is what is left,
+    # and de-colliding crons is how the 429 storm of 2026-08-07 was fixed.
+    #
+    # The day shift is deliberate — do not "fix" 0-4 to 1-5. 20:55 UTC Sun is
+    # 06:55 Mon in Brisbane, and it still lands after cin7-sales-detail-month
+    # (19:00 UTC), which was the original reason for the daily 20:00 slot.
+    #
+    # Twelve builds a weekday instead of one. This job never calls Cin7 — it
+    # reads the mirror — so the extra runs cost Actions minutes and Supabase
+    # reads, and nothing of the Cin7 rate limit.
+    - cron: '55 20-23 * * 0-4'   # 06:55–09:55 Brisbane, Mon–Fri
+    - cron: '55 0-7 * * 1-5'     # 10:55–17:55 Brisbane, Mon–Fri
   workflow_dispatch:
     inputs:
       dataset:

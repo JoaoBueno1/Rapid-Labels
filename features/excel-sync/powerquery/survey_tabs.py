@@ -1,9 +1,10 @@
 import openpyxl, json, re, os, sys
 from openpyxl.utils import get_column_letter as CL, column_index_from_string as CI
 
-DIR = os.path.expanduser('~/OneDrive - RapidLED/Desktop/Tests files')
+DIR = 'C:/Users/JoaoMarcos/RapidLED/WorkDocs - Rapid LED - Data/Inventory Management/Inventory Stock Orders' if '--real' in sys.argv else os.path.expanduser('~/OneDrive - RapidLED/Desktop/Tests files')
 B = json.load(open('/tmp/bindings.json'))
-B = [b for b in B if 'Hobart' not in b['file']]
+if '--with-hobart' not in sys.argv:
+    B = [b for b in B if 'Hobart' not in b['file']]
 
 def split(a):
     m = re.match(r'^([A-Z]+)(\d+)$', a.upper()); return CI(m.group(1)), int(m.group(2))

@@ -98,6 +98,64 @@ the published dataset; the dataset is rebuilt by `excel-sync.yml` once a day at
 06:00 Brisbane. Pressing Refresh does not reach Cin7. Showing only `Refreshed`
 would imply a freshness the numbers do not have.
 
+## Live
+
+All seven branch workbooks in `Rapid LED - Data / Inventory Management /
+Inventory Stock Orders` were converted on 2026-08-20 and verified against the
+source cell for cell: 7/7 identical, 0 inherited number formats, column widths
+preserved, formula-error counts unchanged. `_Sync` is hidden in all of them
+(`--hide-sync`).
+
+    python survey_tabs.py --real --with-hobart      # read the SharePoint copies
+    python migrate.py --real --hide-sync --only Hobart
+    python verify_real.py "Hobart Aug 26.xlsx"      # data + widths + formats
+    python verify_formulas.py "Hobart Aug 26.xlsx"  # #N/A count vs backup
+    python compare_cin7_export.py                   # tabs vs a fresh Cin7 export
+
+Melbourne's `Sales MTD` held **July** (`From: 01-Jul-2026`), not August; the
+migration replaced it with August on Joao's instruction. 130 SKUs left the view
+and 68 arrived. Nothing was lost — the July figures were simply the wrong month.
+
+`compare_cin7_export.py` answers "did we drop a line?" against a report exported
+straight from Cin7. Run on 2026-08-20 with exports taken at 07:09 against tabs
+refreshed at 07:07: Coffs stock 1,225 vs 1,225 with nothing on either side, and
+every difference explained by one hour of trading. The proof is mechanical —
+where Cin7 shows more `allocated`, it shows exactly the same number more sold:
+
+    SKU                     alloc +   sold +
+    R-GPO2-WH                     9        9
+    R-VGPO2-WH                    3        3
+    R-WPGPO2                      1        1
+    R3590                         1        1
+    VEN-DC31203-L-WH              1        1     5/5
+
+## The old push engine is disarmed
+
+`--force` overrides the disabled-binding gate, and the `ExcelSync Trial`
+scheduled task passed `-Root`, which adds it. It fired on 2026-08-20 at 07:00
+against the test copies and tried to write over Brisbane. What stopped it was
+the formula guard — it found the stamp formula in F1 and refused:
+
+    REFUSE - 1 formula(s) inside the status cell area (F1)
+
+That was incidental protection, not design: an armed writer with `--force`
+pointed at files that now feed themselves. The task is now `Disabled`. Re-enable
+with `Enable-ScheduledTask -TaskName 'ExcelSync Trial'` only if the pull model is
+being rolled back.
+
+## Not defects, checked
+
+- **Column widths grew on Hobart and Melbourne after go-live** (G 23 -> 69.7,
+  H 18.3 -> 64). Refresh does not do this: tested on Sydney, columns F..J are
+  byte-identical after a full `RefreshAll`. A person widened them, almost
+  certainly to read the ~70-character stamp in a 23-wide column. Worth knowing
+  the stamp is longer than the space it sits in.
+- **Five new `#N/A` on Hobart's `New order` tab.** Somebody typed
+  `12V-IP67-012W` into B8; it does not exist in Cin7 (the 12v-IP67 family goes
+  020w, 040w, 060w, 100w, 200W, 300W). The failing lookups read `Descriptions`,
+  `HOB` and `Location` — none of them tabs this project touches. The workbook is
+  correctly reporting a bad code.
+
 ## Open
 
 - **The stamp can go fresh over stale data.** `Sync_Status` is a separate query

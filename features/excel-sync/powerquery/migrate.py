@@ -10,8 +10,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import generate_m as pq_m
 
 DIR  = os.path.expanduser('~/OneDrive - RapidLED/Desktop/Tests files')
+REAL = 'C:/Users/JoaoMarcos/RapidLED/WorkDocs - Rapid LED - Data/Inventory Management/Inventory Stock Orders'
 SYNC = '_Sync'
-xlSheetVisible, xlUp, xlExpression, xlCmdSql = -1, -4162, 2, 2
+xlSheetVisible, xlSheetHidden = -1, 0
+xlUp, xlExpression, xlCmdSql = -4162, 2, 2
 
 def bgr(r, g, b): return r + g*256 + b*65536
 GREEN, GREEN_TX = bgr(198,239,206), bgr(0,97,0)
@@ -100,7 +102,7 @@ def stamp(ws, b, hdr_row, key_col, is_sales):
     cell.Font.Bold = True
 
 
-def migrate(path, bindings, tabs):
+def migrate(path, bindings, tabs, hide_sync=False):
     """Trabalha numa copia FORA do OneDrive e so devolve se tudo deu certo.
 
     Os arquivos ficam numa pasta sincronizada e o AutoSave do Excel esta ligado:
@@ -111,7 +113,7 @@ def migrate(path, bindings, tabs):
     tmp = os.path.join(tempfile.gettempdir(), 'pqmig_' + os.path.basename(path))
     shutil.copy2(path, tmp)
     try:
-        done = _migrate(tmp, bindings, tabs)
+        done = _migrate(tmp, bindings, tabs, hide_sync)
     except Exception:
         print('   (copia de trabalho preservada em %s)' % tmp)
         raise
@@ -120,7 +122,7 @@ def migrate(path, bindings, tabs):
     return done
 
 
-def _migrate(path, bindings, tabs):
+def _migrate(path, bindings, tabs, hide_sync=False):
     xl = win32.DispatchEx('Excel.Application')
     xl.Visible = False; xl.DisplayAlerts = False; xl.AskToUpdateLinks = False
     done = []
@@ -138,7 +140,9 @@ def _migrate(path, bindings, tabs):
         load(wb, sy, 'Sync_Status', pq_m.m_status(), 1, 1)
         sy.Range('A4').Value = ('This sheet feeds the "Updated ..." stamp on every '
                                 'data tab. It refreshes with the rest of the workbook.')
-        sy.Visible = xlSheetVisible
+        # Nos arquivos reais a _Sync fica escondida: ela e infraestrutura,
+        # e uma aba a mais numa planilha de 27 vira duvida para o time.
+        sy.Visible = xlSheetHidden if hide_sync else xlSheetVisible
 
         # 2) Cada aba de dados.
         for b in bindings:
@@ -192,13 +196,19 @@ def _migrate(path, bindings, tabs):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--only', help='substring do nome do arquivo')
+    ap.add_argument('--real', action='store_true', help='usar a biblioteca do SharePoint')
+    ap.add_argument('--hide-sync', action='store_true')
+    ap.add_argument('--with-hobart', action='store_true')
     a = ap.parse_args()
-    B = [b for b in json.load(open('/tmp/bindings.json')) if 'Hobart' not in b['file']]
+    B = json.load(open('/tmp/bindings.json'))
+    if not a.with_hobart:
+        B = [b for b in B if 'Hobart' not in b['file']]
+    folder = REAL if a.real else DIR
     T = json.load(open('/tmp/tabs.json'))
     files = sorted({b['file'] for b in B})
     if a.only: files = [f for f in files if a.only.lower() in f.lower()]
     for fn in files:
         print(f'\n=== {fn} ===')
-        migrate(os.path.join(DIR, fn),
+        migrate(os.path.join(folder, fn),
                 [b for b in B if b['file'] == fn],
-                [t for t in T if t['file'] == fn])
+                [t for t in T if t['file'] == fn], a.hide_sync)
