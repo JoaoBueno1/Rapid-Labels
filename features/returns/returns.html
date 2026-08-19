@@ -31,6 +31,10 @@
       <div class="rt-toolbar">
         <button class="rt-btn rt-btn-primary" onclick="rtOpenNew()">+ New return</button>
         <input type="text" id="rtSearch" class="rt-input" placeholder="Search return #, customer, order…" oninput="RT.activePage=1;rtRenderActive()" />
+        <select id="rtWhFilter" class="rt-input" style="max-width:190px" onchange="RT.activePage=1;rtRenderActive()">
+          <option value="">All warehouses</option>
+          <option>Sunshine Coast</option><option>Main Warehouse</option><option>Melbourne</option><option>Cairns</option><option>Coffs Harbour</option><option>Hobart</option><option>Sydney</option><option>Brisbane</option>
+        </select>
         <span class="rt-count" id="rtActiveCount"></span>
       </div>
       <div id="rtActiveBody" class="rt-sections"></div>
@@ -42,20 +46,24 @@
       <div class="rt-toolbar">
         <button class="rt-btn" onclick="rtExportCsv()">⬇ Export CSV</button>
         <input type="text" id="rtHistSearch" class="rt-input" placeholder="Search returns…" oninput="RT.histPage=1;rtRenderHistory()" />
-        <select id="rtHistStatus" class="rt-input" style="max-width:200px" onchange="RT.histPage=1;rtRenderHistory()">
+        <select id="rtHistStatus" class="rt-input" style="max-width:180px" onchange="RT.histPage=1;rtRenderHistory()">
           <option value="">All statuses</option>
           <option value="pending">Pending</option>
-          <option value="in_treatment">In treatment</option>
+          <option value="in_treatment">Processing</option>
           <option value="to_putaway">Ready to put away</option>
           <option value="completed">Completed</option>
           <option value="void">Voided</option>
+        </select>
+        <select id="rtHistWh" class="rt-input" style="max-width:180px" onchange="RT.histPage=1;rtRenderHistory()">
+          <option value="">All warehouses</option>
+          <option>Sunshine Coast</option><option>Main Warehouse</option><option>Melbourne</option><option>Cairns</option><option>Coffs Harbour</option><option>Hobart</option><option>Sydney</option><option>Brisbane</option>
         </select>
         <span class="rt-count" id="rtHistCount"></span>
       </div>
       <div class="rt-table-wrap">
         <table class="rt-table">
           <thead><tr>
-            <th>Return #</th><th>Date</th><th>Customer</th><th>Status</th><th>Received by</th><th>Treated by</th><th>Put away</th><th class="r">Value</th><th class="r">Actions</th>
+            <th>Return #</th><th>Date</th><th>Customer</th><th>Warehouse</th><th>Status</th><th>Received by</th><th>Processed by</th><th>Put away</th><th class="r">Actions</th>
           </tr></thead>
           <tbody id="rtHistBody"></tbody>
         </table>
@@ -115,9 +123,16 @@
           </div>
           <div class="rt-field rt-oper">
             <label>Received by <span class="rt-req">*</span></label>
-            <input type="text" id="rtOperator" class="rt-input" autocomplete="off" placeholder="Start typing operator name…" oninput="rtOperInput('rtOperator','rtOperatorAc')" onfocus="rtOperInput('rtOperator','rtOperatorAc')" />
+            <input type="text" id="rtOperator" class="rt-input" autocomplete="off" placeholder="Type a name (new names OK)…" oninput="rtOperInput('rtOperator','rtOperatorAc')" onfocus="rtOperInput('rtOperator','rtOperatorAc')" />
             <div class="rt-ac" id="rtOperatorAc"></div>
             <datalist id="rtOperators"></datalist>
+          </div>
+          <div class="rt-field">
+            <label>Warehouse <span class="rt-req">*</span></label>
+            <select id="rtNewWarehouse" class="rt-input">
+              <option value="">— warehouse —</option>
+              <option>Sunshine Coast</option><option>Main Warehouse</option><option>Melbourne</option><option>Cairns</option><option>Coffs Harbour</option><option>Hobart</option><option>Sydney</option><option>Brisbane</option>
+            </select>
           </div>
           <div class="rt-field rt-field-full">
             <label>Notes (optional)</label>
@@ -140,7 +155,7 @@
             <tbody id="rtLinesBody"></tbody>
           </table>
         </div>
-        <p class="rt-hint">Tip: same product can go on multiple lines with different reasons/conditions. <strong>Condition</strong> is warehouse-only (internal). Credit values and the <strong>return status</strong> (credit / warranty) are handled later by the office in <strong>Action</strong>.</p>
+        <p class="rt-hint">Tip: same product can go on multiple lines with different reasons/conditions. <strong>Condition</strong> is warehouse-only (internal). The <strong>return status</strong> (credit / warranty) is set later by the office in <strong>Action</strong>.</p>
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCloseNew()">Cancel</button>
@@ -179,15 +194,15 @@
 
         <!-- STAGE 2 (treatment) -->
         <div class="rt-stage rt-stage-active">
-          <div class="rt-stage-tag rt-stage-tag-next">② Stage 2 — Treatment <span class="rt-stage-hint">fill this in, then Complete</span></div>
+          <div class="rt-stage-tag rt-stage-tag-next">② Stage 2 — Processing <span class="rt-stage-hint">fill this in, then Complete</span></div>
           <div class="rt-form-grid">
             <div class="rt-field">
               <label>Credit note #</label>
               <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. 24408" />
             </div>
             <div class="rt-field rt-actby">
-              <label>Treated by <span class="rt-req">*</span></label>
-              <input type="text" id="rtActBy" class="rt-input" autocomplete="off" placeholder="Start typing name…" oninput="rtOperInput('rtActBy','rtActByAc')" onfocus="rtOperInput('rtActBy','rtActByAc')" />
+              <label>Processed by <span class="rt-req">*</span></label>
+              <input type="text" id="rtActBy" class="rt-input" autocomplete="off" placeholder="Type a name (new names OK)…" oninput="rtOperInput('rtActBy','rtActByAc')" onfocus="rtOperInput('rtActBy','rtActByAc')" />
               <div class="rt-ac" id="rtActByAc"></div>
             </div>
             <div class="rt-field">
@@ -201,26 +216,28 @@
             </div>
             <div class="rt-field">
               <label>Warehouse</label>
-              <input type="text" id="rtActWarehouse" class="rt-input" placeholder="Where it was received / handled" />
+              <select id="rtActWarehouse" class="rt-input">
+                <option value="">— warehouse —</option>
+                <option>Sunshine Coast</option><option>Main Warehouse</option><option>Melbourne</option><option>Cairns</option><option>Coffs Harbour</option><option>Hobart</option><option>Sydney</option><option>Brisbane</option>
+              </select>
             </div>
           </div>
 
           <div class="rt-lines-head">
-            <span>Credit / disposition lines</span>
-            <span class="rt-hint" style="margin:0">Seeded from stage 1 — edit qty/value, split ⧉ or remove ×, zero out anything not credited.</span>
+            <span>Disposition lines</span>
+            <span class="rt-hint" style="margin:0">Seeded from stage 1 — set each line's return status, split ⧉ or remove ×.</span>
           </div>
           <div class="rt-table-wrap">
             <table class="rt-table rt-lines">
               <thead><tr>
-                <th style="width:7%">5DC</th><th style="width:15%">Product</th><th style="width:18%">Return status</th><th style="width:12%">Reason</th><th style="width:7%" class="r">Qty</th><th style="width:9%" class="r">Unit $ <small>(opt.)</small></th><th style="width:12%" class="r">Credit $</th><th style="width:6%"></th>
+                <th style="width:9%">5DC</th><th style="width:22%">Product</th><th style="width:26%">Return status</th><th style="width:20%">Reason</th><th style="width:10%" class="r">Qty</th><th style="width:8%"></th>
               </tr></thead>
               <tbody id="rtTLinesBody"></tbody>
-              <tfoot><tr><td colspan="6" class="r"><strong>Total credit</strong></td><td class="r"><strong id="rtTTotal">0.00</strong></td><td></td></tr></tfoot>
             </table>
           </div>
           <div class="rt-field rt-field-full" style="margin-top:10px">
-            <label>Treatment notes</label>
-            <textarea id="rtActNotes" class="rt-input" rows="2" placeholder="Finance / warehouse notes about this treatment…"></textarea>
+            <label>Processing notes</label>
+            <textarea id="rtActNotes" class="rt-input" rows="2" placeholder="Office / warehouse notes about this return…"></textarea>
           </div>
         </div>
       </div>
@@ -244,7 +261,7 @@
         <div class="rt-table-wrap">
           <table class="rt-table rt-lines">
             <thead><tr>
-              <th style="width:9%">5DC</th><th style="width:26%">Product</th><th class="r" style="width:62px">Ordered</th><th class="r" style="width:88px">Return QTY <span class="rt-req">*</span></th><th style="width:15%">Reason <span class="rt-req">*</span></th><th style="width:15%">Condition <span class="rt-req">*</span></th><th class="r">Unit $</th><th style="width:40px"></th>
+              <th style="width:9%">5DC</th><th style="width:26%">Product</th><th class="r" style="width:62px">Ordered</th><th class="r" style="width:88px">Return QTY <span class="rt-req">*</span></th><th style="width:15%">Reason <span class="rt-req">*</span></th><th style="width:15%">Condition <span class="rt-req">*</span></th><th style="width:40px"></th>
             </tr></thead>
             <tbody id="rtSoBody"></tbody>
           </table>
@@ -309,7 +326,7 @@
       <div class="rt-modal-body">
         <!-- STAGES 1 + 2 (read-only) -->
         <div class="rt-stage rt-stage-done">
-          <div class="rt-stage-tag">① Created &amp; ② Treated <span class="rt-stage-lock">read-only</span></div>
+          <div class="rt-stage-tag">① Created &amp; ② Processed <span class="rt-stage-lock">read-only</span></div>
           <div id="rtPutawayInfo"></div>
         </div>
         <!-- STAGE 3 (put away) -->
@@ -349,6 +366,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260810b"></script>
+  <script src="returns.js?v=20260820a"></script>
 </body>
 </html>
