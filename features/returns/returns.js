@@ -117,13 +117,14 @@ function rtRenderActive() {
   $('rtActiveBody').innerHTML = rows.length ? html : '<div class="rt-empty">No active returns. Click "+ New return" to create one.</div>';
 }
 function rtActHead(rec) {
-  return '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Account</th><th>Sales order</th><th>Received by</th>'
-    + (rec ? '<th>Invoice</th><th>Processed by</th>' : '')
-    + '<th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
+  // Section-specific columns (kept lean so neither table needs a sideways scroll).
+  return rec
+    ? '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Received by</th><th>Invoice</th><th>Processed by</th><th class="r">Lines</th><th class="r">Actions</th></tr></thead>'
+    : '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Sales order</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
 }
 function rtActiveSection(d, list) {
-  const rec = d.key === 'putaway';   // the put-away queue shows the full record so far
-  const cols = rec ? 12 : 10;
+  const rec = d.key === 'putaway';   // the put-away queue shows the record so far
+  const cols = 9;
   const body = list.map(r => rtActiveRow(r, rec)).join('') || `<tr><td colspan="${cols}" class="rt-sec-empty">Nothing here right now.</td></tr>`;
   return `<div class="rt-sec-block">
     <div class="rt-sec-hd"><span class="rt-dot st-${d.dot || ''}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
@@ -133,24 +134,26 @@ function rtActiveSection(d, list) {
 function rtActiveRow(r, rec) {
   const isPut = r.status === 'to_putaway';
   const actions = isPut
-    ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtConfirmPutaway('${r.id}')">Confirm put-away</button> <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>`
+    ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtConfirmPutaway('${r.id}')">Put away</button> <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>`
     : `${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm" onclick="rtEdit('${r.id}')">Edit</button> ` : ''}<button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button> <button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtAction('${r.id}')">${r.status === 'in_treatment' ? 'Continue' : 'Action'}</button>${r.status === 'pending' ? ` <button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtVoid('${r.id}')">Void</button>` : ''}`;
-  const recCells = rec
-    ? `<td>${esc(r.invoice_number || '—')}</td>`
+  const rcv = `<td>${esc(r.operator || '—')}${r.created_at ? `<div class="sub">${fmtT(r.created_at)}</div>` : ''}</td>`;
+  const lines = `<td class="r num">${(r.returns_lines || []).length}</td>`;
+  const act = `<td class="r rt-actions" onclick="event.stopPropagation()">${actions}</td>`;
+  // Ready-to-put-away: Received by · Invoice · Processed by (no Sales order / Status / Account).
+  // Awaiting office: Sales order · Received by · Status.
+  const mid = rec
+    ? rcv
+      + `<td>${esc(r.invoice_number || '—')}</td>`
       + `<td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>`
-    : '';
+      + lines + act
+    : `<td>${esc(r.origin_order || '—')}</td>` + rcv + lines
+      + `<td class="rt-status ${r.status}">${statusLabel(r.status)}</td>` + act;
   return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.warehouse || '—')}</td>
-    <td class="num" style="color:#5b6b86">${esc(r.customer_id || '—')}</td>
-    <td>${esc(r.origin_order || '—')}</td>
-    <td>${esc(r.operator || '—')}${r.created_at ? `<div class="sub">${fmtT(r.created_at)}</div>` : ''}</td>
-    ${recCells}
-    <td class="r num">${(r.returns_lines || []).length}</td>
-    <td class="rt-status ${r.status}">${statusLabel(r.status)}</td>
-    <td class="r rt-actions" onclick="event.stopPropagation()">${actions}</td>
+    ${mid}
   </tr>`;
 }
 async function rtConfirmPutaway(id) {
@@ -516,8 +519,6 @@ async function rtView(id) {
     <div class="rt-sec-title">Processing</div>
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Credit note #</span><b>${esc(r.treatment_ref || '—')}</b></div>
-      <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
-      <div class="rt-kv"><span>Emailed</span><b>${esc(r.customer_emailed || '—')}</b></div>
       <div class="rt-kv"><span>Put away by</span><b>${r.putaway_by ? esc(r.putaway_by) + ' · ' + fmtDT(r.putaway_at) + (r.putaway_location ? ' · ' + esc(r.putaway_location) : '') : '—'}</b></div>
       <div class="rt-kv"><span>Processed by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtDT(r.treated_at) : ''}</b></div>
       ${r.treatment_notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
@@ -544,6 +545,7 @@ async function rtView(id) {
       <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
+      <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtDT(r.created_at)}</b></div>
       ${r.notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.notes)}</b></div>` : ''}
     </div>
@@ -604,6 +606,7 @@ async function rtAction(id) {
       <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
       <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
+      <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtDT(r.created_at)}</b></div>
     </div>
     <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead>
