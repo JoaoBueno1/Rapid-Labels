@@ -90,3 +90,41 @@ body { font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1a2230; }
 .app-table tbody tr.pa-row-reviewed td { background: transparent !important; }
 .app-table tbody tr.pa-row-correct:hover td,
 .app-table tbody tr.pa-row-reviewed:hover td { background: #f9fbfd !important; }
+
+/* ── 13) Per-column filter row (Approved by / Reason / SO Status) ──
+   A second toolbar line under the chips. The chips answer "which orders";
+   these answer "which values in a column" — so they read as a quieter,
+   secondary control, and light up in the cyan accent when narrowing. */
+.pa-colfilter-row {
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid #e2e7ef;
+  gap: 8px !important;
+}
+.pa-colfilter-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: #8895a7;
+}
+.pa-colfilter-select {
+  padding: 7px 10px; border: 1px solid #dbe2ea; border-radius: 8px;
+  font-size: 12.5px; font-weight: 500; color: #1a2230; background: #fff;
+  max-width: 240px; cursor: pointer;
+  transition: border-color .2s, box-shadow .2s, background .2s;
+}
+.pa-colfilter-select:hover { border-color: #b9c5d3; }
+.pa-colfilter-select:focus { outline: none; border-color: #0aa5e6; box-shadow: 0 0 0 3px rgba(10,165,230,.12); }
+/* Applied filter — the row must not look inert while it is hiding data. */
+.pa-colfilter-select.pa-colfilter-active {
+  border-color: #0aa5e6; background: #eaf7fd; color: #06627f; font-weight: 700;
+}
+.pa-colfilter-clear {
+  padding: 6px 12px; border: 1px solid #dbe2ea; border-radius: 8px;
+  background: #fff; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .2s, color .2s, border-color .2s;
+}
+.pa-colfilter-clear:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+.pa-colfilter-hint { font-size: 11.5px; color: #0aa5e6; font-weight: 600; }
+
+@media (max-width: 900px) {
+  .pa-colfilter-row { flex-direction: column; align-items: stretch !important; }
+  .pa-colfilter-select { max-width: 100%; }
+}

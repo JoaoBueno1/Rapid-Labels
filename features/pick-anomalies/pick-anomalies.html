@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="../logistics/logistics.css" />
   <link rel="stylesheet" href="pick-anomalies.css?v=20260410a" />
   <link rel="stylesheet" href="pa-analytics.css?v=20260611a" />
-  <link rel="stylesheet" href="pick-anomalies-theme.css?v=20260727c" />
+  <link rel="stylesheet" href="pick-anomalies-theme.css?v=20260821a" />
 </head>
 <body>
 
@@ -62,6 +62,23 @@
             <button class="chip" data-filter="correct" onclick="PA.setFilter('correct', this)">✅ Correct</button>
             <button class="chip" data-filter="cancelled" onclick="PA.setFilter('cancelled', this)">❌ Cancelled</button>
           </div>
+        </div>
+
+        <!-- Per-column filters. Each dropdown lists only values actually recorded
+             (with counts), so a selection can never land on an empty table. -->
+        <div class="pa-toolbar-row pa-colfilter-row" id="paColFilters">
+          <span class="pa-colfilter-label">Filter by column:</span>
+          <select id="paFilterSoStatus" class="pa-colfilter-select" title="Cin7 order status. Counts are whole-table totals — the chips above narrow further." onchange="PA.setColFilter('soStatus', this.value)">
+            <option value="">SO Status: all</option>
+          </select>
+          <select id="paFilterApprovedBy" class="pa-colfilter-select" title="Operator recorded in the review — the Approved by column. Counts are whole-table totals — the chips above narrow further." onchange="PA.setColFilter('approvedBy', this.value)">
+            <option value="">Approved by: all</option>
+          </select>
+          <select id="paFilterReason" class="pa-colfilter-select" title="Reason chosen when the anomaly was reviewed. Counts are whole-table totals — the chips above narrow further." onchange="PA.setColFilter('reason', this.value)">
+            <option value="">Reason: all</option>
+          </select>
+          <button type="button" class="pa-colfilter-clear" id="paColFilterClear" onclick="PA.clearColFilters()" style="display:none">✕ Clear</button>
+          <span class="pa-colfilter-hint" id="paColFilterHint"></span>
         </div>
       </div>
 
@@ -245,7 +262,7 @@
     </div>
   </div>
 
-  <script src="pick-anomalies.js?v=20260821a"></script>
+  <script src="pick-anomalies.js?v=20260821b"></script>
   <!-- Analytics v2 deps: Chart.js (charts) + html2canvas & jsPDF (PNG/PDF export) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>

@@ -151,6 +151,8 @@
     scanner: {},          // SO -> { op, date } from the scanner report (Pick Productivity)
     scannerLoaded: false,
     operators: [],        // author roster (collection_operators) for the "who erred" selector
+    colFilters: { approvedBy: '', reason: '', soStatus: '' },  // per-column dropdowns
+    facetsLoaded: false,
     operatorsLoaded: false,
     operatorsAt: 0,       // when the roster was last fetched (for staleness refresh)
   };
@@ -442,6 +444,9 @@
         limit: String(state.perPage),
         offset: String((state.page - 1) * state.perPage),
       });
+      // Per-column filters — server-side, so the footer count and the pagination
+      // describe the filtered set and not just the page in front of you.
+      for (const [k, v] of Object.entries(state.colFilters)) if (v) params.set(k, v);
 
       const res = await fetch(`/api/pick-anomalies/history?${params}`);
       
@@ -772,6 +777,101 @@
     document.querySelectorAll('.pa-status-chips .chip').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
     loadHistory();
+  }
+
+  /* ═══════════════════════════════════════════════
+     PER-COLUMN FILTERS (Approved by / Reason / SO Status)
+     ═══════════════════════════════════════════════ */
+
+  const NONE_VALUE = '__none__';   // reviewed, but the field was left blank
+
+  /* Populate the dropdowns from /facets — the values REALLY present in the table,
+     with counts. Not the operator roster: offering a name nobody has been assigned
+     would just produce an empty table. */
+  async function loadFacets() {
+    if (state.facetsLoaded) return;
+    try {
+      const res = await fetch('/api/pick-anomalies/facets');
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'facets failed');
+
+      fillFacetSelect('paFilterSoStatus', 'SO Status', data.soStatus, null);
+      fillFacetSelect('paFilterApprovedBy', 'Approved by', data.approvedBy, 'no author');
+      fillFacetSelect('paFilterReason', 'Reason', data.reason, 'no reason (legacy)');
+      state.facetsLoaded = true;
+    } catch (err) {
+      console.warn('Could not load column filter values:', err);
+    }
+  }
+
+  function fillFacetSelect(id, label, items, noneLabel) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const current = el.value;
+    const opts = (items || []).map(function (f) {
+      const isNone = f.value === NONE_VALUE;
+      if (isNone && !noneLabel) return '';   // SO Status has no blank bucket to show
+      const text = (isNone ? '— ' + noneLabel : f.value) + ' (' + f.count + ')';
+      return '<option value="' + escAttr(f.value) + '">' + esc(text) + '</option>';
+    }).join('');
+    el.innerHTML = '<option value="">' + esc(label) + ': all</option>' + opts;
+    el.value = current;                       // survive a refresh with a filter applied
+    if (el.value !== current) el.value = '';  // value vanished from the data
+  }
+
+  function setColFilter(kind, value) {
+    if (!(kind in state.colFilters)) return;
+    state.colFilters[kind] = value || '';
+    state.page = 1;
+
+    // Author and reason only exist on REVIEWED rows, so combining one with the
+    // Pending chip is a guaranteed empty table. Move to Reviewed instead of
+    // showing the user zero rows and letting them wonder why.
+    if ((kind === 'approvedBy' || kind === 'reason') && value && state.activeFilter === 'pending') {
+      const chip = document.querySelector('.pa-status-chips .chip[data-filter="reviewed"]');
+      if (chip) {
+        state.activeFilter = 'reviewed';
+        document.querySelectorAll('.pa-status-chips .chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      }
+    }
+
+    renderColFilterState();
+    loadHistory();
+  }
+
+  function clearColFilters() {
+    state.colFilters = { approvedBy: '', reason: '', soStatus: '' };
+    ['paFilterSoStatus', 'paFilterApprovedBy', 'paFilterReason'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    state.page = 1;
+    renderColFilterState();
+    loadHistory();
+  }
+
+  /* Highlight the active dropdowns and show the Clear button — with three selects
+     side by side it must be obvious at a glance that a filter is narrowing the list. */
+  function renderColFilterState() {
+    const map = {
+      paFilterSoStatus: state.colFilters.soStatus,
+      paFilterApprovedBy: state.colFilters.approvedBy,
+      paFilterReason: state.colFilters.reason,
+    };
+    let active = 0;
+    for (const id in map) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const on = !!map[id];
+      el.classList.toggle('pa-colfilter-active', on);
+      if (on) active++;
+    }
+    const clearBtn = document.getElementById('paColFilterClear');
+    if (clearBtn) clearBtn.style.display = active ? '' : 'none';
+    const hint = document.getElementById('paColFilterHint');
+    if (hint) hint.textContent = active ? `${active} column filter${active > 1 ? 's' : ''} active` : '';
   }
 
   /* ═══════════════════════════════════════════════
@@ -1766,6 +1866,7 @@
     const movementsEl = document.getElementById('paMovements');
     const statusChips = document.getElementById('paStatusChips');
     const searchGroup = document.querySelector('.pa-search-group');
+    const colFilters = document.getElementById('paColFilters');
     const isOrders = view === 'orders';
 
     // CSS class wins over any async re-show (e.g. loadStats→updateKpis re-showing #paKpis)
@@ -1777,6 +1878,7 @@
     if (movementsEl) movementsEl.style.display = view === 'movements' ? '' : 'none';
     if (statusChips) statusChips.style.display = isOrders ? '' : 'none';
     if (searchGroup) searchGroup.style.display = isOrders ? '' : 'none';
+    if (colFilters) colFilters.style.display = isOrders ? '' : 'none';
 
     if (view === 'analytics') {
       if (window.PAAnalytics) window.PAAnalytics.open();
@@ -2361,6 +2463,8 @@
     fetchSyncStatus,
     debounceSearch,
     setFilter,
+    setColFilter,
+    clearColFilters,
     setView,
     openDetail,
     closeDetail,
@@ -2402,6 +2506,9 @@
 
     // 3. Pre-load repeat-offender badges in background (analytics tab itself is lazy)
     preloadRepeatOffenders().catch(() => {});
+
+    // 4. Fill the per-column filter dropdowns (one cached sweep, no Cin7 calls)
+    loadFacets().catch(() => {});
 
     // Note: No auto-sync on page open.
     // Backend scheduler syncs every 2h at :30. User can manually sync via button.
