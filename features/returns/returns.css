@@ -105,6 +105,9 @@ tr.rt-row.st-void:hover td { background: #eceff2; }
 .rt-view-no { font-size: 20px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
 .rt-sec-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #7a8aa2; font-weight: 700; margin: 16px 0 6px; border-bottom: 1px solid #eef1f6; padding-bottom: 4px; }
 .rt-kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
+.rt-kv-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 24px; }
+@media (max-width: 900px) { .rt-kv-grid3 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .rt-kv-grid3 { grid-template-columns: 1fr; } }
 .rt-kv { display: flex; gap: 8px; font-size: 14px; padding: 3px 0; }
 .rt-kv span { color: #8a97ab; min-width: 96px; }
 .rt-kv b { font-weight: 600; }
