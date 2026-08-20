@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260820e" />
+  <link rel="stylesheet" href="returns.css?v=20260820h" />
 </head>
 <body>
   <header class="rt-header">
@@ -93,12 +93,12 @@
         <div class="rt-form-grid">
           <!-- Customer -->
           <div class="rt-field rt-cust">
-            <label>Business (customer) <span class="rt-req">*</span></label>
+            <label>Business <span class="rt-req">*</span></label>
             <input type="text" id="rtCustName" class="rt-input" placeholder="Search &amp; pick a business from Cin7…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
             <div class="rt-ac" id="rtCustAc"></div>
           </div>
           <div class="rt-field">
-            <label>Customer name <small style="text-transform:none;color:#9aa6ba">(contact)</small> <span class="rt-req">*</span></label>
+            <label>Customer name <span class="rt-req">*</span></label>
             <input type="text" id="rtContact" class="rt-input" placeholder="Primary contact" autocomplete="off" />
           </div>
           <!-- Received — who + where (the operator's own input) -->
@@ -340,6 +340,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260820g"></script>
+  <script src="returns.js?v=20260820h"></script>
 </body>
 </html>

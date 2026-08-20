@@ -119,12 +119,12 @@ function rtRenderActive() {
 function rtActHead(rec) {
   // Section-specific columns (kept lean so neither table needs a sideways scroll).
   return rec
-    ? '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Received by</th><th>Invoice</th><th>Processed by</th><th class="r">Lines</th><th class="r">Actions</th></tr></thead>'
-    : '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Sales order</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
+    ? '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Received by</th><th>Processed by</th><th class="r">Lines</th><th class="r">Actions</th></tr></thead>'
+    : '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
 }
 function rtActiveSection(d, list) {
   const rec = d.key === 'putaway';   // the put-away queue shows the record so far
-  const cols = 9;
+  const cols = 8;
   const body = list.map(r => rtActiveRow(r, rec)).join('') || `<tr><td colspan="${cols}" class="rt-sec-empty">Nothing here right now.</td></tr>`;
   return `<div class="rt-sec-block">
     <div class="rt-sec-hd"><span class="rt-dot st-${d.dot || ''}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
@@ -139,14 +139,13 @@ function rtActiveRow(r, rec) {
   const rcv = `<td>${esc(r.operator || '—')}${r.created_at ? `<div class="sub">${fmtT(r.created_at)}</div>` : ''}</td>`;
   const lines = `<td class="r num">${(r.returns_lines || []).length}</td>`;
   const act = `<td class="r rt-actions" onclick="event.stopPropagation()">${actions}</td>`;
-  // Ready-to-put-away: Received by · Invoice · Processed by (no Sales order / Status / Account).
-  // Awaiting office: Sales order · Received by · Status.
+  // Lean Active queue: Ready-to-put-away = Received by · Processed by; Awaiting office
+  // = Received by · Status. Sales order / Invoice / Account live in the details, not here.
   const mid = rec
     ? rcv
-      + `<td>${esc(r.invoice_number || '—')}</td>`
       + `<td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>`
       + lines + act
-    : `<td>${esc(r.origin_order || '—')}${r.invoice_number ? `<div class="sub">Inv ${esc(r.invoice_number)}</div>` : ''}</td>` + rcv + lines
+    : rcv + lines
       + `<td class="rt-status ${r.status}">${statusLabel(r.status)}</td>` + act;
   return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
@@ -537,18 +536,18 @@ async function rtView(id) {
     </div>
     ${r.status === 'void' ? `<div class="rt-void-banner">⊘ Voided${r.updated_at ? ' · ' + fmtDT(r.updated_at) : ''}</div>` : ''}
     <div class="rt-sec-title">Creation</div>
-    <div class="rt-kv-grid">
+    <div class="rt-kv-grid3">
       <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')}</b></div>
-      <div class="rt-kv"><span>Contact</span><b>${esc(r.contact_name || '—')}</b></div>
+      <div class="rt-kv"><span>Customer name</span><b>${esc(r.contact_name || '—')}</b></div>
       <div class="rt-kv"><span>Account</span><b>${esc(r.customer_id || '—')}</b></div>
-      <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
-      <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
-      <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
-      <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
-      <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtDT(r.created_at)}</b></div>
+      <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
+      <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
+      <div class="rt-kv"><span>Cust. ref</span><b>${esc(r.customer_reference || '—')}</b></div>
+      <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
+      <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
       ${r.notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.notes)}</b></div>` : ''}
     </div>
     <table class="rt-table" style="margin-top:8px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead><tbody>${rowsC}</tbody></table>
@@ -601,17 +600,17 @@ async function rtAction(id) {
   $('rtActBy').value = r.treated_by || '';
   $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Processing</b></span>`;
   $('rtActStage1').innerHTML = `
-    <div class="rt-kv-grid">
+    <div class="rt-kv-grid3">
       <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')} ${r.customer_id ? '(' + esc(r.customer_id) + ')' : ''}</b></div>
-      <div class="rt-kv"><span>Contact</span><b>${esc(r.contact_name || '—')}</b></div>
+      <div class="rt-kv"><span>Customer name</span><b>${esc(r.contact_name || '—')}</b></div>
       <div class="rt-kv"><span>Email</span><b>${esc(r.customer_email || '—')}</b></div>
-      <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
-      <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
-      <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
-      <div class="rt-kv"><span>Cust. reference</span><b>${esc(r.customer_reference || '—')}</b></div>
       <div class="rt-kv"><span>Received by</span><b>${esc(r.operator || '—')}</b></div>
       <div class="rt-kv"><span>Warehouse</span><b>${esc(r.warehouse || '—')}</b></div>
       <div class="rt-kv"><span>Created</span><b>${fmtDT(r.created_at)}</b></div>
+      <div class="rt-kv"><span>Sales order</span><b>${esc(r.origin_order || '—')}</b></div>
+      <div class="rt-kv"><span>Invoice</span><b>${esc(r.invoice_number || '—')}</b></div>
+      <div class="rt-kv"><span>Cust. ref</span><b>${esc(r.customer_reference || '—')}</b></div>
+      <div class="rt-kv"><span>Rep</span><b>${esc(r.rep || '—')}</b></div>
     </div>
     <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead>
     <tbody>${lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('')}</tbody></table>`;
