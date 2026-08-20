@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260810b" />
+  <link rel="stylesheet" href="returns.css?v=20260820c" />
 </head>
 <body>
   <header class="rt-header">
@@ -90,37 +90,17 @@
         </div>
 
         <div class="rt-form-grid">
+          <!-- Customer -->
           <div class="rt-field rt-cust">
             <label>Business (customer) <span class="rt-req">*</span></label>
             <input type="text" id="rtCustName" class="rt-input" placeholder="Search &amp; pick a business from Cin7…" autocomplete="off" oninput="rtCustInput()" onfocus="rtCustInput()" />
             <div class="rt-ac" id="rtCustAc"></div>
           </div>
-          <div class="rt-field rt-field-sm">
-            <label>Account <small style="text-transform:none;color:#9aa6ba">(auto)</small></label>
-            <input type="text" id="rtCustId" class="rt-input rt-readonly" readonly placeholder="auto" />
-          </div>
           <div class="rt-field">
             <label>Customer name <small style="text-transform:none;color:#9aa6ba">(contact)</small> <span class="rt-req">*</span></label>
             <input type="text" id="rtContact" class="rt-input" placeholder="Primary contact" autocomplete="off" />
           </div>
-          <div class="rt-field">
-            <label>Rep</label>
-            <input type="text" id="rtRep" class="rt-input" placeholder="Sales rep" autocomplete="off" />
-          </div>
-          <div class="rt-field-full rt-triple">
-            <div class="rt-field">
-              <label>Invoice # <small style="text-transform:none;color:#9aa6ba">(optional)</small></label>
-              <input type="text" id="rtInvoice" class="rt-input" placeholder="e.g. INV-256568" />
-            </div>
-            <div class="rt-field">
-              <label>Sales order <small style="text-transform:none;color:#9aa6ba">(optional)</small></label>
-              <input type="text" id="rtOrigin" class="rt-input" placeholder="e.g. SO-123456" />
-            </div>
-            <div class="rt-field">
-              <label>Customer reference <small style="text-transform:none;color:#9aa6ba">(optional)</small></label>
-              <input type="text" id="rtCustRef" class="rt-input" placeholder="e.g. site / PO ref" />
-            </div>
-          </div>
+          <!-- Received — who + where (the operator's own input) -->
           <div class="rt-field rt-oper">
             <label>Received by <span class="rt-req">*</span></label>
             <input type="text" id="rtOperator" class="rt-input" autocomplete="off" placeholder="Type a name (new names OK)…" oninput="rtOperInput('rtOperator','rtOperatorAc')" onfocus="rtOperInput('rtOperator','rtOperatorAc')" />
@@ -134,10 +114,23 @@
               <option>Sunshine Coast</option><option>Main Warehouse</option><option>Melbourne</option><option>Cairns</option><option>Coffs Harbour</option><option>Hobart</option><option>Sydney</option><option>Brisbane</option>
             </select>
           </div>
+          <!-- Reference details — one compact optional line -->
+          <div class="rt-field-full">
+            <span class="rt-subhead">Reference details <small style="text-transform:none;color:#9aa6ba;font-weight:500">(optional — scan the SO above, or fill by hand)</small></span>
+            <div class="rt-quad">
+              <div class="rt-field"><label>Invoice #</label><input type="text" id="rtInvoice" class="rt-input" placeholder="INV-256568" /></div>
+              <div class="rt-field"><label>Sales order</label><input type="text" id="rtOrigin" class="rt-input" placeholder="SO-123456" /></div>
+              <div class="rt-field"><label>Customer ref</label><input type="text" id="rtCustRef" class="rt-input" placeholder="site / PO" /></div>
+              <div class="rt-field"><label>Rep</label><input type="text" id="rtRep" class="rt-input" placeholder="Sales rep" autocomplete="off" /></div>
+            </div>
+          </div>
+          <!-- Notes -->
           <div class="rt-field rt-field-full">
             <label>Notes (optional)</label>
             <textarea id="rtNotes" class="rt-input" rows="2" placeholder="Anything useful about this return…"></textarea>
           </div>
+          <!-- account code is captured from the picked business / SO — no field to type -->
+          <input type="hidden" id="rtCustId" />
         </div>
 
         <div class="rt-lines-head">
