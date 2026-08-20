@@ -452,7 +452,7 @@
           setSyncStatus('error', '⚠️ Database tables not created yet');
           const tableBody = document.getElementById('paTableBody');
           if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:40px">
+            tableBody.innerHTML = `<tr><td colspan="15" style="text-align:center;padding:40px">
               <div style="font-size:16px;font-weight:600;color:#b45309;margin-bottom:8px">⚠️ Setup Required</div>
               <div style="font-size:13px;color:#64748b;margin-bottom:12px">The Pick Anomalies tables have not been created in Supabase yet.</div>
               <div style="font-size:13px;color:#64748b">Go to <b>Supabase Dashboard → SQL Editor</b> and run the migration file:</div>
@@ -599,7 +599,7 @@
     card.style.display = '';
 
     if (!state.orders.length) {
-      tbody.innerHTML = '<tr><td colspan="13" class="pa-empty">No orders found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="15" class="pa-empty">No orders found.</td></tr>';
       return;
     }
 
@@ -695,17 +695,19 @@
           : `<span class="pa-badge pa-badge-anomaly">⚠️ ${anom} anomal${anom > 1 ? 'ies' : 'y'}</span>`;
       }
 
-      // Reviewed column — show the author; when author is None, fall back to the
-      // short reason so the cell still says WHY it was cleared. Full detail on hover.
-      let reviewedHtml;
+      // Reviewed column — a plain OK badge (reason + note stay on hover); the
+      // author lives in its own "Approved by" column to the right.
+      let reviewedHtml, approvedByHtml;
       if (isReviewed) {
         const rReasonFull = o.review_reason ? (REASON_LABEL[o.review_reason] || o.review_reason) : '';
-        const rReasonShort = rReasonFull ? rReasonFull.split(' — ')[0] : '';
-        const label = o.reviewed_by ? esc(o.reviewed_by) : (rReasonShort ? esc(rReasonShort) : 'Reviewed');
         const tip = escAttr([o.reviewed_by || 'no author', rReasonFull, o.review_note].filter(Boolean).join(' — '));
-        reviewedHtml = `<span class="pa-badge pa-badge-correct" title="${tip}">✅ ${label}</span>`;
+        reviewedHtml = `<span class="pa-badge pa-badge-correct" title="${tip}">✅ OK</span>`;
+        approvedByHtml = o.reviewed_by
+          ? `<span title="${tip}">${esc(o.reviewed_by)}</span>`
+          : '<span style="color:#9ca3af" title="Reviewed with no author assigned">—</span>';
       } else {
         reviewedHtml = '<span class="pa-badge" style="opacity:0.5">—</span>';
+        approvedByHtml = '<span style="color:#9ca3af">—</span>';
       }
 
       return `<tr class="${rowClass}" style="cursor:pointer">
@@ -723,6 +725,7 @@
         <td onclick="PA.openDetail(${idx})">${fg || ''}</td>
         <td onclick="PA.openDetail(${idx})">${statusHtml}</td>
         <td onclick="PA.openDetail(${idx})">${reviewedHtml}</td>
+        <td onclick="PA.openDetail(${idx})">${approvedByHtml}</td>
       </tr>`;
     }).join('');
   }

@@ -613,6 +613,10 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
     // the "Reviewed X/Y" KPI and the operator can clear it to 100%. Ordered by
     // ship date (recent first) so the freshest are on top.
     query += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false`;
+  } else if (filter === 'reviewed') {
+    // Mirror of 'pending': anomalies that HAVE been cleared by a manager — the
+    // audit trail of who approved what (reviewed_by shows in the Approved by column).
+    query += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.true`;
   } else if (filter === 'corrected') {
     query += '&anomaly_picks=gt.0';
   } else if (filter === 'cancelled') {
@@ -656,6 +660,7 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   else if (filter === 'correct') totalQuery += '&anomaly_picks=eq.0&fg_anomaly_picks=eq.0&total_picks=gt.0';
   else if (filter === 'fg') totalQuery += '&fg_count=gt.0';
   else if (filter === 'pending') totalQuery += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.false`;
+  else if (filter === 'reviewed') totalQuery += `&or=(anomaly_picks.gt.0,fg_anomaly_picks.gt.0)&reviewed=is.true`;
   else if (filter === 'cancelled') totalQuery += '&is_cancelled=eq.true';
   else if (filter === 'assembly') totalQuery += '&entity_type=eq.assembly';
   else if (filter === 'assembly_anomaly') totalQuery += '&entity_type=eq.assembly&anomaly_picks=gt.0';
