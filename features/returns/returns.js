@@ -216,7 +216,7 @@ function rtRenderHistory() {
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.warehouse || '—')}</td>
-    <td class="rt-status ${r.status}">${statusLabel(r.status)}${r.status === 'void' ? `<div class="sub">${fmtDT(r.voided_at || r.updated_at)}</div>` : ''}</td>
+    <td class="rt-status ${r.status}">${statusLabel(r.status)}${r.status === 'void' ? `<div class="sub">${fmtDT(r.updated_at)}</div>` : ''}</td>
     <td>${r.operator ? `${esc(r.operator)}<div class="sub">${fmtT(r.created_at)}</div>` : '—'}</td>
     <td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>
     <td>${r.putaway_by ? `${esc(r.putaway_by)}<div class="sub">${fmtDT(r.putaway_at)}${r.putaway_location ? ' · ' + esc(r.putaway_location) : ''}</div>` : '—'}</td>
@@ -535,7 +535,7 @@ async function rtView(id) {
       ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtCloseView();rtAction('${r.id}')">Action</button>` : ''}
       ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtCloseView();rtVoid('${r.id}')">Void</button>` : ''}</div>
     </div>
-    ${r.status === 'void' ? `<div class="rt-void-banner">⊘ Voided${r.voided_at ? ' · ' + fmtD(r.voided_at) : ''}${r.voided_by ? ' · by ' + esc(r.voided_by) : ''}${r.void_reason ? ' — ' + esc(r.void_reason) : ''}</div>` : ''}
+    ${r.status === 'void' ? `<div class="rt-void-banner">⊘ Voided${r.updated_at ? ' · ' + fmtDT(r.updated_at) : ''}</div>` : ''}
     <div class="rt-sec-title">Creation</div>
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')}</b></div>
@@ -562,23 +562,19 @@ function rtVoid(id) {
   const r = rtHdr(id); if (!r) return;
   RT.voidId = id;
   $('rtVoidTitle').textContent = `Void ${r.return_no}`;
-  $('rtVoidReason').value = ''; $('rtVoidBy').value = ''; if ($('rtVoidPass')) $('rtVoidPass').value = '';
+  if ($('rtVoidPass')) $('rtVoidPass').value = '';
   $('rtVoidModal').classList.add('active');
-  setTimeout(() => { try { $('rtVoidReason').focus(); } catch (_) {} }, 50);
+  setTimeout(() => { try { $('rtVoidPass').focus(); } catch (_) {} }, 50);
 }
 function rtVoidClose() { $('rtVoidModal').classList.remove('active'); }
 async function rtVoidConfirm() {
-  const reason = ($('rtVoidReason').value || '').trim();
+  // Simple void: password to confirm, then flip status + stamp the time via updated_at
+  // (no reason / by / extra columns — nothing to migrate).
   if ((($('rtVoidPass') && $('rtVoidPass').value) || '').trim() !== '4209') { toast('Wrong void password', 'err'); return rtInvalid('rtVoidPass'); }
-  const now = new Date().toISOString();
   const btn = $('rtVoidBtn'); btn.disabled = true;
   try {
-    // Status FIRST — works even before the void columns exist. The void metadata
-    // (reason / by / time) is best-effort so a return still voids cleanly until the
-    // migration sql/returns_add_void.sql is run; after it, voided_at is stored precisely.
-    const { error } = await sb().from('returns_active').update({ status: 'void', updated_at: now }).eq('id', RT.voidId);
+    const { error } = await sb().from('returns_active').update({ status: 'void', updated_at: new Date().toISOString() }).eq('id', RT.voidId);
     if (error) throw error;
-    await sb().from('returns_active').update({ void_reason: reason || null, voided_by: ($('rtVoidBy').value || '').trim() || null, voided_at: now }).eq('id', RT.voidId);
     const no = (rtHdr(RT.voidId) || {}).return_no;
     toast(`${no || 'Return'} voided`, 'ok');
     rtVoidClose(); await loadReturns();

@@ -262,14 +262,6 @@
       <div class="rt-modal-body">
         <p class="rt-hint" style="margin-top:0">This cancels the return. It stays in History for audit — it is <strong>not deleted</strong>.</p>
         <div class="rt-field">
-          <label>Reason <small style="text-transform:none;color:#9aa6ba">(optional)</small></label>
-          <input type="text" id="rtVoidReason" class="rt-input" placeholder="Why is this being voided?" autocomplete="off" />
-        </div>
-        <div class="rt-field" style="margin-top:10px">
-          <label>Voided by</label>
-          <input type="text" id="rtVoidBy" class="rt-input" placeholder="Your name" autocomplete="off" />
-        </div>
-        <div class="rt-field" style="margin-top:10px">
           <label>Void password <span class="rt-req">*</span></label>
           <input type="password" id="rtVoidPass" class="rt-input" placeholder="Enter void password" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rtVoidConfirm();}" />
         </div>
@@ -348,6 +340,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260820e"></script>
+  <script src="returns.js?v=20260820f"></script>
 </body>
 </html>
