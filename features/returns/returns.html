@@ -9,7 +9,7 @@
   </script>
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="returns.css?v=20260820c" />
+  <link rel="stylesheet" href="returns.css?v=20260820e" />
 </head>
 <body>
   <header class="rt-header">
@@ -58,6 +58,7 @@
           <option value="">All warehouses</option>
           <option>Sunshine Coast</option><option>Main Warehouse</option><option>Melbourne</option><option>Cairns</option><option>Coffs Harbour</option><option>Hobart</option><option>Sydney</option><option>Brisbane</option>
         </select>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#5b6b86;white-space:nowrap;cursor:pointer"><input type="checkbox" id="rtShowVoided" onchange="RT.histPage=1;rtRenderHistory()" /> Show voided</label>
         <span class="rt-count" id="rtHistCount"></span>
       </div>
       <div class="rt-table-wrap">
@@ -268,6 +269,10 @@
           <label>Voided by</label>
           <input type="text" id="rtVoidBy" class="rt-input" placeholder="Your name" autocomplete="off" />
         </div>
+        <div class="rt-field" style="margin-top:10px">
+          <label>Void password <span class="rt-req">*</span></label>
+          <input type="password" id="rtVoidPass" class="rt-input" placeholder="Enter void password" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rtVoidConfirm();}" />
+        </div>
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtVoidClose()">Cancel</button>
@@ -343,6 +348,6 @@
 
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="/supabase-config.js"></script>
-  <script src="returns.js?v=20260820d"></script>
+  <script src="returns.js?v=20260820e"></script>
 </body>
 </html>

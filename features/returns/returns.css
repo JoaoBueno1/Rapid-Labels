@@ -60,7 +60,8 @@ textarea.rt-input { resize: vertical; }
 .rt-status.in_treatment { color: #1667c9; }
 .rt-status.completed { color: #1b8a4b; }
 .rt-status.void { color: #9aa6ba; }
-.rt-row-void { opacity: .6; }
+.rt-row-void { background: #fdecec; }
+.rt-row-void td, .rt-row-void td strong { color: #c0392b; }
 .rt-void-banner { background: #fdecec; color: #c0392b; border: 1px solid #f6c9c4; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 6px 0 8px; }
 
 /* Clickable rows + row action buttons */
