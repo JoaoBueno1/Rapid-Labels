@@ -586,7 +586,21 @@ async function getOrderLogs(orderNumber) {
 // HISTORY (READ FROM SUPABASE)
 // ═══════════════════════════════════════════════════
 
-async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
+/* Per-column dropdown filters (Approved by / Reason / SO Status). Returned as a
+   PostgREST fragment so the row query and the count query can't drift apart.
+   '__none__' means "recorded but left blank" — a review with no author, or a
+   legacy review saved before the reason field existed. */
+function columnFilterQuery({ approvedBy, reason, soStatus }) {
+  let q = '';
+  if (approvedBy === '__none__') q += '&reviewed=is.true&reviewed_by=is.null';
+  else if (approvedBy) q += `&reviewed_by=eq.${encodeURIComponent(approvedBy)}`;
+  if (reason === '__none__') q += '&reviewed=is.true&review_reason=is.null';
+  else if (reason) q += `&review_reason=eq.${encodeURIComponent(reason)}`;
+  if (soStatus) q += `&order_status=eq.${encodeURIComponent(soStatus)}`;
+  return q;
+}
+
+async function loadHistory({ search, filter, approvedBy, reason, soStatus, limit = 200, offset = 0 }) {
   // Order by SHIP date (fulfilled_date), not order_date: an old order shipped today
   // must surface at the top for review (analyzed_at would mislead for backfilled rows).
   let query = `select=*&order=fulfilled_date.desc.nullslast,order_number.desc&limit=${limit}&offset=${offset}`;
@@ -627,6 +641,8 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
     query += '&entity_type=eq.assembly&anomaly_picks=gt.0';
   }
   query += hideCancelled;
+  const colFilters = columnFilterQuery({ approvedBy, reason, soStatus });
+  query += colFilters;
 
   if (search) {
     // Search in order_number OR customer (case-insensitive)
@@ -665,6 +681,7 @@ async function loadHistory({ search, filter, limit = 200, offset = 0 }) {
   else if (filter === 'assembly') totalQuery += '&entity_type=eq.assembly';
   else if (filter === 'assembly_anomaly') totalQuery += '&entity_type=eq.assembly&anomaly_picks=gt.0';
   totalQuery += hideCancelled;
+  totalQuery += colFilters;
   if (search) totalQuery += `&or=(order_number.ilike.*${search}*,customer.ilike.*${search}*)`;
 
   let totalCount = orders.length;
@@ -1487,6 +1504,9 @@ async function reverseCorrection({ correctionId, productId, sku, qty, fromBin, t
 // EXPRESS ROUTE REGISTRATION
 // ═══════════════════════════════════════════════════
 
+// Column-filter dropdown values, cached 5 min (see GET /facets).
+let _facetsCache = null;
+
 function registerPickAnomalyRoutes(app) {
 
   /**
@@ -1495,10 +1515,13 @@ function registerPickAnomalyRoutes(app) {
    */
   app.get('/api/pick-anomalies/history', async (req, res) => {
     try {
-      const { search, filter, limit, offset } = req.query;
+      const { search, filter, approvedBy, reason, soStatus, limit, offset } = req.query;
       const result = await loadHistory({
         search: search || '',
         filter: filter || 'all',
+        approvedBy: approvedBy || '',
+        reason: reason || '',
+        soStatus: soStatus || '',
         limit: parseInt(limit) || 200,
         offset: parseInt(offset) || 0,
       });
@@ -2311,6 +2334,59 @@ function registerPickAnomalyRoutes(app) {
     } catch (err) {
       console.error('❌ Operators list error:', err);
       res.status(500).json({ success: false, operators: [], error: err.message });
+    }
+  });
+
+  /**
+   * GET /api/pick-anomalies/facets
+   * Distinct values ACTUALLY PRESENT in the table, with counts — the source for the
+   * per-column filter dropdowns. Deliberately not the operator roster: the point is
+   * to offer only what has really been recorded, so picking one can never return an
+   * empty table. Author/reason are scoped to reviewed rows (they're meaningless
+   * elsewhere); SO status covers every row, cancelled included.
+   * Cached 5 min — a sweep is ~1s and these lists barely move.
+   */
+  app.get('/api/pick-anomalies/facets', async (req, res) => {
+    try {
+      const now = Date.now();
+      if (_facetsCache && now - _facetsCache.at < 5 * 60 * 1000) {
+        return res.json({ success: true, cached: true, ..._facetsCache.data });
+      }
+
+      const [reviewedRows, statusRows] = await Promise.all([
+        sbGetAll('pick_anomaly_orders',
+          'select=reviewed_by,review_reason&reviewed=is.true&is_cancelled=is.false'),
+        // Status covers cancelled rows too — they're reachable via the Cancelled chip,
+        // and statuses like UNDO only ever appear there.
+        sbGetAll('pick_anomaly_orders', 'select=order_status'),
+      ]);
+
+      // Counts by value. Null/blank collapses into the '__none__' bucket, which the
+      // dropdown shows as "no author" / "no reason" — 1200+ legacy reviews live there.
+      const tally = (rows, key) => {
+        const counts = new Map();
+        for (const r of rows) {
+          const raw = r[key];
+          const v = (raw === null || raw === undefined || String(raw).trim() === '') ? '__none__' : String(raw).trim();
+          counts.set(v, (counts.get(v) || 0) + 1);
+        }
+        return [...counts.entries()]
+          .map(([value, count]) => ({ value, count }))
+          // Real values first (A→Z); the '__none__' bucket always sinks to the bottom.
+          .sort((a, b) => (a.value === '__none__') - (b.value === '__none__')
+            || a.value.localeCompare(b.value));
+      };
+
+      const data = {
+        approvedBy: tally(reviewedRows, 'reviewed_by'),
+        reason: tally(reviewedRows, 'review_reason'),
+        soStatus: tally(statusRows, 'order_status').filter(f => f.value !== '__none__'),
+      };
+      _facetsCache = { at: now, data };
+      res.json({ success: true, cached: false, ...data });
+    } catch (err) {
+      console.error('❌ Facets error:', err);
+      res.status(500).json({ success: false, approvedBy: [], reason: [], soStatus: [], error: err.message });
     }
   });
 
