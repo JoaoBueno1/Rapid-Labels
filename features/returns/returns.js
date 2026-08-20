@@ -9,7 +9,7 @@ const RT = { customers: [], operators: [], _baseOperators: [], lines: [], tlines
 const PAGE_SIZE = 25;
 const REASONS = ['Faulty', 'Product Left Over / Change of Mind', 'Incorrect Item Supplied', 'Incorrect Item Ordered', 'Freight Damage', 'Other'];
 const CONDITIONS = ['Resaleable', 'Not Resaleable', 'Faulty'];                                   // warehouse assessment (internal)
-const RET_STATUSES = ['Accepted for Credit Assessment', 'Accepted for Warranty Assessment', 'Return Not Accepted']; // printed on customer receipt
+const RET_STATUSES = ['Accepted for Credit Assessment', 'Accepted for Warranty Assessment', 'Accepted under warranty & disposed', 'Return Not Accepted']; // printed on customer receipt
 // Fixed warehouse list (management uses returns across all sites) — new-return selector + filters.
 const WAREHOUSES = ['Sunshine Coast', 'Main Warehouse', 'Melbourne', 'Cairns', 'Coffs Harbour', 'Hobart', 'Sydney', 'Brisbane'];
 // Pre-select the office disposition from stage-1 condition (fully editable — faulty/warranty can still be refused).
