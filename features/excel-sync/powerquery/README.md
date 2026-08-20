@@ -234,6 +234,50 @@ C depending on tie order, and the suggestion is 6 or 5. The tie-break by product
 name does not remove the arbitrariness — it makes it *stable*, which is what
 matters. Verified: four consecutive calls return byte-identical results.
 
+## Gateway Driver
+
+`Inventory Management - Documents/Gateway/Gateway Driver Aug 26.xlsx` — a
+different SharePoint library from the branch workbooks, synced under
+`RapidLED/Inventory Management - Documents/`.
+
+Its `SOH Dear` is the raw Cin7 export shape, nine columns, not the reduced
+five the branches use. 998 formulas read it, and they only ever touch column A
+(SKU) and column C (Quantity on hand), so those two positions are load-bearing.
+
+The tab lists **all 8,517 active products**, not just the 564 with Gateway
+stock. Starting from `stock_snapshot` would have dropped 2,359 SKUs — a SKU with
+no stock has no row there at all — and every lookup against them would have
+turned into `#N/A`. Listing all active products loses nothing (2,798 of the
+2,799 SKUs already in the tab are Active; the one exception no longer exists in
+Cin7) and shows 0 where there is no stock, which is what the Cin7 report already
+did.
+
+### The `stock check` tab was dead
+
+All 522 of its formulas read `VLOOKUP(B2,'SOH Dear'!B:F,2,FALSE)` — searching
+for a SKU starting at column B, which is `Unit` and says "Item" for everything.
+It never matched. Every cell was `#N/A`, and the VARIANCE column that the tab
+exists to produce was `#N/A` with it. A column shift: someone pasted the Cin7
+export, which puts SKU in A, over a layout that had it in B.
+
+Replaced with `SUMIF('SOH Dear'!$A:$A,B2,'SOH Dear'!$C:$C)` — the pattern
+already working in this same workbook's `DAILY STOCK REPORT`, which returns 0
+rather than `#N/A` for an absent SKU and sums duplicates. 306 of 524 rows now
+carry a real figure and 87 show a non-zero variance that nobody could see.
+
+## Monitoring
+
+`monitor.py` reads every workbook and reports last refresh, age, who saved it
+(desktop Excel vs Excel Online), query count and any empty data tab. It touches
+nothing — each file already carries its own refresh time in `_Sync`.
+
+What it cannot tell you: **whether a refresh failed**. Excel shows the user an
+error and records it nowhere readable. All that is visible is the shadow — the
+stamp does not advance — which covers "failed" and "nobody pressed it" without
+separating them. Separating them would mean the query writing to the database
+from inside the workbook, which hands the anon key write access and adds one
+more thing that can break a refresh that currently works.
+
 ## Open
 
 - **The stamp can go fresh over stale data.** `Sync_Status` is a separate query
