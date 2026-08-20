@@ -146,7 +146,7 @@ function rtActiveRow(r, rec) {
       + `<td>${esc(r.invoice_number || '—')}</td>`
       + `<td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>`
       + lines + act
-    : `<td>${esc(r.origin_order || '—')}</td>` + rcv + lines
+    : `<td>${esc(r.origin_order || '—')}${r.invoice_number ? `<div class="sub">Inv ${esc(r.invoice_number)}</div>` : ''}</td>` + rcv + lines
       + `<td class="rt-status ${r.status}">${statusLabel(r.status)}</td>` + act;
   return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
     <td class="num"><strong>${esc(r.return_no)}</strong></td>
