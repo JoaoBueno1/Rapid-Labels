@@ -156,6 +156,84 @@ being rolled back.
   `HOB` and `Location` — none of them tabs this project touches. The workbook is
   correctly reporting a bad code.
 
+## The two extra tabs
+
+`Stock Data` — one row per product, 11,242 of them, 30 columns straight from
+`cin7_mirror.products`. Read live at refresh: there is no dataset build in
+between, so its age is the age of the products mirror, refreshed once a day by
+`cin7-daily` (16:15 UTC). Blank never means zero. Where a number is missing the
+cell is empty, because "no carton measured" and "does not come in a carton"
+must not look the same.
+
+Fill rates, measured 2026-08-20 across all 11,242: SKU/name/category/status/
+type/UOM/sellable 100%, default location 71.0%, **pick bay 46.7%**, brand 37.0%,
+dimensions 34.6%, barcode 30.5%, carton OCL 28.5%, carton ICL 27.2%,
+**weight 6.1%**, warranty 0.1%, **pick zone / min-before-reorder / reorder-qty
+all 0.0%**. The empty columns are kept on purpose: they are the measurement.
+
+A trap worth knowing: Cin7 stores the literal string `"0"` where a field is
+unset. Counting non-null put pick bay at 94.2% when the real figure is 46.7% —
+5,343 products have `"0"` instead of a bin. Both `generate_stock_data.py` and
+`006_restock_suggestion.sql` treat `"0"` as blank.
+
+`Restock Suggestion` — the branch replenishment rule, ported from
+`features/replenishment` into `db/006_restock_suggestion.sql`. The workbook query
+is a single GET against the RPC; all the logic is server-side.
+
+It had to go server-side. The first attempt computed it in M, joining three
+sources (averages from `public`, branch stock and Main stock from `cin7_mirror`).
+Power Query refuses that: *"references other queries or steps, so it may not
+directly access a data source"*, and `FastCombine = True` does not help. Every
+query that works in production is single-source with a literal `RelativePath`.
+Putting the rule in SQL also means one implementation instead of a copy inside
+each of seven workbooks.
+
+### How the rule was calibrated
+
+Not guessed — measured against `transfer-SYD-selected-46-2026-08-20.csv`, the
+46 lines Joao actually chose to send:
+
+| transit | cover | lines | hits of 46 |
+|---|---|---|---|
+| exclude | < 21d | 70 | 43 (93%) |
+| exclude | < 25d | 72 | 44 (96%) |
+| subtract | < 21d | 91 | 45 (98%) |
+| subtract | < 25d | 94 | 46 (100%) |
+
+Joao chose exclude + 25 days. Two things the real list taught, both correcting
+the instructions given beforehand:
+
+- **Every one of his 46 had Main + Gateway > 0.** He never picks what the hub
+  cannot supply, so `main > 0` is a filter, and the `Main + Gateway` column is
+  red when it cannot cover the suggestion.
+- **21 days was too tight by two days.** His picks span 0 to 23 days of cover.
+
+The first version missed 34 of the 46 for a structural reason: it started from
+the branch's `stock_snapshot` rows. A SKU with zero stock at the branch has no
+row there at all — 31 of his 46 did not exist in Sydney's snapshot. The rule
+must start from the products that have an average, exactly as the screen does
+(`new Set(Object.keys(state.avgData))`), and left-join stock.
+
+`suggested_qty` is target minus available. It is **not** the screen's `send_qty`,
+which further deducts Main's 8-week safety, carton rounding, minimum send and
+conflicts between branches competing for the same stock.
+
+### Two implementations, two bugs
+
+`restock_reference.py` recomputes the same rule in Python. Comparing the two
+found one error on each side, and neither would have surfaced alone:
+
+- The SQL used `PERCENT_RANK()`; the screen uses a positional index. Different
+  tie handling pushed boundary SKUs into the wrong tier.
+- The Python used `round()`, which rounds half to even — `round(24.5) = 24`.
+  JavaScript and Postgres round half up. The reference was the wrong one here.
+
+The A/B/C boundary is inherently arbitrary where products tie on network demand:
+`R1166-BK-WW` sits at rank 480 of 954 with the B cut at 477, so it lands in B or
+C depending on tie order, and the suggestion is 6 or 5. The tie-break by product
+name does not remove the arbitrariness — it makes it *stable*, which is what
+matters. Verified: four consecutive calls return byte-identical results.
+
 ## Open
 
 - **The stamp can go fresh over stale data.** `Sync_Status` is a separate query
