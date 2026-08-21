@@ -208,8 +208,8 @@
         .wh-chart-note { font-weight:500; text-transform:none; letter-spacing:0; font-size:.66rem; color:#94a3b8; }
         .wh-chart-canvas { position:relative; height:175px; }
         /* Fullscreen (wall display / TV) */
-        .wh-pipeline.pipeline-fs { background:#0b1220; color:#fff; display:flex; flex-direction:column; justify-content:center; padding:4vh 4vw; }
-        .wh-pipeline.pipeline-fs .wh-pipeline-title { font-size:1.6rem; color:#fff; margin-bottom:3vh; }
+        .wh-pipeline.pipeline-fs { background:#0b1220; color:#fff; display:flex; flex-direction:column; justify-content:flex-start; overflow:auto; padding:3vh 4vw; }
+        .wh-pipeline.pipeline-fs .wh-pipeline-title { font-size:1.1rem; color:#fff; margin-bottom:1.5vh; }
         .wh-pipeline.pipeline-fs .wh-sync-info { color:#94a3b8; }
         .wh-pipeline.pipeline-fs .wh-fs-btn { color:#94a3b8; border-color:#334155; }
         .wh-pipeline.pipeline-fs .wh-hero, .wh-pipeline.pipeline-fs .wh-flow-stage { background:#111c30; border-color:#1e293b; }
@@ -219,17 +219,17 @@
         .wh-pipeline.pipeline-fs .wh-hero-pickup .wh-hero-val { color:#fbbf24; }
         .wh-pipeline.pipeline-fs .wh-hero-label { font-size:.85rem; color:#cbd5e1; }
         .wh-pipeline.pipeline-fs .wh-hero-sub { font-size:.8rem; color:#94a3b8; }
-        .wh-pipeline.pipeline-fs .wh-flow-stage { padding:6vh 1vw; }
-        .wh-pipeline.pipeline-fs .wh-flow-val { font-size:8.5vw; color:#fff; }
-        .wh-pipeline.pipeline-fs .wh-flow-label { font-size:1.5rem; color:#cbd5e1; }
-        .wh-pipeline.pipeline-fs .wh-flow-sub { font-size:1rem; color:#94a3b8; }
+        .wh-pipeline.pipeline-fs .wh-flow-stage { padding:2.5vh 1vw; }
+        .wh-pipeline.pipeline-fs .wh-flow-val { font-size:5vw; color:#fff; }
+        .wh-pipeline.pipeline-fs .wh-flow-label { font-size:1.1rem; color:#cbd5e1; }
+        .wh-pipeline.pipeline-fs .wh-flow-sub { font-size:.8rem; color:#94a3b8; }
         .wh-pipeline.pipeline-fs .wh-flow-arrow { color:#475569; font-size:3vw; }
         .wh-pipeline.pipeline-fs .wh-flow-foot { font-size:1.2rem; border-top-color:#1e293b; margin-top:3vh; }
         .wh-pipeline.pipeline-fs .wh-foot-val { font-size:2.2rem; }
         .wh-pipeline.pipeline-fs .wh-foot-label { color:#e2e8f0; }
-        .wh-pipeline.pipeline-fs .wh-chart-wrap { border-top-color:#1e293b; margin-top:3vh; }
+        .wh-pipeline.pipeline-fs .wh-chart-wrap { border-top-color:#1e293b; margin-top:2vh; }
         .wh-pipeline.pipeline-fs .wh-chart-title { color:#cbd5e1; }
-        .wh-pipeline.pipeline-fs .wh-chart-canvas { height:26vh; }
+        .wh-pipeline.pipeline-fs .wh-chart-canvas { height:32vh; }
         .wh-kpi-row { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; }
         .wh-kpi { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 10px; text-align:center; transition:all .2s; position:relative; }
         .wh-kpi:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,.06); }
@@ -485,7 +485,7 @@
                 <div class="left">
                     <a class="brand" href="index.html" style="display:flex;align-items:center;gap:8px">
                         <img src="rapid-express-icon.png" alt="Rapid Labels" style="width:32px;height:32px;border-radius:8px;object-fit:contain">
-                        <span>Rapid LED WMS Lite</span>
+                        <span>Rapid LED - WMS Lite</span>
                     </a>
                 </div>
                 <nav class="site-nav">
@@ -494,8 +494,6 @@
             </div>
         </header>
         <main class="main-container home-container">
-
-        <h1>Rapid Led <span class="home-subtitle">WMS Lite</span></h1>
 
         <!-- ═══ SPLIT LAYOUT ═══ -->
         <div class="home-split">
@@ -510,18 +508,8 @@
                 <!-- Warehouse Pipeline (wall-display flow board) -->
                 <div class="wh-pipeline" id="whPipelineCard">
                     <div class="wh-pipeline-title">
-                        <span class="icon">📦</span> Warehouse Pipeline
                         <span class="wh-sync-info" id="whSyncInfo">loading…</span>
                         <button class="wh-fs-btn" id="whFsBtn" title="Fullscreen — wall display" onclick="togglePipelineFullscreen()">⛶</button>
-                    </div>
-
-                    <!-- Headline stat: Pick Accuracy -->
-                    <div class="wh-hero-row">
-                        <div class="wh-hero wh-hero-accuracy">
-                            <div class="wh-hero-val loading" id="kpiAccuracyVal">—</div>
-                            <div class="wh-hero-label">Pick Accuracy</div>
-                            <div class="wh-hero-sub" id="kpiAccuracySub">loading…</div>
-                        </div>
                     </div>
 
                     <!-- Order flow board (left → right) -->
@@ -575,7 +563,7 @@
 
                     <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
                     <div class="wh-chart-wrap">
-                        <div class="wh-chart-title">📈 Daily Warehouse Activity <span id="whChartNote" class="wh-chart-note"></span></div>
+                        <div class="wh-chart-title">Daily Warehouse Activity <span id="whChartNote" class="wh-chart-note"></span></div>
                         <div class="wh-chart-canvas"><canvas id="pipelineChart"></canvas></div>
                     </div>
                 </div>
@@ -589,7 +577,6 @@
                 <!-- 1. Labels & Barcodes -->
                 <div class="category-card category-labels">
                     <div class="category-header">
-                        <span class="category-icon">🏷️</span>
                         <h2 class="category-title">Labels & Barcodes</h2>
                     </div>
                     <div class="category-items">
@@ -619,7 +606,6 @@
                 <!-- 2. Warehouse Operations -->
                 <div class="category-card category-warehouse">
                     <div class="category-header">
-                        <span class="category-icon">📦</span>
                         <h2 class="category-title">Warehouse Ops</h2>
                     </div>
                     <div class="category-items">
@@ -651,33 +637,28 @@
                 <!-- 3. Quality & Compliance (wide — fills the old Analytics space) -->
                 <div class="category-card category-quality qc-wide" style="position:relative">
                     <div class="category-header">
-                        <span class="category-icon">🔍</span>
                         <h2 class="category-title">Quality & Compliance</h2>
                     </div>
                     <div class="category-items">
                         <!-- PIN-gated group: Pick Anomalies · Branch Replenishment · Gateway -->
                         <div class="qc-gated" style="position:relative;grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:8px">
                             <a class="cat-btn" href="features/pick-anomalies/pick-anomalies.html" style="flex-wrap:wrap">
-                                <span class="cat-btn-icon">📋</span>
-                                <span>Pick Anomalies</span>
+                                    <span>Pick Anomalies</span>
                                 <span id="syncBadgePA" class="home-sync-badge" style="display:none"></span>
                             </a>
                             <a class="cat-btn" href="features/replenishment/replenishment.html">
-                                <span class="cat-btn-icon">📦</span>
-                                <span>Branch Replenishment</span>
+                                    <span>Branch Replenishment</span>
                             </a>
                             <a class="cat-btn" href="gateway-main.html" style="flex-wrap:wrap">
-                                <span class="cat-btn-icon">🏭</span>
-                                <span>Gateway</span>
+                                    <span>Gateway</span>
                                 <span id="syncBadgeGateway" class="home-sync-badge" style="display:none"></span>
                             </a>
                             <a class="cat-btn" href="features/pick-productivity/pick-productivity.html">
-                                <span class="cat-btn-icon">📈</span>
-                                <span>Pick Productivity</span>
+                                    <span>Pick Productivity</span>
                             </a>
                             <!-- Password overlay — covers only the gated group above -->
                             <div id="qcLocked" style="position:absolute;inset:0;background:rgba(255,255,255,.97);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;gap:6px">
-                                <div style="font-size:32px">🔒</div>
+                                <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8">Restricted</div>
                                 <div style="display:flex;gap:6px;align-items:center">
                                     <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN" style="width:80px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font-size:15px;outline:none" onkeydown="if(event.key==='Enter')document.getElementById('qcUnlockBtn').click()">
                                     <button id="qcUnlockBtn" type="button" onclick="if(document.getElementById('qcPin').value==='4209'){document.getElementById('qcLocked').remove();var pc=document.getElementById('whPipelineCard');if(pc)pc.classList.remove('wh-locked')}else{document.getElementById('qcPin').style.borderColor='#ef4444';document.getElementById('qcPin').value='';document.getElementById('qcPin').placeholder='Wrong'}" style="padding:6px 14px;background:#eab308;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Unlock</button>
@@ -686,29 +667,24 @@
                         </div>
                         <!-- Container Check — open, no PIN -->
                         <a class="cat-btn" href="features/container-check/container-check.html" style="grid-column:1 / -1">
-                            <span class="cat-btn-icon">📥</span>
                             <span>Container Check</span>
                         </a>
                         <!-- Open Orders — monitor open sales orders + transfers -->
                         <a class="cat-btn" href="features/logistics/open-orders.html" style="grid-column:1 / -1">
-                            <span class="cat-btn-icon">📦</span>
                             <span>Open Orders</span>
                         </a>
                         <!-- Sync Monitor — health of every Cin7 and Excel sync. Read-only, no PIN. -->
                         <a class="cat-btn" href="features/sync-monitor/sync-monitor.html" style="grid-column:1 / -1">
-                            <span class="cat-btn-icon">🔄</span>
                             <span>Sync Monitor</span>
                             <span id="syncBadgeMonitor" class="home-sync-badge" style="display:none"></span>
                         </a>
                         <!-- Container Builder hidden for now (not in use yet)
                         <a class="cat-btn" href="features/container-builder/container-builder.html">
-                            <span class="cat-btn-icon">🚢</span>
                             <span>Container Builder</span>
                         </a>
                         -->
                         <!-- Invoicing Monitor hidden for now (not in use yet)
                         <a class="cat-btn" href="features/logistics/invoicing-monitor.html">
-                            <span class="cat-btn-icon">🧾</span>
                             <span>Invoicing Monitor</span>
                         </a>
                         -->
@@ -1122,7 +1098,7 @@
     </div>
 
         <footer class="site-footer">
-            <div class="footer-inner">© 2023-2026 Rapid LED WMS Lite — All rights reserved.</div>
+            <div class="footer-inner">© 2023-2026 Rapid LED - WMS Lite — All rights reserved.</div>
         </footer>
 
         <!-- Scripts -->
