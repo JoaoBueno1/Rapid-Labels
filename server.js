@@ -301,20 +301,34 @@ setTimeout(() => {
   }, PIPELINE_INTERVAL_MS);
 }, 30_000); // Wait 30s after server start before first sync
 
-// ── Gateway Transfer routes ──
+// ── Gateway Inventory routes (lots · FIFO · transfers · reconciliation) ──
 try {
-  const { registerGatewayRoutes } = require('./features/gateway/gateway-engine');
-  registerGatewayRoutes(app);
+  require('./features/gateway/gateway-inventory-engine')(app, supabaseBackend);
 } catch (e) {
-  console.warn('⚠️  Could not register gateway routes:', e.message);
+  console.warn('⚠️  Could not register Gateway inventory routes:', e.message);
 }
 
-// ── MW Stocktake Audit routes ──
-try {
-  const { registerStocktakeRoutes } = require('./features/gateway/stocktake-engine');
-  registerStocktakeRoutes(app);
-} catch (e) {
-  console.warn('⚠️  Could not register stocktake routes:', e.message);
+// ── Legacy Gateway engine — OFF by default ──
+// Superseded by gateway-inventory-engine. Kept behind a flag rather than
+// deleted so the old shelf viewer can be brought back for comparison, but it
+// must not run by accident: POST /api/gateway/transfer CREATES AND AUTHORISES
+// A STOCK TRANSFER IN CIN7 (features/gateway/legacy/gateway-engine.js:369-395)
+// with no idempotency key and two live buttons behind it, and
+// POST /api/gateway/seed DELETEs the entire shelf map unauthenticated.
+// Gateway transfers are raised in Cin7 by hand; nothing here should write.
+if (process.env.GATEWAY_LEGACY_ENABLED === 'true') {
+  console.warn('⚠️  GATEWAY_LEGACY_ENABLED=true — legacy Gateway routes are live, ' +
+               'including the Cin7 transfer WRITE and the destructive seed.');
+  try {
+    require('./features/gateway/legacy/gateway-engine').registerGatewayRoutes(app);
+  } catch (e) {
+    console.warn('⚠️  Could not register legacy gateway routes:', e.message);
+  }
+  try {
+    require('./features/gateway/stocktake-engine').registerStocktakeRoutes(app);
+  } catch (e) {
+    console.warn('⚠️  Could not register stocktake routes:', e.message);
+  }
 }
 
 // ── Container Builder routes ──
@@ -329,6 +343,13 @@ try {
   require('./features/container-check/container-check-engine')(app, supabaseBackend);
 } catch (e) {
   console.warn('⚠️  Could not register Container Check routes:', e.message);
+}
+
+// ── Transfer Out routes (printable pickbay-ordered transfer sheets) ──
+try {
+  require('./features/transfer-out/transfer-out-engine')(app);
+} catch (e) {
+  console.warn('⚠️  Could not register Transfer Out routes:', e.message);
 }
 
 // ── WMS (handheld PWA: pick / assembly / transfer / receive / ops) ──

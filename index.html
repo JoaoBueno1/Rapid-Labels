@@ -600,6 +600,10 @@
                             <span>Returns</span>
                             <span class="cat-badge" id="returnsCount" style="display:none"></span>
                         </a>
+                        <a class="cat-btn" href="features/transfer-out/transfer-out.html">
+                            <span class="cat-btn-icon">📤</span>
+                            <span>Transfer Out</span>
+                        </a>
                         <a class="cat-btn" href="restock-v2.html" style="flex-wrap:wrap">
                             <span class="cat-btn-icon">♻️</span>
                             <span>Re-Stock V2</span>
@@ -1324,29 +1328,29 @@
                 }
 
                 // ─── 7. Gateway Stats ───
+                // Reads the lot ledger (gateway_v_sku_balance), not the old
+                // gateway_allocations seed — that table is a frozen 2026-02-26
+                // snapshot whose stock_date column is a day out on every row and
+                // in the future on 146 of them, so its ageing was meaningless.
                 try {
-                    const { data: allocs, error: aErr } = await sb
-                        .from('gateway_allocations')
-                        .select('id, shelf_id, qty, stock_date')
-                        .eq('status', 'active');
-                    if (!aErr && allocs) {
-                        const totalItems = allocs.length;
-                        const totalQty = allocs.reduce((s, a) => s + (a.qty || 0), 0);
-                        const now = Date.now();
-                        let fifo30 = 0, fifo60 = 0;
-                        allocs.forEach(a => {
-                            if (a.stock_date) {
-                                const days = (now - new Date(a.stock_date).getTime()) / 86400000;
-                                if (days > 60) fifo60++;
-                                else if (days > 30) fifo30++;
-                            }
+                    const { data: bal, error: aErr } = await sb
+                        .from('gateway_v_sku_balance')
+                        .select('sku, qty_on_hand, oldest_age_days, undated_lots');
+                    if (!aErr && bal) {
+                        const held = bal.filter(b => Number(b.qty_on_hand) > 0);
+                        let warn = 0, alert = 0, undated = 0;
+                        held.forEach(b => {
+                            if (b.oldest_age_days >= 120) alert++;
+                            else if (b.oldest_age_days >= 60) warn++;
+                            undated += Number(b.undated_lots || 0);
                         });
-                        const fifoTotal = fifo30 + fifo60;
-                        const color = fifo60 > 0 ? 'red' : fifo30 > 0 ? 'yellow' : 'green';
-                        setHealth('healthGateway', color, `${totalItems} items · ${fifoTotal > 0 ? fifoTotal + ' aging' : 'all fresh'}`);
-                        if (fifoTotal > 0) addActivity('🏭', `Gateway: ${fifo30} items >30d, ${fifo60} items >60d`, '');
+                        const color = alert > 0 ? 'red' : warn > 0 ? 'yellow' : 'green';
+                        setHealth('healthGateway', color,
+                            `${held.length} products · ${alert + warn > 0 ? (alert + warn) + ' aging' : 'all fresh'}`);
+                        if (alert > 0) addActivity('🏭', `Gateway: ${alert} product${alert>1?'s':''} over 120 days old`, '');
+                        if (undated > 0) addActivity('🏭', `Gateway: ${undated} pallet${undated>1?'s':''} with no arrival date`, '');
                     } else {
-                        setHealth('healthGateway', 'green', 'no active items');
+                        setHealth('healthGateway', 'gray', 'not deployed');
                     }
                 } catch(e) { setHealth('healthGateway', 'gray', 'unavailable'); }
 
@@ -1364,14 +1368,16 @@
                 } catch(e) { setHealth('healthRepl', 'gray', 'unavailable'); }
 
                 // ─── 9. Recent Gateway Movements (today) ───
+                // occurred_at, not created_at: a move keyed in this morning for
+                // yesterday belongs to yesterday.
                 try {
                     const gwTodayAest = aestToday();
                     const { count, error } = await sb
-                        .from('gateway_movement_history')
+                        .from('gateway_movements')
                         .select('id', { count: 'exact', head: true })
-                        .gte('created_at', aestDayStart(gwTodayAest));
+                        .gte('occurred_at', aestDayStart(gwTodayAest));
                     if (!error && count > 0) {
-                        addActivity('🏭', `${count} gateway transfer${count>1?'s':''} today`, '');
+                        addActivity('🏭', `${count} Gateway stock movement${count>1?'s':''} today`, '');
                     }
                 } catch(e) {}
 

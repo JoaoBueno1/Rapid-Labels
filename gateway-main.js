@@ -1,976 +1,1106 @@
-// gateway-main.js
-// Purpose: Gateway → Main Warehouse — shows stock levels per product
-//          with weeks-of-stock calculation to identify items needing
-//          transfer from Gateway (MA-GA) to Main Warehouse pickface.
-//          ONLY shows products that have stock in Gateway bins (MA-GA-*).
-//
-// Data sources (same as restock-v2):
-//   cin7_mirror.stock_snapshot  → on_hand per bin in Main Warehouse
-//   cin7_mirror.products        → product info, name, attribute1 (5DC)
-//   restock_setup               → capacity, pickface, qty_per_ctn, qty_per_pallet
-//   pallet_capacity_rules       → qty_pallet fallback
-//   branch_avg_monthly_sales    → avg monthly sales per product
-//   cin7_mirror.sync_runs       → last sync status card
+/* ══════════════════════════════════════════════════════════════════════
+   Gateway Inventory — front end.
 
-(function () {
-  'use strict';
+   Talks only to /api/gateway/*. Nothing here computes a balance: every
+   quantity on screen is what the ledger says, so the screen and the audit
+   trail can never disagree.
 
-  /* ── helpers ── */
-  function debounce(fn, ms) {
-    let t;
-    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+   The word "lot" does not appear in the interface. A lot is a pallet that
+   arrived on a date, so the screen says "arrived" and "pallet" and lets the
+   database keep the vocabulary.
+   ══════════════════════════════════════════════════════════════════════ */
+'use strict';
+
+const state = {
+  view: 'overview',
+  user: localStorage.getItem('gatewayUser') || '',
+  inv:  { q: '', filter: 'in_stock', sort: 'oldest', offset: 0, limit: 100, total: 0 },
+  tr:   { q: '', status: '', rows: [] },
+  rec:  { weeks: 4, rows: [], selected: new Set() },
+  recon:{ state: '', rows: [] },
+  qual: { batches: [], issues: [], severity: '' },
+  caps: {},
+  settings: {},
+  openTransfer: null,
+};
+
+// ─── plumbing ──────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(`/api/gateway${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-gw-user': state.user || 'unknown',
+      ...(opts.headers || {}),
+    },
+  });
+  let body = null;
+  try { body = await res.json(); } catch { /* empty body */ }
+  if (!res.ok || !body || body.success === false) {
+    const err = new Error((body && body.error) || `${res.status} ${res.statusText}`);
+    err.status = res.status;
+    err.payload = body;
+    throw err;
   }
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  return body.data;
+}
+
+const $  = id => document.getElementById(id);
+const el = (tag, cls, html) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html != null) n.innerHTML = html;
+  return n;
+};
+const esc = s => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+const nfmt = (v, dp = 0) => v == null || v === '' || isNaN(Number(v))
+  ? '—'
+  : Number(v).toLocaleString('en-AU', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+/** Brisbane is where the warehouse is; render dates there and nowhere else. */
+function dfmt(d) {
+  if (!d) return null;
+  const dt = new Date(d.length === 10 ? `${d}T00:00:00+10:00` : d);
+  if (isNaN(dt)) return null;
+  return dt.toLocaleDateString('en-AU', {
+    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Australia/Brisbane',
+  });
+}
+function dtfmt(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt)) return '—';
+  return dt.toLocaleString('en-AU', {
+    day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit',
+    timeZone: 'Australia/Brisbane',
+  });
+}
+
+function ageClass(days) {
+  if (days == null) return 'age-unknown';
+  const warn  = Number(state.settings.age_warn_days  || 60);
+  const alert = Number(state.settings.age_alert_days || 120);
+  return days >= alert ? 'age-alert' : days >= warn ? 'age-warn' : 'age-fresh';
+}
+const ageCell = d => d == null
+  ? '<span class="age-unknown">unknown</span>'
+  : `<span class="${ageClass(d)}">${nfmt(d)}d</span>`;
+
+function diffCell(v) {
+  const n = Number(v || 0);
+  if (!n) return '<span class="var-zero">0</span>';
+  return `<span class="${n > 0 ? 'var-pos' : 'var-neg'}">${n > 0 ? '+' : ''}${nfmt(n)}</span>`;
+}
+
+const STATUS_TAG = {
+  draft: 'tag-grey', ready_for_cin7: 'tag-amber', cin7_created: 'tag-cyan',
+  picking: 'tag-blue', dispatched: 'tag-blue', completed: 'tag-green', cancelled: 'tag-grey',
+};
+const STATUS_LABEL = {
+  draft: 'Draft', ready_for_cin7: 'Ready for Cin7', cin7_created: 'In Cin7',
+  picking: 'Picking', dispatched: 'Dispatched', completed: 'Completed', cancelled: 'Cancelled',
+};
+const statusTag = s => `<span class="tag ${STATUS_TAG[s] || 'tag-grey'}">${esc(STATUS_LABEL[s] || s)}</span>`;
+const dirLabel  = d => d === 'main_to_gateway' ? 'Main &rarr; Gateway' : 'Gateway &rarr; Main';
+
+const STATE_TAG = {
+  match: ['tag-green', 'Match'], mismatch: ['tag-amber', 'Mismatch'],
+  local_only: ['tag-red', 'Only ours'], cin7_only: ['tag-blue', 'Only Cin7'],
+};
+const stateTag = s => {
+  const [c, l] = STATE_TAG[s] || ['tag-grey', s];
+  return `<span class="tag ${c}">${esc(l)}</span>`;
+};
+
+let toastTimer;
+function toast(msg, bad) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = `gw-toast show${bad ? ' bad' : ''}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'gw-toast'; }, bad ? 6500 : 3200);
+}
+const fail = e => { console.error(e); toast(e.message || 'Something went wrong', true); };
+const empty = (n, msg) => `<tr><td colspan="${n}" class="gw-empty">${esc(msg)}</td></tr>`;
+
+// ─── modal ─────────────────────────────────────────────────────────────
+function modal(title, bodyHtml, buttons) {
+  $('modalTitle').textContent = title;
+  $('modalBody').innerHTML = bodyHtml;
+  const foot = $('modalFoot');
+  foot.innerHTML = '';
+  (buttons || []).forEach(b => {
+    const btn = el('button', `gw-btn ${b.cls || ''}`, esc(b.label));
+    btn.onclick = async () => {
+      if (!b.onClick) return closeModal();
+      btn.disabled = true;
+      try { await b.onClick(); } catch (e) { fail(e); } finally { btn.disabled = false; }
+    };
+    foot.appendChild(btn);
+  });
+  $('modalBack').classList.add('open');
+  const first = $('modalBody').querySelector('input,select,textarea');
+  if (first) setTimeout(() => first.focus(), 40);
+}
+const closeModal = () => $('modalBack').classList.remove('open');
+$('modalBack').addEventListener('click', e => { if (e.target.id === 'modalBack') closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('modalBack').classList.contains('open')) return closeModal();
+  if ($('drawer').classList.contains('open')) closeDrawer();
+});
+
+// ─── drawer ────────────────────────────────────────────────────────────
+function openDrawer(title, sub) {
+  $('drTitle').innerHTML = title;
+  $('drSub').innerHTML = sub || '';
+  $('drBody').innerHTML = '<div class="gw-empty"><span class="gw-spinner"></span></div>';
+  $('drawer').classList.add('open');
+  $('drawerBack').classList.add('open');
+}
+function closeDrawer() {
+  $('drawer').classList.remove('open');
+  $('drawerBack').classList.remove('open');
+  state.openTransfer = null;
+}
+$('drClose').onclick = closeDrawer;
+$('drawerBack').onclick = closeDrawer;
+
+// ─── boot ──────────────────────────────────────────────────────────────
+async function boot() {
+  if (!state.user) {
+    const who = prompt('Your name (recorded against everything you do here):', '');
+    state.user = (who || '').trim() || 'unknown';
+    localStorage.setItem('gatewayUser', state.user);
   }
-  function normalizeLocation(loc) { return String(loc || '').replace(/\s+/g, '').toUpperCase(); }
+  $('whoami').textContent = state.user;
 
-  /* ── Carton SKU regex (same as restock-v2) ── */
-  const _cartonRx       = /[-_]carton\d+$/i;
-  const _cartonPrefixRx = /^carton[\s-]/i;
+  document.querySelectorAll('.gw-tab').forEach(t => {
+    t.onclick = () => switchView(t.dataset.view);
+  });
 
-  /* ── state ── */
-  const state = {
-    q: '',
-    loading: false,
-    allRows: [],
-    rows: [],
-    weeksFilter: 'ALL',
-    pfFilter: 'ALL',
-    viewMode: 'main_stock',
-    hiddenSkus: new Set(),
-    showHidden: false,
-    onlyWithDemand: false,
-    selectedSkus: new Set(),
-    page: 1,
-    perPage: 30,
-  };
+  try {
+    state.caps = (await api('/capabilities')).capabilities || {};
+  } catch { /* engine may not be up; the views will report it */ }
 
-  // Hidden products persistence
-  const GW_HIDDEN_KEY = 'gw_hidden_skus';
-  (function loadHiddenSkus() {
-    try { const raw = localStorage.getItem(GW_HIDDEN_KEY); if (raw) JSON.parse(raw).forEach(s => state.hiddenSkus.add(String(s))); } catch {}
-  })();
-  function saveHiddenSkus() {
-    try { localStorage.setItem(GW_HIDDEN_KEY, JSON.stringify(Array.from(state.hiddenSkus))); } catch {}
+  wireInventory(); wireTransfers(); wireRecommend(); wireRecon(); wireQuality();
+  await loadOverview();
+}
+
+function switchView(v) {
+  state.view = v;
+  document.querySelectorAll('.gw-tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
+  document.querySelectorAll('.gw-view').forEach(s => {
+    s.style.display = s.id === `view-${v}` ? '' : 'none';
+  });
+  ({ overview: loadOverview, inventory: loadInventory, transfers: loadTransfers,
+     recommend: loadRecommend, recon: loadRecon, quality: loadQuality }[v] || (() => {}))();
+}
+
+// ═══════════ OVERVIEW ═══════════
+async function loadOverview() {
+  let s;
+  try {
+    s = await api('/summary');
+  } catch (e) {
+    if (e.status === 503) $('deployWarning').style.display = '';
+    return fail(e);
   }
-
-  /* ── DOM refs ── */
-  const COLS = 14;
-  const tbody  = document.getElementById('gwTbody');
-  const input  = document.getElementById('gwSearch');
-  function setTbody(html) { if (tbody) tbody.innerHTML = html; }
-
-  /* ═══════════════════════════════════════════════
-     WEEKS-OF-STOCK classification
-     ═══════════════════════════════════════════════ */
-  const WEEKS_PER_MONTH = 4.33;
-
-  function classifyWeeks(weeks) {
-    if (weeks == null) return 'NO_SALES';
-    if (weeks < 1) return 'CRITICAL';
-    if (weeks < 2) return 'LOW';
-    if (weeks < 4) return 'OK';
-    return 'GOOD';
-  }
-
-  function weeksBadge(weeks, cls) {
-    if (weeks == null) return '<span class="weeks-badge none">—</span>';
-    const label = weeks.toFixed(1);
-    return `<span class="weeks-badge ${cls}">${label}</span>`;
-  }
-
-  function classifyPickface(r) {
-    if (!r.capacity || r.capacity <= 0) return 'NO_SETUP';
-    if (r.pickface_on_hand <= 0) return 'EMPTY';
-    if (r.pickface_on_hand >= r.capacity) return 'FULL';
-    return 'NEEDS_RESTOCK';
-  }
-
-  function pickfaceBadge(r) {
-    const cls = classifyPickface(r);
-    if (cls === 'NO_SETUP') return '<span class="weeks-badge none">—</span>';
-    const pct = Math.round((r.pickface_on_hand / r.capacity) * 100);
-    const fillNeeded = r.capacity - r.pickface_on_hand;
-    if (cls === 'EMPTY') return `<span class="weeks-badge critical">Empty (need ${fillNeeded})</span>`;
-    if (cls === 'NEEDS_RESTOCK') return `<span class="weeks-badge low">${pct}% (need ${fillNeeded})</span>`;
-    return `<span class="weeks-badge good">Full</span>`;
-  }
-
-  /* ═══════════════════════════════════════════════
-     PAGER
-     ═══════════════════════════════════════════════ */
-  function updatePager(total) {
-    const info = document.getElementById('gwPageInfo');
-    const prev = document.getElementById('gwPrevPage');
-    const next = document.getElementById('gwNextPage');
-    if (!info) return;
-    const tp = Math.max(1, Math.ceil(total / state.perPage));
-    if (state.page > tp) state.page = tp;
-    info.textContent = total === 0 ? 'Page 0 / 0' : `Page ${state.page} / ${tp}`;
-    const set = (b, d) => { if (!b) return; b.dataset.disabled = d ? '1' : '0'; b.style.opacity = d ? '.45' : '1'; b.style.pointerEvents = d ? 'none' : 'auto'; };
-    set(prev, state.page <= 1);
-    set(next, state.page >= tp);
-  }
-
-  /* ═══════════════════════════════════════════════
-     RENDER
-     ═══════════════════════════════════════════════ */
-  function render(rows) {
-    if (!rows || !rows.length) {
-      setTbody(`<tr><td colspan="${COLS}" style="text-align:center;opacity:.7">No results</td></tr>`);
-      updatePager(0);
-      return;
-    }
-    const start = (state.page - 1) * state.perPage;
-    const page  = rows.slice(start, start + state.perPage);
-    updatePager(rows.length);
-
-    const html = page.map(r => {
-      const rawSku = String(r.__stock_sku || r.sku);
-      const isSelected = state.selectedSkus.has(rawSku);
-      const fiveDC    = escapeHtml(r.__5dc || '');
-      const skuDisplay = escapeHtml(r.__stock_sku || r.sku);
-      const productName = r.__full_description || r.product;
-      const productNameEsc = escapeHtml(productName);
-      const productHtml = productName.length > 50
-        ? `<span title="${productNameEsc}" style="cursor:help">${escapeHtml(productName.substring(0, 48))}…</span>`
-        : productNameEsc;
-      const pickface  = escapeHtml(r.stock_locator);
-      const pfStock   = r.pickface_on_hand ?? 0;
-      const capacity  = r.capacity ?? '';
-      const totalMW   = r.total_mw ?? 0;
-      const gwStock   = r.gateway_stock ?? 0;
-      const avgMth    = r.avg_month_sales;
-      const avgWk     = avgMth != null && avgMth > 0 ? avgMth / 4.33 : null;
-      const avgSalesO = r.__avg_sales_only;
-      const avgXfrO   = r.__avg_transfer_only;
-      const weeks     = r.weeks_available;
-      const wCls      = classifyWeeks(weeks);
-
-      let avgHtml;
-      if (avgMth != null) {
-        const mthStr = Math.round(avgMth).toLocaleString();
-        const wkStr = avgWk != null ? Math.round(avgWk).toLocaleString() : '—';
-        const salesMth = avgSalesO != null ? Math.round(avgSalesO).toLocaleString() : '0';
-        const salesWk = avgSalesO != null && avgSalesO > 0 ? Math.round(avgSalesO / 4.33).toLocaleString() : '0';
-        const xfrMth = avgXfrO != null ? Math.round(avgXfrO).toLocaleString() : '0';
-        const xfrWk = avgXfrO != null && avgXfrO > 0 ? Math.round(avgXfrO / 4.33).toLocaleString() : '0';
-        const tipHtml = `<div style="text-align:left;min-width:220px">`
-          + `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid #475569;padding-bottom:3px">AVG Demand Breakdown</div>`
-          + `<div style="display:flex;justify-content:space-between;gap:12px;opacity:.6;font-size:11px;margin-bottom:2px"><span></span><span>mth / 4wk</span></div>`
-          + `<div style="display:flex;justify-content:space-between;gap:12px"><span>📦 Sales Orders:</span><span>${salesMth} / ${salesWk}</span></div>`
-          + `<div style="display:flex;justify-content:space-between;gap:12px"><span>🚚 Transfers NET:</span><span>${xfrMth} / ${xfrWk}</span></div>`
-          + `<div style="border-top:1px solid #475569;margin-top:3px;padding-top:3px;font-weight:700;display:flex;justify-content:space-between;gap:12px"><span>Total:</span><span>${mthStr} / ${wkStr}</span></div>`
-          + `<div style="margin-top:6px;font-size:10px;opacity:.6">Period: Aug 2025 – Feb 2026 (6.53 mths)</div>`
-          + `</div>`;
-        avgHtml = `<span class="tip-cell" onclick="toggleTip(this)"><span style="font-variant-numeric:tabular-nums">${mthStr}<span style="opacity:.45;margin:0 2px">/</span>${wkStr}</span><div class="tip-pop">${tipHtml}</div></span>`;
-      } else {
-        avgHtml = '<span style="opacity:.35">—</span>';
-      }
-
-      const gwHtml    = gwStock > 0
-        ? `<span style="font-weight:600;color:#0369a1">${gwStock.toLocaleString()}</span>`
-        : '<span style="opacity:.35">0</span>';
-
-      const qtyCtnVal    = r.__qty_per_ctn;
-      const qtyPalletVal = r.__qty_per_pallet;
-      const qtyCtnHtml    = qtyCtnVal != null ? `<span style="font-variant-numeric:tabular-nums">${qtyCtnVal}</span>` : '<span style="opacity:.35">—</span>';
-      const qtyPalletHtml = qtyPalletVal != null ? `<span style="font-variant-numeric:tabular-nums">${qtyPalletVal}</span>` : '<span style="opacity:.35">—</span>';
-
-      // Actions: hide/unhide button
-      const isHidden = state.hiddenSkus.has(rawSku);
-      const hideBtn = `<button type="button" onclick="gwToggleHide('${escapeHtml(rawSku)}')" title="${isHidden ? 'Show product' : 'Hide product'}" style="background:none;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;padding:2px 8px;font-size:13px">${isHidden ? '👁' : '🚫'}</button>`;
-      const trStyle = isHidden ? ' style="opacity:.4;background:#f8fafc"' : '';
-
-      // Pickface fill badge (for pickface restock mode)
-      const pfBadge = state.viewMode === 'pickface_restock' ? pickfaceBadge(r) : weeksBadge(weeks, wCls.toLowerCase());
-
-      return `<tr${trStyle}>
-        <td class="no-print"><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="gwToggleSelectRow('${escapeHtml(rawSku)}', this.checked)" /></td>
-        <td style="font-variant-numeric:tabular-nums;font-size:12px;color:#64748b">${fiveDC}</td>
-        <td>${skuDisplay}</td>
-        <td>${productHtml}</td>
-        <td>${pickface}</td>
-        <td>${pfStock}</td>
-        <td>${capacity}</td>
-        <td>${totalMW}</td>
-        <td>${gwHtml}</td>
-        <td>${avgHtml}</td>
-        <td>${pfBadge}</td>
-        <td>${qtyCtnHtml}</td>
-        <td>${qtyPalletHtml}</td>
-        <td class="no-print">${hideBtn}</td>
-      </tr>`;
-    }).join('');
-
-    setTbody(html);
-    updateBulkBar();
-    // Update select-all checkbox state
-    const selAll = document.getElementById('gwSelectAll');
-    if (selAll) {
-      const pageSkus = page.map(r => String(r.__stock_sku || r.sku));
-      const allChecked = pageSkus.length > 0 && pageSkus.every(s => state.selectedSkus.has(s));
-      const someChecked = pageSkus.some(s => state.selectedSkus.has(s));
-      selAll.checked = allChecked;
-      selAll.indeterminate = someChecked && !allChecked;
-    }
-  }
-
-  /* ═══════════════════════════════════════════════
-     COUNTERS
-     ═══════════════════════════════════════════════ */
-  function updateCounters() {
-    // Filter out hidden for counting (unless showHidden)
-    const visibleRows = state.showHidden ? state.allRows : state.allRows.filter(r => !state.hiddenSkus.has(String(r.__stock_sku || r.sku)));
-    // Main Stock mode counters (weeks-based)
-    const c = { all: 0, critical: 0, low: 0, ok: 0, good: 0, no_sales: 0 };
-    // Pickface mode counters
-    const pf = { all: 0, needs_restock: 0, empty: 0, full: 0, no_setup: 0 };
-    for (const r of visibleRows) {
-      c.all++;
-      pf.all++;
-      const w = classifyWeeks(r.weeks_available);
-      if (w === 'CRITICAL') c.critical++;
-      else if (w === 'LOW') c.low++;
-      else if (w === 'OK') c.ok++;
-      else if (w === 'GOOD') c.good++;
-      else c.no_sales++;
-      const p = classifyPickface(r);
-      if (p === 'NEEDS_RESTOCK') pf.needs_restock++;
-      else if (p === 'EMPTY') pf.empty++;
-      else if (p === 'FULL') pf.full++;
-      else pf.no_setup++;
-    }
-    const u = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    u('countAll', c.all);
-    u('countCritical', c.critical);
-    u('countLow', c.low);
-    u('countOk', c.ok);
-    u('countGood', c.good);
-    u('countNoSales', c.no_sales);
-    u('pfCountAll', pf.all);
-    u('pfCountNeedsRestock', pf.needs_restock);
-    u('pfCountEmpty', pf.empty);
-    u('pfCountFull', pf.full);
-    u('pfCountNoSetup', pf.no_setup);
-    // Hidden count
-    u('gwHiddenCount', state.hiddenSkus.size > 0 ? `(${state.hiddenSkus.size})` : '');
-    // Filter badge
-    const activeFilters = [];
-    if (state.onlyWithDemand) activeFilters.push('With demand');
-    if (state.showHidden) activeFilters.push('Show hidden');
-    const badge = document.getElementById('gwFiltersBadge');
-    if (badge) { badge.textContent = activeFilters.length || ''; badge.style.display = activeFilters.length ? 'inline-flex' : 'none'; }
-    const tagsEl = document.getElementById('gwActiveFilterTags');
-    if (tagsEl) {
-      tagsEl.innerHTML = activeFilters.length === 0 ? '' : activeFilters.map(f => `<span style="display:inline-flex;align-items:center;gap:3px;background:#eef2ff;color:#4338ca;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid #c7d2fe;white-space:nowrap">${escapeHtml(f)}</span>`).join('');
-    }
-  }
-
-  /* ═══════════════════════════════════════════════
-     FILTERS & SORT
-     ═══════════════════════════════════════════════ */
-  function applyFilters(rows) {
-    let out = rows.slice();
-
-    // Hidden filter
-    if (!state.showHidden) {
-      out = out.filter(r => !state.hiddenSkus.has(String(r.__stock_sku || r.sku)));
-    }
-
-    // Only with demand
-    if (state.onlyWithDemand) {
-      out = out.filter(r => r.avg_month_sales != null && r.avg_month_sales > 0);
-    }
-
-    if (state.viewMode === 'main_stock') {
-      // weeks filter
-      if (state.weeksFilter !== 'ALL') {
-        out = out.filter(r => classifyWeeks(r.weeks_available) === state.weeksFilter);
-      }
-    } else {
-      // pickface filter
-      if (state.pfFilter !== 'ALL') {
-        out = out.filter(r => classifyPickface(r) === state.pfFilter);
-      }
-    }
-
-    return out;
-  }
-
-  function sortRows(rows) {
-    if (state.viewMode === 'pickface_restock') {
-      // Sort by fill % ascending (emptiest pickfaces first), no-setup last
-      return rows.slice().sort((a, b) => {
-        const aSetup = a.capacity > 0;
-        const bSetup = b.capacity > 0;
-        if (!aSetup && !bSetup) return String(a.sku).localeCompare(String(b.sku));
-        if (!aSetup) return 1;
-        if (!bSetup) return -1;
-        const aFill = a.pickface_on_hand / a.capacity;
-        const bFill = b.pickface_on_hand / b.capacity;
-        if (aFill !== bFill) return aFill - bFill;
-        return String(a.sku).localeCompare(String(b.sku));
-      });
-    }
-    // Main stock mode: sort by weeks ascending (most urgent first), nulls last
-    return rows.slice().sort((a, b) => {
-      const wa = a.weeks_available;
-      const wb = b.weeks_available;
-      if (wa == null && wb == null) return String(a.sku).localeCompare(String(b.sku));
-      if (wa == null) return 1;
-      if (wb == null) return -1;
-      if (wa !== wb) return wa - wb;
-      return String(a.sku).localeCompare(String(b.sku));
-    });
-  }
-
-  function rebuildView() {
-    state.page = 1;
-    state.selectedSkus.clear();
-    const filtered = applyFilters(state.allRows);
-    const sorted   = sortRows(filtered);
-    state.rows = sorted;
-    render(sorted);
-  }
-
-  /* ═══════════════════════════════════════════════
-     SYNC STATUS CARD
-     ═══════════════════════════════════════════════ */
-  let _lastSyncEndedAt = null;
-
-  function _refreshSyncCountdown() {
-    const el = document.getElementById('syncCountdown');
-    if (!el) return;
-    const now = new Date();
-    const INTERVAL_MS = 1 * 3600000; // 1 hour
-
-    let nextSync;
-    if (_lastSyncEndedAt) {
-      nextSync = new Date(new Date(_lastSyncEndedAt).getTime() + INTERVAL_MS);
-      if (nextSync <= now) {
-        const elapsed = now - nextSync;
-        nextSync = new Date(nextSync.getTime() + Math.ceil(elapsed / INTERVAL_MS) * INTERVAL_MS);
-      }
-    } else {
-      // Fallback: cron schedule '0 * * * *' → every UTC hour at :00
-      const utcH = now.getUTCHours();
-      const utcM = now.getUTCMinutes();
-      const utcS = now.getUTCSeconds();
-      let nextH = utcH;
-      if (utcM > 0 || utcS > 0) nextH++;
-      nextSync = new Date(Date.UTC(
-        now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
-        nextH, 0, 0, 0
-      ));
-      if (nextSync <= now) nextSync = new Date(nextSync.getTime() + INTERVAL_MS);
-    }
-
-    const diffMs = nextSync - now;
-    const diffMin = Math.max(0, Math.floor(diffMs / 60000));
-    const h = Math.floor(diffMin / 60);
-    const m = diffMin % 60;
-    const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
-    el.textContent = `🛡️ Next sync in ${countdown}`;
-    el.title = `Next stock sync ~${nextSync.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })} (every 1h from last sync). May vary ~5-15 min.`;
-  }
-
-  function _refreshSyncAge() {
-    const ageEl = document.getElementById('syncStatusAge');
-    if (!ageEl || !_lastSyncEndedAt) return;
-    const agoMs = Date.now() - new Date(_lastSyncEndedAt).getTime();
-    const agoMin = Math.floor(agoMs / 60000);
-    let agoStr;
-    if (agoMin < 1) agoStr = 'just now';
-    else if (agoMin < 60) agoStr = `${agoMin}m ago`;
-    else {
-      const agoH = Math.floor(agoMin / 60);
-      const remM = agoMin % 60;
-      agoStr = remM > 0 ? `${agoH}h ${remM}m ago` : `${agoH}h ago`;
-    }
-    ageEl.textContent = agoStr;
-    ageEl.style.color = agoMin > 90 ? '#ef4444' : agoMin > 75 ? '#f59e0b' : '#94a3b8';
-  }
-
-  setInterval(() => { _refreshSyncAge(); _refreshSyncCountdown(); }, 60000);
-  _refreshSyncCountdown();
-
-  async function updateSyncStatusCard() {
-    const dot  = document.getElementById('syncStatusDot');
-    const text = document.getElementById('syncStatusText');
-    const time = document.getElementById('syncStatusTime');
-    if (!dot || !text || !time) return;
-
-    try {
-      await window.supabaseReady;
-      const { data, error } = await window.supabase
-        .schema('cin7_mirror')
-        .from('sync_runs')
-        .select('run_id, started_at, ended_at, status, sync_type, products_synced, stock_rows_synced, duration_ms')
-        .order('ended_at', { ascending: false })
-        .limit(1);
-
-      if (error) {
-        // Schema may not be exposed yet — show subtle info
-        dot.style.background = '#94a3b8';
-        text.textContent = 'Sync status unavailable — cin7_mirror schema needs to be exposed in Supabase API settings';
-        text.style.color = '#64748b';
-        return;
-      }
-      if (!data || data.length === 0) {
-        dot.style.background = '#94a3b8';
-        text.textContent = 'No sync runs found — run the first sync to populate data';
-        return;
-      }
-      const run = data[0];
-      const ok = run.status === 'success';
-      const running = run.status === 'running';
-      dot.style.background = ok ? '#22c55e' : running ? '#3b82f6' : '#ef4444';
-      const prodCount = run.products_synced || 0;
-      const stockCount = run.stock_rows_synced || 0;
-      const dur = run.duration_ms ? `${(run.duration_ms / 1000).toFixed(1)}s` : '';
-      text.textContent = `${ok ? 'Last sync successful' : running ? 'Sync running…' : 'Last sync failed'}${prodCount ? ` • ${prodCount} prods, ${stockCount} stock` : ''}${dur ? ` • ${dur}` : ''}`;
-      text.style.color = ok ? '#166534' : running ? '#1d4ed8' : '#991b1b';
-      const ts = run.ended_at || run.started_at;
-      if (ts) {
-        const d = new Date(ts), p = n => String(n).padStart(2, '0');
-        time.textContent = `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
-      }
-      // Track for live age refresh
-      if (run.ended_at) {
-        _lastSyncEndedAt = run.ended_at;
-        _refreshSyncAge();
-        _refreshSyncCountdown();
-      }
-    } catch (e) {
-      console.warn('Sync status error:', e);
-      dot.style.background = '#f59e0b';
-      text.textContent = 'Could not fetch sync status';
-      text.style.color = '#92400e';
-    }
-  }
-
-  /* ═══════════════════════════════════════════════
-     PAGINATED FETCH helper
-     ═══════════════════════════════════════════════ */
-  async function fetchAllRows(table, cols, opts = {}) {
-    const chunk = 1000;
-    const all = [];
-    let off = 0;
-    while (true) {
-      let q = opts.schema
-        ? window.supabase.schema(opts.schema).from(table).select(cols)
-        : window.supabase.from(table).select(cols);
-      if (opts.eq) for (const [c, v] of opts.eq) q = q.eq(c, v);
-      q = q.range(off, off + chunk - 1);
-      const { data, error } = await q;
-      if (error) throw error;
-      if (!data || !data.length) break;
-      all.push(...data);
-      if (data.length < chunk) break;
-      off += chunk;
-    }
-    return all;
-  }
-
-  /* ═══════════════════════════════════════════════
-     FETCH DATA — Main logic (same join patterns as restock-v2)
-     ═══════════════════════════════════════════════ */
-  async function fetchData() {
-    if (!window.supabase || !window.supabaseReady) {
-      setTbody(`<tr><td colspan="${COLS}" style="text-align:center;color:#b91c1c">Supabase not initialized</td></tr>`);
-      return;
-    }
-    state.loading = true;
-    setTbody(`<tr><td colspan="${COLS}" style="text-align:center;opacity:.7">Loading from Cin7 mirror…</td></tr>`);
-
-    try {
-      await window.supabaseReady;
-
-      /* 1. Sync status */
-      await updateSyncStatusCard();
-
-      /* 2. Stock snapshot — Main Warehouse */
-      let mwStockRows = [];
-      try {
-        mwStockRows = await fetchAllRows('stock_snapshot', 'sku, location_name, bin, on_hand', {
-          schema: 'cin7_mirror',
-          eq: [['location_name', 'Main Warehouse']],
-        });
-      } catch (e) {
-        console.warn('⚠️ Could not read cin7_mirror.stock_snapshot:', e.message);
-        setTbody(`<tr><td colspan="${COLS}" style="text-align:center;color:#64748b;padding:30px">
-          <div style="font-size:16px;font-weight:600;margin-bottom:8px">Setup Required</div>
-          <div style="font-size:13px;color:#94a3b8">Expose <code>cin7_mirror</code> in Supabase Dashboard → Settings → API → Exposed schemas, then run the first sync.</div>
-        </td></tr>`);
-        state.loading = false;
-        return;
-      }
-
-      /* 2b. Stock snapshot — Gateway (separate location) */
-      let gwStockRows = [];
-      try {
-        gwStockRows = await fetchAllRows('stock_snapshot', 'sku, location_name, bin, on_hand', {
-          schema: 'cin7_mirror',
-          eq: [['location_name', 'Gateway']],
-        });
-      } catch (e) {
-        console.warn('⚠️ Could not read Gateway stock:', e.message);
-      }
-      console.log(`📦 Stock fetched: ${mwStockRows.length} MW rows, ${gwStockRows.length} Gateway rows`);
-
-      /* 3. Products (with attribute1 for 5DC fallback) */
-      let productRows = [];
-      try {
-        productRows = await fetchAllRows('products', 'sku, name, stock_locator, category, brand, barcode, attribute1', {
-          schema: 'cin7_mirror',
-        });
-      } catch (e) { console.warn('⚠️ Could not read cin7_mirror.products:', e.message); }
-
-      /* 4. Restock setup (all columns for qty_per_ctn, qty_per_pallet) */
-      const setupRows = await fetchAllRows('restock_setup', '*');
-
-      /* 5. Pallet capacity rules (fallback for qty_pallet) */
-      let palletRulesRows = [];
-      try {
-        palletRulesRows = await fetchAllRows('pallet_capacity_rules', 'product, sku, qty_pallet');
-      } catch (e) { console.warn('⚠️ Could not read pallet_capacity_rules:', e.message); }
-
-      /* 6. AVG monthly sales */
-      let avgSalesRows = [];
-      try {
-        avgSalesRows = await fetchAllRows('branch_avg_monthly_sales', 'product, avg_mth_main, avg_sales_main, avg_transfer_main');
-      } catch (e) { console.warn('⚠️ Could not read branch_avg_monthly_sales:', e.message); }
-
-      /* ── Build lookup maps (same patterns as restock-v2) ── */
-
-      // Product map: cin7 SKU → product record
-      const productMap = Object.create(null);
-      for (const p of productRows) productMap[p.sku] = p;
-
-      // AVG sales by product name (uppercase)
-      const avgSalesByName = Object.create(null);
-      for (const a of avgSalesRows) {
-        if (a.product) avgSalesByName[a.product.toUpperCase()] = {
-          total: Number(a.avg_mth_main) || 0,
-          sales: Number(a.avg_sales_main) || 0,
-          transfer: Number(a.avg_transfer_main) || 0,
-        };
-      }
-
-      // Pallet capacity: product/sku → qty_pallet
-      const palletCapacity = Object.create(null);
-      for (const r of palletRulesRows) {
-        const key = (r.product || r.sku || '').trim();
-        if (key && r.qty_pallet) palletCapacity[key] = Number(r.qty_pallet) || 0;
-      }
-
-      // Setup lookups: setupByProduct (keyed by product code), setupBy5DC (keyed by 5DC)
-      const setupByProduct = Object.create(null);
-      const setupBy5DC     = Object.create(null);
-      for (const s of setupRows) {
-        let productCode = (s.product || '').trim();
-        // If product field contains "5DC  CODE" pattern, extract the CODE part
-        const spaceMatch = productCode.match(/^\d{4,6}\s+(.+)$/);
-        if (spaceMatch) productCode = spaceMatch[1].trim();
-
-        const entry = {
-          sku5dc: String(s.sku || ''),
-          productCode: productCode,
-          pickface_location: s.pickface_location || '',
-          pickface_qty: s.pickface_qty != null ? Number(s.pickface_qty) : null,
-          min: Number(s.cap_min),
-          med: Number(s.cap_med),
-          max: Number(s.cap_max),
-          qty_per_ctn: s.qty_per_ctn != null ? Number(s.qty_per_ctn) : null,
-          qty_per_pallet: s.qty_per_pallet != null ? Number(s.qty_per_pallet) : null,
-        };
-        if (productCode) setupByProduct[productCode] = entry;
-        if (s.sku) setupBy5DC[s.sku] = entry;
-      }
-
-      // Merge restock_setup.qty_per_pallet into palletCapacity (higher priority)
-      for (const key of Object.keys(setupByProduct)) {
-        const s = setupByProduct[key];
-        if (s.qty_per_pallet) {
-          palletCapacity[key] = s.qty_per_pallet;
-          if (s.sku5dc) palletCapacity[s.sku5dc] = s.qty_per_pallet;
-        }
-      }
-
-      /* ── Group MW stock by SKU ── */
-      const mwBySku = Object.create(null);
-      for (const s of mwStockRows) {
-        if (!s.sku) continue;
-        if (!mwBySku[s.sku]) mwBySku[s.sku] = [];
-        mwBySku[s.sku].push(s);
-      }
-
-      /* ── Group Gateway stock by SKU ── */
-      const gwBySku = Object.create(null);
-      for (const s of gwStockRows) {
-        if (!s.sku) continue;
-        gwBySku[s.sku] = (gwBySku[s.sku] || 0) + (Number(s.on_hand) || 0);
-      }
-      // Also add MA-GA bins from Main Warehouse
-      for (const s of mwStockRows) {
-        if (!s.sku) continue;
-        const normBin = normalizeLocation(s.bin);
-        if (normBin.startsWith('MA-GA')) {
-          gwBySku[s.sku] = (gwBySku[s.sku] || 0) + (Number(s.on_hand) || 0);
-        }
-      }
-
-      /* ── Union of SKUs that have Gateway stock ── */
-      const gwSkus = Object.keys(gwBySku).filter(sku => gwBySku[sku] > 0);
-      console.log(`🚪 ${gwSkus.length} SKUs with Gateway stock`);
-
-      /* ── Search filter ── */
-      const q = (state.q || '').trim().toLowerCase();
-
-      /* ── Build rows — only products WITH Gateway stock ── */
-      const rows = [];
-      for (const stockSku of gwSkus) {
-        // Skip carton items
-        if (_cartonRx.test(stockSku) || _cartonPrefixRx.test(stockSku)) continue;
-
-        const mwStocks = mwBySku[stockSku] || [];
-        const prod     = productMap[stockSku] || {};
-
-        // JOIN: same logic as restock-v2
-        const setupDirect   = setupByProduct[stockSku];
-        const setupFallback = !setupDirect && prod.attribute1
-          ? setupBy5DC[(prod.attribute1 || '').trim()] : null;
-        const setup = setupDirect || setupFallback;
-
-        // 5DC source priority: 1) restock_setup.sku  2) cin7_mirror.products.attribute1
-        const display5DC = (setup ? setup.sku5dc : '') || (prod.attribute1 || '').trim();
-
-        // Product code for display (same as restock-v2)
-        const displayProduct = setup ? setup.productCode : stockSku;
-
-        // Full description from cin7 products
-        const fullDescription = prod.name || '';
-
-        // Pickface location (prefer setup, fallback to cin7 stock_locator)
-        const stockLocator = (setup ? setup.pickface_location : '') || (prod.stock_locator || '').trim();
-        const normPickface = normalizeLocation(stockLocator);
-
-        // Capacity from setup
-        const capacity = setup ? (setup.pickface_qty || 0) : 0;
-
-        // Compute pickface on_hand and total MW from Main Warehouse bins
-        let pickfaceOnHand = 0;
-        let totalMW        = 0;
-
-        for (const s of mwStocks) {
-          const oh = Number(s.on_hand) || 0;
-          totalMW += oh;
-
-          const normBin = normalizeLocation(s.bin);
-          if (normPickface && normBin === normPickface) {
-            pickfaceOnHand += oh;
-          }
-        }
-
-        // Gateway stock (already computed from Gateway location + MA-GA bins)
-        const gatewayStock = gwBySku[stockSku] || 0;
-
-        // AVG month sales (lookup by product code, uppercase)
-        const avgLookup = avgSalesByName[displayProduct.toUpperCase()]
-          ?? avgSalesByName[(fullDescription || '').toUpperCase()]
-          ?? null;
-        const avgMonthSales = avgLookup ? avgLookup.total : null;
-        const avgSalesOnly = avgLookup ? avgLookup.sales : null;
-        const avgTransferOnly = avgLookup ? avgLookup.transfer : null;
-
-        // Weeks available = totalMW / (avgMonthSales / WEEKS_PER_MONTH)
-        let weeksAvailable = null;
-        if (avgMonthSales != null && avgMonthSales > 0) {
-          const weeklyRate = avgMonthSales / WEEKS_PER_MONTH;
-          weeksAvailable = totalMW / weeklyRate;
-        }
-
-        // Qty/CTN and Qty/Pallet (same priority as restock-v2)
-        const qtyCtn = setup ? setup.qty_per_ctn : null;
-        const qtyPallet = (setup && setup.qty_per_pallet) || palletCapacity[stockSku] || palletCapacity[display5DC] || null;
-
-        const row = {
-          sku: display5DC || stockSku,
-          __5dc: display5DC,
-          __stock_sku: stockSku,
-          product: displayProduct,
-          __full_description: fullDescription,
-          stock_locator: stockLocator,
-          capacity,
-          pickface_on_hand: pickfaceOnHand,
-          total_mw: totalMW,
-          gateway_stock: gatewayStock,
-          avg_month_sales: avgMonthSales,
-          __avg_sales_only: avgSalesOnly,
-          __avg_transfer_only: avgTransferOnly,
-          weeks_available: weeksAvailable,
-          __qty_per_ctn: qtyCtn,
-          __qty_per_pallet: qtyPallet,
-          has_setup: !!setup,
-        };
-
-        // Client-side search
-        if (q) {
-          const hay = `${display5DC} ${stockSku} ${displayProduct} ${fullDescription} ${stockLocator}`.toLowerCase();
-          if (!hay.includes(q)) continue;
-        }
-
-        rows.push(row);
-      }
-
-      console.log(`📊 Gateway→Main: ${rows.length} products with Gateway stock (${mwStockRows.length} MW rows, ${gwStockRows.length} GW rows, ${productRows.length} products, ${setupRows.length} setups, ${palletRulesRows.length} pallet rules, ${avgSalesRows.length} avg sales)`);
-
-      state.allRows = rows;
-      updateCounters();
-      rebuildView();
-
-    } catch (e) {
-      console.error('gateway-main fetch error', e);
-      setTbody(`<tr><td colspan="${COLS}" style="text-align:center;color:#b91c1c">Failed to load data: ${escapeHtml(e.message)}</td></tr>`);
-    } finally {
-      state.loading = false;
-    }
-  }
-
-  /* ═══════════════════════════════════════════════
-     TOOLTIP TOGGLE
-     ═══════════════════════════════════════════════ */
-  window.toggleTip = function (el) {
-    const wrap = el.classList.contains('tip-cell') ? el : el.closest('.tip-cell');
-    if (!wrap) return;
-    const isOpen = wrap.classList.contains('show');
-    document.querySelectorAll('.tip-cell.show').forEach(e => e.classList.remove('show'));
-    if (!isOpen) {
-      wrap.classList.add('show');
-      const close = (ev) => { if (!wrap.contains(ev.target)) { wrap.classList.remove('show'); document.removeEventListener('click', close); } };
-      setTimeout(() => document.addEventListener('click', close), 10);
-    }
-  };
-
-  /* ═══════════════════════════════════════════════
-     SEARCH
-     ═══════════════════════════════════════════════ */
-  window.runGwSearch = function () {
-    state.q = (input && input.value) || '';
-    fetchData();
-  };
-
-  const onInput = debounce(() => { state.q = (input && input.value) || ''; fetchData(); }, 350);
-  if (input) {
-    input.addEventListener('input', onInput);
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); window.runGwSearch(); } });
-  }
-
-  /* ═══════════════════════════════════════════════
-     FILTER toggles
-     ═══════════════════════════════════════════════ */
-  window.gwSetWeeksFilter = function (val) {
-    state.weeksFilter = String(val || 'ALL').toUpperCase();
-    rebuildView();
-  };
-
-  window.gwSetPfFilter = function (val) {
-    state.pfFilter = String(val || 'ALL').toUpperCase();
-    rebuildView();
-  };
-
-  window.gwSwitchView = function (mode) {
-    state.viewMode = mode;
-    if (mode === 'main_stock') { state.pfFilter = 'ALL'; }
-    else { state.weeksFilter = 'ALL'; }
-    updateCounters();
-    rebuildView();
-  };
-
-  window.gwToggleHide = function (sku) {
-    const key = String(sku);
-    if (state.hiddenSkus.has(key)) state.hiddenSkus.delete(key);
-    else state.hiddenSkus.add(key);
-    saveHiddenSkus();
-    updateCounters();
-    rebuildView();
-  };
-
-  window.gwSetOnlyDemand = function (checked) {
-    state.onlyWithDemand = !!checked;
-    updateCounters();
-    rebuildView();
-  };
-
-  window.gwSetShowHiddenFn = function (checked) {
-    state.showHidden = !!checked;
-    updateCounters();
-    rebuildView();
-  };
-
-  window.gwClearFilters = function () {
-    state.onlyWithDemand = false;
-    state.showHidden = false;
-    updateCounters();
-    rebuildView();
-  };
-
-  /* ═══════════════════════════════════════════════
-     SELECTION & BULK ACTIONS
-     ═══════════════════════════════════════════════ */
-  function updateBulkBar() {
-    const bar = document.getElementById('gwBulkBar');
-    const cnt = document.getElementById('gwBulkCount');
-    const showBtn = document.getElementById('gwBulkShowBtn');
-    if (!bar) return;
-    const n = state.selectedSkus.size;
-    bar.style.display = n > 0 ? 'flex' : 'none';
-    if (cnt) cnt.textContent = `${n} selected`;
-    // Show "Show selected" button only when viewing hidden products
-    if (showBtn) showBtn.style.display = state.showHidden ? 'inline-block' : 'none';
-  }
-
-  window.gwToggleSelectAll = function (checked) {
-    const start = (state.page - 1) * state.perPage;
-    const page = state.rows.slice(start, start + state.perPage);
-    for (const r of page) {
-      const sku = String(r.__stock_sku || r.sku);
-      if (checked) state.selectedSkus.add(sku);
-      else state.selectedSkus.delete(sku);
-    }
-    render(state.rows);
-  };
-
-  window.gwToggleSelectRow = function (sku, checked) {
-    if (checked) state.selectedSkus.add(sku);
-    else state.selectedSkus.delete(sku);
-    updateBulkBar();
-    // Update select-all checkbox
-    const selAll = document.getElementById('gwSelectAll');
-    if (selAll) {
-      const start = (state.page - 1) * state.perPage;
-      const page = state.rows.slice(start, start + state.perPage);
-      const pageSkus = page.map(r => String(r.__stock_sku || r.sku));
-      const allChecked = pageSkus.length > 0 && pageSkus.every(s => state.selectedSkus.has(s));
-      const someChecked = pageSkus.some(s => state.selectedSkus.has(s));
-      selAll.checked = allChecked;
-      selAll.indeterminate = someChecked && !allChecked;
-    }
-  };
-
-  window.gwHideSelected = function () {
-    for (const sku of state.selectedSkus) {
-      state.hiddenSkus.add(sku);
-    }
-    saveHiddenSkus();
-    state.selectedSkus.clear();
-    updateCounters();
-    rebuildView();
-  };
-
-  window.gwShowSelected = function () {
-    for (const sku of state.selectedSkus) {
-      state.hiddenSkus.delete(sku);
-    }
-    saveHiddenSkus();
-    state.selectedSkus.clear();
-    updateCounters();
-    rebuildView();
-  };
-
-  window.gwClearSelection = function () {
-    state.selectedSkus.clear();
-    render(state.rows);
-  };
-
-  /* ═══════════════════════════════════════════════
-     COLUMN VISIBILITY
-     ═══════════════════════════════════════════════ */
-  const GW_COL_SETTINGS_KEY = 'gwMain_hiddenColumns';
-  const GW_TOGGLEABLE_COLS = [
-    { idx: 0, label: '5DC' },
-    { idx: 1, label: 'SKU' },
-    { idx: 2, label: 'Product' },
-    { idx: 3, label: 'Pickface Location' },
-    { idx: 4, label: 'Pickface Stock' },
-    { idx: 5, label: 'Capacity' },
-    { idx: 6, label: 'Total MW' },
-    { idx: 7, label: 'Gateway' },
-    { idx: 8, label: 'Avg Mth / 4Wk' },
-    { idx: 9, label: 'Weeks Avail.' },
-    { idx: 10, label: 'Qty/CTN' },
-    { idx: 11, label: 'Qty/Pallet' },
+  $('deployWarning').style.display = 'none';
+  state.settings = s.settings || {};
+
+  const synced = s.cin7_synced_at ? new Date(s.cin7_synced_at) : null;
+  const ageMin = synced ? Math.round((Date.now() - synced) / 60000) : null;
+  $('syncDot').className = 'gw-dot ' + (ageMin == null ? 'dead' : ageMin < 120 ? 'fresh' : ageMin < 480 ? 'stale' : 'dead');
+  $('syncText').textContent = synced
+    ? `Cin7 stock synced ${ageMin < 90 ? `${ageMin} min` : `${Math.round(ageMin / 60)} h`} ago`
+    : 'Cin7 sync unknown';
+
+  const tiles = [
+    ['Products',        nfmt(s.products),      'holding stock',            ''],
+    ['Units on hand',   nfmt(s.units),         'across all shelves',       ''],
+    ['Reserved',        nfmt(s.reserved),      'held by open transfers',   s.reserved > 0 ? 'warn' : ''],
+    ['Open transfers',  nfmt(s.open_transfers),'started, not finished',    ''],
+    ['Old stock',       nfmt(s.aging_alert),   `over ${s.settings.age_alert_days || 120} days`, s.aging_alert > 0 ? 'bad' : 'good'],
+    ['No arrival date', nfmt(s.undated_lots),  'pallets — FIFO ranks oldest', s.undated_lots > 0 ? 'warn' : 'good'],
+    ['Cin7 differences',nfmt(s.discrepancies), `${nfmt(s.discrepancy_units)} units apart`, s.discrepancies > 0 ? 'warn' : 'good'],
+    ['Import issues',   nfmt(s.open_import_issues), 'awaiting review',     s.open_import_issues > 0 ? 'warn' : 'good'],
   ];
-  let gwHiddenCols = new Set();
+  $('tiles').innerHTML = tiles.map(([l, v, sub, cls]) => `
+    <div class="gw-tile ${cls}">
+      <div class="gw-tile-label">${esc(l)}</div>
+      <div class="gw-tile-value">${v}</div>
+      <div class="gw-tile-sub">${esc(sub)}</div>
+    </div>`).join('');
 
-  function gwLoadColSettings() {
+  const badge = (id, n, cls) => {
+    const b = $(id);
+    if (!b) return;
+    b.textContent = nfmt(n);
+    b.className = `badge${n > 0 && cls ? ` ${cls}` : ''}`;
+  };
+  badge('tabTransfers', s.open_transfers, '');
+  badge('tabRecon', s.discrepancies, 'warn');
+  badge('tabQuality', s.open_import_issues, 'warn');
+
+  let a;
+  try { a = await api('/attention'); } catch (e) { return fail(e); }
+
+  $('attnAging').innerHTML = a.aging_stock.length ? a.aging_stock.map(r => `
+    <tr class="clickable" onclick="showSku('${esc(r.sku)}')">
+      <td class="mono">${esc(r.sku)}</td><td>${esc(r.product_name || '—')}</td>
+      <td class="r num">${nfmt(r.local_qty)}</td><td class="r">${ageCell(r.oldest_age_days)}</td>
+      <td class="gw-sub">${esc(r.shelves || '—')}</td></tr>`).join('')
+    : empty(5, 'Nothing older than the alert threshold');
+
+  $('attnRecon').innerHTML = a.discrepancies.length ? a.discrepancies.map(r => `
+    <tr class="clickable" onclick="showSku('${esc(r.sku)}')">
+      <td class="mono">${esc(r.sku)}</td>
+      <td class="r num">${nfmt(r.local_qty)}</td><td class="r num">${nfmt(r.cin7_qty)}</td>
+      <td class="r num">${diffCell(r.difference)}</td><td>${stateTag(r.state)}</td></tr>`).join('')
+    : empty(5, 'We agree with Cin7 on every SKU');
+
+  $('attnTransfers').innerHTML = a.open_transfers.length ? a.open_transfers.map(t => `
+    <tr class="clickable" onclick="showTransfer(${t.id})">
+      <td class="mono">${esc(t.transfer_no)}</td><td>${dirLabel(t.direction)}</td>
+      <td>${statusTag(t.status)}</td><td class="mono gw-sub">${esc(t.cin7_reference || '—')}</td>
+      <td class="r num">${nfmt(t.line_count)}</td><td class="r num">${nfmt(t.qty_requested)}</td></tr>`).join('')
+    : empty(6, 'No open transfers');
+
+  $('attnUndated').innerHTML = a.undated_stock.length ? a.undated_stock.map(r => `
+    <tr class="clickable" onclick="showSku('${esc(r.sku)}')">
+      <td class="mono">${esc(r.sku)}</td><td>${esc(r.product_name || '—')}</td>
+      <td class="r num">${nfmt(r.local_qty)}</td><td class="r num">${nfmt(r.undated_lots)}</td></tr>`).join('')
+    : empty(4, 'Every pallet has an arrival date');
+}
+
+// ═══════════ INVENTORY ═══════════
+function wireInventory() {
+  let t;
+  $('invSearch').oninput = e => {
+    clearTimeout(t);
+    t = setTimeout(() => { state.inv.q = e.target.value.trim(); state.inv.offset = 0; loadInventory(); }, 280);
+  };
+  $('invFilter').onchange = e => { state.inv.filter = e.target.value; state.inv.offset = 0; loadInventory(); };
+  $('invSort').onchange   = e => { state.inv.sort = e.target.value;   state.inv.offset = 0; loadInventory(); };
+  $('invPrev').onclick = () => { state.inv.offset = Math.max(0, state.inv.offset - state.inv.limit); loadInventory(); };
+  $('invNext').onclick = () => {
+    if (state.inv.offset + state.inv.limit < state.inv.total) { state.inv.offset += state.inv.limit; loadInventory(); }
+  };
+  $('invReceive').onclick = () => receiveModal();
+}
+
+async function loadInventory() {
+  const i = state.inv;
+  const qs = new URLSearchParams({ q: i.q, filter: i.filter, sort: i.sort, limit: i.limit, offset: i.offset });
+  let d;
+  try { d = await api(`/inventory?${qs}`); } catch (e) { return fail(e); }
+  i.total = d.total;
+
+  $('invBody').innerHTML = d.rows.length ? d.rows.map(r => `
+    <tr class="clickable" onclick="showSku('${esc(r.sku)}')">
+      <td class="mono">${esc(r.sku)}</td>
+      <td>${esc(r.product_name || '—')}</td>
+      <td class="mono gw-sub">${esc(r.five_dc || '—')}</td>
+      <td class="r num">${nfmt(r.local_qty)}</td>
+      <td class="r num">${Number(r.qty_reserved) ? nfmt(r.qty_reserved) : '—'}</td>
+      <td class="r num">${nfmt(r.qty_available)}</td>
+      <td>${r.oldest_received_on ? esc(dfmt(r.oldest_received_on))
+            : `<span class="age-unknown">unknown${r.undated_lots > 1 ? ` (${r.undated_lots})` : ''}</span>`}</td>
+      <td class="r">${ageCell(r.oldest_age_days)}</td>
+      <td class="r num">${nfmt(r.cin7_qty)}</td>
+      <td class="r num">${diffCell(r.difference)}</td>
+      <td class="gw-sub">${esc(r.shelves || '—')}</td>
+    </tr>`).join('') : empty(11, 'Nothing matches those filters');
+
+  $('invCount').textContent = `${nfmt(d.total)} products`;
+  $('invPage').textContent = d.total
+    ? `${nfmt(i.offset + 1)}–${nfmt(Math.min(i.offset + i.limit, d.total))} of ${nfmt(d.total)}`
+    : '';
+  $('invPrev').disabled = i.offset === 0;
+  $('invNext').disabled = i.offset + i.limit >= d.total;
+}
+
+// ─── SKU detail ────────────────────────────────────────────────────────
+async function showSku(sku) {
+  openDrawer(esc(sku), '');
+  let d;
+  try { d = await api(`/inventory/${encodeURIComponent(sku)}`); } catch (e) { closeDrawer(); return fail(e); }
+
+  const b = d.balance || {};
+  $('drSub').innerHTML = esc(b.product_name || '') +
+    (b.five_dc ? ` <span class="gw-sub">· 5DC ${esc(b.five_dc)}</span>` : '');
+
+  const diff = Number(b.difference || 0);
+  const MOVE_LABEL = {
+    RECEIPT: 'Arrived', TRANSFER_OUT: 'Sent to Main', TRANSFER_OUT_REVERSAL: 'Returned from Main',
+    ADJUSTMENT_IN: 'Adjustment in', ADJUSTMENT_OUT: 'Adjustment out',
+    STOCKTAKE_ADJUSTMENT: 'Stocktake', WRITE_OFF: 'Written off', CORRECTION: 'Correction',
+  };
+
+  $('drBody').innerHTML = `
+    <div class="gw-tiles">
+      <div class="gw-tile"><div class="gw-tile-label">On hand</div>
+        <div class="gw-tile-value">${nfmt(b.local_qty)}</div>
+        <div class="gw-tile-sub">${nfmt(b.open_lots)} pallet(s)</div></div>
+      <div class="gw-tile"><div class="gw-tile-label">Available</div>
+        <div class="gw-tile-value">${nfmt(b.qty_available)}</div>
+        <div class="gw-tile-sub">${nfmt(b.qty_reserved || 0)} reserved</div></div>
+      <div class="gw-tile"><div class="gw-tile-label">Cin7</div>
+        <div class="gw-tile-value">${nfmt(d.cin7.on_hand)}</div>
+        <div class="gw-tile-sub">${d.cin7.synced_at ? esc(dtfmt(d.cin7.synced_at)) : 'not synced'}</div></div>
+      <div class="gw-tile ${diff ? 'warn' : 'good'}"><div class="gw-tile-label">Difference</div>
+        <div class="gw-tile-value">${diff > 0 ? '+' : ''}${nfmt(diff)}</div>
+        <div class="gw-tile-sub">${diff ? 'Cin7 minus ours' : 'agrees'}</div></div>
+    </div>
+
+    <div class="gw-sec">
+      <div class="gw-sec-hd"><span class="gw-sec-title">Stock to pick, oldest first</span>
+        <span class="gw-sec-hint">this is the order FIFO will use</span></div>
+      <div class="gw-table-wrap"><table class="gw-table">
+        <thead><tr><th class="c">#</th><th>Arrived</th><th class="r">Age</th><th>Shelf</th><th>Pallet</th>
+          <th class="r">Arrived qty</th><th class="r">Left</th><th class="r">Reserved</th>
+          <th class="r">Free</th><th>Reference</th><th></th></tr></thead>
+        <tbody>${d.lots.filter(l => Number(l.qty_remaining) > 0).length ? d.lots
+          .filter(l => Number(l.qty_remaining) > 0)
+          .map((l, idx) => `
+          <tr>
+            <td class="c num">${idx + 1}</td>
+            <td>${l.received_on ? esc(dfmt(l.received_on)) : '<span class="age-unknown">unknown</span>'}</td>
+            <td class="r">${ageCell(l.age_days)}</td>
+            <td class="mono">${esc(l.shelf_id || l.shelf_text || '—')}</td>
+            <td class="mono gw-sub">${esc(l.pallet_number || '—')}</td>
+            <td class="r num gw-sub">${nfmt(l.qty_received)}</td>
+            <td class="r num">${nfmt(l.qty_remaining)}</td>
+            <td class="r num">${Number(l.qty_reserved) ? nfmt(l.qty_reserved) : '—'}</td>
+            <td class="r num">${nfmt(l.qty_available)}</td>
+            <td class="mono gw-sub">${esc(l.source_reference || '—')}</td>
+            <td class="r"><button class="gw-btn gw-btn-sm" onclick="adjustModal(${l.id}, '${esc(sku)}', ${l.qty_remaining})">Adjust</button></td>
+          </tr>`).join('') : empty(11, 'No stock on hand')}</tbody>
+      </table></div>
+    </div>
+
+    <div class="gw-sec">
+      <div class="gw-sec-hd"><span class="gw-sec-title">Everything that happened</span>
+        <span class="gw-sec-hint">newest first — this is why the number above is what it is</span></div>
+      <div class="gw-table-wrap"><table class="gw-table">
+        <thead><tr><th>When</th><th>What</th><th class="r">Qty</th><th class="r">Balance after</th>
+          <th>Shelf</th><th>Reference</th><th>Recorded</th><th>By</th></tr></thead>
+        <tbody>${d.movements.length ? d.movements.map(m => `
+          <tr>
+            <td>${esc(dtfmt(m.occurred_at))}</td>
+            <td>${esc(MOVE_LABEL[m.movement_type] || m.movement_type)}
+                ${m.reason ? `<div class="gw-sub">${esc(m.reason)}</div>` : ''}</td>
+            <td class="r num ${Number(m.qty) > 0 ? 'var-pos' : 'var-neg'}">${Number(m.qty) > 0 ? '+' : ''}${nfmt(m.qty)}</td>
+            <td class="r num">${nfmt(m.qty_after)}</td>
+            <td class="mono gw-sub">${esc(m.shelf_id || '—')}</td>
+            <td class="mono gw-sub">${esc(m.source_reference || '—')}</td>
+            <td class="gw-sub">${esc(dtfmt(m.recorded_at))}${m.source_system === 'excel_migration' ? ' <span class="tag tag-grey">migrated</span>' : ''}</td>
+            <td class="gw-sub">${esc(m.created_by || '—')}</td>
+          </tr>`).join('') : empty(8, 'No movements recorded')}</tbody>
+      </table></div>
+    </div>`;
+}
+
+// ─── receive / adjust ──────────────────────────────────────────────────
+function receiveModal() {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Brisbane' });
+  modal('Record stock arriving at Gateway', `
+    <div class="gw-field"><label>SKU</label>
+      <input class="gw-input" id="rcSku" placeholder="e.g. R6052-WH-TRI" />
+      <div class="hint">Matched to Cin7 case-insensitively and stored with Cin7's spelling.</div></div>
+    <div class="gw-field-row">
+      <div class="gw-field"><label>Quantity</label>
+        <input class="gw-input" id="rcQty" type="number" min="0.001" step="any" /></div>
+      <div class="gw-field"><label>Arrived on</label>
+        <input class="gw-input" id="rcDate" type="date" value="${today}" />
+        <div class="hint">Required — this drives FIFO.</div></div>
+    </div>
+    <div class="gw-field-row">
+      <div class="gw-field"><label>Shelf</label><input class="gw-input" id="rcShelf" placeholder="e.g. A12" /></div>
+      <div class="gw-field"><label>Pallet number</label><input class="gw-input" id="rcPallet" /></div>
+    </div>
+    <div class="gw-field-row">
+      <div class="gw-field"><label>Source</label>
+        <select class="gw-input" id="rcSource">
+          <option value="transfer_in">Transfer from Main</option>
+          <option value="container">Container / supplier</option>
+          <option value="return">Return</option>
+          <option value="found">Stock found</option>
+        </select></div>
+      <div class="gw-field"><label>Reference</label>
+        <input class="gw-input" id="rcRef" placeholder="TR-49562 / PO / container" /></div>
+    </div>
+    <div class="gw-field"><label>Notes</label><textarea class="gw-input" id="rcNotes" rows="2"></textarea></div>`,
+  [
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Record arrival', cls: 'gw-btn-primary', onClick: async () => {
+      await api('/lots', { method: 'POST', body: JSON.stringify({
+        sku: $('rcSku').value, qty_received: Number($('rcQty').value),
+        received_on: $('rcDate').value, shelf_id: $('rcShelf').value.toUpperCase().trim() || null,
+        shelf_text: $('rcShelf').value.trim() || null,
+        pallet_number: $('rcPallet').value, source_type: $('rcSource').value,
+        source_reference: $('rcRef').value, notes: $('rcNotes').value,
+      }) });
+      closeModal(); toast('Arrival recorded');
+      loadInventory(); loadOverview();
+    } },
+  ]);
+}
+
+function adjustModal(lotId, sku, current) {
+  modal(`Adjust ${sku}`, `
+    <div class="gw-note gw-note-warn">
+      This does not overwrite the quantity. It records a correction, and the balance moves by
+      the amount you enter — so the history still explains how we got here.
+    </div>
+    <div class="gw-field"><label>Currently on this pallet</label>
+      <input class="gw-input" value="${nfmt(current)}" disabled /></div>
+    <div class="gw-field-row">
+      <div class="gw-field"><label>Adjustment (negative to remove)</label>
+        <input class="gw-input" id="adDelta" type="number" step="any" placeholder="-3" /></div>
+      <div class="gw-field"><label>New balance</label>
+        <input class="gw-input" id="adNew" disabled value="${nfmt(current)}" /></div>
+    </div>
+    <div class="gw-field"><label>Reason type</label>
+      <select class="gw-input" id="adCode">
+        <option value="stocktake">Stocktake correction</option>
+        <option value="damaged">Damaged</option>
+        <option value="found">Stock found</option>
+        <option value="lost">Stock lost</option>
+        <option value="write_off">Write-off</option>
+        <option value="manual">Other</option>
+      </select></div>
+    <div class="gw-field"><label>What happened</label>
+      <textarea class="gw-input" id="adReason" rows="2" placeholder="Required"></textarea></div>
+    <div class="gw-field"><label>Reference</label><input class="gw-input" id="adRef" /></div>`,
+  [
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Record adjustment', cls: 'gw-btn-primary', onClick: async () => {
+      await api(`/lots/${lotId}/adjust`, { method: 'POST', body: JSON.stringify({
+        delta: Number($('adDelta').value), reason_code: $('adCode').value,
+        reason: $('adReason').value, reference: $('adRef').value,
+      }) });
+      closeModal(); toast('Adjustment recorded');
+      showSku(sku); loadOverview();
+    } },
+  ]);
+  $('adDelta').oninput = e => {
+    const d = Number(e.target.value);
+    $('adNew').value = isNaN(d) ? nfmt(current) : nfmt(Number(current) + d);
+  };
+}
+
+// ═══════════ TRANSFERS ═══════════
+function wireTransfers() {
+  let t;
+  $('trSearch').oninput = e => {
+    clearTimeout(t);
+    t = setTimeout(() => { state.tr.q = e.target.value.trim(); loadTransfers(); }, 280);
+  };
+  $('trStatus').onchange = e => { state.tr.status = e.target.value; loadTransfers(); };
+  $('trNew').onclick   = () => newTransfer('gateway_to_main');
+  $('trNewIn').onclick = () => newTransfer('main_to_gateway');
+}
+
+const OPEN_STATUSES = 'draft,ready_for_cin7,cin7_created,picking,dispatched';
+
+async function loadTransfers() {
+  const s = state.tr;
+  const qs = new URLSearchParams({ q: s.q, limit: 100 });
+  if (!s.status) qs.set('status', OPEN_STATUSES);
+  else if (s.status !== 'all') qs.set('status', s.status);
+
+  let d;
+  try { d = await api(`/transfers?${qs}`); } catch (e) { return fail(e); }
+  s.rows = d.rows;
+
+  $('trBody').innerHTML = d.rows.length ? d.rows.map(t => `
+    <tr class="clickable" onclick="showTransfer(${t.id})">
+      <td class="mono">${esc(t.transfer_no)}</td>
+      <td>${dirLabel(t.direction)}</td>
+      <td>${statusTag(t.status)}</td>
+      <td>${t.direction === 'main_to_gateway' ? '<span class="gw-sub">n/a</span>'
+            : t.fifo_compliant === false
+              ? `<span class="tag tag-amber">${t.override_count} override${t.override_count === 1 ? '' : 's'}</span>`
+              : t.fifo_compliant === true ? '<span class="tag tag-green">Compliant</span>'
+              : '<span class="gw-sub">—</span>'}</td>
+      <td class="mono gw-sub">${esc(t.cin7_reference || '—')}</td>
+      <td class="r num">${nfmt(t.line_count)}</td>
+      <td class="r num">${nfmt(t.qty_requested)}</td>
+      <td class="r num">${nfmt(t.qty_allocated)}</td>
+      <td class="r num">${Number(t.qty_moved) ? nfmt(t.qty_moved) : '—'}</td>
+      <td class="gw-sub">${esc(dtfmt(t.created_at))}</td>
+    </tr>`).join('') : empty(10, 'No transfers');
+  $('trCount').textContent = `${nfmt(d.total)} transfers`;
+}
+
+async function newTransfer(direction) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Brisbane' });
+  modal(direction === 'main_to_gateway' ? 'New Main to Gateway transfer' : 'New Gateway to Main transfer', `
+    <div class="gw-field-row">
+      <div class="gw-field"><label>Planned for</label>
+        <input class="gw-input" id="ntDate" type="date" value="${today}" /></div>
+      <div class="gw-field"><label>Reference</label>
+        <input class="gw-input" id="ntRef" placeholder="optional" /></div>
+    </div>
+    <div class="gw-field"><label>Notes</label><textarea class="gw-input" id="ntNotes" rows="2"></textarea></div>`,
+  [
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Create', cls: 'gw-btn-primary', onClick: async () => {
+      const t = await api('/transfers', { method: 'POST', body: JSON.stringify({
+        direction, planned_for: $('ntDate').value,
+        reference: $('ntRef').value, notes: $('ntNotes').value,
+      }) });
+      closeModal(); toast(`${t.transfer_no} created`);
+      switchView('transfers'); showTransfer(t.id);
+    } },
+  ]);
+}
+
+async function showTransfer(id) {
+  openDrawer('—', '');
+  let d;
+  try { d = await api(`/transfers/${id}`); } catch (e) { closeDrawer(); return fail(e); }
+  state.openTransfer = d;
+  const t = d.transfer;
+  const editable = ['draft', 'ready_for_cin7'].includes(t.status);
+  const outbound = t.direction === 'gateway_to_main';
+
+  $('drTitle').innerHTML = esc(t.transfer_no);
+  $('drSub').innerHTML = `${dirLabel(t.direction)} · ${statusTag(t.status)}` +
+    (t.cin7_reference ? ` · Cin7 <span class="mono">${esc(t.cin7_reference)}</span>` : '');
+
+  const allocsByLine = {};
+  d.allocations.forEach(a => { (allocsByLine[a.line_id] = allocsByLine[a.line_id] || []).push(a); });
+
+  const short = d.lines.filter(l => Number(l.qty_allocated) < Number(l.qty_requested));
+
+  $('drBody').innerHTML = `
+    <div class="gw-toolbar no-print">
+      ${editable ? '<button class="gw-btn gw-btn-primary" id="btnAddLine">Add product</button>' : ''}
+      ${outbound && d.allocations.some(a => a.state !== 'released')
+        ? '<button class="gw-btn" id="btnPrint">Print pick sheet</button>' : ''}
+      ${t.status === 'draft' ? '<button class="gw-btn" id="btnReady">Mark ready for Cin7</button>' : ''}
+      ${t.status === 'ready_for_cin7' || t.status === 'cin7_created'
+        ? '<button class="gw-btn" id="btnCin7">Record Cin7 reference</button>' : ''}
+      ${['cin7_created', 'picking', 'dispatched'].includes(t.status)
+        ? '<button class="gw-btn gw-btn-primary" id="btnPost">Confirm the stock moved</button>' : ''}
+      ${!['completed', 'cancelled'].includes(t.status)
+        ? '<button class="gw-btn gw-btn-danger" id="btnCancel">Cancel</button>' : ''}
+    </div>
+
+    ${t.status === 'ready_for_cin7' ? `<div class="gw-note gw-note-warn no-print">
+      <b>Next step is manual.</b> Raise this transfer in Cin7 yourself, then record its
+      TR reference here. This module never writes to Cin7.</div>` : ''}
+    ${short.length ? `<div class="gw-note gw-note-warn no-print">
+      <b>${short.length} line${short.length === 1 ? '' : 's'} short of stock.</b>
+      ${short.map(l => `${esc(l.sku)} needs ${nfmt(l.qty_requested)}, only ${nfmt(l.qty_allocated)} free`).join(' · ')}
+    </div>` : ''}
+    ${t.status === 'cancelled' ? `<div class="gw-note gw-note-bad no-print">
+      Cancelled by ${esc(t.cancelled_by || '—')} on ${esc(dtfmt(t.cancelled_at))}.
+      ${esc(t.cancel_reason || '')}</div>` : ''}
+
+    <div class="gw-sec">
+      <div class="gw-sec-hd"><span class="gw-sec-title">Products</span></div>
+      <div class="gw-table-wrap"><table class="gw-table">
+        <thead><tr><th>SKU</th><th>Product</th><th class="r">Wanted</th><th class="r">Allocated</th>
+          <th class="r">Moved</th><th>Stock to pick</th>${editable ? '<th></th>' : ''}</tr></thead>
+        <tbody>${d.lines.length ? d.lines.map(l => {
+          const as = allocsByLine[l.id] || [];
+          return `<tr>
+            <td class="mono">${esc(l.sku)}</td>
+            <td>${esc(l.product_name || '—')}</td>
+            <td class="r num">${nfmt(l.qty_requested)}</td>
+            <td class="r num ${Number(l.qty_allocated) < Number(l.qty_requested) ? 'var-neg' : ''}">${nfmt(l.qty_allocated)}</td>
+            <td class="r num">${l.qty_moved == null ? '—' : nfmt(l.qty_moved)}</td>
+            <td>${as.filter(a => a.state !== 'released').map(a => `
+              <div style="margin:1px 0">
+                <span class="num">${nfmt(a.qty)}</span> from
+                <span class="mono">${esc(a.lot?.shelf_id || a.lot?.shelf_text || '?')}</span>
+                ${a.lot?.pallet_number ? `<span class="gw-sub">pallet ${esc(a.lot.pallet_number)}</span>` : ''}
+                <span class="gw-sub">${a.lot?.received_on ? esc(dfmt(a.lot.received_on)) : 'date unknown'}</span>
+                ${a.is_fifo_override ? `<span class="tag tag-amber" title="${esc(a.override_reason || '')}">out of FIFO order</span>` : ''}
+                ${editable ? `<button class="gw-btn gw-btn-sm no-print" onclick="removeAlloc(${a.id}, ${t.id})">remove</button>` : ''}
+              </div>`).join('') || '<span class="gw-sub">nothing allocated</span>'}
+              ${editable && outbound ? `<button class="gw-btn gw-btn-sm no-print" onclick="overrideModal(${l.id}, '${esc(l.sku)}', ${t.id})">pick a different pallet</button>` : ''}
+            </td>
+            ${editable ? `<td class="r no-print"><button class="gw-btn gw-btn-sm" onclick="removeLine(${t.id}, ${l.id})">Remove</button></td>` : ''}
+          </tr>`;
+        }).join('') : empty(editable ? 7 : 6, 'No products yet')}</tbody>
+      </table></div>
+    </div>`;
+
+  const bind = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+  bind('btnAddLine', () => addLineModal(t.id, t.direction));
+  bind('btnPrint',   () => printPicklist(t.id));
+  bind('btnReady',   async () => {
     try {
-      const raw = localStorage.getItem(GW_COL_SETTINGS_KEY);
-      if (raw) gwHiddenCols = new Set(JSON.parse(raw));
-    } catch {}
-    gwApplyColVisibility();
-  }
-  function gwSaveColSettings() {
-    try { localStorage.setItem(GW_COL_SETTINGS_KEY, JSON.stringify(Array.from(gwHiddenCols))); } catch {}
-  }
-  function gwApplyColVisibility() {
-    const container = document.querySelector('.main-container');
-    if (!container) return;
-    for (const col of GW_TOGGLEABLE_COLS) {
-      const cls = `gw-col-hidden-${col.idx}`;
-      if (gwHiddenCols.has(col.idx)) container.classList.add(cls);
-      else container.classList.remove(cls);
+      await api(`/transfers/${t.id}/status`, { method: 'POST', body: JSON.stringify({ status: 'ready_for_cin7' }) });
+      toast('Ready for Cin7'); showTransfer(t.id); loadTransfers();
+    } catch (e) { fail(e); }
+  });
+  bind('btnCin7',   () => cin7Modal(t.id, t.cin7_reference));
+  bind('btnPost',   () => postModal(t.id, d));
+  bind('btnCancel', () => cancelModal(t.id));
+}
+
+function addLineModal(transferId, direction) {
+  modal('Add a product', `
+    <div class="gw-field"><label>SKU</label>
+      <input class="gw-input" id="alSku" placeholder="e.g. R6052-WH-TRI" />
+      <div class="hint" id="alHint">${direction === 'gateway_to_main'
+        ? 'The oldest free stock is allocated automatically.'
+        : 'Stock arriving into Gateway. It becomes a new pallet when you confirm the move.'}</div></div>
+    <div class="gw-field"><label>Quantity</label>
+      <input class="gw-input" id="alQty" type="number" min="0.001" step="any" /></div>
+    <div id="alFifo"></div>`,
+  [
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Add', cls: 'gw-btn-primary', onClick: async () => {
+      const r = await api(`/transfers/${transferId}/lines`, { method: 'POST', body: JSON.stringify({
+        sku: $('alSku').value, qty_requested: Number($('alQty').value),
+      }) });
+      closeModal();
+      if (r.allocation && r.allocation.shortfall > 0) {
+        toast(`Added — only ${nfmt(r.allocation.allocated)} was free, short ${nfmt(r.allocation.shortfall)}`, true);
+      } else toast('Added');
+      showTransfer(transferId);
+    } },
+  ]);
+
+  if (direction !== 'gateway_to_main') return;
+  let t;
+  $('alSku').oninput = e => {
+    clearTimeout(t);
+    const sku = e.target.value.trim();
+    if (!sku) { $('alFifo').innerHTML = ''; return; }
+    t = setTimeout(async () => {
+      try {
+        const q = await api(`/fifo/${encodeURIComponent(sku)}`);
+        $('alFifo').innerHTML = q.length ? `
+          <div class="gw-sec-title" style="margin-bottom:5px">Stock available, oldest first</div>
+          <div class="gw-table-wrap"><table class="gw-table">
+            <thead><tr><th class="c">#</th><th>Arrived</th><th>Shelf</th><th>Pallet</th><th class="r">Free</th></tr></thead>
+            <tbody>${q.map(l => `<tr>
+              <td class="c num">${l.fifo_rank}</td>
+              <td>${l.received_on ? esc(dfmt(l.received_on)) : '<span class="age-unknown">unknown</span>'}</td>
+              <td class="mono">${esc(l.shelf_id || l.shelf_text || '—')}</td>
+              <td class="mono gw-sub">${esc(l.pallet_number || '—')}</td>
+              <td class="r num">${nfmt(l.qty_available)}</td></tr>`).join('')}</tbody>
+          </table></div>` : '<div class="gw-note gw-note-warn">No free stock in Gateway for that SKU.</div>';
+      } catch { $('alFifo').innerHTML = ''; }
+    }, 320);
+  };
+}
+
+async function overrideModal(lineId, sku, transferId) {
+  let q;
+  try { q = await api(`/fifo/${encodeURIComponent(sku)}`); } catch (e) { return fail(e); }
+  if (!q.length) return toast('No free stock for that SKU', true);
+
+  modal(`Take ${sku} from a different pallet`, `
+    <div class="gw-note gw-note-warn">
+      FIFO wants the oldest stock. Choosing otherwise is recorded against your name with the
+      reason, alongside what was recommended.
+    </div>
+    <div class="gw-field"><label>Pallet</label>
+      <select class="gw-input" id="ovLot">${q.map(l => `
+        <option value="${l.lot_id}" data-free="${l.qty_available}">
+          ${l.fifo_rank === 1 ? '[FIFO] ' : ''}${l.received_on ? dfmt(l.received_on) : 'date unknown'}
+          · shelf ${l.shelf_id || l.shelf_text || '?'}${l.pallet_number ? ` · pallet ${l.pallet_number}` : ''}
+          · ${nfmt(l.qty_available)} free
+        </option>`).join('')}</select></div>
+    <div class="gw-field"><label>Quantity</label>
+      <input class="gw-input" id="ovQty" type="number" min="0.001" step="any" value="${q[0].qty_available}" /></div>
+    <div class="gw-field"><label>Why not the oldest?</label>
+      <select class="gw-input" id="ovPreset">
+        <option value="">Choose or type below…</option>
+        <option>Damaged cartons in the older stock</option>
+        <option>Older pallet is not accessible</option>
+        <option>Allocated to a project</option>
+        <option>Older stock needs a quality check first</option>
+      </select></div>
+    <div class="gw-field"><textarea class="gw-input" id="ovReason" rows="2" placeholder="Required"></textarea></div>`,
+  [
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Allocate from this pallet', cls: 'gw-btn-primary', onClick: async () => {
+      await api(`/transfers/${transferId}/override`, { method: 'POST', body: JSON.stringify({
+        line_id: lineId, lot_id: Number($('ovLot').value),
+        qty: Number($('ovQty').value), reason: $('ovReason').value,
+      }) });
+      closeModal(); toast('Allocated, and the override is on record');
+      showTransfer(transferId);
+    } },
+  ]);
+  $('ovPreset').onchange = e => { if (e.target.value) $('ovReason').value = e.target.value; };
+  $('ovLot').onchange = e => {
+    $('ovQty').value = e.target.selectedOptions[0].dataset.free;
+  };
+}
+
+async function removeAlloc(allocId, transferId) {
+  try {
+    await api(`/allocations/${allocId}`, { method: 'DELETE' });
+    toast('Allocation removed, stock released'); showTransfer(transferId);
+  } catch (e) { fail(e); }
+}
+async function removeLine(transferId, lineId) {
+  try {
+    await api(`/transfers/${transferId}/lines/${lineId}`, { method: 'DELETE' });
+    toast('Removed'); showTransfer(transferId);
+  } catch (e) { fail(e); }
+}
+
+function cin7Modal(id, current) {
+  modal('Record the Cin7 transfer reference', `
+    <div class="gw-note gw-note-info">
+      Raise the transfer in Cin7 by hand, then put its number here so the two records point at
+      each other. This module does not create Cin7 transfers.
+    </div>
+    <div class="gw-field"><label>Cin7 reference</label>
+      <input class="gw-input" id="c7Ref" placeholder="TR-49562" value="${esc(current || '')}" /></div>`,
+  [
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Save', cls: 'gw-btn-primary', onClick: async () => {
+      const r = await api(`/transfers/${id}/cin7`, { method: 'POST', body: JSON.stringify({
+        cin7_reference: $('c7Ref').value,
+      }) });
+      closeModal();
+      toast(r.matched_in_mirror
+        ? `Linked and found in Cin7 (${r.cin7.from_location} to ${r.cin7.to_location})`
+        : 'Linked. Not in the Cin7 mirror yet — it syncs every couple of hours.');
+      showTransfer(id); loadTransfers();
+    } },
+  ]);
+}
+
+function postModal(id, d) {
+  const outbound = d.transfer.direction === 'gateway_to_main';
+  const rows = outbound
+    ? d.allocations.filter(a => ['reserved', 'picked'].includes(a.state))
+    : d.lines;
+  const now = new Date().toISOString().slice(0, 16);
+
+  modal('Confirm the stock physically moved', `
+    <div class="gw-note gw-note-warn">
+      This writes the movement into the ledger and cannot be edited afterwards — a mistake is
+      corrected by recording a reversal. Change any quantity that was short-picked.
+    </div>
+    <div class="gw-field"><label>When it moved</label>
+      <input class="gw-input" id="poWhen" type="datetime-local" value="${now}" /></div>
+    <div class="gw-table-wrap"><table class="gw-table">
+      <thead><tr><th>SKU</th><th>${outbound ? 'From' : 'Into'}</th><th class="r">Planned</th><th class="r">Actually moved</th></tr></thead>
+      <tbody>${rows.map(r => outbound ? `
+        <tr><td class="mono">${esc(r.lot?.sku || d.lines.find(l => l.id === r.line_id)?.sku || '')}</td>
+          <td class="mono gw-sub">${esc(r.lot?.shelf_id || r.lot?.shelf_text || '—')}</td>
+          <td class="r num">${nfmt(r.qty)}</td>
+          <td class="r"><input class="gw-input po-qty" data-id="${r.id}" type="number" step="any"
+              min="0" max="${r.qty}" value="${r.qty}" style="width:100px;text-align:right" /></td></tr>` : `
+        <tr><td class="mono">${esc(r.sku)}</td><td class="gw-sub">new pallet</td>
+          <td class="r num">${nfmt(r.qty_requested)}</td>
+          <td class="r"><input class="gw-input po-qty" data-line="${r.id}" type="number" step="any"
+              min="0" value="${r.qty_requested}" style="width:100px;text-align:right" /></td></tr>`).join('')}
+      </tbody></table></div>`,
+  [
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Confirm the move', cls: 'gw-btn-primary', onClick: async () => {
+      const picked = [...document.querySelectorAll('.po-qty')].map(i => (
+        i.dataset.id
+          ? { allocation_id: Number(i.dataset.id), qty: Number(i.value) }
+          : { line_id: Number(i.dataset.line), qty: Number(i.value) }));
+      const when = $('poWhen').value;
+      const r = await api(`/transfers/${id}/post`, { method: 'POST', body: JSON.stringify({
+        picked, occurred_at: when ? new Date(when).toISOString() : null,
+      }) });
+      closeModal();
+      toast(r.already_completed ? 'Already completed' : `Recorded ${r.movements} movement(s)`);
+      showTransfer(id); loadTransfers(); loadOverview();
+    } },
+  ]);
+}
+
+function cancelModal(id) {
+  modal('Cancel this transfer', `
+    <div class="gw-note gw-note-info">
+      Cancelling releases the stock it was holding. It does not record a movement, because
+      nothing physically moved — that is deliberately a different thing from stock coming back.
+    </div>
+    <div class="gw-field"><label>Why</label>
+      <textarea class="gw-input" id="cnReason" rows="2" placeholder="Required"></textarea></div>`,
+  [
+    { label: 'Keep it', onClick: closeModal },
+    { label: 'Cancel the transfer', cls: 'gw-btn-danger', onClick: async () => {
+      const r = await api(`/transfers/${id}/cancel`, { method: 'POST', body: JSON.stringify({
+        reason: $('cnReason').value,
+      }) });
+      closeModal(); toast(`Cancelled, ${r.allocations_released} allocation(s) released`);
+      showTransfer(id); loadTransfers(); loadOverview();
+    } },
+  ]);
+}
+
+// ─── the pick sheet ────────────────────────────────────────────────────
+async function printPicklist(id) {
+  let d;
+  try { d = await api(`/transfers/${id}/picklist`); } catch (e) { return fail(e); }
+  const t = d.transfer;
+  const printed = new Date().toLocaleString('en-AU', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    timeZone: 'Australia/Brisbane',
+  });
+
+  openDrawer(esc(t.transfer_no), 'Pick sheet');
+  $('drBody').innerHTML = `
+    <div class="gw-toolbar no-print">
+      <button class="gw-btn gw-btn-primary" onclick="window.print()">Print</button>
+      <button class="gw-btn" onclick="showTransfer(${id})">Back to the transfer</button>
+    </div>
+    <div class="gw-print-only">
+      <div class="print-hd">
+        <div>
+          <div class="print-title">GATEWAY &rarr; MAIN</div>
+          <div>Transfer ${esc(t.transfer_no)}</div>
+        </div>
+        <div class="print-meta">
+          Printed ${esc(printed)}<br />
+          Cin7: ${esc(t.cin7_reference || 'not yet entered')}<br />
+          ${nfmt(d.rows.length)} lines · ${nfmt(d.rows.reduce((s, r) => s + r.qty, 0))} units
+        </div>
+      </div>
+      ${d.unallocated.length ? `<div class="print-warn">
+        SHORT OF STOCK: ${d.unallocated.map(u =>
+          `${esc(u.sku)} wanted ${nfmt(u.requested)}, only ${nfmt(u.allocated)} available`).join(' — ')}
+      </div>` : ''}
+    </div>
+
+    <div class="gw-table-wrap"><table class="gw-table">
+      <thead><tr>
+        <th class="c">#</th><th>Shelf</th><th>Pallet</th><th>SKU</th><th>Product</th>
+        <th class="r">Qty</th><th>Arrived</th><th>Take</th><th class="c">Picked</th>
+      </tr></thead>
+      <tbody>${d.rows.length ? d.rows.map(r => `
+        <tr>
+          <td class="c num">${r.pick_no}</td>
+          <td class="mono"><b>${esc(r.shelf || '—')}</b></td>
+          <td class="mono">${esc(r.pallet || '—')}</td>
+          <td class="mono">${esc(r.sku)}</td>
+          <td>${esc(r.product_name || '—')}</td>
+          <td class="r num"><b>${nfmt(r.qty)}</b></td>
+          <td>${r.received_on ? esc(dfmt(r.received_on)) : 'unknown'}</td>
+          <td>${r.fifo_rank === 1 && !r.is_fifo_override
+                ? '<span class="use-first">USE FIRST</span>'
+                : r.is_fifo_override
+                  ? `<span class="use-first">NOT OLDEST</span><div class="gw-sub">${esc(r.override_reason || '')}</div>`
+                  : '<span class="gw-sub">then</span>'}</td>
+          <td class="c" style="min-width:70px">&nbsp;</td>
+        </tr>`).join('') : empty(9, 'Nothing allocated')}</tbody>
+    </table></div>
+
+    <div class="gw-print-only">
+      <div class="print-sign">
+        <div>Picked by &nbsp; / &nbsp; date</div>
+        <div>Driver &nbsp; / &nbsp; date</div>
+        <div>Received at Main &nbsp; / &nbsp; date</div>
+      </div>
+    </div>`;
+}
+
+// ═══════════ RECOMMENDATIONS ═══════════
+function wireRecommend() {
+  $('recWeeks').onchange = e => { state.rec.weeks = Number(e.target.value); loadRecommend(); };
+  $('recAll').onchange = e => {
+    document.querySelectorAll('.rec-cb').forEach(cb => { cb.checked = e.target.checked; toggleRec(cb); });
+  };
+  $('recBuild').onclick = buildFromRecommendations;
+}
+
+async function loadRecommend() {
+  let d;
+  try { d = await api(`/recommendations?weeks=${state.rec.weeks}`); } catch (e) { return fail(e); }
+  state.rec.rows = d.rows;
+  state.rec.selected.clear();
+  $('recBuild').disabled = true;
+
+  $('recBody').innerHTML = d.rows.length ? d.rows.map(r => `
+    <tr>
+      <td class="c"><input type="checkbox" class="rec-cb" data-sku="${esc(r.sku)}" data-qty="${r.recommended_qty}" /></td>
+      <td class="mono">${esc(r.sku)}</td>
+      <td>${esc(r.product_name || '—')}</td>
+      <td class="r num">${nfmt(r.main_qty)}</td>
+      <td class="r num">${nfmt(r.weekly_demand, 1)}</td>
+      <td class="r num ${r.weeks_cover < 1 ? 'var-neg' : ''}">${nfmt(r.weeks_cover, 1)}</td>
+      <td class="r num gw-sub">${nfmt(r.target_qty)}</td>
+      <td class="r num"><b>${nfmt(r.recommended_qty)}</b>${r.capped_by_gateway
+        ? ' <span class="tag tag-amber">capped</span>' : ''}</td>
+      <td class="r num">${nfmt(r.gateway_available)}</td>
+      <td>${r.oldest_received_on ? esc(dfmt(r.oldest_received_on)) : '<span class="age-unknown">unknown</span>'}</td>
+      <td class="gw-sub">${esc(r.shelves || '—')}</td>
+    </tr>`).join('') : empty(11, 'Nothing to suggest — every product with a demand figure has cover');
+
+  document.querySelectorAll('.rec-cb').forEach(cb => { cb.onchange = () => toggleRec(cb); });
+  $('recCount').textContent = `${nfmt(d.total)} suggestions`;
+}
+
+function toggleRec(cb) {
+  if (cb.checked) state.rec.selected.add(cb.dataset.sku);
+  else state.rec.selected.delete(cb.dataset.sku);
+  $('recBuild').disabled = state.rec.selected.size === 0;
+  $('recBuild').textContent = state.rec.selected.size
+    ? `Build a transfer from ${state.rec.selected.size} product(s)`
+    : 'Build a transfer from selected';
+}
+
+async function buildFromRecommendations() {
+  const picks = [...document.querySelectorAll('.rec-cb')].filter(c => c.checked)
+    .map(c => ({ sku: c.dataset.sku, qty: Number(c.dataset.qty) }));
+  if (!picks.length) return;
+  try {
+    const t = await api('/transfers', { method: 'POST', body: JSON.stringify({
+      direction: 'gateway_to_main', reference: `Replenishment ${state.rec.weeks}wk`,
+      notes: `Built from recommendations targeting ${state.rec.weeks} weeks of cover`,
+    }) });
+    let short = 0;
+    for (const p of picks) {
+      const r = await api(`/transfers/${t.id}/lines`, { method: 'POST', body: JSON.stringify({
+        sku: p.sku, qty_requested: p.qty, source: 'recommendation',
+      }) });
+      if (r.allocation && r.allocation.shortfall > 0) short++;
     }
-  }
-  window.openGwColumnSettingsModal = function () {
-    const modal = document.getElementById('gwColumnSettingsModal');
-    if (!modal) return;
-    const container = document.getElementById('gwColumnToggles');
-    if (!container) return;
-    container.innerHTML = GW_TOGGLEABLE_COLS.map(col => {
-      const checked = !gwHiddenCols.has(col.idx) ? 'checked' : '';
-      return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px">
-        <input type="checkbox" ${checked} onchange="gwToggleCol(${col.idx}, this.checked)" />
-        <span>${col.label}</span>
-      </label>`;
-    }).join('');
-    modal.classList.remove('hidden');
-  };
-  window.closeGwColumnSettingsModal = function () {
-    const modal = document.getElementById('gwColumnSettingsModal');
-    if (modal) modal.classList.add('hidden');
-  };
-  window.gwToggleCol = function (idx, visible) {
-    if (visible) gwHiddenCols.delete(idx);
-    else gwHiddenCols.add(idx);
-    gwSaveColSettings();
-    gwApplyColVisibility();
-  };
-  window.resetGwColumnSettings = function () {
-    gwHiddenCols.clear();
-    gwSaveColSettings();
-    gwApplyColVisibility();
-    window.openGwColumnSettingsModal(); // refresh checkmarks
-  };
-  gwLoadColSettings();
+    toast(`${t.transfer_no} created with ${picks.length} product(s)` + (short ? `, ${short} short of stock` : ''));
+    switchView('transfers'); showTransfer(t.id);
+  } catch (e) { fail(e); }
+}
 
-  /* ═══════════════════════════════════════════════
-     PAGER controls
-     ═══════════════════════════════════════════════ */
-  window.gwPrevPage = function () { if (state.page > 1) { state.page--; render(state.rows); } };
-  window.gwNextPage = function () {
-    const tp = Math.max(1, Math.ceil(state.rows.length / state.perPage));
-    if (state.page < tp) { state.page++; render(state.rows); }
+// ═══════════ RECONCILIATION ═══════════
+function wireRecon() {
+  $('reconState').onchange = e => { state.recon.state = e.target.value; loadRecon(); };
+  $('reconRefresh').onclick = async () => {
+    try {
+      const r = await api('/reconciliation/refresh', { method: 'POST', body: JSON.stringify({}) });
+      toast(`${r.upserted} open, ${r.auto_closed} closed automatically`);
+      loadRecon(); loadOverview();
+    } catch (e) { fail(e); }
   };
+}
 
-  /* ═══════════════════════════════════════════════
-     INITIAL LOAD
-     ═══════════════════════════════════════════════ */
-  fetchData();
+async function loadRecon() {
+  const qs = new URLSearchParams();
+  if (state.recon.state) qs.set('state', state.recon.state);
+  let d;
+  try { d = await api(`/reconciliation?${qs}`); } catch (e) { return fail(e); }
+  state.recon.rows = d.rows;
 
-  console.log('✅ Gateway → Main loaded — data source: cin7_mirror');
-})();
+  const f = d.cin7_freshness;
+  $('reconNote').innerHTML = `Cin7 owns the per-SKU total. We own the shelf, the pallet and the
+    arrival date, because Cin7 does not model any of them for Gateway. A difference is recorded
+    and explained, never corrected by editing our history to agree.
+    ${f ? `<br /><b>Cin7 stock last synced:</b> ${esc(dtfmt(f.latest_sync))} (${esc(f.staleness || '')} old).` : ''}`;
+
+  $('reconBody').innerHTML = d.rows.length ? d.rows.map(r => `
+    <tr>
+      <td class="mono clickable" onclick="showSku('${esc(r.sku)}')">${esc(r.sku)}</td>
+      <td>${esc(r.product_name || '—')}</td>
+      <td class="r num">${nfmt(r.local_qty)}</td>
+      <td class="r num">${nfmt(r.cin7_qty)}</td>
+      <td class="r num">${diffCell(r.difference)}</td>
+      <td>${stateTag(r.state)}</td>
+      <td>${r.issue_status
+        ? `<span class="tag ${r.issue_status === 'open' ? 'tag-red' : r.issue_status === 'investigating' ? 'tag-amber' : 'tag-green'}">${esc(r.issue_status)}</span>
+           ${r.issue_cause ? `<div class="gw-sub">${esc(r.issue_cause.replace(/_/g, ' '))}</div>` : ''}`
+        : '<span class="gw-sub">not opened</span>'}</td>
+      <td class="gw-sub">${esc(r.shelves || '—')}</td>
+      <td class="r">${r.issue_id
+        ? `<button class="gw-btn gw-btn-sm" onclick="resolveModal(${r.issue_id}, '${esc(r.sku)}')">Explain</button>`
+        : ''}</td>
+    </tr>`).join('') : empty(9, 'No differences');
+  $('reconCount').textContent = `${nfmt(d.total)} differences`;
+}
+
+function resolveModal(issueId, sku) {
+  modal(`Explain the difference on ${sku}`, `
+    <div class="gw-note gw-note-info">
+      Recording a cause does not change any quantity. If stock really is wrong, correct it with
+      an adjustment on the pallet so the ledger keeps explaining itself.
+    </div>
+    <div class="gw-field"><label>Most likely cause</label>
+      <select class="gw-input" id="rsCause">
+        <option value="cin7_transfer_not_recorded">A Cin7 transfer we never recorded</option>
+        <option value="local_movement_not_in_cin7">A move we recorded that never reached Cin7</option>
+        <option value="stocktake">Stocktake correction</option>
+        <option value="duplicate_movement">Something counted twice</option>
+        <option value="bad_opening_balance">The migrated opening balance was wrong</option>
+        <option value="timing">Timing — Cin7 has not caught up</option>
+        <option value="wrong_location">Booked to the wrong warehouse</option>
+        <option value="unknown">Still unknown</option>
+      </select></div>
+    <div class="gw-field"><label>Status</label>
+      <select class="gw-input" id="rsStatus">
+        <option value="investigating">Investigating</option>
+        <option value="resolved">Resolved</option>
+        <option value="accepted">Accepted — leave as is</option>
+      </select></div>
+    <div class="gw-field"><label>Notes</label>
+      <textarea class="gw-input" id="rsNote" rows="3" placeholder="Required when resolving or accepting"></textarea></div>`,
+  [
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Save', cls: 'gw-btn-primary', onClick: async () => {
+      await api(`/reconciliation/${issueId}/resolve`, { method: 'POST', body: JSON.stringify({
+        status: $('rsStatus').value, cause_code: $('rsCause').value, note: $('rsNote').value,
+      }) });
+      closeModal(); toast('Recorded'); loadRecon(); loadOverview();
+    } },
+  ]);
+}
+
+// ═══════════ DATA QUALITY ═══════════
+function wireQuality() {
+  $('qualSev').onchange = e => { state.qual.severity = e.target.value; loadQuality(); };
+}
+
+async function loadQuality() {
+  let batches;
+  try { batches = await api('/imports'); } catch (e) { return fail(e); }
+  state.qual.batches = batches;
+
+  $('qualBatches').innerHTML = batches.length ? batches.map(b => `
+    <tr><td>${esc(b.source_file)}</td><td class="gw-sub">${esc(b.source_sheet || '—')}</td>
+      <td><span class="tag ${b.status === 'completed' ? 'tag-green' : b.status === 'rolled_back' ? 'tag-grey' : 'tag-amber'}">${esc(b.status)}</span></td>
+      <td class="r num">${nfmt(b.rows_read)}</td><td class="r num">${nfmt(b.lots_created)}</td>
+      <td class="r num">${nfmt(b.movements_created)}</td>
+      <td class="r num ${b.warnings ? 'var-neg' : ''}">${nfmt(b.warnings)}</td>
+      <td class="r num ${b.errors ? 'var-neg' : ''}">${nfmt(b.errors)}</td>
+      <td class="gw-sub">${esc(dtfmt(b.started_at))}</td></tr>`).join('')
+    : empty(9, 'Nothing imported yet');
+
+  const latest = batches.find(b => b.status === 'completed');
+  if (!latest) { $('qualIssues').innerHTML = empty(6, 'No import to review'); return; }
+
+  const qs = new URLSearchParams({ resolved: 'false', limit: 300 });
+  if (state.qual.severity) qs.set('severity', state.qual.severity);
+  let d;
+  try { d = await api(`/imports/${latest.id}/issues?${qs}`); } catch (e) { return fail(e); }
+
+  $('qualIssues').innerHTML = d.rows.length ? d.rows.map(i => `
+    <tr>
+      <td><span class="tag ${i.severity === 'error' ? 'tag-red' : i.severity === 'warning' ? 'tag-amber' : 'tag-grey'}">${esc(i.severity)}</span></td>
+      <td class="gw-sub">${esc(i.code.replace(/_/g, ' '))}</td>
+      <td class="mono gw-sub">${esc((i.row_ref || '').replace('MAIN Stock Movement!', ''))}</td>
+      <td class="mono">${i.sku ? `<span class="clickable" onclick="showSku('${esc(i.sku)}')">${esc(i.sku)}</span>` : '—'}</td>
+      <td>${esc(i.message)}</td>
+      <td class="r"><button class="gw-btn gw-btn-sm" onclick="resolveIssue(${i.id})">Mark reviewed</button></td>
+    </tr>`).join('') : empty(6, 'Nothing outstanding');
+  $('qualCount').textContent = `${nfmt(d.total)} open`;
+}
+
+async function resolveIssue(id) {
+  try {
+    await api(`/imports/issues/${id}/resolve`, { method: 'POST', body: JSON.stringify({}) });
+    toast('Marked reviewed'); loadQuality(); loadOverview();
+  } catch (e) { fail(e); }
+}
+
+boot().catch(fail);

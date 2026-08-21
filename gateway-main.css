@@ -1,77 +1,177 @@
-/* ─────────────────────────────────────────────────────────────
-   Gateway → Main — Returns design overlay.
-   Scoped to .cb-shell (kept as the scoping hook — higher specificity than
-   the page's runtime-injected base style, so these win without touching
-   markup or JS). Restyles the CB look into the Returns system:
-   light surface, cyan accent, IBM Plex Sans, soft radii, subtle borders.
-   Tokens: bg #f4f6f9 · card #fff · ink #1a2230 · muted #5b6b86/#7a8aa2
-           border #e2e7ef/#d3dae6 · accent #0aa5e6 (hover #0893cc)
-   Was: Container-Builder (cream/black/orange, sharp, mono).
-   ───────────────────────────────────────────────────────────── */
-
-/* ── Page chrome: white header, light body ── */
-html, body { background: #f4f6f9 !important; }
-.site-header { background: #fff !important; color: #1a2230 !important; border-bottom: 1px solid #e2e7ef !important; box-shadow: 0 1px 0 rgba(20,28,42,.02) !important; }
-.site-header .brand { color: #1a2230 !important; font-weight: 600 !important; opacity: 1 !important; }
-.site-header .nav-link, .site-header .back-link { color: #5b6b86 !important; opacity: 1 !important; border-color: #e2e7ef !important; }
-.site-header .nav-link:hover, .site-header .back-link:hover { background: #eef1f6 !important; color: #0893cc !important; }
-.site-footer { background: transparent !important; color: #8a97ab !important; border-top: 1px solid #e2e7ef !important; }
-.site-footer .footer-inner { color: #8a97ab !important; }
-
-/* ── Shell: full-bleed transparent (white surfaces are the cards) ── */
-.main-container.cb-shell {
-  background: #f4f6f9 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
+/* ══════════════════════════════════════════════════════════════════════
+   Gateway Inventory — Rapid LED.
+   Same "our-face" system as Returns / Pick-Anomalies / Re-Stock V2:
+     bg #f4f6f9 · card #fff · ink #1a2230 · muted #5b6b86 / #7a8aa2 / #8a97ab
+     border #e2e7ef / #d3dae6 · accent #0aa5e6 (hover #0893cc) · IBM Plex Sans
+   Desktop-first and dense: this is a warehouse operations screen, so the
+   priority is rows-on-screen and scan speed, not decoration.
+   ══════════════════════════════════════════════════════════════════════ */
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: #f4f6f9; color: #1a2230; font-size: 14px;
 }
-.cb-shell {
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  color: #1a2230;
+.mono, .num { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
+a { color: #0b6ea8; }
+
+/* ── header ── */
+.gw-header { background: #fff; border-bottom: 1px solid #e2e7ef; position: sticky; top: 0; z-index: 40; }
+.gw-header-inner { max-width: 1620px; margin: 0 auto; display: flex; align-items: center; gap: 16px; padding: 11px 22px; }
+.gw-back { color: #5b6b86; text-decoration: none; font-size: 13px; white-space: nowrap; }
+.gw-back:hover { color: #1a2230; }
+.gw-brand { font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 9px; }
+.gw-logo { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; border-radius: 50%; background: #0aa5e6; color: #fff; font-weight: 700; font-size: 13px; }
+.gw-sync { margin-left: auto; font-size: 12px; color: #8a97ab; display: flex; align-items: center; gap: 7px; }
+.gw-dot { width: 8px; height: 8px; border-radius: 50%; background: #c7d0da; }
+.gw-dot.fresh { background: #12a150; } .gw-dot.stale { background: #e0930d; } .gw-dot.dead { background: #c0392b; }
+
+.gw-main { max-width: 1620px; margin: 0 auto; padding: 16px 22px 70px; }
+
+/* ── tabs ── */
+.gw-tabs { display: flex; gap: 2px; border-bottom: 2px solid #e2e7ef; margin-bottom: 16px; }
+.gw-tab { background: none; border: none; padding: 10px 18px; font-size: 14px; font-weight: 500; color: #6b7a92; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; font-family: inherit; }
+.gw-tab:hover { color: #1a2230; }
+.gw-tab.active { color: #0aa5e6; border-bottom-color: #0aa5e6; }
+.gw-tab .badge { display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: #eef2f6; color: #5b6b86; }
+.gw-tab .badge.warn { background: #fef6e7; color: #b46a00; }
+.gw-tab .badge.bad  { background: #fdeceb; color: #c0392b; }
+
+/* ── stat tiles ── */
+.gw-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.gw-tile { background: #fff; border: 1px solid #e2e7ef; border-radius: 9px; padding: 11px 14px; }
+.gw-tile-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #8a97ab; font-weight: 600; }
+.gw-tile-value { font-size: 23px; font-weight: 600; margin-top: 3px; font-family: 'IBM Plex Mono', monospace; font-feature-settings: 'tnum'; }
+.gw-tile-sub { font-size: 11.5px; color: #8a97ab; margin-top: 1px; }
+.gw-tile.warn .gw-tile-value { color: #b46a00; }
+.gw-tile.bad  .gw-tile-value { color: #c0392b; }
+.gw-tile.good .gw-tile-value { color: #1b8a4b; }
+.gw-tile.clickable { cursor: pointer; }
+.gw-tile.clickable:hover { border-color: #0aa5e6; }
+
+/* ── toolbar ── */
+.gw-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; flex-wrap: wrap; }
+.gw-count { color: #8a97ab; font-size: 12px; margin-left: auto; }
+.gw-input { font-family: inherit; font-size: 13.5px; padding: 7px 11px; border: 1px solid #d3dae6; border-radius: 7px; background: #fff; color: #1a2230; outline: none; }
+.gw-input:focus { border-color: #0aa5e6; box-shadow: 0 0 0 3px rgba(10,165,230,.14); }
+.gw-search { min-width: 330px; }
+select.gw-input { cursor: pointer; }
+.gw-btn { font-family: inherit; font-size: 13.5px; font-weight: 500; padding: 7px 14px; border-radius: 7px; border: 1px solid #d3dae6; background: #fff; color: #1a2230; cursor: pointer; }
+.gw-btn:hover { border-color: #0aa5e6; }
+.gw-btn:disabled { opacity: .5; cursor: not-allowed; }
+.gw-btn-primary { background: #0aa5e6; border-color: #0aa5e6; color: #fff; }
+.gw-btn-primary:hover { background: #0893cc; border-color: #0893cc; }
+.gw-btn-danger { background: #c0392b; border-color: #c0392b; color: #fff; }
+.gw-btn-danger:hover { background: #a02f24; border-color: #a02f24; }
+.gw-btn-sm { padding: 4px 10px; font-size: 12.5px; }
+.gw-chip { font-family: inherit; font-size: 12.5px; padding: 5px 11px; border-radius: 999px; border: 1px solid #d3dae6; background: #fff; color: #5b6b86; cursor: pointer; }
+.gw-chip:hover { border-color: #0aa5e6; }
+.gw-chip.active { background: #0aa5e6; border-color: #0aa5e6; color: #fff; }
+
+/* ── tables ── */
+.gw-table-wrap { background: #fff; border: 1px solid #e2e7ef; border-radius: 10px; overflow: auto; }
+.gw-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.gw-table th { background: #f7f9fc; text-align: left; padding: 9px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #7a8aa2; font-weight: 600; white-space: nowrap; border-bottom: 1px solid #e2e7ef; position: sticky; top: 0; z-index: 2; }
+.gw-table th.r, .gw-table td.r { text-align: right; }
+.gw-table th.c, .gw-table td.c { text-align: center; }
+.gw-table td { padding: 8px 11px; border-top: 1px solid #eef1f6; vertical-align: middle; }
+.gw-table tbody tr:hover { background: #f9fbfd; }
+.gw-table tbody tr.clickable { cursor: pointer; }
+.gw-empty { text-align: center; color: #9aa6ba; padding: 34px; }
+.gw-sub { font-size: 11px; color: #8a97ab; }
+
+/* ── status / tags ── */
+.tag { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .04em; padding: 2px 8px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }
+.tag-grey   { background: #f0f3f8; color: #5b6b86; border-color: #e2e7ef; }
+.tag-blue   { background: #eaf4fb; color: #1667c9; border-color: #c4e0f5; }
+.tag-green  { background: #eaf7f0; color: #1b8a4b; border-color: #c4ebd4; }
+.tag-amber  { background: #fef6e7; color: #b46a00; border-color: #fbe3b3; }
+.tag-red    { background: #fdeceb; color: #c0392b; border-color: #f6c9c4; }
+.tag-cyan   { background: #e6f6fd; color: #0b6ea8; border-color: #bfe6f9; }
+
+/* age colouring, used on dates and day counts */
+.age-fresh { color: #1b8a4b; } .age-warn { color: #b46a00; } .age-alert { color: #c0392b; font-weight: 600; }
+.age-unknown { color: #8a5cc0; font-weight: 600; }
+.var-pos { color: #1667c9; } .var-neg { color: #c0392b; } .var-zero { color: #9aa6ba; }
+
+/* ── sections ── */
+.gw-sec { margin-bottom: 22px; }
+.gw-sec-hd { display: flex; align-items: baseline; gap: 9px; margin-bottom: 8px; }
+.gw-sec-title { font-size: 13px; font-weight: 700; color: #1b2733; }
+.gw-sec-hint { font-size: 12px; color: #8a97ab; }
+.gw-sec-count { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 20px; background: #eef2f6; color: #5b6b86; }
+.gw-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 1100px) { .gw-grid-2 { grid-template-columns: 1fr; } }
+
+/* ── drawer (SKU detail) ── */
+.gw-drawer-back { position: fixed; inset: 0; background: rgba(20,28,42,.34); z-index: 60; display: none; }
+.gw-drawer-back.open { display: block; }
+.gw-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(920px, 96vw); background: #f4f6f9; z-index: 61; transform: translateX(100%); transition: transform .16s ease-out; overflow-y: auto; box-shadow: -4px 0 24px rgba(20,28,42,.14); }
+.gw-drawer.open { transform: none; }
+.gw-drawer-hd { background: #fff; border-bottom: 1px solid #e2e7ef; padding: 14px 20px; position: sticky; top: 0; z-index: 3; display: flex; align-items: flex-start; gap: 14px; }
+.gw-drawer-title { font-size: 17px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+.gw-drawer-body { padding: 18px 20px 60px; }
+.gw-close { background: none; border: none; font-size: 22px; line-height: 1; color: #8a97ab; cursor: pointer; margin-left: auto; padding: 0 4px; }
+.gw-close:hover { color: #1a2230; }
+
+/* ── modal ── */
+.gw-modal-back { position: fixed; inset: 0; background: rgba(20,28,42,.4); z-index: 70; display: none; align-items: center; justify-content: center; padding: 24px; }
+.gw-modal-back.open { display: flex; }
+.gw-modal { background: #fff; border-radius: 12px; width: min(620px, 100%); max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(20,28,42,.2); }
+.gw-modal-hd { padding: 15px 20px; border-bottom: 1px solid #e2e7ef; font-weight: 600; font-size: 15px; }
+.gw-modal-body { padding: 18px 20px; }
+.gw-modal-ft { padding: 13px 20px; border-top: 1px solid #e2e7ef; display: flex; gap: 8px; justify-content: flex-end; }
+.gw-field { margin-bottom: 13px; }
+.gw-field label { display: block; font-size: 12px; font-weight: 600; color: #5b6b86; margin-bottom: 4px; }
+.gw-field .gw-input, .gw-field textarea, .gw-field select { width: 100%; }
+.gw-field textarea { font-family: inherit; font-size: 13.5px; padding: 7px 11px; border: 1px solid #d3dae6; border-radius: 7px; resize: vertical; outline: none; }
+.gw-field .hint { font-size: 11.5px; color: #8a97ab; margin-top: 3px; }
+.gw-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ── notices ── */
+.gw-note { border-radius: 8px; padding: 10px 13px; font-size: 13px; margin-bottom: 14px; border: 1px solid; }
+.gw-note-info  { background: #eaf4fb; color: #10527f; border-color: #c4e0f5; }
+.gw-note-warn  { background: #fef6e7; color: #8a5100; border-color: #fbe3b3; }
+.gw-note-bad   { background: #fdeceb; color: #96271b; border-color: #f6c9c4; }
+.gw-note b { font-weight: 600; }
+
+/* ── toast ── */
+.gw-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(140%); background: #1a2230; color: #fff; padding: 11px 20px; border-radius: 9px; font-size: 13.5px; z-index: 90; transition: transform .18s; max-width: 70vw; }
+.gw-toast.show { transform: translateX(-50%) translateY(0); }
+.gw-toast.bad { background: #c0392b; }
+
+.gw-kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 13px; }
+.gw-kv dt { color: #8a97ab; }
+.gw-kv dd { margin: 0; font-weight: 500; }
+
+.gw-spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid #d3dae6; border-top-color: #0aa5e6; border-radius: 50%; animation: gw-spin .7s linear infinite; }
+@keyframes gw-spin { to { transform: rotate(360deg); } }
+
+/* ══ print: the pick sheet ══════════════════════════════════════════════
+   A warehouse document, not a screenshot of a web page. Everything that is
+   navigation disappears; what is left is the route, the stock and a place
+   to sign. */
+.gw-print-only { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 11mm 10mm; }
+  body { background: #fff; font-size: 11pt; }
+  .gw-header, .gw-tabs, .gw-toolbar, .gw-drawer-back, .gw-modal-back,
+  .gw-toast, .gw-tiles, .no-print { display: none !important; }
+  .gw-drawer { position: static; width: auto; transform: none; box-shadow: none; background: #fff; overflow: visible; }
+  .gw-drawer-hd { display: none; }
+  .gw-drawer-body, .gw-main { padding: 0; max-width: none; }
+  .gw-print-only { display: block; }
+  .gw-table-wrap { border: none; border-radius: 0; overflow: visible; }
+  .gw-table { font-size: 10pt; }
+  .gw-table th { background: #eceff3 !important; color: #000 !important; border-bottom: 1.5pt solid #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .gw-table td { border-top: .5pt solid #b9c2ce; padding: 5pt 6pt; }
+  .gw-table tbody tr { page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  .tag { border: .5pt solid #666 !important; background: #fff !important; color: #000 !important; }
+  .print-hd { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2pt solid #000; padding-bottom: 6pt; margin-bottom: 9pt; }
+  .print-title { font-size: 17pt; font-weight: 700; }
+  .print-meta { font-size: 9.5pt; text-align: right; line-height: 1.5; }
+  .print-sign { margin-top: 16pt; display: flex; gap: 40pt; font-size: 10pt; page-break-inside: avoid; }
+  .print-sign div { flex: 1; border-top: .8pt solid #000; padding-top: 4pt; }
+  .use-first { font-weight: 700; letter-spacing: .04em; }
+  .print-warn { border: 1.2pt solid #000; padding: 5pt 8pt; margin-bottom: 9pt; font-size: 10pt; font-weight: 600; }
 }
-
-/* ── Page header / title ── */
-.cb-shell .page-header { border-bottom: 2px solid #e2e7ef; padding-bottom: 14px; margin-bottom: 4px; }
-.cb-shell .page-header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
-
-/* ── Inputs ── */
-.cb-shell input[type="text"], .cb-shell #gwSearch {
-  font-family: inherit; font-size: 13px; border: 1px solid #d3dae6; border-radius: 7px; background: #fff; padding: 8px 11px; color: #1a2230;
-}
-.cb-shell input:focus { border-color: #0aa5e6; outline: none; box-shadow: 0 0 0 3px rgba(10,165,230,.14); }
-
-/* ── Buttons (toolbar) → clean secondary, cyan hover ── */
-.cb-shell .search-btn-small {
-  font-family: inherit; font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0;
-  border-radius: 7px !important; border: 1px solid #d3dae6 !important; background: #fff !important; color: #1a2230 !important; padding: 8px 13px;
-}
-.cb-shell .search-btn-small:hover { background: #fff !important; border-color: #0aa5e6 !important; color: #1a2230 !important; }
-
-/* ── Sync status card ── */
-.cb-shell #syncStatusCard { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
-
-/* ── Nav tabs → cyan underline ── */
-.cb-shell .gw-nav-tab {
-  font-family: inherit; font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0;
-  color: #6b7a92; border-bottom: 2px solid transparent;
-}
-.cb-shell .gw-nav-tab:hover { color: #1a2230; background: transparent; }
-.cb-shell .gw-nav-tab.active { color: #0aa5e6; border-bottom-color: #0aa5e6; }
-
-/* ── Chips: keep the light rounded base + semantic tints; just make the
-     active ring cyan instead of a black outline ── */
-.cb-shell .chip.active { outline: none; box-shadow: 0 0 0 2px rgba(10,165,230,.25); }
-
-/* ── Table → Returns light chrome (header light, sans, soft borders) ── */
-.cb-shell .table-wrapper { border: 1px solid #e2e7ef; border-radius: 10px; background: #fff; overflow: hidden; }
-.cb-shell #gwTable { font-size: 13px; }
-.cb-shell #gwTable thead th {
-  background: #f7f9fc !important; color: #7a8aa2 !important;
-  font-family: inherit; font-size: 11px !important; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.05em; border: none; border-bottom: 1px solid #e2e7ef;
-}
-.cb-shell #gwTable tbody td { border-top: 1px solid #eef1f6; color: #1a2230; font-variant-numeric: tabular-nums; }
-.cb-shell #gwTable tbody tr:hover { background: #f9fbfd; }
-
-/* ── Pagination ── */
-.cb-shell .pages-btn { border-radius: 7px !important; border: 1px solid #d3dae6 !important; background: #fff !important; color: #1a2230 !important; font-family: inherit; }
-.cb-shell .pages-btn:hover { border-color: #0aa5e6 !important; }
