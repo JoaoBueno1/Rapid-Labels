@@ -16,6 +16,39 @@ Never hard-deleted: no delete policy on `returns_active`. Line tables have a
 delete policy only so Edit/Treatment can *replace lines* — the return document
 itself can't be deleted from the app.
 
+## Stage 2: Simple vs Advanced (per-line treatment)
+
+One return can be finished by more than one person, at different times, with a
+different credit note per line — the office asked for it after hitting exactly that.
+So credit note and processor live on `returns_treatment_lines`, not only on the header.
+
+| Mode | For | What it does |
+|---|---|---|
+| **Simple** (default) | most returns | The Credit note and Processed by boxes are **written onto every line**. One credit note, one person, one click — unchanged from before. |
+| **Advanced** | split decisions | Line columns unlock. Tick lines and *Apply to selected*, or type straight into a line. Each line keeps its own note and name. |
+
+**Values are written, never inherited.** Simple mode could have left the lines blank and
+had readers fall back to the header, which is less code — but then every consumer (detail
+view, CSV, log, any future report) has to recompute an "effective value", and they will
+eventually disagree. Writing costs one assignment and makes each line self-describing.
+
+**A line is ready when** it has a return status *and* a processor, plus a credit note
+**only** when the status is `Accepted for Credit Assessment`. A refused return or a
+disposed warranty never raises one, so demanding it there would strand the return.
+
+**Complete is a property of the lines, not the clicker.** It is blocked until every line
+is ready, and the button explains which are not. *Save progress* keeps `in_treatment` and
+leaves the open lines for whoever picks it up — reopening a part-finished return lands in
+Advanced, because Simple would overwrite someone else's lines the moment the next person
+typed a name.
+
+`returns_line_log` is append-only (INSERT policy only, no UPDATE/DELETE) — a credit note
+gets corrected, and overwriting the field would erase the history that gets asked about.
+The detail view renders it as sentences under the treatment table.
+
+Migration: `db/005_returns_line_treatment.sql`. Additive and nullable, so the app runs
+before it — the per-line fields just do not persist yet.
+
 ## How the market handles returns (RMA)
 
 Standard lifecycle in WMS/ERP (NetSuite, Unleashed, Cin7, Shopify Returns, etc.):
