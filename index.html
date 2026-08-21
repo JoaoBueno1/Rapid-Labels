@@ -187,6 +187,7 @@
         .wh-tr-row .bd { font-size:.58rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; padding:2px 6px; border-radius:5px; white-space:nowrap; }
         .wh-tr-row .bd.in-transit { background:#ede9fe; color:#5b21b6; }
         .wh-tr-row .bd.ordered { background:#e0e7ff; color:#3730a3; }
+        .wh-tr-row .ln { font-size:.66rem; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
         .wh-tr-empty { padding:14px; text-align:center; color:var(--muted); font-size:.74rem; }
         @media (max-width:640px) { .wh-tr-cols { grid-template-columns:1fr; } }
         .wh-flow-arrow { display:flex; align-items:center; color:#cbd5e1; font-size:1.4rem; font-weight:700; flex:0 0 auto; }
@@ -1043,7 +1044,7 @@
     <div class="tr-modal-overlay" id="trModalOverlay" onclick="if(event.target===this)closeTransfersModal()">
         <div class="tr-modal">
             <div class="tr-modal-header">
-                <h2>🔄 Stock Transfers</h2>
+                <h2>Stock Transfers</h2>
                 <span class="tr-count" id="trCount"></span>
                 <button class="tr-modal-close" onclick="closeTransfersModal()">&times;</button>
             </div>
@@ -1051,13 +1052,13 @@
                 <input class="tr-search" id="trSearch" placeholder="Search TR #, location, ref..." oninput="renderTransfersTable()">
                 <div class="tr-direction-group">
                     <button class="tr-direction-btn active" data-dir="all" onclick="setTrDirection(this)">All</button>
-                    <button class="tr-direction-btn" data-dir="outbound" onclick="setTrDirection(this)">📤 Outbound</button>
-                    <button class="tr-direction-btn" data-dir="inbound" onclick="setTrDirection(this)">📥 Inbound</button>
+                    <button class="tr-direction-btn" data-dir="outbound" onclick="setTrDirection(this)">Outbound</button>
+                    <button class="tr-direction-btn" data-dir="inbound" onclick="setTrDirection(this)">Inbound</button>
                 </div>
                 <div class="tr-direction-group">
                     <button class="tr-direction-btn active" data-status="all" onclick="setTrStatus(this)">All</button>
-                    <button class="tr-direction-btn" data-status="IN TRANSIT" onclick="setTrStatus(this)">🚚 In Transit</button>
-                    <button class="tr-direction-btn" data-status="ORDERED" onclick="setTrStatus(this)">📋 Ordered</button>
+                    <button class="tr-direction-btn" data-status="IN TRANSIT" onclick="setTrStatus(this)">In Transit</button>
+                    <button class="tr-direction-btn" data-status="ORDERED" onclick="setTrStatus(this)">Ordered</button>
                 </div>
             </div>
             <div class="tr-modal-body">
@@ -1482,7 +1483,7 @@
                         setKpi('flowPicking', picking, pickingAged ? `in progress · ${pickingAged} aged` : 'in progress');
                         setKpi('flowToPack', toPack, 'picked · awaiting pack');
                         setKpi('flowCompleted', completedToday, 'today');
-                        setKpi('whTransfers', outInTransit + outOrdered, `${outInTransit} in transit · ${outOrdered} ordered`);
+                        setKpi('whTransfers', outOrdered, `${outOrdered} to send`);
                         setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
                         renderInlineTransfers();
 
@@ -2251,14 +2252,17 @@
             const cls = s => String(s || '').toLowerCase().replace(/\s+/g, '-');
             const badge = s => `<span class="bd ${cls(s)}">${String(s || '').replace('IN TRANSIT', 'Transit')}</span>`;
             const meta = r => [r.reference, fmt(r.order_date)].filter(Boolean).join(' · ') || '&nbsp;';
-            // Out (leaving Main) — click a row → editable pick sheet
+            // Out (leaving Main) — ORDERED only = what still needs picking/sending.
+            // IN TRANSIT already left; the full list (all statuses) stays in "all ›".
             const outEl = document.getElementById('whTrListOut');
             if (outEl) {
-                const out = all.filter(r => r.from_location === MAIN_WH && openS(r.status)).sort(sortF).slice(0, 5);
+                const out = all.filter(r => r.from_location === MAIN_WH && String(r.status || '').toUpperCase() === 'ORDERED')
+                    .sort((a, b) => String(b.order_date || '').localeCompare(a.order_date || '')).slice(0, 5);
                 outEl.innerHTML = out.length ? out.map(r => {
                     const rj = JSON.stringify(r).replace(/'/g, '&#39;');
-                    return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print"><span class="tn">${r.number || '—'}</span><span class="to">${r.to_location || '—'}<span class="m">${meta(r)}</span></span>${badge(r.status)}</div>`;
-                }).join('') : '<div class="wh-tr-empty">Nothing leaving Main.</div>';
+                    const ln = r.line_count != null ? `${r.line_count} line${r.line_count == 1 ? '' : 's'}` : '';
+                    return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print"><span class="tn">${r.number || '—'}</span><span class="to">${r.to_location || '—'}<span class="m">${meta(r)}</span></span><span class="ln">${ln}</span></div>`;
+                }).join('') : '<div class="wh-tr-empty">Nothing to send.</div>';
             }
             // Incoming (arriving to Main) — informational
             const inEl = document.getElementById('whTrListIn');
@@ -2342,12 +2346,11 @@
 
             tbody.innerHTML = rows.map(r => {
                 const isOutbound = r.from_location === MAIN_WH;
-                const dirIcon = isOutbound ? '📤' : '📥';
                 const rj = JSON.stringify(r).replace(/'/g, "&#39;");
                 // Outbound rows open the editable pick sheet (staging → print). Inbound just listed.
                 const openAttr = isOutbound ? ` style="cursor:pointer" title="Open pick sheet — edit & print" onclick='TOStaging.open(${rj})'` : '';
                 return `<tr${openAttr}>
-                    <td class="tr-num">${dirIcon} ${r.number || '—'}${isOutbound ? ' <span style="font-size:11px" title="printable pick sheet">🖨️</span>' : ''}</td>
+                    <td class="tr-num">${r.number || '—'}</td>
                     <td class="tr-route"><span class="tr-from">${r.from_location || '?'}</span><span class="tr-arrow">→</span><span class="tr-to">${r.to_location || '?'}</span></td>
                     <td><span class="tr-badge ${statusClass(r.status)}">${r.status || '—'}</span></td>
                     <td class="tr-date">${fmtDate(r.order_date)}</td>
