@@ -261,6 +261,18 @@
       </div>
       <div class="rt-modal-body">
         <p class="rt-hint" style="margin-top:0">This cancels the return. It stays in History for audit — it is <strong>not deleted</strong>.</p>
+        <!-- Who voided it. The password proves it was allowed; the name says who did it —
+             the password is shared, so on its own it identifies nobody. Columns already
+             exist (returns_add_void.sql), so this needs no migration. -->
+        <div class="rt-field rt-voidby">
+          <label>Voided by <span class="rt-req">*</span></label>
+          <input type="text" id="rtVoidBy" class="rt-input" autocomplete="off" placeholder="Type a name (new names OK)&hellip;" oninput="rtOperInput('rtVoidBy','rtVoidByAc')" onfocus="rtOperInput('rtVoidBy','rtVoidByAc')" />
+          <div class="rt-ac" id="rtVoidByAc"></div>
+        </div>
+        <div class="rt-field">
+          <label>Reason <span class="rt-hint" style="margin:0">(optional)</span></label>
+          <input type="text" id="rtVoidReason" class="rt-input" autocomplete="off" placeholder="Why is this being voided?" />
+        </div>
         <div class="rt-field">
           <label>Void password <span class="rt-req">*</span></label>
           <input type="password" id="rtVoidPass" class="rt-input" placeholder="Enter void password" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rtVoidConfirm();}" />

@@ -39,6 +39,7 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.rt-oper') && $('rtOperatorAc')) $('rtOperatorAc').classList.remove('show');
   if (!e.target.closest('.rt-actby') && $('rtActByAc')) $('rtActByAc').classList.remove('show');
   if (!e.target.closest('.rt-putawayby') && $('rtPutawayByAc')) $('rtPutawayByAc').classList.remove('show');
+  if (!e.target.closest('.rt-voidby') && $('rtVoidByAc')) $('rtVoidByAc').classList.remove('show');
   if (!e.target.closest('.rt-prod-cell') && !e.target.closest('.rt-dc5-cell') && !e.target.closest('#rtProdAc') && $('rtProdAc')) $('rtProdAc').style.display = 'none';
 });
 
@@ -71,7 +72,7 @@ async function loadOperators() {
 // the suggestion pool — union of the collection_operators list + names seen in returns.
 function rtRefreshOperatorPool() {
   const s = new Set(RT._baseOperators || []);
-  (RT.history || []).forEach(r => [r.operator, r.treated_by, r.putaway_by].forEach(n => { const t = String(n || '').trim(); if (t) s.add(t); }));
+  (RT.history || []).forEach(r => [r.operator, r.treated_by, r.putaway_by, r.voided_by].forEach(n => { const t = String(n || '').trim(); if (t) s.add(t); }));
   RT.operators = [...s].sort((a, b) => a.localeCompare(b));
   const dl = $('rtOperators'); if (dl) dl.innerHTML = RT.operators.map(o => `<option value="${esc(o)}">`).join('');
 }
@@ -207,7 +208,7 @@ function rtRenderHistory() {
   if (sf) rows = rows.filter(r => r.status === sf);
   if (!showVoided) rows = rows.filter(r => r.status !== 'void');   // voided hidden unless "Show voided" (or the void filter)
   if (wf) rows = rows.filter(r => r.warehouse === wf);
-  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''} ${r.operator || ''} ${r.treated_by || ''} ${r.putaway_by || ''} ${r.warehouse || ''}`.toLowerCase().includes(q));
+  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''} ${r.operator || ''} ${r.treated_by || ''} ${r.putaway_by || ''} ${r.voided_by || ''} ${r.warehouse || ''}`.toLowerCase().includes(q));
   $('rtHistCount').textContent = `${rows.length} return(s)`;
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
   $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row st-${r.status} ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
@@ -215,7 +216,7 @@ function rtRenderHistory() {
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.warehouse || '—')}</td>
-    <td class="rt-status ${r.status}">${statusLabel(r.status)}${r.status === 'void' ? `<div class="sub">${fmtDT(r.updated_at)}</div>` : ''}</td>
+    <td class="rt-status ${r.status}">${statusLabel(r.status)}${r.status === 'void' ? `<div class="sub">${r.voided_by ? esc(r.voided_by) + ' · ' : ''}${fmtDT(r.voided_at || r.updated_at)}</div>` : ''}</td>
     <td>${r.operator ? `${esc(r.operator)}<div class="sub">${fmtT(r.created_at)}</div>` : '—'}</td>
     <td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>
     <td>${r.putaway_by ? `${esc(r.putaway_by)}<div class="sub">${fmtDT(r.putaway_at)}${r.putaway_location ? ' · ' + esc(r.putaway_location) : ''}</div>` : '—'}</td>
@@ -534,7 +535,7 @@ async function rtView(id) {
       ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtCloseView();rtAction('${r.id}')">Action</button>` : ''}
       ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtCloseView();rtVoid('${r.id}')">Void</button>` : ''}</div>
     </div>
-    ${r.status === 'void' ? `<div class="rt-void-banner">⊘ Voided${r.updated_at ? ' · ' + fmtDT(r.updated_at) : ''}</div>` : ''}
+    ${r.status === 'void' ? `<div class="rt-void-banner">⊘ Voided${r.voided_by ? ' by <b>' + esc(r.voided_by) + '</b>' : ''}${(r.voided_at || r.updated_at) ? ' · ' + fmtDT(r.voided_at || r.updated_at) : ''}${r.void_reason ? `<div class="sub">${esc(r.void_reason)}</div>` : ''}</div>` : ''}
     <div class="rt-sec-title">Creation</div>
     <div class="rt-kv-grid3">
       <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')}</b></div>
@@ -561,18 +562,26 @@ function rtVoid(id) {
   const r = rtHdr(id); if (!r) return;
   RT.voidId = id;
   $('rtVoidTitle').textContent = `Void ${r.return_no}`;
-  if ($('rtVoidPass')) $('rtVoidPass').value = '';
+  ['rtVoidPass', 'rtVoidBy', 'rtVoidReason'].forEach(k => { if ($(k)) $(k).value = ''; });
   $('rtVoidModal').classList.add('active');
   setTimeout(() => { try { $('rtVoidPass').focus(); } catch (_) {} }, 50);
 }
 function rtVoidClose() { $('rtVoidModal').classList.remove('active'); }
 async function rtVoidConfirm() {
-  // Simple void: password to confirm, then flip status + stamp the time via updated_at
-  // (no reason / by / extra columns — nothing to migrate).
+  // Password authorises, name attributes. The password is shared across the team, so
+  // it proves the action was permitted but says nothing about who performed it — and
+  // "who voided this return" is exactly what gets asked later.
+  const by = (($('rtVoidBy') && $('rtVoidBy').value) || '').trim();
+  if (!by) { toast('Enter who is voiding it', 'err'); return rtInvalid('rtVoidBy'); }
   if ((($('rtVoidPass') && $('rtVoidPass').value) || '').trim() !== '4209') { toast('Wrong void password', 'err'); return rtInvalid('rtVoidPass'); }
   const btn = $('rtVoidBtn'); btn.disabled = true;
   try {
-    const { error } = await sb().from('returns_active').update({ status: 'void', updated_at: new Date().toISOString() }).eq('id', RT.voidId);
+    const now = new Date().toISOString();
+    const { error } = await sb().from('returns_active').update({
+      status: 'void', updated_at: now,
+      voided_by: by, voided_at: now,
+      void_reason: (($('rtVoidReason') && $('rtVoidReason').value) || '').trim() || null,
+    }).eq('id', RT.voidId);
     if (error) throw error;
     const no = (rtHdr(RT.voidId) || {}).return_no;
     toast(`${no || 'Return'} voided`, 'ok');
