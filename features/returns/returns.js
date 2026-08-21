@@ -621,11 +621,22 @@ async function rtAction(id) {
   // credit lines: existing treatment lines, or seed from stage-1. Value starts BLANK
   // on first treatment (lots of discounts → varies); shows the saved value on reopen.
   const fromT = tlines.length > 0;
+  // Condition lives on returns_lines only, so a reopened return has to look it back up.
+  // Matched by sku occurrence rather than line_no, which shifts as soon as a line is
+  // split; a split child reuses its parent's, which is what it physically is.
+  const condBySku = {};
+  lines.forEach(l => { (condBySku[l.sku] = condBySku[l.sku] || []).push(l.condition || ''); });
+  const seenC = {};
+  const condFor = sku => {
+    const arr = condBySku[sku] || [], n = (seenC[sku] = (seenC[sku] || 0) + 1);
+    return arr[Math.min(n - 1, arr.length - 1)] || '';
+  };
   // Pre-select the disposition from stage-1 condition (Resaleable→Credit, Faulty→Warranty).
   // First treatment only; on reopen keep the saved status. Always editable (can be refused).
   RT.tlines = (fromT ? tlines : lines).map((l, idx) => ({
     sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '',
     return_status: l.return_status || (fromT ? '' : (DISPO_BY_CONDITION[l.condition] || '')),
+    condition: fromT ? condFor(l.sku) : (l.condition || ''),
     credit_note: l.credit_note || '', processed_by: l.processed_by || '', processed_at: l.processed_at || null,
     moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false, _sel: false }));
   // What was already resolved when this modal opened — the log only records real
@@ -763,16 +774,18 @@ function rtRenderTLines() {
     const grpN = RT.tlines.filter(x => x._grp === l._grp).length;   // >1 = this line was split
     const qtyEditable = grpN > 1;
     const done = rtLineResolved(l);
-    const miss = rtLineMissing(l);
-    const flagTxt = done ? 'ready' : (miss.length ? 'needs ' + miss.join(' + ') : '');
+    // Only the positive flag. The "needs status + credit note + name" nag restated what
+    // the empty fields already show, on every open line at once.
+    const flagTxt = done ? 'ready' : '';
     return `<tr id="rtTRow${i}" class="${done ? 'rt-tl-done' : 'rt-tl-open'}">
     <td class="rt-selcol" style="${adv ? '' : 'display:none'}"><input type="checkbox" ${l._sel ? 'checked' : ''} onclick="rtTSelect(${i},this.checked)" /></td>
     <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
     <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 26))}${l.reason ? ' · ' + esc(l.reason) : ''}</div></td>
+    <td><span class="rt-cond">${esc(l.condition || '—')}</span></td>
     <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select>
         <div class="rt-tl-flag${done ? ' ok' : ''}" id="rtTFlag${i}" style="${flagTxt ? '' : 'display:none'}">${flagTxt}</div></td>
-    <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.credit_note || '')}" placeholder="${l.return_status === NEEDS_CREDIT_NOTE ? 'required' : 'n/a'}" oninput="rtTSet(${i},'credit_note',this.value)" /></td>
-    <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.processed_by || '')}" placeholder="who" oninput="rtTSet(${i},'processed_by',this.value)" />
+    <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.credit_note || '')}" placeholder="${l.return_status === NEEDS_CREDIT_NOTE ? 'Required' : 'n/a'}" oninput="rtTSet(${i},'credit_note',this.value)" /></td>
+    <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.processed_by || '')}" placeholder="Name" oninput="rtTSet(${i},'processed_by',this.value)" />
         ${l.processed_at ? `<div class="sub">${fmtDT(l.processed_at)}</div>` : ''}</td>
     <td class="r">${qtyEditable ? `<input class="rt-input r" type="text" inputmode="numeric" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" />` : `<span class="rt-frozen num">${l.qty}</span>`}</td>
     <td class="r"><button class="rt-line-x" title="Split for credit vs warranty" onclick="rtTSplit(${i})">⧉</button>${l._split ? `<button class="rt-line-x" title="Remove split" onclick="rtTRemove(${i})">×</button>` : ''}</td>
@@ -796,8 +809,8 @@ function rtTSet(i, k, v) {
 function rtRowFlag(i) {
   const l = RT.tlines[i], row = $('rtTRow' + i), flag = $('rtTFlag' + i);
   if (!l || !row || !flag) return;
-  const done = rtLineResolved(l), miss = rtLineMissing(l);
-  const txt = done ? 'ready' : (miss.length ? 'needs ' + miss.join(' + ') : '');
+  const done = rtLineResolved(l);
+  const txt = done ? 'ready' : '';
   row.className = done ? 'rt-tl-done' : 'rt-tl-open';
   flag.className = 'rt-tl-flag' + (done ? ' ok' : '');
   flag.textContent = txt;

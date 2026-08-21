@@ -225,9 +225,12 @@
             <table class="rt-table rt-lines">
               <thead><tr>
                 <th style="width:4%" class="rt-selcol" id="rtSelHead"><input type="checkbox" id="rtSelAll" onclick="rtSelectAll(this.checked)" title="Select all" /></th>
-                <th style="width:8%">5DC</th><th style="width:22%">Product</th><th style="width:19%">Return status</th>
-                <th style="width:13%" class="rt-advcol">Credit note</th><th style="width:15%" class="rt-advcol">Processed by</th>
-                <th style="width:8%" class="r">Qty</th><th style="width:7%"></th>
+                <th style="width:7%">5DC</th><th style="width:19%">Product</th>
+                <!-- The warehouse's assessment from stage 1, read-only here. It is what
+                     the return status is decided FROM, so it belongs next to it. -->
+                <th style="width:11%">Condition</th><th style="width:17%">Return status</th>
+                <th style="width:12%" class="rt-advcol">Credit note</th><th style="width:14%" class="rt-advcol">Processed by</th>
+                <th style="width:8%" class="r">Qty</th><th style="width:6%"></th>
               </tr></thead>
               <tbody id="rtTLinesBody"></tbody>
             </table>
