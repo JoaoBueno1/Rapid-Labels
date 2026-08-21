@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transfer Out — Rapid LED</title>
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+  <style>
+    :root { --ink:#0f172a; --muted:#64748b; --border:#e2e8f0; --hair:#eef2f7; --primary:#2563eb; --head:#0f172a; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI",Arial,sans-serif; color:var(--ink); background:#f1f5f9; }
+    .hdr { background:var(--head); color:#e2e8f0; padding:12px 20px; display:flex; align-items:center; gap:14px; }
+    .hdr a.back { color:#c9d4e6; text-decoration:none; font-size:14px; }
+    .hdr .brand { font-weight:800; letter-spacing:.2px; }
+    .hdr .sub { color:#94a3b8; font-size:13px; margin-left:auto; }
+    main { max-width:1200px; margin:18px auto; padding:0 16px; }
+    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .inp { padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; outline:none; background:#fff; }
+    .inp:focus { border-color:var(--primary); box-shadow:0 0 0 2px rgba(37,99,235,.15); }
+    .btn { padding:8px 14px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:14px; font-weight:600; cursor:pointer; color:var(--ink); }
+    .btn:hover { border-color:#94a3b8; }
+    .btn.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .btn.sm { padding:5px 10px; font-size:13px; }
+    .count { color:var(--muted); font-size:13px; margin-left:auto; }
+    .card { background:#fff; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    thead th { background:#f8fafc; text-align:left; padding:11px 14px; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); border-bottom:2px solid var(--border); }
+    tbody td { padding:11px 14px; border-bottom:1px solid var(--hair); vertical-align:middle; }
+    tbody tr.row { cursor:pointer; }
+    tbody tr.row:hover { background:#f5f8ff; }
+    .tr-num { font-weight:700; color:var(--primary); }
+    .to { font-weight:600; }
+    .badge { display:inline-block; padding:3px 9px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+    .badge.ordered { background:#e0e7ff; color:#3730a3; }
+    .badge.in-transit { background:#cffafe; color:#155e75; }
+    .badge.draft { background:#fef3c7; color:#92400e; }
+    .num { text-align:right; font-variant-numeric:tabular-nums; }
+    .r { text-align:right; }
+    .empty { text-align:center; color:var(--muted); padding:36px; }
+    .src-live { font-size:10px; background:#fef9c3; color:#854d0e; padding:1px 6px; border-radius:5px; margin-left:6px; }
+
+    /* modal */
+    .mask { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; align-items:center; justify-content:center; padding:16px; }
+    .mask.on { display:flex; }
+    .modal { background:#fff; border-radius:14px; width:100%; max-width:1080px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.25); }
+    .modal-hd { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:14px; }
+    .modal-hd .dest { font-size:24px; font-weight:800; }
+    .modal-hd .meta { font-size:13px; color:var(--muted); }
+    .modal-hd .x { margin-left:auto; background:none; border:none; font-size:22px; cursor:pointer; color:var(--muted); }
+    .modal-tools { padding:10px 20px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; }
+    .modal-tools .hint { color:var(--muted); font-size:12px; margin-left:auto; }
+    .modal-body { flex:1; overflow:auto; padding:0; }
+    .stbl { width:100%; border-collapse:collapse; font-size:13px; }
+    .stbl th { position:sticky; top:0; background:#f8fafc; padding:8px 10px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); border-bottom:1px solid var(--border); }
+    .stbl td { padding:5px 8px; border-bottom:1px solid var(--hair); }
+    .stbl input { width:100%; padding:6px 8px; border:1px solid transparent; border-radius:6px; font-size:13px; background:transparent; font-family:inherit; }
+    .stbl input:hover { border-color:var(--border); }
+    .stbl input:focus { border-color:var(--primary); background:#fff; outline:none; box-shadow:0 0 0 2px rgba(37,99,235,.12); }
+    .stbl .cdc input { text-align:center; font-weight:600; }
+    .stbl .cqty input { text-align:center; font-weight:700; }
+    .stbl .cloc input { font-family:"Consolas",monospace; }
+    .stbl .ccode input { font-family:"Consolas",monospace; font-weight:600; }
+    .stbl .manual td { background:#fffdf5; }
+    .rm { background:none; border:none; color:#ef4444; cursor:pointer; font-size:16px; }
+    .modal-ft { padding:12px 20px; border-top:1px solid var(--border); display:flex; gap:10px; align-items:center; }
+    .modal-ft .tot { color:var(--muted); font-size:13px; margin-right:auto; }
+    .toast-wrap { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; }
+    .toast { padding:10px 16px; border-radius:8px; color:#fff; font-size:13px; box-shadow:0 6px 20px rgba(0,0,0,.2); }
+    .toast.ok { background:#16a34a; } .toast.err { background:#dc2626; } .toast.info { background:#334155; }
+    .spin { display:inline-block; width:16px; height:16px; border:2px solid #cbd5e1; border-top-color:var(--primary); border-radius:50%; animation:sp .8s linear infinite; vertical-align:middle; }
+    @keyframes sp { to { transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header class="hdr">
+    <a class="back" href="/index.html">← Back</a>
+    <span class="brand">Transfer Out</span>
+    <span class="sub" id="sub">Loading…</span>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <input id="q" class="inp" placeholder="Search TR # / destination…" oninput="TO.render()" style="min-width:260px" />
+      <select id="status" class="inp" onchange="TO.render()">
+        <option value="">All open</option>
+        <option value="ORDERED">Ordered</option>
+        <option value="IN TRANSIT">In transit</option>
+      </select>
+      <button class="btn" onclick="TO.load()">↻ Refresh</button>
+      <div style="width:1px;height:24px;background:var(--border)"></div>
+      <input id="live" class="inp" placeholder="Find a TR live in Cin7 (e.g. TR-49712)…" onkeydown="if(event.key==='Enter')TO.liveSearch()" style="min-width:240px" />
+      <button class="btn" onclick="TO.liveSearch()">🔎 Find in Cin7</button>
+      <span class="count" id="count"></span>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>TR #</th><th>To</th><th>Status</th><th>Date</th><th class="r">Lines</th><th class="r">Action</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="6" class="empty">Loading transfers…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Staging modal -->
+  <div class="mask" id="mask">
+    <div class="modal">
+      <div class="modal-hd">
+        <div>
+          <div class="dest" id="mDest">—</div>
+          <div class="meta" id="mMeta">—</div>
+        </div>
+        <button class="x" onclick="TO.close()">×</button>
+      </div>
+      <div class="modal-tools">
+        <button class="btn sm" onclick="TO.addLine()">+ Add line</button>
+        <button class="btn sm" onclick="TO.sort()">⇅ Sort by pickbay</button>
+        <span class="hint">Edit any cell · add non-stock lines · it's re-sorted by pickbay when you print</span>
+      </div>
+      <div class="modal-body">
+        <table class="stbl">
+          <thead><tr>
+            <th style="width:80px">5DC</th><th style="width:150px">Rapid Code</th><th>Product</th>
+            <th style="width:60px">Qty</th><th style="width:140px">Location (pickbay)</th><th style="width:36px"></th>
+          </tr></thead>
+          <tbody id="stRows"></tbody>
+        </table>
+      </div>
+      <div class="modal-ft">
+        <span class="tot" id="mTot"></span>
+        <button class="btn" onclick="TO.close()">Cancel</button>
+        <button class="btn primary" onclick="TO.print()">🖨️ Print</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toasts"></div>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <script src="transfer-out-staging.js?v=1"></script>
+  <script src="transfer-out.js?v=20260821b"></script>
+</body>
+</html>

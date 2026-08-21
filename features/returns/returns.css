@@ -198,3 +198,42 @@ tr.rt-row.st-void:hover td { background: #eceff2; }
 .rt-toast.ok { background: #1b8a4b; }
 
 @media (max-width: 720px) { .rt-form-grid { grid-template-columns: 1fr; } }
+
+/* ── Stage-2 treatment: Simple vs Advanced ─────────────────────────────────
+   Simple writes the two boxes above onto every line. Advanced unlocks the line
+   columns so one return can carry a different credit note and a different person
+   per line, finished across more than one sitting. */
+.rt-mode { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 10px; }
+.rt-mode-switch { display: inline-flex; background: #eef2f7; border-radius: 8px; padding: 3px; gap: 2px; }
+.rt-mode-btn {
+  border: 0; background: transparent; font: inherit; font-size: 12.5px; font-weight: 600;
+  color: #64748b; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+}
+.rt-mode-btn:hover { color: #0f172a; }
+.rt-mode-btn.is-on { background: #fff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,.12); }
+.rt-apply-field { display: flex; flex-direction: column; justify-content: flex-end; }
+
+/* Ready lines fade back so the eye lands on what still needs doing — the whole
+   point of a part-finished return is finding the open lines fast. */
+.rt-lines tr.rt-tl-done { background: #fbfdfb; }
+.rt-lines tr.rt-tl-done td { opacity: .78; }
+.rt-lines tr.rt-tl-open td { background: #fffdf7; }
+.rt-tl-flag { margin-top: 3px; font-size: 10.5px; font-weight: 600; color: #b45309; }
+.rt-tl-flag.ok { color: #15803d; }
+.rt-hint-ok { color: #15803d !important; font-weight: 600; }
+.rt-selcol { text-align: center; }
+.rt-selcol input { cursor: pointer; }
+
+/* Per-line history, shown under the return detail. */
+.rt-linelog { margin-top: 10px; }
+.rt-linelog-item {
+  display: flex; gap: 8px; align-items: baseline; padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9; font-size: 12px; color: #475569;
+}
+.rt-linelog-item:last-child { border-bottom: 0; }
+.rt-linelog-when { color: #94a3b8; font-size: 11px; white-space: nowrap; }
+.rt-linelog-sku { font-weight: 700; color: #0f172a; }
+
+/* Stage-1 condition shown inside the stage-2 table: plain text like the other read-only
+   cells. nowrap only so "Not Resaleable" does not break across two lines. */
+.rt-cond { color: #5b6b86; font-size: 13.5px; white-space: nowrap; }

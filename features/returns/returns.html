@@ -174,7 +174,9 @@
 
   <!-- ═══ ACTION / TREATMENT MODAL ═══ -->
   <div class="rt-modal" id="rtActModal">
-    <div class="rt-modal-box rt-modal-lg">
+    <!-- xl, not lg: Advanced shows nine columns and the longest return status is
+         "Accepted for Warranty Assessment" — at 960px the select truncated it. -->
+    <div class="rt-modal-box rt-modal-xl">
       <div class="rt-modal-head">
         <h3 id="rtActTitle">Action</h3>
         <button class="rt-x" onclick="rtCloseAct()">×</button>
@@ -189,26 +191,48 @@
         <!-- STAGE 2 (treatment) -->
         <div class="rt-stage rt-stage-active">
           <div class="rt-stage-tag rt-stage-tag-next">② Stage 2 — Processing <span class="rt-stage-hint">fill this in, then Complete</span></div>
+          <!-- Simple fills every line from these two boxes; Advanced unlocks the line
+               columns so one return can carry a different credit note and a different
+               person per line. Either way the values are WRITTEN onto each line — no
+               line ever inherits, so the log below never has to guess. -->
+          <div class="rt-mode">
+            <div class="rt-mode-switch" role="group" aria-label="Treatment mode">
+              <button type="button" id="rtModeSimple" class="rt-mode-btn is-on" onclick="rtSetMode('simple')">Simple</button>
+              <button type="button" id="rtModeAdv" class="rt-mode-btn" onclick="rtSetMode('advanced')">Advanced</button>
+            </div>
+            <span class="rt-hint" id="rtModeHint" style="margin:0"></span>
+          </div>
+
           <div class="rt-form-grid">
             <div class="rt-field">
-              <label>Credit note #</label>
-              <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. 24408" />
+              <label id="rtActRefLbl">Credit note #</label>
+              <input type="text" id="rtActRef" class="rt-input" placeholder="e.g. 24408 — fills every line" oninput="rtCascade()" />
             </div>
             <div class="rt-field rt-actby">
-              <label>Processed by <span class="rt-req">*</span></label>
-              <input type="text" id="rtActBy" class="rt-input" autocomplete="off" placeholder="Type a name (new names OK)…" oninput="rtOperInput('rtActBy','rtActByAc')" onfocus="rtOperInput('rtActBy','rtActByAc')" />
+              <label id="rtActByLbl">Processed by <span class="rt-req">*</span></label>
+              <input type="text" id="rtActBy" class="rt-input" autocomplete="off" placeholder="Type a name — fills every line&hellip;" oninput="rtOperInput('rtActBy','rtActByAc');rtCascade()" onfocus="rtOperInput('rtActBy','rtActByAc')" />
               <div class="rt-ac" id="rtActByAc"></div>
+            </div>
+            <div class="rt-field rt-apply-field" id="rtApplyWrap" style="display:none">
+              <label>&nbsp;</label>
+              <button type="button" class="rt-btn rt-btn-sm" id="rtApplyBtn" onclick="rtApplySelected()">Apply to selected</button>
             </div>
           </div>
 
           <div class="rt-lines-head">
             <span>Disposition lines</span>
-            <span class="rt-hint" style="margin:0">Seeded from stage 1 — set each line's return status, split ⧉ or remove ×.</span>
+            <span class="rt-hint" id="rtLinesProgress" style="margin:0"></span>
           </div>
           <div class="rt-table-wrap">
             <table class="rt-table rt-lines">
               <thead><tr>
-                <th style="width:9%">5DC</th><th style="width:22%">Product</th><th style="width:26%">Return status</th><th style="width:20%">Reason</th><th style="width:10%" class="r">Qty</th><th style="width:8%"></th>
+                <th style="width:4%" class="rt-selcol" id="rtSelHead"><input type="checkbox" id="rtSelAll" onclick="rtSelectAll(this.checked)" title="Select all" /></th>
+                <th style="width:6%">5DC</th><th style="width:15%">Product</th>
+                <!-- The warehouse's assessment from stage 1, read-only here. It is what
+                     the return status is decided FROM, so it belongs next to it. -->
+                <th style="width:10%">Condition</th><th style="width:27%">Return status</th>
+                <th style="width:11%" class="rt-advcol">Credit note</th><th style="width:13%" class="rt-advcol">Processed by</th>
+                <th style="width:6%" class="r">Qty</th><th style="width:5%"></th>
               </tr></thead>
               <tbody id="rtTLinesBody"></tbody>
             </table>
@@ -221,6 +245,10 @@
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCloseAct()">Cancel</button>
+        <!-- Save progress writes the lines and leaves the return open, so a second
+             person can finish the rest. Without it the only way out is Complete,
+             which every line must be ready for. -->
+        <button class="rt-btn" id="rtActSave" onclick="rtSaveAct(false)">Save progress</button>
         <button class="rt-btn rt-btn-primary" id="rtActComplete" onclick="rtAskComplete()">Complete</button>
       </div>
     </div>
@@ -261,6 +289,18 @@
       </div>
       <div class="rt-modal-body">
         <p class="rt-hint" style="margin-top:0">This cancels the return. It stays in History for audit — it is <strong>not deleted</strong>.</p>
+        <!-- Who voided it. The password proves it was allowed; the name says who did it —
+             the password is shared, so on its own it identifies nobody. Columns already
+             exist (returns_add_void.sql), so this needs no migration. -->
+        <div class="rt-field rt-voidby">
+          <label>Voided by <span class="rt-req">*</span></label>
+          <input type="text" id="rtVoidBy" class="rt-input" autocomplete="off" placeholder="Type a name (new names OK)&hellip;" oninput="rtOperInput('rtVoidBy','rtVoidByAc')" onfocus="rtOperInput('rtVoidBy','rtVoidByAc')" />
+          <div class="rt-ac" id="rtVoidByAc"></div>
+        </div>
+        <div class="rt-field">
+          <label>Reason <span class="rt-hint" style="margin:0">(optional)</span></label>
+          <input type="text" id="rtVoidReason" class="rt-input" autocomplete="off" placeholder="Why is this being voided?" />
+        </div>
         <div class="rt-field">
           <label>Void password <span class="rt-req">*</span></label>
           <input type="password" id="rtVoidPass" class="rt-input" placeholder="Enter void password" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();rtVoidConfirm();}" />
@@ -286,6 +326,26 @@
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCompleteClose()">Cancel</button>
         <button class="rt-btn rt-btn-primary" id="rtCompleteBtn" onclick="rtCompleteConfirm()">Complete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ UNSAVED-CHANGES GUARD ═══ -->
+  <!-- Cancel and × used to throw away a part-finished treatment without a word.
+       Typing a credit note per line is minutes of work; a stray click must not
+       cost it silently. -->
+  <div class="rt-modal" id="rtDiscardModal">
+    <div class="rt-modal-box" style="max-width:460px">
+      <div class="rt-modal-head">
+        <h3>Unsaved changes</h3>
+        <button class="rt-x" onclick="rtDiscardClose()">&times;</button>
+      </div>
+      <div class="rt-modal-body">
+        <p class="rt-hint" style="margin-top:0" id="rtDiscardMsg"></p>
+      </div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtDiscardClose()">Keep editing</button>
+        <button class="rt-btn rt-btn-danger" onclick="rtDiscardConfirm()">Discard changes</button>
       </div>
     </div>
   </div>

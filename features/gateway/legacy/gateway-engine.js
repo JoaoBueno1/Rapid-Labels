@@ -20,7 +20,7 @@
 const fetch = require('node-fetch');
 const path  = require('path');
 const fs    = require('fs');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 // ─── Cin7 Config ───
 const CIN7 = {
@@ -802,7 +802,7 @@ function parseMapFile(filePath) {
  * Clears existing data and re-imports.
  */
 async function seedFromMap() {
-  const mapPath = path.resolve(__dirname, '../../Gateway location map');
+  const mapPath = path.resolve(__dirname, '../../../Gateway location map');
   if (!fs.existsSync(mapPath)) {
     throw new Error(`Map file not found: ${mapPath}`);
   }

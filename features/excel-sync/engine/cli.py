@@ -12,8 +12,19 @@ a swappable adapter, not part of this path.
 import argparse
 import os
 import sys
+from datetime import datetime
 
 from . import flat, pivot, sources, verify
+
+# A Windows console defaults to cp1252, which cannot encode the arrows and
+# bullets this output uses — `list` died on a UnicodeEncodeError before printing
+# its bindings. CI is UTF-8 already; this is for the machine the first real
+# write will be run from.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
 
 
 def _fmt(v):
@@ -225,6 +236,195 @@ def cmd_render(args):
     return 0
 
 
+def cmd_graph_login(_):
+    """One browser sign-in; after this the nightly run renews its own token."""
+    from .delivery import auth
+    auth.device_login()
+    return 0
+
+
+def cmd_deliver(args):
+    """Write bindings into their workbook tabs. Dry run unless --write.
+
+    Runs are logged to ops.sync_runs only when something is actually written —
+    a dry run is a rehearsal and has no business showing up on the monitor as a
+    sync that happened.
+    """
+    from . import delivery, publish as pub
+
+    slugs = [args.slug] if args.slug else pivot.list_bindings()
+    rc = 0
+    failed = []
+    for slug in slugs:
+        # One binding must never take out the rest.
+        #
+        # The transport raises SystemExit for conditions that are about ONE
+        # workbook — Excel already open on it, OneDrive down, the file missing.
+        # Uncaught, the first one ended the loop. Bindings run alphabetically,
+        # so a branch manager leaving Brisbane open overnight killed 18 of the
+        # 21 tabs, and the 18 got no run row at all: silence that reads exactly
+        # like a night when nothing needed doing. deliver_all() already had this
+        # guard; the CLI path did not, and the CLI path is what the 07:00 task
+        # calls.
+        try:
+            binding = pivot.load_binding(slug)
+            if not args.write:
+                res = delivery.deliver(binding, write=False, force=args.force,
+                                       mode=args.mode, file_override=args.file,
+                                       transport=args.transport, root=args.root)
+                rc = rc or (1 if res.get('status') == 'blocked' else 0)
+                continue
+
+            with pub.Run('excel-' + slug) as run:
+                res = delivery.deliver(binding, write=True, force=args.force,
+                                       mode=args.mode, file_override=args.file,
+                                       transport=args.transport, root=args.root)
+                run.rows_written = res.get('rows')
+                run.stats = {k: v for k, v in res.items()
+                             if k in ('address', 'cols', 'batches', 'clear',
+                                      'formula_cells_on_tab', 'file', 'sheet',
+                                      'path', 'transport')}
+                if res.get('wrote'):
+                    run.finish('success')
+                elif res.get('status') == 'disabled':
+                    run.finish('skipped', 'binding disabled')
+                else:
+                    run.finish('blocked', res.get('error', res.get('status')))
+                    rc = 1
+        except SystemExit as e:
+            failed.append((slug, str(e)))
+            print(f'  FAILED {slug}: {e}')
+            rc = 1
+        except Exception as e:                       # noqa: BLE001
+            # Same reasoning one level out: an unexpected error in one binding
+            # is not a reason to abandon the other twenty.
+            failed.append((slug, f'{type(e).__name__}: {e}'))
+            print(f'  FAILED {slug}: {type(e).__name__}: {e}')
+            rc = 1
+
+    if failed:
+        print(f'\n  {len(failed)} of {len(slugs)} binding(s) failed outright:')
+        for slug, why in failed:
+            print(f'    {slug}: {why.splitlines()[0][:120]}')
+    return rc
+def cmd_apply(args):
+    """Build every binding for a workbook and write them in one pass."""
+    from .delivery import local_xlsx
+    path = os.path.expanduser(args.workbook)
+    if not os.path.exists(path):
+        raise SystemExit(f'not found: {path}')
+
+    parts = local_xlsx.inspect_parts(path)
+    print(f"▶ {os.path.basename(path)}")
+    print(f"  parts: {parts['total']}  drawings={len(parts['drawings'])} "
+          f"media={len(parts['media'])} customXml={len(parts['customXml'])}"
+          + ("   ← these are LOST on write" if (parts['drawings'] or parts['media']) else ""))
+    if local_xlsx.is_synced_path(path):
+        print("  ⚠ this path is CLOUD-SYNCED — writing it publishes to everyone")
+
+    jobs = []
+    for slug in args.bindings:
+        binding = pivot.load_binding(slug)
+        lay = binding['layout']
+        rows = flat.fetch_dataset(binding['dataset'])
+        built = flat.build(rows, binding)
+        rng = flat.a1(lay['data_anchor'], len(built['grid']), len(built['cols']))
+        print(f"  {slug:<18} {binding['workbook']['sheet']:<11} {len(built['grid']):>5} rows → {rng}"
+              + ("  (SUMMED)" if len(lay['locations']) > 1 else ""))
+        jobs.append({
+            'sheet': binding['workbook']['sheet'],
+            'anchor': lay['data_anchor'],
+            'grid': built['grid'],
+            'status_cell': binding.get('status', {}).get('cell'),
+            'status_text': local_xlsx.status_text(rows=len(built['grid'])),
+        })
+
+    rep = local_xlsx.write_blocks(
+        path, jobs, backup_dir=args.backup_dir,
+        allow_synced=args.i_know_this_is_live, dry_run=args.dry_run)
+
+    print(f"\n  {'would write' if args.dry_run else 'wrote'}:")
+    for s in rep['sheets']:
+        note = f"  cleared {s['rows_cleared']} leftover rows" if s['rows_cleared'] else ""
+        print(f"    {s['sheet']:<11} {s['rows']} rows at {s['anchor']} "
+              f"(last row {s['prev_last_row']} → {s['new_last_row']}){note}")
+        if s['status_cell']:
+            print(f"    {'':11} status → {s['status_cell']}")
+    if rep['backup']:
+        print(f"  backup: {rep['backup']}")
+    return 0
+
+
+def cmd_master(args):
+    """Build one workbook holding every dataset, one tab each.
+
+    Not part of the delivery path — the branch workbooks are written directly,
+    because linking them to an external master would mean rewiring 6,600 internal
+    formulas AND relying on cross-file links, which barely refresh in Excel for
+    the web. This exists as a single place to eyeball the data, and as a possible
+    Power Query source.
+    """
+    import openpyxl
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
+    out = os.path.expanduser(args.out)
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    summary = []
+
+    for slug in (args.datasets or pivot.list_specs()):
+        spec = pivot.load_spec(slug)
+        fn = sources.SOURCES[spec['source']]
+        rows, meta = fn(month=args.month)
+        built = pivot.build(rows, spec)
+        title = spec.get('sheet_name', slug.replace('-', ' ').upper())[:31]
+        ws = wb.create_sheet(title)
+
+        for r in pivot.preamble_rows(spec, meta):
+            ws.append(r)
+        ws.append(built['group_row'])
+        ws.append(built['header_row'])
+        hdr_rows = (ws.max_row - 1, ws.max_row)
+        for line in built['grid']:
+            ws.append(line)
+
+        bold = Font(bold=True)
+        for rr in hdr_rows:
+            for c in ws[rr]:
+                c.font = bold
+        ws.freeze_panes = ws.cell(row=hdr_rows[1] + 1, column=len(spec.get('fixed', [])) + 1)
+        ws.column_dimensions['A'].width = 26
+        # first column of each warehouse block gets a little room for the label
+        for i in range(len(spec.get('fixed', [])) + 1, len(built['header_row']) + 1):
+            ws.column_dimensions[get_column_letter(i)].width = 13
+
+        summary.append((title, len(built['grid']), len(built['groups']), meta.get('period') or '-'))
+        print(f"  {title:<16} {len(built['grid']):>6} rows x {len(built['groups'])} warehouses"
+              f"  {meta.get('period') or ''}")
+
+    idx = wb.create_sheet('README', 0)
+    idx.append(['Rapid Labels — Excel Sync master'])
+    idx.append([f'Built {datetime.now().strftime("%d-%b-%Y %H:%M")} from cin7_mirror via Supabase.'])
+    idx.append([])
+    idx.append(['Tab', 'Rows', 'Warehouses', 'Period'])
+    for row in summary:
+        idx.append(list(row))
+    idx.append([])
+    idx.append(['Source of truth is excel_sync.dataset_rows in Supabase, not this file.'])
+    idx.append(['The branch workbooks are written directly and do NOT read from here.'])
+    for c in idx[1] + idx[4]:
+        c.font = Font(bold=True)
+    idx.column_dimensions['A'].width = 62
+    for col in 'BCD':
+        idx.column_dimensions[col].width = 14
+
+    os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
+    wb.save(out)
+    print(f"\n  wrote {out}")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='excel-sync')
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -250,6 +450,48 @@ def main(argv=None):
     r.add_argument('--out', help='directory to write the block as csv')
     r.add_argument('--show', type=int, default=8)
     r.set_defaults(fn=cmd_render)
+
+    sub.add_parser('graph-login',
+                   help='sign in once so the nightly run can refresh its own token'
+                   ).set_defaults(fn=cmd_graph_login)
+
+    d = sub.add_parser('deliver', help='write a binding into its workbook tab')
+    d.add_argument('slug', nargs='?', help='binding slug (omit for all bindings)')
+    # Writing is opt-in, and it is the only irreversible thing this repo does.
+    d.add_argument('--write', action='store_true',
+                   help='actually write. Without it this is a rehearsal that proves '
+                        'every gate and touches nothing.')
+    d.add_argument('--file', help='write to THIS workbook instead of the binding\'s — '
+                                  'how a single binding is aimed at one copy')
+    d.add_argument('--root', help='look for every workbook under THIS folder instead of the '
+                                  'synced library — how all 21 bindings are aimed at a folder '
+                                  'of test copies at once. Falls back to <root>/<file> when '
+                                  'the library subfolders are not reproduced.')
+    d.add_argument('--force', action='store_true',
+                   help='ignore the disabled flag and the staleness gate. Does NOT override '
+                        'the header gate or the formula guard — those two protect against '
+                        'silent corruption and have no legitimate override.')
+    d.add_argument('--mode', choices=['auto', 'app', 'delegated'], default=None,
+                   help='graph only: force an auth door (default: app-only if possible)')
+    d.add_argument('--transport', choices=['local', 'graph'], default=None,
+                   help="'local' drives Excel over the OneDrive-synced copy and needs no "
+                        "tenant permission; 'graph' writes to SharePoint over HTTP and is "
+                        'blocked until an admin consents. Default: EXCEL_SYNC_TRANSPORT.')
+    d.set_defaults(fn=cmd_deliver)
+    a = sub.add_parser('apply', help='write the blocks into a workbook on disk')
+    a.add_argument('workbook', help='path to the .xlsx to write')
+    a.add_argument('--bindings', nargs='+', required=True, help='binding slugs to apply')
+    a.add_argument('--backup-dir', default='out/backups')
+    a.add_argument('--dry-run', action='store_true')
+    a.add_argument('--i-know-this-is-live', action='store_true',
+                   help='required to write inside a cloud-synced folder')
+    a.set_defaults(fn=cmd_apply)
+
+    m = sub.add_parser('master', help='one workbook with every dataset as a tab')
+    m.add_argument('--out', default='out/RapidLED-Master.xlsx')
+    m.add_argument('--datasets', nargs='+')
+    m.add_argument('--month')
+    m.set_defaults(fn=cmd_master)
 
     args = p.parse_args(argv)
     return args.fn(args)

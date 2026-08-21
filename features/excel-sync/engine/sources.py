@@ -50,6 +50,22 @@ def current_month():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _newest(rows, col):
+    """The most recent timestamp in `col`, as an ISO string, or None.
+
+    Compared as text on purpose: PostgREST returns ISO-8601 UTC, which sorts
+    correctly as a string, and parsing thousands of rows to find one maximum
+    would be work for nothing.
+    """
+    best = None
+    for r in rows:
+        v = r.get(col)
+        if v and (best is None or v > best):
+            best = v
+    return best
+
+
 def stock_level(sb=None, **_):
     """Cin7 "Inventory Products Stock Level Report" — SKU x warehouse.
 
@@ -59,7 +75,7 @@ def stock_level(sb=None, **_):
     sb = sb or supabase.Client()
     snap = sb.select(
         'stock_snapshot',
-        'sku,location_name,on_hand,allocated,available,on_order,in_transit,stock_on_hand')
+        'sku,location_name,on_hand,allocated,available,on_order,in_transit,stock_on_hand,synced_at')
     prods = sb.select('products', 'sku,uom,type,average_cost')
 
     keep = {}
@@ -99,8 +115,14 @@ def stock_level(sb=None, **_):
         # products.average_cost inflated the column ~2.7x on 2,533 blocks.
         a['unit_cost'] = (a['stock_value'] / a['on_hand']) if a['on_hand'] else 0.0
         rows.append(a)
+    # How old the DATA is, not how long ago we built. A frozen mirror still
+    # produces a brand-new built_at, so gating on our own build time cannot
+    # tell 'refreshed this morning' from 'the Cin7 sync died on Friday and we
+    # have been republishing the same numbers ever since'. This is the one
+    # figure that can.
     meta = {'source_rows': len(snap), 'products': len(prods), 'stock_products': len(keep),
-            'cells': len(rows), 'calls': sb.calls}
+            'cells': len(rows), 'calls': sb.calls,
+            'data_at': _newest(snap, 'synced_at')}
     return rows, meta
 
 
@@ -117,7 +139,7 @@ def monthly_sales(sb=None, month=None, **_):
     start, end = month_bounds(month)
 
     orders = sb.select(
-        'sales_orders', 'order_number,order_date,status,location_name,detail_synced_at',
+        'sales_orders', 'order_number,order_date,status,location_name,detail_synced_at,header_synced_at',
         filters=[('order_date', f'gte.{start}'), ('order_date', f'lte.{end}')])
 
     counted = {o['order_number']: o['location_name'] for o in orders
@@ -146,7 +168,11 @@ def monthly_sales(sb=None, month=None, **_):
         # would break on any tax-exempt line.
         a['total'] += _num(ln['total']) + _num(ln['tax'])
 
-    meta = {'month': month, 'period': f'{start}..{end}',
+    # Newest sync stamp across the orders in scope — see _newest and the note
+    # on stock_level's data_at. detail_synced_at is used as a fallback because
+    # an order re-fetched for its lines is evidence of a live sync too.
+    data_at = _newest(orders, 'header_synced_at') or _newest(orders, 'detail_synced_at')
+    meta = {'month': month, 'period': f'{start}..{end}', 'data_at': data_at,
             'orders_in_window': len(orders), 'orders_counted': len(scoped),
             'orders_with_detail': len(detailed),
             'detail_coverage_pct': (100.0 * len(detailed) / len(scoped)) if scoped else 100.0,

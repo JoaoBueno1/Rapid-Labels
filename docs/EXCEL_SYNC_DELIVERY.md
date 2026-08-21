@@ -28,32 +28,69 @@ pronto e parado. O pedido tem de sair antes de qualquer código.
 
 ### O que pedir ao TI
 
-> **Solicitação:** criar um *app registration* no Azure AD para uma automação que
-> escreve numa planilha do SharePoint.
+> ⛔ **Corrigido em 2026-08-13. A versão anterior desta seção pedia a coisa
+> errada** — `Sites.Selected` como *Application permission* — e argumentava
+> contra `Files.ReadWrite.All`. O raciocínio (menor privilégio, mais fácil de
+> aprovar) estava certo em geral e **errado para este caso**, porque a API de
+> workbook do Graph não aceita permissão de aplicação de forma alguma:
 >
-> - **Nome:** `Rapid Labels — Excel Sync`
-> - **Tipo:** single tenant, **sem** redirect URI (é daemon / client-credentials,
->   roda sem usuário)
-> - **Permissão:** Microsoft Graph → **Application permissions** → **`Sites.Selected`**
-> - **Consentimento de admin:** necessário
-> - **Segundo passo, e é o que costuma ser esquecido:** `Sites.Selected` sozinha não
->   dá acesso a nada. Depois do consentimento, um admin precisa conceder acesso ao
->   site específico, uma vez, via Graph:
->   ```
->   POST https://graph.microsoft.com/v1.0/sites/{siteId}/permissions
->   { "roles": ["write"],
->     "grantedToIdentities": [{ "application": { "id": "{clientId}", "displayName": "Rapid Labels — Excel Sync" } }] }
->   ```
-> - **Devolver:** Tenant ID, Client ID e um Client Secret (ou certificado)
+> ```
+> PATCH  /workbook/worksheets/{id}/range   Application: Not supported.
+> POST   /workbook/createSession           Application: Not supported.
+> ```
+>
+> Tabelas de permissão da Microsoft, conferidas em 2026-08-13
+> ([range update](https://learn.microsoft.com/en-us/graph/api/range-update) ·
+> [createSession](https://learn.microsoft.com/en-us/graph/api/workbook-createsession)).
+>
+> Um token app-only com `Sites.Selected` **acha o arquivo, lê o arquivo e não
+> escreve uma célula**. Falha no primeiro PATCH, com 21 bindings já configuradas,
+> parecendo bug de código. Custa um ciclo inteiro de consentimento para descobrir.
 
-**Por que `Sites.Selected` e não `Files.ReadWrite.All`:** a segunda dá acesso a todo
-o tenant e costuma ser recusada, ou aprovada depois de semanas de discussão. A
-primeira dá acesso **só aos sites que o admin liberar explicitamente** — é o mínimo
-necessário, e é muito mais fácil de aprovar. Pedir a permissão ampla é a forma mais
-comum de transformar uma semana em um mês.
+**Solicitação correta:**
 
-Os três valores viram secrets do GitHub Actions (`GRAPH_TENANT_ID`,
-`GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`), como já é feito com Cin7 e Supabase.
+> - **App:** `Rapid labels - Excel sync` (já existe)
+> - **Permissão:** Microsoft Graph → **Delegated** → **`Files.ReadWrite.All`**,
+>   com **consentimento de admin** (o tenant bloqueia consentimento de usuário —
+>   `AADSTS90094`, reconfirmado em 2026-08-13)
+> - **Uma conta de serviço** para o job rodar como ela, com acesso de edição
+>   **só** a `Rapid LED - Data` → `Inventory Management/Inventory Stock Orders`.
+>   Precisa conseguir fazer um device-code login uma vez e não ser forçada a
+>   reautenticar interativamente.
+> - **`Allow public client flows = Yes`** no app registration — ✅ **já está ligado**,
+>   confirmado em 2026-08-13 (o device code foi emitido).
+
+**Por que `.All` e não `Files.ReadWrite`:** o mínimo da tabela da Microsoft é
+`Files.ReadWrite`, mas delegado ele alcança **só o OneDrive do próprio usuário**.
+Estes arquivos estão numa biblioteca do SharePoint. Quem "reduzir" o escopo para
+o mínimo documentado vai receber um token válido que não enxerga os arquivos.
+
+**Onde ficou a contenção.** Era para vir do `Sites.Selected` (app limitado a um
+site, via `POST /sites/{id}/permissions`). Com token delegado isso não se aplica:
+o alcance é o que a **conta** enxerga, não o que o app recebeu. Então a contenção
+mudou de lugar — é a permissão da conta de serviço na biblioteca. Diferença
+honesta: se alguém der a essa conta acesso a mais sites depois, a automação ganha
+esse alcance junto, sem ninguém mexer no código.
+
+**Por que uma conta de serviço e não a do Joao:** o histórico de versão de sete
+planilhas vai carregar aquele nome toda manhã, e a automação morre no dia em que
+a conta mudar.
+
+Tenant ID e Client ID viram secrets do GitHub Actions (`GRAPH_TENANT_ID`,
+`GRAPH_CLIENT_ID`). **Não há client secret neste caminho** — o que persiste é o
+refresh token, e ele fica no Supabase (`excel_sync.graph_token`), não num secret,
+porque o Azure o rotaciona a cada uso e um job que não grava o novo se tranca
+depois de uma execução.
+
+**Como verificar antes de pedir qualquer coisa:**
+
+```
+python tools/probe_graph_auth.py --delegated --write-test
+```
+
+Seis testes; só o sexto decide. Os testes 1-3 (token, site, arquivo) passam
+também no caminho app-only — foi exatamente assim que o caminho errado pareceu
+plausível.
 
 ## 3. Escrever por cima de uma aba viva — os riscos reais
 
@@ -104,10 +141,15 @@ painel mostrar em vez de engolir.
 6. Gravar extensão + checksum + run em ops.sync_runs
 ```
 
-O adapter fica em `features/excel-sync/engine/delivery/graph.py`, atrás da mesma
-interface do `local_xlsx.py` que já existe. **Nada mais muda** — dataset, specs,
-gates e painel continuam iguais. Foi para isso que a entrega ficou isolada desde o
-começo.
+O adapter fica em `features/excel-sync/engine/delivery/graph.py`. **Nada mais muda**
+— dataset, specs, gates e painel continuam iguais. Foi para isso que a entrega ficou
+isolada desde o começo.
+
+> Correção (2026-08-11): uma versão anterior deste parágrafo dizia que o adapter
+> entraria "atrás da mesma interface do `local_xlsx.py` que já existe". **Não
+> existe.** Não há `engine/delivery/` nem nenhuma interface de entrega — a Fase 5
+> está em zero, não em "falta só o Graph". O `openpyxl` que aparece em `pivot.py`
+> gera um `.xlsx` novo e avulso para inspeção; não escreve em planilha viva.
 
 ## 5. Ordem de trabalho
 

@@ -85,9 +85,16 @@ class Run:
         try:
             self.run_id = self.sb.rpc('ops_run_start', {
                 'p_slug': self.slug, 'p_trigger': self.trigger, 'p_run_url': run_url})
-        except SystemExit as e:
-            # Run logging must never be the reason a sync fails.
-            print(f'  ! could not open run log: {e}')
+        except Exception as e:                       # noqa: BLE001
+            # Run logging must never be the reason a sync fails — and it used to
+            # be. This caught SystemExit only, which is what supabase._send
+            # raises for an HTTP error. A connection-level failure (DNS down,
+            # laptop offline, TLS, read timeout) raises URLError or
+            # TimeoutError, escaped this handler, and killed the whole delivery
+            # from inside the bookkeeping that is supposed to be incidental to
+            # it. Catch everything: a lost run row is a monitoring gap, an
+            # aborted delivery is an outage.
+            print(f'  ! could not open run log: {type(e).__name__}: {e}')
         return self
 
     def finish(self, status, error=None):
@@ -102,8 +109,8 @@ class Run:
                 'p_error': (error or '')[:2000] or None,
                 'p_stats': self.stats,
             })
-        except SystemExit as e:
-            print(f'  ! could not close run log: {e}')
+        except Exception as e:                       # noqa: BLE001
+            print(f'  ! could not close run log: {type(e).__name__}: {e}')
 
     def __exit__(self, exc_type, exc, tb):
         if exc is not None:
@@ -162,8 +169,22 @@ def register_bindings(bindings, sb=None):
             'feeds': b.get('feeds', []),
             'cron_utc': b.get('cron_utc'),
             'sla_minutes': b.get('sla_minutes'),
-            'freshness_table': 'excel_sync.datasets',
-            'freshness_col': 'built_at',
+            # NULL/NULL on purpose: health comes from this binding's OWN run
+            # rows, which only the delivery machine writes.
+            #
+            # These pointed at excel_sync.datasets.built_at, which the CLOUD
+            # writes every night. A binding is delivered by a Windows PC over a
+            # synced folder — so with that PC switched off for a week, all 21
+            # rows would have kept reporting healthy off the back of a dataset
+            # build that never reached a workbook. The freshness of the source
+            # is not evidence that the delivery happened.
+            'freshness_table': None,
+            'freshness_col': None,
+            # Delivery runs 07:00 Brisbane on weekdays. Wall-clock ageing would
+            # mark every binding late by Monday morning purely for the weekend;
+            # business minutes make Monday 08:00 look back at Friday 07:00 as
+            # ~25 hours rather than 73.
+            'business_hours_only': True,
             'workflow_file': 'excel-sync.yml',
             'enabled': bool(b.get('enabled', False)),
             'sort_order': int(b.get('sort_order', 200)),

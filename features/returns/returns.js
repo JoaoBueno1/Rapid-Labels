@@ -5,7 +5,7 @@
  */
 'use strict';
 
-const RT = { customers: [], operators: [], _baseOperators: [], lines: [], tlines: [], sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1, so: null, soLoadedNumber: null, voidId: null };
+const RT = { customers: [], operators: [], _baseOperators: [], lines: [], tlines: [], tsnap: [], tmode: 'simple', sel: null, active: [], history: [], prodTarget: null, editId: null, actRow: null, activePage: 1, histPage: 1, so: null, soLoadedNumber: null, voidId: null };
 const PAGE_SIZE = 25;
 const REASONS = ['Faulty', 'Product Left Over / Change of Mind', 'Incorrect Item Supplied', 'Incorrect Item Ordered', 'Freight Damage', 'Other'];
 const CONDITIONS = ['Resaleable', 'Not Resaleable', 'Faulty'];                                   // warehouse assessment (internal)
@@ -39,6 +39,7 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.rt-oper') && $('rtOperatorAc')) $('rtOperatorAc').classList.remove('show');
   if (!e.target.closest('.rt-actby') && $('rtActByAc')) $('rtActByAc').classList.remove('show');
   if (!e.target.closest('.rt-putawayby') && $('rtPutawayByAc')) $('rtPutawayByAc').classList.remove('show');
+  if (!e.target.closest('.rt-voidby') && $('rtVoidByAc')) $('rtVoidByAc').classList.remove('show');
   if (!e.target.closest('.rt-prod-cell') && !e.target.closest('.rt-dc5-cell') && !e.target.closest('#rtProdAc') && $('rtProdAc')) $('rtProdAc').style.display = 'none';
 });
 
@@ -71,13 +72,13 @@ async function loadOperators() {
 // the suggestion pool — union of the collection_operators list + names seen in returns.
 function rtRefreshOperatorPool() {
   const s = new Set(RT._baseOperators || []);
-  (RT.history || []).forEach(r => [r.operator, r.treated_by, r.putaway_by].forEach(n => { const t = String(n || '').trim(); if (t) s.add(t); }));
+  (RT.history || []).forEach(r => [r.operator, r.treated_by, r.putaway_by, r.voided_by].forEach(n => { const t = String(n || '').trim(); if (t) s.add(t); }));
   RT.operators = [...s].sort((a, b) => a.localeCompare(b));
   const dl = $('rtOperators'); if (dl) dl.innerHTML = RT.operators.map(o => `<option value="${esc(o)}">`).join('');
 }
 async function loadReturns() {
   try {
-    const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,condition,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no,return_status)').order('created_at', { ascending: false });
+    const r = await sb().from('returns_active').select('*, returns_lines(sku,product_name,qty,reason,condition,line_no,line_value), returns_treatment_lines(sku,qty,line_value,line_no,return_status,credit_note,processed_by,processed_at)').order('created_at', { ascending: false });
     const rows = r.data || [];
     RT.active = rows.filter(x => x.status !== 'completed' && x.status !== 'void');
     RT.history = rows;   // History now lists ALL returns — a searchable, filterable archive
@@ -207,7 +208,7 @@ function rtRenderHistory() {
   if (sf) rows = rows.filter(r => r.status === sf);
   if (!showVoided) rows = rows.filter(r => r.status !== 'void');   // voided hidden unless "Show voided" (or the void filter)
   if (wf) rows = rows.filter(r => r.warehouse === wf);
-  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''} ${r.operator || ''} ${r.treated_by || ''} ${r.putaway_by || ''} ${r.warehouse || ''}`.toLowerCase().includes(q));
+  if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''} ${r.operator || ''} ${r.treated_by || ''} ${r.putaway_by || ''} ${r.voided_by || ''} ${r.warehouse || ''}`.toLowerCase().includes(q));
   $('rtHistCount').textContent = `${rows.length} return(s)`;
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
   $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row st-${r.status} ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
@@ -215,7 +216,7 @@ function rtRenderHistory() {
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.warehouse || '—')}</td>
-    <td class="rt-status ${r.status}">${statusLabel(r.status)}${r.status === 'void' ? `<div class="sub">${fmtDT(r.updated_at)}</div>` : ''}</td>
+    <td class="rt-status ${r.status}">${statusLabel(r.status)}${r.status === 'void' ? `<div class="sub">${r.voided_by ? esc(r.voided_by) + ' · ' : ''}${fmtDT(r.voided_at || r.updated_at)}</div>` : ''}</td>
     <td>${r.operator ? `${esc(r.operator)}<div class="sub">${fmtT(r.created_at)}</div>` : '—'}</td>
     <td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>
     <td>${r.putaway_by ? `${esc(r.putaway_by)}<div class="sub">${fmtDT(r.putaway_at)}${r.putaway_location ? ' · ' + esc(r.putaway_location) : ''}</div>` : '—'}</td>
@@ -508,13 +509,32 @@ async function rtScanResolve(code) {
 function rtPrint(id) { window.open('returns_doc.html?id=' + encodeURIComponent(id) + '&v=20260717w', '_blank'); }
 
 // ─── View (consult) ───
+// One line of the per-line audit trail. Reads as a sentence on purpose — this is what
+// gets shown when someone asks who put which credit note against which SKU.
+function rtLogLine(e) {
+  const d = e.detail || {};
+  const what = {
+    resolved:    () => `marked ready as <b>${esc(d.status || '—')}</b>${d.credit_note ? ' · credit note <b>' + esc(d.credit_note) + '</b>' : ''}`,
+    reopened:    () => `reopened — missing ${esc((d.missing || []).join(' + ') || 'details')}`,
+    credit_note: () => `credit note ${d.from ? '<b>' + esc(d.from) + '</b> → ' : 'set to '}<b>${esc(d.to || '—')}</b>`,
+    status:      () => `status ${d.from ? '<b>' + esc(d.from) + '</b> → ' : 'set to '}<b>${esc(d.to || '—')}</b>`,
+    split:       () => `split off ${esc(String(d.qty ?? ''))} unit(s)`,
+  }[e.action];
+  return `<div class="rt-linelog-item"><span class="rt-linelog-when">${fmtDT(e.at)}</span>`
+    + `<span class="rt-linelog-sku">${esc(e.sku || '')}</span>`
+    + `<span>${what ? what() : esc(e.action)} — <b>${esc(e.by_name || '')}</b></span></div>`;
+}
+
 async function rtView(id) {
   const r = rtHdr(id); if (!r) return;
-  const [ln, tl] = await Promise.all([
+  const [ln, tl, lg] = await Promise.all([
     sb().from('returns_lines').select('*').eq('return_id', id).order('line_no'),
     sb().from('returns_treatment_lines').select('*').eq('return_id', id).order('line_no'),
+    // .catch keeps the detail usable before 005 has been run — a missing log table
+    // should hide one section, not blank the whole modal.
+    sb().from('returns_line_log').select('*').eq('return_id', id).order('at', { ascending: false }).limit(60).then(x => x, () => ({ data: [] })),
   ]);
-  const lines = ln.data || [], tlines = tl.data || [];
+  const lines = ln.data || [], tlines = tl.data || [], logs = (lg && lg.data) || [];
   const rowsC = lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc(l.product_name || '')}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('');
   const treatBlock = (r.status === 'completed' || r.status === 'in_treatment') ? `
     <div class="rt-sec-title">Processing</div>
@@ -524,7 +544,8 @@ async function rtView(id) {
       <div class="rt-kv"><span>Processed by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtDT(r.treated_at) : ''}</b></div>
       ${r.treatment_notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
     </div>
-    ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th>Return status</th><th class="r">Qty</th><th>Reason</th><th>Moved to</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td>${esc(t.return_status || '')}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td><td>${esc(t.moved_to_location || '')}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th>Return status</th><th>Credit note</th><th>Processed by</th><th class="r">Qty</th><th>Reason</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td>${esc(t.return_status || '')}</td><td>${esc(t.credit_note || '—')}</td><td>${t.processed_by ? esc(t.processed_by) + (t.processed_at ? `<div class="sub">${fmtDT(t.processed_at)}</div>` : '') : '—'}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${logs.length ? `<div class="rt-sec-title" style="margin-top:12px">Line history</div><div class="rt-linelog">${logs.map(rtLogLine).join('')}</div>` : ''}
   ` : '';
   $('rtViewBody').innerHTML = `
     <div class="rt-view-head">
@@ -534,7 +555,7 @@ async function rtView(id) {
       ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-primary" onclick="rtCloseView();rtAction('${r.id}')">Action</button>` : ''}
       ${r.status === 'pending' ? `<button class="rt-btn rt-btn-sm rt-btn-danger" onclick="rtCloseView();rtVoid('${r.id}')">Void</button>` : ''}</div>
     </div>
-    ${r.status === 'void' ? `<div class="rt-void-banner">⊘ Voided${r.updated_at ? ' · ' + fmtDT(r.updated_at) : ''}</div>` : ''}
+    ${r.status === 'void' ? `<div class="rt-void-banner">⊘ Voided${r.voided_by ? ' by <b>' + esc(r.voided_by) + '</b>' : ''}${(r.voided_at || r.updated_at) ? ' · ' + fmtDT(r.voided_at || r.updated_at) : ''}${r.void_reason ? `<div class="sub">${esc(r.void_reason)}</div>` : ''}</div>` : ''}
     <div class="rt-sec-title">Creation</div>
     <div class="rt-kv-grid3">
       <div class="rt-kv"><span>Business</span><b>${esc(r.customer_name || '—')}</b></div>
@@ -561,18 +582,26 @@ function rtVoid(id) {
   const r = rtHdr(id); if (!r) return;
   RT.voidId = id;
   $('rtVoidTitle').textContent = `Void ${r.return_no}`;
-  if ($('rtVoidPass')) $('rtVoidPass').value = '';
+  ['rtVoidPass', 'rtVoidBy', 'rtVoidReason'].forEach(k => { if ($(k)) $(k).value = ''; });
   $('rtVoidModal').classList.add('active');
   setTimeout(() => { try { $('rtVoidPass').focus(); } catch (_) {} }, 50);
 }
 function rtVoidClose() { $('rtVoidModal').classList.remove('active'); }
 async function rtVoidConfirm() {
-  // Simple void: password to confirm, then flip status + stamp the time via updated_at
-  // (no reason / by / extra columns — nothing to migrate).
+  // Password authorises, name attributes. The password is shared across the team, so
+  // it proves the action was permitted but says nothing about who performed it — and
+  // "who voided this return" is exactly what gets asked later.
+  const by = (($('rtVoidBy') && $('rtVoidBy').value) || '').trim();
+  if (!by) { toast('Enter who is voiding it', 'err'); return rtInvalid('rtVoidBy'); }
   if ((($('rtVoidPass') && $('rtVoidPass').value) || '').trim() !== '4209') { toast('Wrong void password', 'err'); return rtInvalid('rtVoidPass'); }
   const btn = $('rtVoidBtn'); btn.disabled = true;
   try {
-    const { error } = await sb().from('returns_active').update({ status: 'void', updated_at: new Date().toISOString() }).eq('id', RT.voidId);
+    const now = new Date().toISOString();
+    const { error } = await sb().from('returns_active').update({
+      status: 'void', updated_at: now,
+      voided_by: by, voided_at: now,
+      void_reason: (($('rtVoidReason') && $('rtVoidReason').value) || '').trim() || null,
+    }).eq('id', RT.voidId);
     if (error) throw error;
     const no = (rtHdr(RT.voidId) || {}).return_no;
     toast(`${no || 'Return'} voided`, 'ok');
@@ -592,12 +621,46 @@ async function rtAction(id) {
   // credit lines: existing treatment lines, or seed from stage-1. Value starts BLANK
   // on first treatment (lots of discounts → varies); shows the saved value on reopen.
   const fromT = tlines.length > 0;
+  // Condition lives on returns_lines only, so a reopened return has to look it back up.
+  // Matched by sku occurrence rather than line_no, which shifts as soon as a line is
+  // split; a split child reuses its parent's, which is what it physically is.
+  const condBySku = {};
+  lines.forEach(l => { (condBySku[l.sku] = condBySku[l.sku] || []).push(l.condition || ''); });
+  const seenC = {};
+  const condFor = sku => {
+    const arr = condBySku[sku] || [], n = (seenC[sku] = (seenC[sku] || 0) + 1);
+    return arr[Math.min(n - 1, arr.length - 1)] || '';
+  };
   // Pre-select the disposition from stage-1 condition (Resaleable→Credit, Faulty→Warranty).
   // First treatment only; on reopen keep the saved status. Always editable (can be refused).
-  RT.tlines = (fromT ? tlines : lines).map((l, idx) => ({ sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '', return_status: l.return_status || (fromT ? '' : (DISPO_BY_CONDITION[l.condition] || '')), moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false }));
-  $('rtActRef').value = r.treatment_ref || '';
+  RT.tlines = (fromT ? tlines : lines).map((l, idx) => ({
+    sku: l.sku, name: l.product_name, dc5: l.dc5 || '', qty: l.qty, reason: l.reason || '',
+    return_status: l.return_status || (fromT ? '' : (DISPO_BY_CONDITION[l.condition] || '')),
+    condition: fromT ? condFor(l.sku) : (l.condition || ''),
+    credit_note: l.credit_note || '', processed_by: l.processed_by || '', processed_at: l.processed_at || null,
+    moved: l.moved_to_location || '', _grp: 'g' + idx, _recv: Number(l.qty) || 0, _split: false, _sel: false }));
+  // What was already resolved when this modal opened — the log only records real
+  // changes, so reopening a return and pressing save must not invent history.
+  RT.tsnap = RT.tlines.map(l => ({ sku: l.sku, return_status: l.return_status, credit_note: l.credit_note, processed_by: l.processed_by }));
+  // Advanced when one box cannot honestly represent the lines: either the return is
+  // part-finished, or its lines already carry different credit notes / different people.
+  // Simple would overwrite their work the moment the next person typed a name.
+  const distinctOf = k => new Set(RT.tlines.map(l => String(l[k] || '').trim()).filter(Boolean)).size;
+  const mixed = distinctOf('credit_note') > 1 || distinctOf('processed_by') > 1;
+  const partial = RT.tlines.some(rtLineResolved) && !RT.tlines.every(rtLineResolved);
+  RT.tmode = (mixed || partial) ? 'advanced' : 'simple';
+  // Two people finishing one return is now an expected flow, and the save REPLACES every
+  // line — so a save built on a view opened before the other person's is a silent delete.
+  // This is what the save checks against.
+  RT.actStamp = r.updated_at || null;
+  // In Advanced these two boxes are apply-tools, not the record — the lines are. Filling
+  // them from the header would put the joined "24408; 24409" in a box whose job is to
+  // write one value onto whatever is ticked. Blank also forces the second person to type
+  // their own name, which is the point of the log.
+  const advOpen = RT.tmode === 'advanced';
+  $('rtActRef').value = advOpen ? '' : (r.treatment_ref || '');
+  $('rtActBy').value = advOpen ? '' : (r.treated_by || '');
   $('rtActNotes').value = r.treatment_notes || '';
-  $('rtActBy').value = r.treated_by || '';
   $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Processing</b></span>`;
   $('rtActStage1').innerHTML = `
     <div class="rt-kv-grid3">
@@ -614,28 +677,158 @@ async function rtAction(id) {
     </div>
     <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead>
     <tbody>${lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('')}</tbody></table>`;
-  rtRenderTLines();
+  rtSetMode(RT.tmode);   // renders, and sizes the columns to the mode
+  RT.actDirtyBase = rtActFingerprint();   // baseline for the unsaved-changes guard
   $('rtActModal').classList.add('active');
 }
-function rtCloseAct() { $('rtActModal').classList.remove('active'); }
+
+// What "unsaved" means: only the values a save would actually write. Ticking a line,
+// switching mode or re-rendering must never look like a change, or the guard cries wolf
+// and people learn to click through it.
+function rtActFingerprint() {
+  return JSON.stringify({
+    ref: ($('rtActRef').value || '').trim(),
+    by: ($('rtActBy').value || '').trim(),
+    notes: ($('rtActNotes').value || '').trim(),
+    lines: RT.tlines.map(l => [l.sku, String(l.qty), l.return_status || '', l.credit_note || '', l.processed_by || '']),
+  });
+}
+function rtActDirty() { return RT.actDirtyBase != null && rtActFingerprint() !== RT.actDirtyBase; }
+
+// Cancel and × discarded a part-finished treatment without a word. Per-line credit notes
+// are minutes of work; a stray click must not cost them silently.
+function rtCloseAct(force) {
+  if (!force && rtActDirty()) {
+    const done = RT.tlines.filter(rtLineResolved).length, n = RT.tlines.length;
+    $('rtDiscardMsg').innerHTML = `This return has changes that were never saved — <strong>${done} of ${n} line(s) ready</strong>.`
+      + '<br />Use <strong>Save progress</strong> to keep them and leave the rest open for someone else.';
+    $('rtDiscardModal').classList.add('active');
+    return;
+  }
+  RT.actDirtyBase = null;
+  $('rtActModal').classList.remove('active');
+}
+function rtDiscardClose() { $('rtDiscardModal').classList.remove('active'); }
+function rtDiscardConfirm() { rtDiscardClose(); rtCloseAct(true); }
+// A line is finished when it says what happened, and who decided. The credit note is
+// only demanded where one actually gets raised — a refused return or a disposed warranty
+// never produces one, and requiring it there would block the return forever.
+const NEEDS_CREDIT_NOTE = 'Accepted for Credit Assessment';
+function rtLineResolved(l) {
+  if (!l.return_status || !String(l.processed_by || '').trim()) return false;
+  if (l.return_status === NEEDS_CREDIT_NOTE && !String(l.credit_note || '').trim()) return false;
+  return true;
+}
+function rtLineMissing(l) {
+  const m = [];
+  if (!l.return_status) m.push('status');
+  if (l.return_status === NEEDS_CREDIT_NOTE && !String(l.credit_note || '').trim()) m.push('credit note');
+  if (!String(l.processed_by || '').trim()) m.push('name');
+  return m;
+}
+
+function rtSetMode(m) {
+  RT.tmode = m;
+  const adv = m === 'advanced';
+  $('rtModeSimple').classList.toggle('is-on', !adv);
+  $('rtModeAdv').classList.toggle('is-on', adv);
+  document.querySelectorAll('#rtActModal .rt-advcol, #rtActModal .rt-selcol').forEach(el => { el.style.display = adv ? '' : 'none'; });
+  $('rtApplyWrap').style.display = adv ? '' : 'none';
+  $('rtActRefLbl').innerHTML = adv ? 'Credit note # <span class="rt-hint" style="margin:0">(for selected)</span>' : 'Credit note #';
+  $('rtActByLbl').innerHTML = adv ? 'Processed by <span class="rt-hint" style="margin:0">(for selected)</span>' : 'Processed by <span class="rt-req">*</span>';
+  $('rtActRef').placeholder = adv ? 'e.g. 24408 — then Apply to selected' : 'e.g. 24408 — fills every line';
+  $('rtActBy').placeholder = adv ? 'Type a name — then Apply to selected…' : 'Type a name — fills every line…';
+  $('rtModeHint').textContent = adv
+    ? 'Each line keeps its own credit note and name. Save progress and someone else can finish the rest.'
+    : 'What you type above is written onto every line, as you type.';
+  // Switching mode only shows and hides columns — it never writes. Cascading from here
+  // meant clicking "Simple" replaced every per-line note and name with whatever the two
+  // boxes happened to hold (usually blank), destroying the work with no undo.
+  rtRenderTLines();
+}
+
+// Simple mode WRITES the header values onto every line rather than letting lines
+// inherit them. Costs one assignment; buys a data model where every line states its
+// own credit note and processor, so nothing downstream computes an effective value.
+function rtCascade() {
+  if (RT.tmode !== 'simple') return;
+  const ref = ($('rtActRef').value || '').trim(), by = ($('rtActBy').value || '').trim();
+  RT.tlines.forEach(l => { l.credit_note = ref; l.processed_by = by; });
+  rtRenderTLines();
+}
+function rtApplySelected() {
+  const sel = RT.tlines.filter(l => l._sel);
+  if (!sel.length) return toast('Tick the lines to apply to first', 'err');
+  const ref = ($('rtActRef').value || '').trim(), by = ($('rtActBy').value || '').trim();
+  if (!ref && !by) return toast('Type a credit note or a name to apply', 'err');
+  sel.forEach(l => { if (ref) l.credit_note = ref; if (by) l.processed_by = by; });
+  rtRenderTLines();
+  toast(`Applied to ${sel.length} line(s)`, 'ok');
+}
+function rtSelectAll(on) { RT.tlines.forEach(l => { l._sel = !!on; }); rtRenderTLines(); }
+function rtTSelect(i, on) { RT.tlines[i]._sel = !!on; rtRenderTLines(); }
+
 function rtRenderTLines() {
+  const adv = RT.tmode === 'advanced';
   $('rtTLinesBody').innerHTML = RT.tlines.map((l, i) => {
     const grpN = RT.tlines.filter(x => x._grp === l._grp).length;   // >1 = this line was split
     const qtyEditable = grpN > 1;
-    return `<tr>
+    const done = rtLineResolved(l);
+    // Only the positive flag. The "needs status + credit note + name" nag restated what
+    // the empty fields already show, on every open line at once.
+    const flagTxt = done ? 'ready' : '';
+    return `<tr id="rtTRow${i}" class="${done ? 'rt-tl-done' : 'rt-tl-open'}">
+    <td class="rt-selcol" style="${adv ? '' : 'display:none'}"><input type="checkbox" ${l._sel ? 'checked' : ''} onclick="rtTSelect(${i},this.checked)" /></td>
     <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
-    <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 26))}</div></td>
-    <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
-    <td class="rt-frozen">${esc(l.reason || '—')}</td>
+    <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 26))}${l.reason ? ' · ' + esc(l.reason) : ''}</div></td>
+    <td class="rt-cond">${esc(l.condition || '—')}</td>
+    <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select>
+        <div class="rt-tl-flag${done ? ' ok' : ''}" id="rtTFlag${i}" style="${flagTxt ? '' : 'display:none'}">${flagTxt}</div></td>
+    <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.credit_note || '')}" placeholder="${l.return_status === NEEDS_CREDIT_NOTE ? 'Required' : 'n/a'}" oninput="rtTSet(${i},'credit_note',this.value)" /></td>
+    <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.processed_by || '')}" placeholder="Name" oninput="rtTSet(${i},'processed_by',this.value)" />
+        ${l.processed_at ? `<div class="sub">${fmtDT(l.processed_at)}</div>` : ''}</td>
     <td class="r">${qtyEditable ? `<input class="rt-input r" type="text" inputmode="numeric" value="${l.qty}" oninput="rtTSet(${i},'qty',this.value)" />` : `<span class="rt-frozen num">${l.qty}</span>`}</td>
     <td class="r"><button class="rt-line-x" title="Split for credit vs warranty" onclick="rtTSplit(${i})">⧉</button>${l._split ? `<button class="rt-line-x" title="Remove split" onclick="rtTRemove(${i})">×</button>` : ''}</td>
   </tr>`; }).join('');
+  const done = RT.tlines.filter(rtLineResolved).length, n = RT.tlines.length;
+  const el = $('rtLinesProgress');
+  if (el) {
+    el.textContent = n ? `${done} of ${n} line(s) ready${done < n ? ' — the rest can be finished later' : ''}` : '';
+    el.className = 'rt-hint' + (n && done === n ? ' rt-hint-ok' : '');
+  }
+  const all = $('rtSelAll'); if (all) all.checked = n > 0 && RT.tlines.every(l => l._sel);
 }
-function rtTSet(i, k, v) { RT.tlines[i][k] = v; }   // no values on this stage — just status/qty
+function rtTSet(i, k, v) {
+  RT.tlines[i][k] = v;
+  // A select can be re-rendered freely; the text inputs cannot — rebuilding the table
+  // mid-word drops the caret. So patch just that row's flag, which is the only thing
+  // that changed. Without this the row still read "needs credit note" after one was
+  // typed, and only the counter above moved.
+  if (k === 'return_status') rtRenderTLines(); else { rtRowFlag(i); rtUpdateProgress(); }
+}
+function rtRowFlag(i) {
+  const l = RT.tlines[i], row = $('rtTRow' + i), flag = $('rtTFlag' + i);
+  if (!l || !row || !flag) return;
+  const done = rtLineResolved(l);
+  const txt = done ? 'ready' : '';
+  row.className = done ? 'rt-tl-done' : 'rt-tl-open';
+  flag.className = 'rt-tl-flag' + (done ? ' ok' : '');
+  flag.textContent = txt;
+  flag.style.display = txt ? '' : 'none';
+}
+function rtUpdateProgress() {
+  const done = RT.tlines.filter(rtLineResolved).length, n = RT.tlines.length;
+  const el = $('rtLinesProgress'); if (!el) return;
+  el.textContent = n ? `${done} of ${n} line(s) ready${done < n ? ' — the rest can be finished later' : ''}` : '';
+  el.className = 'rt-hint' + (n && done === n ? ' rt-hint-ok' : '');
+}
 function rtTSplit(i) {
   const l = RT.tlines[i];
   if ((Number(l.qty) || 0) <= 1) return toast('Nothing to split — quantity is 1', 'err');
-  const child = { ...l, qty: 1, _split: true, return_status: '', moved: '' };   // 1 unit peeled off for a separate status
+  // 1 unit peeled off for a separate status. Status and credit note are cleared on
+  // purpose: the whole reason to split is that this unit gets a different outcome,
+  // so carrying the parent's note over would be wrong more often than right.
+  const child = { ...l, qty: 1, _split: true, return_status: '', credit_note: '', processed_at: null, _sel: false, moved: '' };
   l.qty = (Number(l.qty) || 0) - 1;
   RT.tlines.splice(i + 1, 0, child);
   rtRenderTLines();
@@ -651,45 +844,148 @@ function rtTRemove(i) {
 
 // Complete is optional-treatment: warn before moving to History (esp. if untreated)
 function rtAskComplete() {
-  const by = ($('rtActBy').value || '').trim();
-  if (!by) { toast('Enter who processed it (Processed by)', 'err'); return rtInvalid('rtActBy'); }
-  $('rtCompleteMsg').innerHTML = 'Finish the office treatment and send it to the warehouse to <strong>put away</strong>?';
+  // Completion is now a property of the LINES, not of whoever happens to be clicking.
+  // With lines finishable by different people at different times, "is this return done"
+  // can only mean "is every line done" — otherwise a half-treated return walks off to
+  // put-away and the open lines are never seen again.
+  const open = RT.tlines.filter(l => !rtLineResolved(l));
+  if (open.length) {
+    const names = open.slice(0, 3).map(l => `${esc(l.sku)} (needs ${rtLineMissing(l).join(' + ')})`).join(', ');
+    toast(`${open.length} line(s) not ready: ${names}${open.length > 3 ? '…' : ''}. Use Save progress and finish later.`, 'err');
+    if (RT.tmode !== 'advanced') rtSetMode('advanced');   // show them what is missing
+    return;
+  }
+  const people = [...new Set(RT.tlines.map(l => String(l.processed_by || '').trim()).filter(Boolean))];
+  const notes = [...new Set(RT.tlines.map(l => String(l.credit_note || '').trim()).filter(Boolean))];
+  $('rtCompleteMsg').innerHTML = 'Finish the office treatment and send it to the warehouse to <strong>put away</strong>?'
+    + `<div class="rt-hint" style="margin-top:8px">${RT.tlines.length} line(s) · ${people.length > 1 ? 'processed by ' + esc(people.join(', ')) : 'processed by ' + esc(people[0] || '—')}`
+    + `${notes.length > 1 ? ' · credit notes ' + esc(notes.join(', ')) : (notes[0] ? ' · credit note ' + esc(notes[0]) : '')}</div>`;
   $('rtCompleteModal').classList.add('active');
 }
 function rtCompleteClose() { $('rtCompleteModal').classList.remove('active'); }
 function rtCompleteConfirm() { rtCompleteClose(); rtSaveAct(true); }
 
+// Identity for the log. line_no shifts whenever a line is split, so it cannot be the
+// key; sku plus its occurrence among same-sku lines survives splitting and reordering.
+function rtLineKeys(list) {
+  const seen = {};
+  return list.map(l => { const n = (seen[l.sku] = (seen[l.sku] || 0) + 1); return `${l.sku}#${n}`; });
+}
+
+async function rtLogLines(returnId, byName) {
+  const before = RT.tsnap || [], after = RT.tlines;
+  const bk = rtLineKeys(before), ak = rtLineKeys(after);
+  const prev = {}; before.forEach((l, i) => { prev[bk[i]] = l; });
+  const events = [];
+  after.forEach((l, i) => {
+    const k = ak[i], b = prev[k];
+    const push = (action, detail) => events.push({
+      return_id: returnId, line_no: i + 1, sku: l.sku, action,
+      detail, by_name: byName,
+    });
+    if (!b) { push('split', { qty: Number(l.qty) || 0 }); }
+    else {
+      if ((b.return_status || '') !== (l.return_status || '')) push('status', { from: b.return_status || null, to: l.return_status || null });
+      if ((b.credit_note || '') !== (l.credit_note || '')) push('credit_note', { from: b.credit_note || null, to: l.credit_note || null });
+    }
+    const wasDone = b ? rtLineResolved(b) : false, isDone = rtLineResolved(l);
+    if (isDone && !wasDone) push('resolved', { credit_note: l.credit_note || null, status: l.return_status || null, by: l.processed_by || null });
+    if (!isDone && wasDone) push('reopened', { missing: rtLineMissing(l) });
+  });
+  if (!events.length) return;
+  // Best-effort: a missing log table or a dropped connection must never fail a save
+  // the office already believes went through.
+  try { await sb().from('returns_line_log').insert(events); }
+  catch (e) { console.warn('line log skipped:', e && e.message); }
+}
+
 async function rtSaveAct(complete) {
   const r = RT.actRow; if (!r) return;
+  if (RT._saving) return;   // a second click, or Enter twice, would run the whole
+                            // replace-lines sequence again against a half-applied table
+  // Someone owns every save — it is the name the log is written under. It is NOT
+  // borrowed from a line any more: with two people finishing one return, falling back
+  // to whoever did the first half filed the second half under their name, which is
+  // exactly the question the log exists to answer.
   const by = ($('rtActBy').value || '').trim();
-  if (complete && !by) return toast('Enter who processed it (Processed by)', 'err');   // only Treated by is required
+  if (!by) { toast('Enter your name (Processed by) before saving', 'err'); return rtInvalid('rtActBy'); }
   // split quantities must add back up to what was received
   const grp = {};
   RT.tlines.forEach(l => { const g = grp[l._grp] || (grp[l._grp] = { recv: l._recv || 0, sum: 0, sku: l.sku }); g.sum += Number(l.qty) || 0; });
   const bad = Object.values(grp).find(g => g.sum !== g.recv);
   if (bad) return toast(`Split quantities for ${bad.sku} must add up to ${bad.recv} (received)`, 'err');
-  const btn = $('rtActComplete'); btn.disabled = true;
+  RT._saving = true;
+  const btns = ['rtActComplete', 'rtActSave'].map($).filter(Boolean);
+  btns.forEach(b => { b.disabled = true; });
   try {
+    // Did anyone else save this return while it sat open? The write below replaces every
+    // line, so a stale view does not merge — it deletes what is not on screen. Refusing
+    // and asking for a reopen is the only honest answer without a transaction.
+    const { data: cur } = await sb().from('returns_active').select('updated_at').eq('id', r.id).maybeSingle();
+    if (cur && RT.actStamp && cur.updated_at && cur.updated_at !== RT.actStamp) {
+      toast('Someone else saved this return while it was open. Close and reopen it to see their lines, then finish yours.', 'err');
+      return;
+    }
+    const now = new Date().toISOString();
+    const snapByKey = {}; const bk = rtLineKeys(RT.tsnap || []); (RT.tsnap || []).forEach((l, i) => { snapByKey[bk[i]] = l; });
+    const ak = rtLineKeys(RT.tlines);
+    const rows = RT.tlines.filter(l => l.sku).map((l, idx) => {
+      const b = snapByKey[ak[idx]];
+      // Stamp the moment a line first became ready, and keep it. Re-saving a return to
+      // finish OTHER lines must not restamp the ones already done — that time is the
+      // answer to "when was this line decided".
+      const justResolved = rtLineResolved(l) && !(b && rtLineResolved(b));
+      return {
+        return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name,
+        qty: Number(l.qty) || 0, reason: l.reason || null,
+        return_status: l.return_status || null,
+        credit_note: String(l.credit_note || '').trim() || null,
+        processed_by: String(l.processed_by || '').trim() || null,
+        processed_at: rtLineResolved(l) ? (justResolved ? now : (l.processed_at || now)) : null,
+        unit_value: 0, line_value: 0,
+      };
+    });
+    // Header mirrors the lines instead of holding a competing value of its own: with
+    // several credit notes on one return, a single header field could only ever be one
+    // of them, and History/CSV would quietly show the wrong one.
+    const distinct = k => [...new Set(RT.tlines.map(l => String(l[k] || '').trim()).filter(Boolean))];
     const upd = {
-      treatment_ref: ($('rtActRef').value || '').trim() || null,
+      treatment_ref: distinct('credit_note').join('; ') || null,
       treatment_notes: ($('rtActNotes').value || '').trim() || null,
-      treated_by: by || null,
+      treated_by: distinct('processed_by').join('; ') || by || null,
       status: complete ? 'to_putaway' : 'in_treatment',
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     };
-    if (complete) upd.treated_at = new Date().toISOString();
+    if (complete) upd.treated_at = now;
     // replace credit lines safely: insert new first, then drop the old ones by id
     const { data: oldT } = await sb().from('returns_treatment_lines').select('id').eq('return_id', r.id);
     const oldTIds = (oldT || []).map(o => o.id);
-    const rows = RT.tlines.filter(l => l.sku).map((l, idx) => ({ return_id: r.id, line_no: idx + 1, sku: l.sku, product_name: l.name, qty: Number(l.qty) || 0, reason: l.reason || null, return_status: l.return_status || null, unit_value: 0, line_value: 0 }));   // no monetary values on returns (by request)
-    if (rows.length) { const { error } = await sb().from('returns_treatment_lines').insert(rows); if (error) throw error; }
-    if (oldTIds.length) await sb().from('returns_treatment_lines').delete().in('id', oldTIds);
+    let newIds = [];
+    if (rows.length) {
+      const { data: ins, error } = await sb().from('returns_treatment_lines').insert(rows).select('id');
+      if (error) throw error;
+      newIds = (ins || []).map(x => x.id);
+    }
+    if (oldTIds.length) {
+      const { error: ed } = await sb().from('returns_treatment_lines').delete().in('id', oldTIds);
+      // Two calls, no transaction. An unchecked delete used to mean a failure here left
+      // the return carrying every line twice — silently, because PostgREST answers 204
+      // even when a policy blocks the rows. Undo our own insert instead.
+      if (ed) {
+        if (newIds.length) await sb().from('returns_treatment_lines').delete().in('id', newIds);
+        throw ed;
+      }
+    }
     // header LAST — a line failure above never leaves a wrong 'completed' status
     const { error: eu } = await sb().from('returns_active').update(upd).eq('id', r.id);
     if (eu) throw eu;
-    toast(complete ? `${r.return_no} sent to put-away` : 'Progress saved', 'ok');
-    rtCloseAct(); await loadReturns();
-  } catch (e) { toast('Save failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
+    await rtLogLines(r.id, by);
+    const done = RT.tlines.filter(rtLineResolved).length, n = RT.tlines.length;
+    toast(complete ? `${r.return_no} sent to put-away` : `Progress saved — ${done}/${n} line(s) ready${done < n ? ', the rest stay open' : ''}`, 'ok');
+    RT.actDirtyBase = null;          // saved: closing is no longer a discard
+    rtCloseAct(true); await loadReturns();
+  } catch (e) { toast('Save failed: ' + e.message, 'err'); }
+  finally { RT._saving = false; btns.forEach(b => { b.disabled = false; }); }
 }
 
 // ─── CSV export (History) — mirrors the team's credit-note sheet + our detail ───
@@ -699,15 +995,22 @@ const rtProductsStr = r => (r.returns_lines || []).slice().sort((a, b) => (a.lin
   return `${l.qty}× ${l.sku}${extra ? ' (' + extra + ')' : ''}`;
 }).join(' | ');
 const rtStatuses = r => [...new Set((r.returns_treatment_lines || []).map(t => t.return_status).filter(Boolean))].join('; ');
+// The header Credit Note column collapses to "24408; 24409" once a return carries more
+// than one, which says nothing about WHICH sku got which. This spells it out — the whole
+// reason the team asked for per-line credit notes was to answer exactly that.
+const rtCreditPerLine = r => (r.returns_treatment_lines || []).slice()
+  .sort((a, b) => (a.line_no || 0) - (b.line_no || 0))
+  .filter(t => t.credit_note || t.processed_by)
+  .map(t => `${t.sku}=${t.credit_note || '—'}${t.processed_by ? ' (' + t.processed_by + ')' : ''}`).join(' | ');
 const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.qty) || 0), 0);
 function rtExportCsv() {
   const rows = RT.history;
   if (!rows.length) return toast('No completed returns to export', 'err');
-  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Sales order', 'Cust. reference', 'Products (qty × sku / reason / condition)', 'Total Qty', 'Credit Note', 'Return status', 'Emailed', 'Received by', 'Processed by', 'Processed Date', 'Comments', 'Processing Notes'];
+  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Sales order', 'Cust. reference', 'Products (qty × sku / reason / condition)', 'Total Qty', 'Credit Note', 'Credit note per line (sku=note (who))', 'Return status', 'Emailed', 'Received by', 'Processed by', 'Processed Date', 'Comments', 'Processing Notes'];
   const lines = [headers.map(csvCell).join(',')];
   rows.forEach(r => lines.push([
     fmtD(r.created_at), r.return_no, r.customer_name, r.contact_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.invoice_number, r.origin_order, r.customer_reference,
-    rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, rtStatuses(r), r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
+    rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, rtCreditPerLine(r), rtStatuses(r), r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
     r.notes, r.treatment_notes,
   ].map(csvCell).join(',')));
   const csv = '﻿' + lines.join('\r\n'); // BOM so Excel reads UTF-8

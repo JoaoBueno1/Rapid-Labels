@@ -22,7 +22,13 @@
     "sync:verify:compat": "node cin7-stock-sync/verify-compatibility.js",
     "rapid-inv:sync:sales": "node cin7-stock-sync/sync-rapid-inv-sales.js",
     "rapid-inv:sync:sales:test": "node cin7-stock-sync/sync-rapid-inv-sales.js --limit=5 --dry-run --verbose",
-    "test:packer": "node --test features/container-builder/packer.test.js"
+    "test:packer": "node --test features/container-builder/packer.test.js",
+    "test:gateway": "node --test features/gateway/tests/gateway-logic.test.js",
+    "test:gateway:live": "node --test features/gateway/tests/gateway-inventory.test.js",
+    "test:gateway:parse": "python features/gateway/tests/test_import_parsing.py",
+    "gateway:bundle": "python features/gateway/db/apply.py --bundle",
+    "gateway:verify": "python features/gateway/db/apply.py --verify",
+    "gateway:import": "python features/gateway/import/import_gateway_history.py --dry-run"
   },
   "keywords": [
     "label",
@@ -50,6 +56,7 @@
   },
   "devDependencies": {
     "pptxgenjs": "^4.0.1",
-    "puppeteer": "^24.40.0"
+    "puppeteer": "^24.40.0",
+    "@electric-sql/pglite": "^0.2.0"
   }
 }
