@@ -165,28 +165,30 @@
         .wh-flow-label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-top:5px; color:var(--text); }
         .wh-flow-sub { font-size:.62rem; color:var(--muted); margin-top:3px; opacity:.8; }
 
-        /* ─── Inline Transfers Out list (in the pipeline card) ─── */
+        /* ─── Inline Transfers lists — Out (left) | Incoming (right) ─── */
         .wh-tr { margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
-        .wh-tr-hd { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+        .wh-tr-cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .wh-tr-hd { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
         .wh-tr-hd .t { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--text); }
-        .wh-tr-hd .n { font-size:.68rem; font-weight:700; color:#5b21b6; background:#ede9fe; padding:1px 8px; border-radius:10px; }
-        .wh-tr-hd .inc { margin-left:auto; font-size:.72rem; color:var(--muted); cursor:pointer; }
-        .wh-tr-hd .inc:hover { color:#0d9488; }
-        .wh-tr-hd .inc b { color:#0d9488; }
-        .wh-tr-hd .all { font-size:.7rem; color:#2563eb; cursor:pointer; text-decoration:none; }
+        .wh-tr-hd .n { font-size:.66rem; font-weight:700; padding:1px 8px; border-radius:10px; }
+        .wh-tr-hd .n.out { color:#5b21b6; background:#ede9fe; }
+        .wh-tr-hd .n.inn { color:#0f766e; background:#ccfbf1; }
+        .wh-tr-hd .all { margin-left:auto; font-size:.68rem; color:#2563eb; cursor:pointer; text-decoration:none; }
+        .wh-tr-hd .all:hover { text-decoration:underline; }
         .wh-tr-list { display:flex; flex-direction:column; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-        .wh-tr-row { display:grid; grid-template-columns:96px 1fr 92px 60px; gap:10px; align-items:center; padding:7px 12px; font-size:.8rem; border-bottom:1px solid #f1f5f9; cursor:pointer; background:#fff; }
+        .wh-tr-row { display:grid; grid-template-columns:74px 1fr auto; gap:8px; align-items:center; padding:6px 11px; border-bottom:1px solid #f1f5f9; cursor:pointer; background:#fff; }
         .wh-tr-row:last-child { border-bottom:0; }
         .wh-tr-row:hover { background:#f5f3ff; }
-        .wh-tr-row .tn { font-weight:700; color:#6d28d9; white-space:nowrap; }
-        .wh-tr-row .to { font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .wh-tr-row .to small { color:var(--muted); font-weight:400; }
-        .wh-tr-row .rf { color:var(--muted); font-size:.72rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .wh-tr-row .dt { color:var(--muted); font-variant-numeric:tabular-nums; text-align:right; font-size:.74rem; }
-        .wh-tr-row .bd { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; padding:2px 7px; border-radius:5px; white-space:nowrap; text-align:center; }
+        .wh-tr-row.info { cursor:default; }
+        .wh-tr-row.info:hover { background:#fff; }
+        .wh-tr-row .tn { font-weight:700; color:#6d28d9; white-space:nowrap; font-size:.76rem; }
+        .wh-tr-row .to { font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.25; font-size:.79rem; }
+        .wh-tr-row .to .m { display:block; font-size:.63rem; color:var(--muted); font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .wh-tr-row .bd { font-size:.58rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; padding:2px 6px; border-radius:5px; white-space:nowrap; }
         .wh-tr-row .bd.in-transit { background:#ede9fe; color:#5b21b6; }
         .wh-tr-row .bd.ordered { background:#e0e7ff; color:#3730a3; }
-        .wh-tr-empty { padding:16px; text-align:center; color:var(--muted); font-size:.78rem; }
+        .wh-tr-empty { padding:14px; text-align:center; color:var(--muted); font-size:.74rem; }
+        @media (max-width:640px) { .wh-tr-cols { grid-template-columns:1fr; } }
         .wh-flow-arrow { display:flex; align-items:center; color:#cbd5e1; font-size:1.4rem; font-weight:700; flex:0 0 auto; }
         .stage-ordered { border-top-color:#3b82f6; } .stage-ordered .wh-flow-val { color:#1e40af; }
         .stage-picking { border-top-color:#f59e0b; } .stage-picking .wh-flow-val { color:#b45309; }
@@ -482,7 +484,7 @@
                 <div class="left">
                     <a class="brand" href="index.html" style="display:flex;align-items:center;gap:8px">
                         <img src="rapid-express-icon.png" alt="Rapid Labels" style="width:32px;height:32px;border-radius:8px;object-fit:contain">
-                        <span>JSlab.dev</span>
+                        <span>Rapid LED WMS Lite</span>
                     </a>
                 </div>
                 <nav class="site-nav">
@@ -548,15 +550,26 @@
                         </div>
                     </div>
 
-                    <!-- Transfers Out — inline list (leaving Main). Click a row to open the pick sheet. -->
+                    <!-- Transfers lists — Out (left) | Incoming (right). Click an Out row → pick sheet. -->
                     <div class="wh-tr">
-                        <div class="wh-tr-hd">
-                            <span class="t">Transfers Out</span>
-                            <span class="n" id="whTransfersVal">—</span>
-                            <span class="inc" onclick="openTransfersModal('inbound')" title="Incoming to Main">Incoming <b id="whIncomingVal">—</b></span>
-                            <a class="all" onclick="openTransfersModal('outbound')">View all ›</a>
+                        <div class="wh-tr-cols">
+                            <div>
+                                <div class="wh-tr-hd">
+                                    <span class="t">Transfers Out</span>
+                                    <span class="n out" id="whTransfersVal">—</span>
+                                    <a class="all" onclick="openTransfersModal('outbound')">all ›</a>
+                                </div>
+                                <div class="wh-tr-list" id="whTrListOut"><div class="wh-tr-empty">loading…</div></div>
+                            </div>
+                            <div>
+                                <div class="wh-tr-hd">
+                                    <span class="t">Incoming</span>
+                                    <span class="n inn" id="whIncomingVal">—</span>
+                                    <a class="all" onclick="openTransfersModal('inbound')">all ›</a>
+                                </div>
+                                <div class="wh-tr-list" id="whTrListIn"><div class="wh-tr-empty">loading…</div></div>
+                            </div>
                         </div>
-                        <div class="wh-tr-list" id="whTrList"><div class="wh-tr-empty">loading…</div></div>
                     </div>
 
                     <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
@@ -1108,7 +1121,7 @@
     </div>
 
         <footer class="site-footer">
-            <div class="footer-inner">© 2025 JSlab.dev — All rights reserved.</div>
+            <div class="footer-inner">© 2023-2026 Rapid LED WMS Lite — All rights reserved.</div>
         </footer>
 
         <!-- Scripts -->
@@ -2229,23 +2242,32 @@
 
         // Inline Transfers-Out list on the dashboard (click a row → editable pick sheet).
         function renderInlineTransfers() {
-            const el = document.getElementById('whTrList'); if (!el) return;
             const MAIN_WH = 'Main Warehouse';
-            const data = (window.__transferData || []).filter(r => r.from_location === MAIN_WH && ['ORDERED', 'IN TRANSIT'].includes(String(r.status || '').toUpperCase()));
-            const ord = { 'IN TRANSIT': 0, 'ORDERED': 1 };
-            data.sort((a, b) => ((ord[a.status] ?? 9) - (ord[b.status] ?? 9)) || String(b.order_date || '').localeCompare(a.order_date || ''));
-            if (!data.length) { el.innerHTML = '<div class="wh-tr-empty">No transfers leaving Main right now.</div>'; return; }
+            const all = window.__transferData || [];
+            const openS = s => ['ORDERED', 'IN TRANSIT'].includes(String(s || '').toUpperCase());
+            const ordv = { 'IN TRANSIT': 0, 'ORDERED': 1 };
+            const sortF = (a, b) => ((ordv[a.status] ?? 9) - (ordv[b.status] ?? 9)) || String(b.order_date || '').localeCompare(a.order_date || '');
             const fmt = d => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[3]}/${m[2]}` : ''; };
             const cls = s => String(s || '').toLowerCase().replace(/\s+/g, '-');
-            el.innerHTML = data.slice(0, 12).map(r => {
-                const rj = JSON.stringify(r).replace(/'/g, '&#39;');
-                return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print">
-                    <span class="tn">${r.number || '—'}</span>
-                    <span class="to">${r.to_location || '—'}${r.reference ? ` <small>· ${r.reference}</small>` : ''}</span>
-                    <span class="dt">${fmt(r.order_date)}</span>
-                    <span class="bd ${cls(r.status)}">${String(r.status || '').replace('IN TRANSIT', 'Transit')}</span>
-                </div>`;
-            }).join('');
+            const badge = s => `<span class="bd ${cls(s)}">${String(s || '').replace('IN TRANSIT', 'Transit')}</span>`;
+            const meta = r => [r.reference, fmt(r.order_date)].filter(Boolean).join(' · ') || '&nbsp;';
+            // Out (leaving Main) — click a row → editable pick sheet
+            const outEl = document.getElementById('whTrListOut');
+            if (outEl) {
+                const out = all.filter(r => r.from_location === MAIN_WH && openS(r.status)).sort(sortF).slice(0, 5);
+                outEl.innerHTML = out.length ? out.map(r => {
+                    const rj = JSON.stringify(r).replace(/'/g, '&#39;');
+                    return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print"><span class="tn">${r.number || '—'}</span><span class="to">${r.to_location || '—'}<span class="m">${meta(r)}</span></span>${badge(r.status)}</div>`;
+                }).join('') : '<div class="wh-tr-empty">Nothing leaving Main.</div>';
+            }
+            // Incoming (arriving to Main) — informational
+            const inEl = document.getElementById('whTrListIn');
+            if (inEl) {
+                const inb = all.filter(r => r.to_location === MAIN_WH && openS(r.status)).sort(sortF).slice(0, 5);
+                inEl.innerHTML = inb.length ? inb.map(r =>
+                    `<div class="wh-tr-row info"><span class="tn" style="color:#0f766e">${r.number || '—'}</span><span class="to">${r.from_location || '—'}<span class="m">${meta(r)}</span></span>${badge(r.status)}</div>`
+                ).join('') : '<div class="wh-tr-empty">Nothing incoming.</div>';
+            }
         }
 
         function openTransfersModal(direction) {
