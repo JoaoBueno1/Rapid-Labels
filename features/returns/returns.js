@@ -631,12 +631,25 @@ async function rtAction(id) {
   // What was already resolved when this modal opened — the log only records real
   // changes, so reopening a return and pressing save must not invent history.
   RT.tsnap = RT.tlines.map(l => ({ sku: l.sku, return_status: l.return_status, credit_note: l.credit_note, processed_by: l.processed_by }));
-  // A return part-finished by someone else reopens in Advanced: Simple would
-  // overwrite their lines the moment the next person typed a name.
-  RT.tmode = RT.tlines.some(rtLineResolved) && !RT.tlines.every(rtLineResolved) ? 'advanced' : 'simple';
-  $('rtActRef').value = r.treatment_ref || '';
+  // Advanced when one box cannot honestly represent the lines: either the return is
+  // part-finished, or its lines already carry different credit notes / different people.
+  // Simple would overwrite their work the moment the next person typed a name.
+  const distinctOf = k => new Set(RT.tlines.map(l => String(l[k] || '').trim()).filter(Boolean)).size;
+  const mixed = distinctOf('credit_note') > 1 || distinctOf('processed_by') > 1;
+  const partial = RT.tlines.some(rtLineResolved) && !RT.tlines.every(rtLineResolved);
+  RT.tmode = (mixed || partial) ? 'advanced' : 'simple';
+  // Two people finishing one return is now an expected flow, and the save REPLACES every
+  // line — so a save built on a view opened before the other person's is a silent delete.
+  // This is what the save checks against.
+  RT.actStamp = r.updated_at || null;
+  // In Advanced these two boxes are apply-tools, not the record — the lines are. Filling
+  // them from the header would put the joined "24408; 24409" in a box whose job is to
+  // write one value onto whatever is ticked. Blank also forces the second person to type
+  // their own name, which is the point of the log.
+  const advOpen = RT.tmode === 'advanced';
+  $('rtActRef').value = advOpen ? '' : (r.treatment_ref || '');
+  $('rtActBy').value = advOpen ? '' : (r.treated_by || '');
   $('rtActNotes').value = r.treatment_notes || '';
-  $('rtActBy').value = r.treated_by || '';
   $('rtActTitle').innerHTML = `Action — ${esc(r.return_no)} <span class="rt-step">① Created ▸ <b>② Processing</b></span>`;
   $('rtActStage1').innerHTML = `
     <div class="rt-kv-grid3">
@@ -654,9 +667,38 @@ async function rtAction(id) {
     <table class="rt-table" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Description</th><th class="r">Qty</th><th>Reason</th><th>Condition</th></tr></thead>
     <tbody>${lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('')}</tbody></table>`;
   rtSetMode(RT.tmode);   // renders, and sizes the columns to the mode
+  RT.actDirtyBase = rtActFingerprint();   // baseline for the unsaved-changes guard
   $('rtActModal').classList.add('active');
 }
-function rtCloseAct() { $('rtActModal').classList.remove('active'); }
+
+// What "unsaved" means: only the values a save would actually write. Ticking a line,
+// switching mode or re-rendering must never look like a change, or the guard cries wolf
+// and people learn to click through it.
+function rtActFingerprint() {
+  return JSON.stringify({
+    ref: ($('rtActRef').value || '').trim(),
+    by: ($('rtActBy').value || '').trim(),
+    notes: ($('rtActNotes').value || '').trim(),
+    lines: RT.tlines.map(l => [l.sku, String(l.qty), l.return_status || '', l.credit_note || '', l.processed_by || '']),
+  });
+}
+function rtActDirty() { return RT.actDirtyBase != null && rtActFingerprint() !== RT.actDirtyBase; }
+
+// Cancel and × discarded a part-finished treatment without a word. Per-line credit notes
+// are minutes of work; a stray click must not cost them silently.
+function rtCloseAct(force) {
+  if (!force && rtActDirty()) {
+    const done = RT.tlines.filter(rtLineResolved).length, n = RT.tlines.length;
+    $('rtDiscardMsg').innerHTML = `This return has changes that were never saved — <strong>${done} of ${n} line(s) ready</strong>.`
+      + '<br />Use <strong>Save progress</strong> to keep them and leave the rest open for someone else.';
+    $('rtDiscardModal').classList.add('active');
+    return;
+  }
+  RT.actDirtyBase = null;
+  $('rtActModal').classList.remove('active');
+}
+function rtDiscardClose() { $('rtDiscardModal').classList.remove('active'); }
+function rtDiscardConfirm() { rtDiscardClose(); rtCloseAct(true); }
 // A line is finished when it says what happened, and who decided. The credit note is
 // only demanded where one actually gets raised — a refused return or a disposed warranty
 // never produces one, and requiring it there would block the return forever.
@@ -687,8 +729,11 @@ function rtSetMode(m) {
   $('rtActBy').placeholder = adv ? 'Type a name — then Apply to selected…' : 'Type a name — fills every line…';
   $('rtModeHint').textContent = adv
     ? 'Each line keeps its own credit note and name. Save progress and someone else can finish the rest.'
-    : 'What you type above is written onto every line.';
-  if (!adv) rtCascade(); else rtRenderTLines();
+    : 'What you type above is written onto every line, as you type.';
+  // Switching mode only shows and hides columns — it never writes. Cascading from here
+  // meant clicking "Simple" replaced every per-line note and name with whatever the two
+  // boxes happened to hold (usually blank), destroying the work with no undo.
+  rtRenderTLines();
 }
 
 // Simple mode WRITES the header values onto every line rather than letting lines
@@ -719,12 +764,13 @@ function rtRenderTLines() {
     const qtyEditable = grpN > 1;
     const done = rtLineResolved(l);
     const miss = rtLineMissing(l);
-    return `<tr class="${done ? 'rt-tl-done' : 'rt-tl-open'}">
+    const flagTxt = done ? 'ready' : (miss.length ? 'needs ' + miss.join(' + ') : '');
+    return `<tr id="rtTRow${i}" class="${done ? 'rt-tl-done' : 'rt-tl-open'}">
     <td class="rt-selcol" style="${adv ? '' : 'display:none'}"><input type="checkbox" ${l._sel ? 'checked' : ''} onclick="rtTSelect(${i},this.checked)" /></td>
     <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
     <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 26))}${l.reason ? ' · ' + esc(l.reason) : ''}</div></td>
     <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select>
-        ${done ? '<div class="rt-tl-flag ok">ready</div>' : (miss.length ? `<div class="rt-tl-flag">needs ${miss.join(' + ')}</div>` : '')}</td>
+        <div class="rt-tl-flag${done ? ' ok' : ''}" id="rtTFlag${i}" style="${flagTxt ? '' : 'display:none'}">${flagTxt}</div></td>
     <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.credit_note || '')}" placeholder="${l.return_status === NEEDS_CREDIT_NOTE ? 'required' : 'n/a'}" oninput="rtTSet(${i},'credit_note',this.value)" /></td>
     <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.processed_by || '')}" placeholder="who" oninput="rtTSet(${i},'processed_by',this.value)" />
         ${l.processed_at ? `<div class="sub">${fmtDT(l.processed_at)}</div>` : ''}</td>
@@ -741,10 +787,21 @@ function rtRenderTLines() {
 }
 function rtTSet(i, k, v) {
   RT.tlines[i][k] = v;
-  // Re-render so the ready/needs flag tracks what was just typed. Text inputs keep
-  // focus because the browser restores it by id-less position on identical markup;
-  // only the flag and the progress line actually change.
-  if (k === 'return_status') rtRenderTLines(); else rtUpdateProgress();
+  // A select can be re-rendered freely; the text inputs cannot — rebuilding the table
+  // mid-word drops the caret. So patch just that row's flag, which is the only thing
+  // that changed. Without this the row still read "needs credit note" after one was
+  // typed, and only the counter above moved.
+  if (k === 'return_status') rtRenderTLines(); else { rtRowFlag(i); rtUpdateProgress(); }
+}
+function rtRowFlag(i) {
+  const l = RT.tlines[i], row = $('rtTRow' + i), flag = $('rtTFlag' + i);
+  if (!l || !row || !flag) return;
+  const done = rtLineResolved(l), miss = rtLineMissing(l);
+  const txt = done ? 'ready' : (miss.length ? 'needs ' + miss.join(' + ') : '');
+  row.className = done ? 'rt-tl-done' : 'rt-tl-open';
+  flag.className = 'rt-tl-flag' + (done ? ' ok' : '');
+  flag.textContent = txt;
+  flag.style.display = txt ? '' : 'none';
 }
 function rtUpdateProgress() {
   const done = RT.tlines.filter(rtLineResolved).length, n = RT.tlines.length;
@@ -831,17 +888,31 @@ async function rtLogLines(returnId, byName) {
 
 async function rtSaveAct(complete) {
   const r = RT.actRow; if (!r) return;
-  // Someone owns every save — it is the name the log is written under, and with lines
-  // finishable by different people "who touched this" is the whole point.
-  const by = ($('rtActBy').value || '').trim() || (RT.tlines.find(l => String(l.processed_by || '').trim()) || {}).processed_by || '';
-  if (!String(by).trim()) { toast('Enter your name (Processed by) before saving', 'err'); return rtInvalid('rtActBy'); }
+  if (RT._saving) return;   // a second click, or Enter twice, would run the whole
+                            // replace-lines sequence again against a half-applied table
+  // Someone owns every save — it is the name the log is written under. It is NOT
+  // borrowed from a line any more: with two people finishing one return, falling back
+  // to whoever did the first half filed the second half under their name, which is
+  // exactly the question the log exists to answer.
+  const by = ($('rtActBy').value || '').trim();
+  if (!by) { toast('Enter your name (Processed by) before saving', 'err'); return rtInvalid('rtActBy'); }
   // split quantities must add back up to what was received
   const grp = {};
   RT.tlines.forEach(l => { const g = grp[l._grp] || (grp[l._grp] = { recv: l._recv || 0, sum: 0, sku: l.sku }); g.sum += Number(l.qty) || 0; });
   const bad = Object.values(grp).find(g => g.sum !== g.recv);
   if (bad) return toast(`Split quantities for ${bad.sku} must add up to ${bad.recv} (received)`, 'err');
-  const btn = $('rtActComplete'); btn.disabled = true;
+  RT._saving = true;
+  const btns = ['rtActComplete', 'rtActSave'].map($).filter(Boolean);
+  btns.forEach(b => { b.disabled = true; });
   try {
+    // Did anyone else save this return while it sat open? The write below replaces every
+    // line, so a stale view does not merge — it deletes what is not on screen. Refusing
+    // and asking for a reopen is the only honest answer without a transaction.
+    const { data: cur } = await sb().from('returns_active').select('updated_at').eq('id', r.id).maybeSingle();
+    if (cur && RT.actStamp && cur.updated_at && cur.updated_at !== RT.actStamp) {
+      toast('Someone else saved this return while it was open. Close and reopen it to see their lines, then finish yours.', 'err');
+      return;
+    }
     const now = new Date().toISOString();
     const snapByKey = {}; const bk = rtLineKeys(RT.tsnap || []); (RT.tsnap || []).forEach((l, i) => { snapByKey[bk[i]] = l; });
     const ak = rtLineKeys(RT.tlines);
@@ -876,16 +947,32 @@ async function rtSaveAct(complete) {
     // replace credit lines safely: insert new first, then drop the old ones by id
     const { data: oldT } = await sb().from('returns_treatment_lines').select('id').eq('return_id', r.id);
     const oldTIds = (oldT || []).map(o => o.id);
-    if (rows.length) { const { error } = await sb().from('returns_treatment_lines').insert(rows); if (error) throw error; }
-    if (oldTIds.length) await sb().from('returns_treatment_lines').delete().in('id', oldTIds);
+    let newIds = [];
+    if (rows.length) {
+      const { data: ins, error } = await sb().from('returns_treatment_lines').insert(rows).select('id');
+      if (error) throw error;
+      newIds = (ins || []).map(x => x.id);
+    }
+    if (oldTIds.length) {
+      const { error: ed } = await sb().from('returns_treatment_lines').delete().in('id', oldTIds);
+      // Two calls, no transaction. An unchecked delete used to mean a failure here left
+      // the return carrying every line twice — silently, because PostgREST answers 204
+      // even when a policy blocks the rows. Undo our own insert instead.
+      if (ed) {
+        if (newIds.length) await sb().from('returns_treatment_lines').delete().in('id', newIds);
+        throw ed;
+      }
+    }
     // header LAST — a line failure above never leaves a wrong 'completed' status
     const { error: eu } = await sb().from('returns_active').update(upd).eq('id', r.id);
     if (eu) throw eu;
     await rtLogLines(r.id, by);
     const done = RT.tlines.filter(rtLineResolved).length, n = RT.tlines.length;
-    toast(complete ? `${r.return_no} sent to put-away` : `Progress saved — ${done}/${n} line(s) ready`, 'ok');
-    rtCloseAct(); await loadReturns();
-  } catch (e) { toast('Save failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
+    toast(complete ? `${r.return_no} sent to put-away` : `Progress saved — ${done}/${n} line(s) ready${done < n ? ', the rest stay open' : ''}`, 'ok');
+    RT.actDirtyBase = null;          // saved: closing is no longer a discard
+    rtCloseAct(true); await loadReturns();
+  } catch (e) { toast('Save failed: ' + e.message, 'err'); }
+  finally { RT._saving = false; btns.forEach(b => { b.disabled = false; }); }
 }
 
 // ─── CSV export (History) — mirrors the team's credit-note sheet + our detail ───

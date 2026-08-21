@@ -46,8 +46,31 @@ typed a name.
 gets corrected, and overwriting the field would erase the history that gets asked about.
 The detail view renders it as sentences under the treatment table.
 
-Migration: `db/005_returns_line_treatment.sql`. Additive and nullable, so the app runs
-before it — the per-line fields just do not persist yet.
+### What protects the data
+
+Two people editing one return is now a normal flow, and the save **replaces every line**
+rather than patching one — so the failure modes are about losing someone else's work, not
+about a bad field value. What guards each of them:
+
+| Risk | Guard |
+|---|---|
+| Closing with Cancel or × after typing | Unsaved-changes modal. The check compares only what a save would write, so ticking a line or switching mode never triggers it. |
+| Clicking Simple with per-line values on screen | Mode switching only shows and hides columns. It never writes. The boxes cascade **as you type**, and only in Simple. |
+| Reopening a return that already has different notes per line | Opens in Advanced, and the two boxes open blank — they are apply-tools there, not the record. |
+| Someone else saved while your modal sat open | The save re-reads `updated_at` and refuses on a mismatch, telling you to reopen. It cannot merge, so it must not pretend to. |
+| Double-click on Save / Complete | Re-entry flag plus both buttons disabled for the whole write. |
+| The delete half of replace-lines failing | The insert is undone. PostgREST answers `204` even when a policy blocks the rows, so an unchecked delete meant every line silently doubled. |
+| The log table missing or unreachable | Best-effort insert. A monitoring gap must never fail a save the office already believes went through. |
+| Saving under someone else's name | The name is the saver's own and is always required. It is never borrowed from a line. |
+
+Attribution runs one way only: `processed_at` is stamped when a line **first** becomes
+ready and is never restamped, so finishing the other half of a return does not rewrite
+when the first half was decided.
+
+Migrations: `db/005_returns_line_treatment.sql` (per-line fields + the log) and
+`db/006_returns_void_attribution.sql` (`voided_by` / `voided_at` / `void_reason` — the
+void modal collected them but the columns did not exist, so every void failed). Both are
+additive and nullable.
 
 ## How the market handles returns (RMA)
 

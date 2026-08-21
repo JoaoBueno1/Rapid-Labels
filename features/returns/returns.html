@@ -240,6 +240,10 @@
       </div>
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCloseAct()">Cancel</button>
+        <!-- Save progress writes the lines and leaves the return open, so a second
+             person can finish the rest. Without it the only way out is Complete,
+             which every line must be ready for. -->
+        <button class="rt-btn" id="rtActSave" onclick="rtSaveAct(false)">Save progress</button>
         <button class="rt-btn rt-btn-primary" id="rtActComplete" onclick="rtAskComplete()">Complete</button>
       </div>
     </div>
@@ -317,6 +321,26 @@
       <div class="rt-modal-foot">
         <button class="rt-btn rt-btn-ghost" onclick="rtCompleteClose()">Cancel</button>
         <button class="rt-btn rt-btn-primary" id="rtCompleteBtn" onclick="rtCompleteConfirm()">Complete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ UNSAVED-CHANGES GUARD ═══ -->
+  <!-- Cancel and × used to throw away a part-finished treatment without a word.
+       Typing a credit note per line is minutes of work; a stray click must not
+       cost it silently. -->
+  <div class="rt-modal" id="rtDiscardModal">
+    <div class="rt-modal-box" style="max-width:460px">
+      <div class="rt-modal-head">
+        <h3>Unsaved changes</h3>
+        <button class="rt-x" onclick="rtDiscardClose()">&times;</button>
+      </div>
+      <div class="rt-modal-body">
+        <p class="rt-hint" style="margin-top:0" id="rtDiscardMsg"></p>
+      </div>
+      <div class="rt-modal-foot">
+        <button class="rt-btn rt-btn-ghost" onclick="rtDiscardClose()">Keep editing</button>
+        <button class="rt-btn rt-btn-danger" onclick="rtDiscardConfirm()">Discard changes</button>
       </div>
     </div>
   </div>
