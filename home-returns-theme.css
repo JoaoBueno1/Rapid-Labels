@@ -45,8 +45,11 @@ h1 { color: #1a2230 !important; font-weight: 600 !important; letter-spacing: -.0
 .kpi-label { color: #7a8aa2 !important; }
 
 /* 5) Dashboard sections + rows → white cards, subtle borders */
-.dash-section, .wh-pipeline { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
-.dash-section-title, .wh-pipeline-title { color: #1a2230 !important; }
+/* :not(.pipeline-fs) — these two !important rules were also landing on the fullscreen
+   wall display, so its dark background never applied and its light-grey title sat on
+   white. The card only wears this theme while it is a card. */
+.dash-section, .wh-pipeline:not(.pipeline-fs) { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 10px !important; }
+.dash-section-title, .wh-pipeline:not(.pipeline-fs) .wh-pipeline-title { color: #1a2230 !important; }
 .health-row, .activity-item, .wh-hero { background: #fff !important; border: 1px solid #e2e7ef !important; border-radius: 8px !important; }
 .health-row:hover, .activity-item:hover { background: #f9fbfd !important; }
 .health-name { color: #1a2230 !important; }

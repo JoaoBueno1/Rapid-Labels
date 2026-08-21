@@ -109,9 +109,10 @@
                             const dotColor = ok ? '#22c55e' : '#ef4444';
                             const agoColor = ago.min > 180 ? '#ef4444' : ago.min > 130 ? '#f59e0b' : '#64748b';
                             const html = `<span class="sync-dot" style="background:${dotColor}"></span>Last sync: ${timeStr} · <span style="color:${agoColor}">${ago.str}</span>`;
+                            const plain = `Last sync: ${timeStr} · ${ago.str}`;
                             ['syncBadgeRestock', 'syncBadgeGateway'].forEach(id => {
                                 const el = document.getElementById(id);
-                                if (el) { el.innerHTML = html; el.style.display = ''; }
+                                if (el) { el.innerHTML = html; el.title = plain; el.style.display = ''; }
                             });
                         }
                     }
@@ -188,7 +189,7 @@
                             const agoColor = ago.min > 180 ? '#ef4444' : ago.min > 130 ? '#f59e0b' : '#64748b';
                             const html = `<span class="sync-dot" style="background:#22c55e"></span>Last sync: ${timeStr} · <span style="color:${agoColor}">${ago.str}</span> · ${meta.total_orders||0} orders`;
                             const el = document.getElementById('syncBadgePA');
-                            if (el) { el.innerHTML = html; el.style.display = ''; }
+                            if (el) { el.innerHTML = html; el.title = `Last sync: ${timeStr} · ${ago.str} · ${meta.total_orders||0} orders`; el.style.display = ''; }
                         }
                     }
 
@@ -411,7 +412,37 @@
         function _onFsChange() {
             const card = document.getElementById('whPipelineCard');
             const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-            if (card) card.classList.toggle('pipeline-fs', fsEl === card);
+            const on = !!card && fsEl === card;
+            if (card) card.classList.toggle('pipeline-fs', on);
+            _paintChart(on);
+        }
+        // The chart draws on a canvas, so CSS cannot reach its axis labels, legend or
+        // gridlines — they stay Chart.js's near-black and vanish against the wall
+        // display's navy. Repaint them with the mode.
+        function _paintChart(dark) {
+            const c = window.__pipelineChart;
+            if (!c || !c.options) return;
+            const text = dark ? '#cbd5e1' : '#666666';
+            const grid = dark ? 'rgba(148,163,184,.18)' : '#eef2f7';
+            try {
+                c.options.plugins.legend.labels.color = text;
+                c.options.scales.x.ticks.color = text;
+                c.options.scales.y.ticks.color = text;
+                c.options.scales.y.grid.color = grid;
+                c.options.scales.y.title.color = text;
+                c.update('none');
+            } catch (_) {}
+            // Entering fullscreen resizes the chart's box through CSS alone — no window
+            // resize — and a bare chart.resize() is a no-op there: it waits on the
+            // ResizeObserver rather than measuring. Hand it the container's real size,
+            // measured after the class has been applied, or the canvas keeps the 175px
+            // it was born with and the wall display shows a strip of chart.
+            requestAnimationFrame(function () {
+                try {
+                    const box = c.canvas && c.canvas.parentNode;
+                    if (box && box.clientHeight) c.resize(box.clientWidth, box.clientHeight);
+                } catch (_) {}
+            });
         }
         document.addEventListener('fullscreenchange', _onFsChange);
         document.addEventListener('webkitfullscreenchange', _onFsChange);
@@ -1233,3 +1264,45 @@
                 </tr>`;
             }).join('');
         }
+
+// ══════════════════════════════════════════════════════
+// QUALITY & COMPLIANCE GATE
+// ══════════════════════════════════════════════════════
+// The whole section sits behind the PIN now, not four of its seven items: it carries
+// per-operator productivity and anomaly review, which is exactly the part people ask
+// not to be browsed casually.
+//
+// Worth being plain about what this is: 4209 is shared by the team and lives in this
+// file, which anyone can read. It stops a wrong click and signals "not for everyone".
+// It is not authentication, and nothing that needs authentication should hide behind it.
+function qcAskPin() {
+    const row = document.getElementById('qcPinRow');
+    if (!row) return;
+    const wasOpen = !row.hidden;
+    row.hidden = wasOpen;
+    if (!wasOpen) {
+        const i = document.getElementById('qcPin');
+        if (i) { i.value = ''; i.placeholder = 'PIN'; i.classList.remove('bad'); i.focus(); }
+    }
+}
+
+function qcUnlock() {
+    const i = document.getElementById('qcPin');
+    if (!i) return;
+    if (i.value.trim() !== '4209') { i.classList.add('bad'); i.value = ''; i.placeholder = 'Wrong'; return; }
+    qcReveal();
+    // Survives walking into a gated page and coming back. Without it the PIN gets typed
+    // a dozen times a shift, which is how a PIN turns into something people write on a
+    // sticky note. sessionStorage, not localStorage: it dies with the tab instead of
+    // leaving a shared warehouse PC unlocked forever.
+    try { sessionStorage.setItem('qcUnlocked', '1'); } catch (_) {}
+}
+
+function qcReveal() {
+    const g = document.getElementById('qcGated'); if (g) g.hidden = false;
+    const r = document.getElementById('qcPinRow'); if (r) r.hidden = true;
+    const b = document.getElementById('qcLockBtn'); if (b) b.remove();
+}
+
+// Runs inline: home.js loads at the end of the body, so the sidebar is already parsed.
+try { if (sessionStorage.getItem('qcUnlocked') === '1') qcReveal(); } catch (_) {}

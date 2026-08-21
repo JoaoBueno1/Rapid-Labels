@@ -37,7 +37,73 @@
         .home-subtitle { color:var(--muted); font-size:.85rem; font-weight:500; margin-left:6px; }
 
         /* ─── Split Layout: Dashboard (left) + Actions (right) ─── */
-        .home-split { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; }
+
+        /* ═══ Home shell — navigation left, dashboard right ═══════════════════════════
+           The three action cards became a 248px rail, which is the whole point: the board
+           is read from across a warehouse, so the dashboard should own the width and the
+           navigation should cost as little of it as possible. */
+        .home-shell { display:grid; grid-template-columns:248px minmax(0,1fr); gap:20px; align-items:start; }
+        
+        .sb-sprite { position:absolute; width:0; height:0; overflow:hidden; }
+        
+        .sb { background:#1b2537; border:1px solid #131c2b; border-radius:14px; padding:6px 0 14px;
+              position:sticky; top:14px; box-shadow:0 2px 10px rgba(15,23,42,.12); }
+        .sb-head { display:flex; align-items:center; gap:9px; padding:14px 16px 10px; }
+        .sb-head b { color:#fff; font-size:.95rem; font-weight:700; letter-spacing:.2px; }
+        .sb-head .sb-ic { color:#f97316; width:19px; height:19px; flex-basis:19px; opacity:1; }
+        .sb-group { padding-bottom:2px; }
+        .sb-label { font-size:.63rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+                    color:#6b7d96; padding:11px 16px 5px; }
+        
+        /* One rule for links and buttons alike: half these items open a modal and half
+           navigate, and nothing about that should be visible in the menu. */
+        .sb-item { display:flex; align-items:center; gap:11px; width:100%; box-sizing:border-box;
+                   padding:8px 15px; font-family:inherit; font-size:.83rem; font-weight:500; text-align:left;
+                   color:#c3cede; text-decoration:none; cursor:pointer;
+                   background:none; border:0; border-left:3px solid transparent;
+                   transition:background .15s, color .15s; }
+        .sb-item:hover { background:rgba(255,255,255,.055); color:#fff; }
+        .sb-item.is-active { background:rgba(255,255,255,.07); border-left-color:#f97316; color:#fff; font-weight:700; }
+        .sb-item.is-active .sb-ic { color:#f97316; opacity:1; }
+        .sb-ic { width:17px; height:17px; flex:0 0 17px; fill:none; stroke:currentColor; stroke-width:1.9;
+                 stroke-linecap:round; stroke-linejoin:round; opacity:.85; }
+        .sb-item .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        
+        .sb-badge { flex:0 0 auto; min-width:20px; padding:1px 6px; border-radius:9px; background:#f97316;
+                    color:#fff; font-size:.66rem; font-weight:800; text-align:center; line-height:1.55; }
+        .sb-badge.zero { background:#2f3d54; color:#8493aa; }
+        .sb-tag { flex:0 0 auto; font-size:.55rem; font-weight:800; letter-spacing:.06em; color:#7dd3fc;
+                  border:1px solid #2c4257; padding:1px 5px; border-radius:5px; }
+        
+        /* home.js writes "● Last sync: 22/08 14:30 · 2h ago" in here. At 248px the sentence
+           has nowhere to go, so the dot carries the state and the sentence moves to the
+           tooltip — the JS keeps writing exactly what it always wrote. */
+        .sb-sync { flex:0 0 auto; font-size:0; line-height:0; }
+        .sb-sync .sync-dot { display:inline-block; width:7px; height:7px; border-radius:50%; }
+        
+        .sb-locked .sb-ic { color:#94a3b8; }
+        .sb-pin { display:flex; gap:6px; padding:2px 15px 8px 18px; }
+        .sb-pin[hidden], #qcGated[hidden] { display:none; }
+        .sb-pin input { width:70px; padding:5px 8px; border:1px solid #33415b; border-radius:7px;
+                        background:#111a29; color:#e2e8f0; font-size:.78rem; text-align:center; outline:none; }
+        .sb-pin input:focus { border-color:#f97316; }
+        .sb-pin input.bad { border-color:#ef4444; }
+        .sb-pin button { padding:5px 11px; border:0; border-radius:7px; background:#f97316; color:#fff;
+                         font-family:inherit; font-size:.74rem; font-weight:700; cursor:pointer; }
+        
+        /* Narrow: the dashboard is what the page is for, so it goes first and the nav
+           becomes a short wrapped grid underneath instead of a full screen of scrolling. */
+        @media (max-width:900px) {
+          .home-shell { grid-template-columns:1fr; }
+          .sb { position:static; order:2; padding-bottom:10px; }
+          .dash-panel { order:1; }
+          .sb-head { display:none; }
+          .sb-group { display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); }
+          .sb-label { grid-column:1 / -1; padding-top:8px; }
+          .sb-pin { grid-column:1 / -1; }
+          #qcGated { grid-column:1 / -1; display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); }
+          #qcGated[hidden] { display:none; }
+        }
 
         /* ─── Dashboard Panel (left) ─── */
         .dash-panel { display:flex; flex-direction:column; gap:16px; }
@@ -81,56 +147,20 @@
         .activity-text .time { color:var(--muted); font-size:.7rem; font-weight:500; }
         .activity-empty { color:var(--muted); font-size:.78rem; text-align:center; padding:16px 0; opacity:.7; }
 
-        /* ─── Actions Panel (right) ─── */
-        .actions-panel { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; align-content:start; }
-
-        /* Category cards — original size */
-        .category-card { background:#e2e8f0!important; border:1px solid #cbd5e1!important; border-radius:14px!important; padding:0!important; overflow:hidden!important; box-shadow:0 2px 8px rgba(0,0,0,.06)!important; transition:box-shadow .2s, transform .2s; }
-        .category-card:hover { box-shadow:0 6px 24px rgba(0,0,0,.08)!important; transform:translateY(-2px); }
-        .category-header { display:flex!important; align-items:center!important; gap:10px!important; padding:14px 18px!important; border-bottom:1px solid #e2e8f0!important; }
-        .category-icon { font-size:1.25rem!important; line-height:1; }
-        h2.category-title, .category-card .category-title { font-size:.95rem!important; font-weight:800!important; color:#0f172a!important; margin:0!important; text-align:left!important; }
-        .category-labels .category-header  { background:#eff6ff!important; border-bottom-color:#bfdbfe!important; }
-        .category-labels .category-items { background:#dbeafe!important; }
-        .category-warehouse .category-header { background:#f0fdf4!important; border-bottom-color:#bbf7d0!important; }
-        .category-warehouse .category-items { background:#d1fae5!important; }
-        .category-quality .category-header { background:#fffbeb!important; border-bottom-color:#fde68a!important; }
-        .category-quality .category-items { background:#fef3c7!important; }
-        .category-analytics .category-header { background:#faf5ff!important; border-bottom-color:#e9d5ff!important; }
-        .category-analytics .category-items { background:#e9d5ff!important; }
-        .category-items { display:flex!important; flex-direction:column!important; gap:8px!important; padding:12px!important; background:#e2e8f0!important; }
-        /* Quality & Compliance spans the full width (old Analytics space) with 2-col buttons */
-        .category-card.qc-wide { grid-column:1 / -1; }
-        .category-card.qc-wide .category-items { display:grid!important; flex-direction:row!important; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr))!important; }
-        .cat-btn { display:flex!important; align-items:center!important; gap:12px!important; padding:12px 16px!important; background:#ffffff!important; border:1px solid #e2e8f0!important; border-radius:10px!important; cursor:pointer!important; font-size:.9rem!important; font-weight:600!important; color:#0f172a!important; text-decoration:none!important; width:100%!important; font-family:inherit!important; box-sizing:border-box!important; line-height:1.4!important; transition:all .2s ease; }
-        .cat-btn:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,.08); border-color:#94a3b8!important; }
-        .cat-btn-icon { font-size:1.1rem!important; flex-shrink:0; width:28px!important; height:28px!important; display:flex!important; align-items:center!important; justify-content:center!important; border-radius:8px!important; background:#f1f5f9!important; line-height:1; }
-        .category-labels .cat-btn-icon { background:#dbeafe!important; }
-        .category-warehouse .cat-btn-icon { background:#dcfce7!important; }
-        .category-quality .cat-btn-icon { background:#fef3c7!important; }
-        .category-analytics .cat-btn-icon { background:#f3e8ff!important; }
-        .cat-badge { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 7px; border-radius:12px; background:#ef4444; color:#fff; font-size:.75rem; font-weight:700; margin-left:auto; line-height:1; }
-        .cat-badge.zero { background:#94a3b8; }
-        .home-sync-badge { width:100%;flex-basis:100%;font-size:10px;color:#64748b;font-weight:500;margin-top:-2px;padding:0 0 0 40px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-        .home-sync-badge .sync-dot { display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:middle; }
         .site-footer { margin-top:auto; background:var(--header); color:var(--header-text); border-top:1px solid rgba(255,255,255,.08); }
         .footer-inner { width:100%; padding:14px 16px; text-align:center; }
 
         /* ─── Responsive ─── */
         @media (max-width:1100px) {
-            .home-split { grid-template-columns:1fr!important; }
-            .actions-panel { order:-1; grid-template-columns:1fr 1fr!important; }
             .kpi-row { grid-template-columns:repeat(2, 1fr)!important; }
         }
         @media (max-width:640px) {
             .kpi-row { grid-template-columns:1fr!important; }
-            .actions-panel { grid-template-columns:1fr!important; }
             .home-container { max-width:100%!important; width:100%!important; padding:12px!important; }
         }
 
         /* ─── Warehouse Pipeline Row ─── */
         .wh-pipeline { background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
-        .wh-pipeline.wh-locked > * { visibility:hidden; }
         .wh-pipeline-title { font-size:.8rem; font-weight:700; color:var(--text); margin:0 0 12px 0; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:.3px; }
         .wh-pipeline-title .icon { font-size:1rem; }
         .wh-pipeline-title .wh-sync-info { margin-left:auto; font-size:.65rem; color:var(--muted); font-weight:500; text-transform:none; letter-spacing:0; }
@@ -140,7 +170,7 @@
         @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 
         /* ─── Warehouse Pipeline: wall-display flow board ─── */
-        .wh-fs-btn { margin-left:auto; background:none; border:1px solid var(--border); border-radius:7px; cursor:pointer; font-size:1rem; color:var(--muted); padding:3px 9px; transition:all .2s; line-height:1; }
+        .wh-fs-btn { margin-left:8px; background:none; border:1px solid var(--border); border-radius:7px; cursor:pointer; font-size:1rem; color:var(--muted); padding:3px 9px; transition:all .2s; line-height:1; }
         .wh-fs-btn:hover { background:#0f172a; color:#fff; border-color:#0f172a; }
         .wh-hero-row { display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
         .wh-hero { background:#fff; border:1px solid var(--border); border-radius:9px; padding:6px 12px 6px 14px; display:flex; flex-direction:row; align-items:baseline; gap:7px; position:relative; overflow:hidden; }
@@ -224,9 +254,36 @@
         .wh-pipeline.pipeline-fs .wh-flow-foot { font-size:1.2rem; border-top-color:#1e293b; margin-top:3vh; }
         .wh-pipeline.pipeline-fs .wh-foot-val { font-size:2.2rem; }
         .wh-pipeline.pipeline-fs .wh-foot-label { color:#e2e8f0; }
+        .wh-pipeline.pipeline-fs .wh-tr { border-top-color:#1e293b; }
+        .wh-pipeline.pipeline-fs .wh-tr-hd .t { color:#e2e8f0; }
+        .wh-pipeline.pipeline-fs .wh-tr-list { border-color:#1e293b; }
+        .wh-pipeline.pipeline-fs .wh-tr-row { background:#111c30; border-bottom-color:#1b2740; }
+        .wh-pipeline.pipeline-fs .wh-tr-row:hover { background:#16233a; }
+        .wh-pipeline.pipeline-fs .wh-tr-row .to { color:#e2e8f0; }
+        .wh-pipeline.pipeline-fs .wh-tr-row .tn { color:#c4b5fd; }
+        .wh-pipeline.pipeline-fs .wh-tr-row .to .m,
+        .wh-pipeline.pipeline-fs .wh-tr-row .ln { color:#8fa0b8; }
+        .wh-pipeline.pipeline-fs .wh-tr-empty { color:#8fa0b8; }
         .wh-pipeline.pipeline-fs .wh-chart-wrap { border-top-color:#1e293b; margin-top:2vh; }
         .wh-pipeline.pipeline-fs .wh-chart-title { color:#cbd5e1; }
-        .wh-pipeline.pipeline-fs .wh-chart-canvas { height:32vh; }
+        /* A definite height, not flex-fill. Chart.js sizes its canvas from the container
+           and only writes the new size on its next animation frame, so a box that grows
+           by flex alone can leave the canvas at the height it was born with. A vh value
+           is a size the chart can read at any moment. 34vh is what the removed hero row
+           and the smaller stage numbers paid for — the old value was 26vh. */
+        .wh-pipeline.pipeline-fs .wh-chart-canvas { height:34vh; }
+
+        /* Laptops and smaller panels: 1080p fits at the sizes above, 1366x768 does not.
+           Scoped to .pipeline-fs, so it only ever applies to the wall display. */
+        @media (max-height:820px) {
+            .wh-pipeline.pipeline-fs { padding:2vh 3vw; }
+            .wh-pipeline.pipeline-fs .wh-flow-stage { padding:1.4vh 1vw; }
+            .wh-pipeline.pipeline-fs .wh-flow-val { font-size:3.8vw; }
+            .wh-pipeline.pipeline-fs .wh-flow-label { font-size:.9rem; }
+            .wh-pipeline.pipeline-fs .wh-tr { margin-top:1.2vh; padding-top:1.2vh; }
+            .wh-pipeline.pipeline-fs .wh-chart-wrap { margin-top:1.2vh; padding-top:1.2vh; }
+            .wh-pipeline.pipeline-fs .wh-chart-canvas { height:25vh; }
+        }
         .wh-kpi-row { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; }
         .wh-kpi { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 10px; text-align:center; transition:all .2s; position:relative; }
         .wh-kpi:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,.06); }
@@ -397,11 +454,8 @@
             .wh-flow-label { font-size:.72rem; }
             .wh-hero { flex:1 1 calc(50% - 5px); }         /* two heroes side by side */
 
-            /* Touch-friendly action buttons */
-            .cat-btn { min-height:48px!important; }
-
-            /* PIN overlay */
-            #qcPin { min-height:44px; font-size:16px; width:100px; }
+            /* PIN field — 16px stops iOS zooming the page on focus */
+            .sb-pin input { min-height:44px; font-size:16px; }
             #qcUnlockBtn { min-height:44px; }
 
             /* Health inline — hide separators on wrap */
