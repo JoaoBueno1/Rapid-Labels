@@ -2,8 +2,9 @@
  * Transfer Out — shared staging + print. Load on ANY page that has window.supabase
  * (it injects its own modal + styles). Call:  TOStaging.open(row)
  *   row = { id, number, to_location, status, order_date }
+ * The staging modal is a WYSIWYG, print-styled editable preview of the sheet.
  * Rules: ORDER lines are LOCKED (only their Location is editable, never deletable);
- * ADD-lines (non-stock) are fully editable + removable. On print it is re-sorted by
+ * ADD lines (non-stock) are fully editable + removable. On print it is re-sorted by
  * pickbay and handed to transfer_out_print.html via localStorage.
  */
 (function () {
@@ -16,43 +17,56 @@
   const sbc = () => window.supabase;
 
   const CSS = `
-   .tost-mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;align-items:center;justify-content:center;padding:16px}
+   .tost-mask{display:none;position:fixed;inset:0;background:rgba(30,41,59,.62);z-index:2000;align-items:flex-start;justify-content:center;padding:26px 20px;overflow:auto;
+     --ink:#1a2230;--muted:#5b6b86;--line:#333;--hair:#c8d0dc;--head:#eef2f7;font-family:"Segoe UI",Arial,sans-serif}
    .tost-mask.on{display:flex}
-   .tost-modal{background:#fff;border-radius:14px;width:100%;max-width:1080px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.3);font-family:"Segoe UI",Arial,sans-serif;color:#0f172a}
-   .tost-hd{padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px}
-   .tost-hd .dest{font-size:24px;font-weight:800}
-   .tost-hd .meta{font-size:13px;color:#64748b}
-   .tost-hd .x{margin-left:auto;background:none;border:none;font-size:22px;cursor:pointer;color:#64748b}
-   .tost-tools{padding:10px 20px;border-bottom:1px solid #e2e8f0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-   .tost-btn{padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:#0f172a}
-   .tost-btn:hover{border-color:#94a3b8}
-   .tost-btn.primary{background:#2563eb;color:#fff;border-color:#2563eb}
-   .tost-btn.add{background:#ecfdf5;border-color:#a7f3d0;color:#047857;font-weight:700;font-size:14px}
-   .tost-btn.add:hover{background:#d1fae5}
-   .tost-hint{color:#64748b;font-size:12px;margin-left:auto;max-width:420px}
-   .tost-body{flex:1;overflow:auto}
-   .tost-tbl{width:100%;border-collapse:collapse;font-size:13px}
-   .tost-tbl th{position:sticky;top:0;background:#f8fafc;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#64748b;border-bottom:1px solid #e2e8f0;z-index:1}
-   .tost-tbl td{padding:5px 8px;border-bottom:1px solid #eef2f7;vertical-align:middle}
-   .tost-tbl td.ro{color:#334155}
-   .tost-tbl .dc{width:80px;text-align:center;font-weight:600}
-   .tost-tbl .code{width:150px;font-family:Consolas,monospace;font-weight:600}
-   .tost-tbl .qty{width:60px;text-align:center;font-weight:700}
-   .tost-tbl .locw{width:150px}
-   .tost-inp{width:100%;padding:6px 8px;border:1px solid transparent;border-radius:6px;font-size:13px;background:transparent;font-family:inherit}
-   .tost-inp:hover{border-color:#e2e8f0}
-   .tost-inp:focus{border-color:#2563eb;background:#fff;outline:none;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
-   .tost-inp.loc{font-family:Consolas,monospace}
-   .tost-tbl tr.manual td{background:#fffbeb}
-   .tost-tbl tr.manual td:first-child{box-shadow:inset 3px 0 0 #f59e0b}
-   .tost-tag{font-size:9px;background:#fde68a;color:#92400e;padding:1px 6px;border-radius:5px;margin-left:6px;font-weight:700;vertical-align:middle}
-   .tost-rm{background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#ef4444;cursor:pointer;font-size:15px;width:26px;height:26px;line-height:1}
-   .tost-lock{color:#cbd5e1;font-size:13px}
-   .tost-ft{padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;align-items:center}
-   .tost-ft .tot{color:#64748b;font-size:13px;margin-right:auto}
-   .tost-spin{display:inline-block;width:16px;height:16px;border:2px solid #cbd5e1;border-top-color:#2563eb;border-radius:50%;animation:tostsp .8s linear infinite;vertical-align:middle}
-   @keyframes tostsp{to{transform:rotate(360deg)}}
-   .tost-empty{text-align:center;color:#94a3b8;padding:24px}`;
+   .tost-modal{background:#fff;border-radius:6px;width:100%;max-width:1040px;max-height:calc(100vh - 52px);display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.4);color:var(--ink)}
+   .tost-bar{display:flex;align-items:center;gap:10px;padding:11px 18px;border-bottom:1px solid var(--hair);background:#fbfcfe;border-radius:6px 6px 0 0;flex-shrink:0}
+   .tost-bar .tbtn{padding:7px 13px;border:1px solid var(--hair);border-radius:6px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink)}
+   .tost-bar .tbtn:hover{border-color:#94a3b8}
+   .tost-bar .tbtn.add{border-color:#cfd8e6}
+   .tost-bar .tbtn.primary{background:#1e3a8a;color:#fff;border-color:#1e3a8a}
+   .tost-bar .tbtn.ghost{border:none;background:none;color:var(--muted);margin-left:auto}
+   .tost-bar .sp{flex:1}
+   .tost-scroll{overflow:auto;padding:22px 26px;background:#eef1f5;flex:1}
+   .tost-sheet{background:#fff;padding:22px 26px;box-shadow:0 1px 6px rgba(20,28,42,.12);max-width:940px;margin:0 auto}
+   .tost-hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--line);padding-bottom:8px}
+   .tost-hd .title{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+   .tost-hd .dest{font-size:28px;font-weight:800;line-height:1.05;margin:1px 0 3px}
+   .tost-hd .fromline{font-size:12px;color:var(--muted)}
+   .tost-hd .fromline b{color:var(--ink);font-size:13px}
+   .tost-hd .lbl{text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+   .tost-hd .right{text-align:right}
+   .tost-hd .trno{font-size:21px;font-weight:700}
+   .tost-hd .meta{font-size:11px;color:var(--muted);margin-top:2px}
+   .tost-hd .meta b{color:var(--ink)}
+   .tost-sum{display:flex;gap:16px;font-size:11px;color:var(--muted);margin:9px 0 6px}
+   .tost-sum b{color:var(--ink)}
+   table.tost-t{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+   table.tost-t th{background:var(--head);border:1px solid var(--line);padding:6px 8px;text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#37435a}
+   table.tost-t td{border:1px solid var(--hair);padding:0;height:30px;vertical-align:middle}
+   table.tost-t td .cell{padding:6px 8px}
+   table.tost-t td.ro .cell{color:#2b3648}
+   table.tost-t .dc{width:60px;text-align:center;font-variant-numeric:tabular-nums;font-weight:600}
+   table.tost-t .code{width:140px;font-family:Consolas,monospace;font-weight:600}
+   table.tost-t .qty{width:46px;text-align:center;font-weight:700}
+   table.tost-t .loc{width:128px;font-family:Consolas,monospace}
+   table.tost-t .act{width:34px;text-align:center}
+   table.tost-t tr:nth-child(even) td{background:#fafbfd}
+   table.tost-t input{width:100%;border:0;padding:6px 8px;font:inherit;font-size:12px;background:#eff4ff;color:var(--ink);outline:none}
+   table.tost-t input:focus{background:#fff;box-shadow:inset 0 0 0 2px #1e3a8a}
+   table.tost-t .dc input{text-align:center;font-weight:600}
+   table.tost-t .code input,table.tost-t .loc input{font-family:Consolas,monospace;font-weight:600}
+   table.tost-t .qty input{text-align:center;font-weight:700}
+   table.tost-t tr.manual td{background:#fff8ec}
+   table.tost-t tr.manual .dc{box-shadow:inset 3px 0 0 #c88a12}
+   table.tost-t tr.manual input{background:#fff}
+   .tost-added{font-size:9px;color:#8a6d1f;letter-spacing:.04em;text-transform:uppercase;margin-left:6px}
+   .tost-x{border:1px solid var(--hair);background:#fff;border-radius:5px;width:22px;height:22px;color:#b04242;cursor:pointer;font-size:14px;line-height:1}
+   .tost-x:hover{background:#fbeaea;border-color:#e7bcbc}
+   .tost-empty{text-align:center;color:#9aa6ba;padding:22px}
+   .tost-spin{display:inline-block;width:15px;height:15px;border:2px solid #cbd5e1;border-top-color:#1e3a8a;border-radius:50%;animation:tostsp .8s linear infinite;vertical-align:middle}
+   @keyframes tostsp{to{transform:rotate(360deg)}}`;
 
   function ensureDom() {
     if ($('tostMask')) return;
@@ -60,25 +74,45 @@
     const wrap = document.createElement('div');
     wrap.innerHTML = `<div class="tost-mask" id="tostMask">
       <div class="tost-modal">
-        <div class="tost-hd"><div><div class="dest" id="tostDest">—</div><div class="meta" id="tostMeta">—</div></div><button class="x" onclick="TOStaging.close()">×</button></div>
-        <div class="tost-tools">
-          <button class="tost-btn add" onclick="TOStaging.add()">＋ Add a line</button>
-          <button class="tost-btn" onclick="TOStaging.sort()">⇅ Sort by pickbay</button>
-          <span class="tost-hint">Order lines are locked — only their <b>Location</b> is editable. Use <b>Add a line</b> for anything extra (non-stock) — free to type, removable.</span>
+        <div class="tost-bar">
+          <button class="tbtn add" onclick="TOStaging.add()">Add line</button>
+          <button class="tbtn" onclick="TOStaging.sort()">Sort by pickbay</button>
+          <span class="sp"></span>
+          <button class="tbtn primary" onclick="TOStaging.print()">Print</button>
+          <button class="tbtn ghost" onclick="TOStaging.close()">Close</button>
         </div>
-        <div class="tost-body"><table class="tost-tbl"><thead><tr>
-          <th class="dc">5DC</th><th class="code">Rapid Code</th><th>Product</th><th class="qty">Qty</th><th class="locw">Location</th><th style="width:40px"></th>
-        </tr></thead><tbody id="tostRows"></tbody></table></div>
-        <div class="tost-ft"><span class="tot" id="tostTot"></span><button class="tost-btn" onclick="TOStaging.close()">Cancel</button><button class="tost-btn primary" onclick="TOStaging.print()">🖨️ Print</button></div>
+        <div class="tost-scroll">
+          <div class="tost-sheet">
+            <div class="tost-hd">
+              <div>
+                <div class="title">Stock Transfer</div>
+                <div class="dest" id="tostDest">—</div>
+                <div class="fromline"><span class="lbl">From</span> <b>Main Warehouse</b> &nbsp;•&nbsp; <span class="lbl">To</span> <span id="tostToAddr">—</span></div>
+              </div>
+              <div class="right">
+                <div class="trno" id="tostTr">—</div>
+                <div class="meta" id="tostMeta">—</div>
+              </div>
+            </div>
+            <div class="tost-sum" id="tostSum"></div>
+            <table class="tost-t"><thead><tr>
+              <th class="dc">5DC</th><th class="code">Rapid Code</th><th>Product</th><th class="qty">Qty</th><th class="loc">Location</th><th class="act"></th>
+            </tr></thead><tbody id="tostRows"></tbody></table>
+          </div>
+        </div>
       </div></div>`;
     document.body.appendChild(wrap.firstElementChild);
+    $('tostMask').addEventListener('click', e => { if (e.target === $('tostMask')) close(); });
   }
 
   async function open(row) {
     ensureDom();
     st.sel = row; st.lines = []; st.toAddr = '';
-    $('tostDest').textContent = String(row.to_location || '—').replace(/\s+Warehouse$/i, '');
-    $('tostMeta').innerHTML = `<b>${esc(row.number || '')}</b> · ${esc(row.status || '')} · ${esc(fmtD(row.order_date))} · loading…`;
+    $('tostDest').textContent = String(row.to_location || '—').replace(/\s+Warehouse$/i, '').toUpperCase();
+    $('tostTr').textContent = row.number || '—';
+    $('tostToAddr').textContent = '…';
+    $('tostMeta').innerHTML = `Date <b>${esc(fmtD(row.order_date)) || '—'}</b> · ${esc(row.status || '')}`;
+    $('tostSum').innerHTML = '';
     $('tostRows').innerHTML = `<tr><td colspan="6" class="tost-empty"><span class="tost-spin"></span> Loading lines from Cin7…</td></tr>`;
     $('tostMask').classList.add('on'); document.body.style.overflow = 'hidden';
     try {
@@ -93,9 +127,8 @@
       }
       st.lines = lines.map(l => { const p = map[l.sku] || {}; return { dc: p.attribute1 || '', code: l.sku, product: l.product_name || p.name || '', qty: l.qty, loc: p.stock_locator || '', _manual: false }; });
       st.toAddr = await lookupAddr(row.to_location);
-      sortLines();
-      $('tostMeta').innerHTML = `<b>${esc(row.number || '')}</b> · ${esc(row.status || '')} · ${esc(fmtD(row.order_date))} · ${st.lines.length} lines`;
-      render();
+      $('tostToAddr').textContent = st.toAddr || row.to_location || '—';
+      sortLines(); render();
     } catch (e) { $('tostRows').innerHTML = `<tr><td colspan="6" class="tost-empty">Could not load lines: ${esc(e.message)}</td></tr>`; }
   }
 
@@ -108,37 +141,36 @@
     } catch (_) { return ''; }
   }
 
-  const locKey = l => (l.loc && l.loc.trim()) ? l.loc.trim() : '~~~';   // blanks last
+  const locKey = l => (l.loc && l.loc.trim()) ? l.loc.trim() : '~~~';
   function sortLines() { st.lines.sort((a, b) => locKey(a).localeCompare(locKey(b), undefined, { numeric: true })); }
   function sort() { sortLines(); render(); }
 
   function render() {
     const units = st.lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
-    $('tostTot').textContent = `${st.lines.length} lines · ${units} units`;
+    $('tostSum').innerHTML = `<span><b>${st.lines.length}</b> lines</span><span><b>${units}</b> units total</span><span>Sorted by pickbay (Location)</span>`;
     $('tostRows').innerHTML = st.lines.map((l, i) => {
       if (l._manual) return `<tr class="manual">
-        <td class="dc"><input class="tost-inp" style="text-align:center;font-weight:600" value="${esc(l.dc)}" oninput="TOStaging.set(${i},'dc',this.value)" placeholder="5DC" /></td>
-        <td class="code"><input class="tost-inp" style="font-family:Consolas,monospace;font-weight:600" value="${esc(l.code)}" oninput="TOStaging.set(${i},'code',this.value)" placeholder="code" /></td>
-        <td><input class="tost-inp" value="${esc(l.product)}" oninput="TOStaging.set(${i},'product',this.value)" placeholder="description (free — non-stock item)" /><span class="tost-tag">added</span></td>
-        <td class="qty"><input class="tost-inp" style="text-align:center;font-weight:700" value="${esc(l.qty)}" inputmode="numeric" oninput="TOStaging.set(${i},'qty',this.value)" placeholder="0" /></td>
-        <td class="locw"><input class="tost-inp loc" value="${esc(l.loc)}" oninput="TOStaging.set(${i},'loc',this.value)" placeholder="pickbay (opt.)" /></td>
-        <td><button class="tost-rm" title="Remove this add-line" onclick="TOStaging.remove(${i})">×</button></td>
+        <td class="dc"><input value="${esc(l.dc)}" oninput="TOStaging.set(${i},'dc',this.value)" placeholder="5DC" /></td>
+        <td class="code"><input value="${esc(l.code)}" oninput="TOStaging.set(${i},'code',this.value)" placeholder="code" /></td>
+        <td><input value="${esc(l.product)}" oninput="TOStaging.set(${i},'product',this.value)" placeholder="description — non-stock item, free to type" /></td>
+        <td class="qty"><input value="${esc(l.qty)}" inputmode="numeric" oninput="TOStaging.set(${i},'qty',this.value)" placeholder="0" /></td>
+        <td class="loc"><input value="${esc(l.loc)}" oninput="TOStaging.set(${i},'loc',this.value)" placeholder="pickbay" /></td>
+        <td class="act"><button class="tost-x" title="Remove this added line" onclick="TOStaging.remove(${i})">×</button></td>
       </tr>`;
-      // real order line: locked except Location
       return `<tr>
-        <td class="dc ro">${esc(l.dc)}</td>
-        <td class="code ro">${esc(l.code)}</td>
-        <td class="ro">${esc(l.product)}</td>
-        <td class="qty ro">${esc(l.qty)}</td>
-        <td class="locw"><input class="tost-inp loc" value="${esc(l.loc)}" oninput="TOStaging.set(${i},'loc',this.value)" placeholder="set pickbay" /></td>
-        <td><span class="tost-lock" title="Order line — can't be deleted">🔒</span></td>
+        <td class="dc ro"><div class="cell">${esc(l.dc)}</div></td>
+        <td class="code ro"><div class="cell">${esc(l.code)}</div></td>
+        <td class="ro"><div class="cell">${esc(l.product)}</div></td>
+        <td class="qty ro"><div class="cell">${esc(l.qty)}</div></td>
+        <td class="loc"><input value="${esc(l.loc)}" oninput="TOStaging.set(${i},'loc',this.value)" placeholder="set pickbay" /></td>
+        <td class="act"></td>
       </tr>`;
     }).join('') || '<tr><td colspan="6" class="tost-empty">No lines.</td></tr>';
   }
 
-  function set(i, k, v) { if (st.lines[i]) { st.lines[i][k] = v; if (k === 'qty') { const u = st.lines.reduce((s, l) => s + (Number(l.qty) || 0), 0); $('tostTot').textContent = `${st.lines.length} lines · ${u} units`; } } }
+  function set(i, k, v) { if (st.lines[i]) { st.lines[i][k] = v; if (k === 'qty') { const u = st.lines.reduce((s, l) => s + (Number(l.qty) || 0), 0); const el = $('tostSum'); if (el) el.innerHTML = `<span><b>${st.lines.length}</b> lines</span><span><b>${u}</b> units total</span><span>Sorted by pickbay (Location)</span>`; } } }
   function add() { st.lines.unshift({ dc: '', code: '', product: '', qty: '', loc: '', _manual: true }); render(); const inp = $('tostRows').querySelector('tr.manual input'); if (inp) inp.focus(); }
-  function remove(i) { if (st.lines[i] && !st.lines[i]._manual) return; st.lines.splice(i, 1); render(); }   // never removes an order line
+  function remove(i) { if (st.lines[i] && !st.lines[i]._manual) return; st.lines.splice(i, 1); render(); }
   function close() { $('tostMask').classList.remove('on'); document.body.style.overflow = ''; }
 
   function print() {

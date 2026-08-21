@@ -157,13 +157,36 @@
         .wh-hero-label { font-size:.64rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
         .wh-hero-sub { font-size:.58rem; color:var(--muted); padding-left:6px; opacity:.65; }
         .wh-flow { display:flex; align-items:stretch; gap:6px; }
-        .wh-flow-stage { flex:1; background:#fff; border:1px solid var(--border); border-radius:14px; padding:28px 8px; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all .2s; border-top:5px solid #cbd5e1; }
+        .wh-flow-stage { flex:1; background:#fff; border:1px solid var(--border); border-radius:12px; padding:12px 8px; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all .2s; border-top:4px solid #cbd5e1; }
         .wh-flow-stage.clickable { cursor:pointer; }
         .wh-flow-stage.clickable:hover { box-shadow:0 4px 14px rgba(0,0,0,.08); transform:translateY(-2px); }
-        .wh-flow-val { font-size:3.4rem; font-weight:800; line-height:1; color:var(--text); }
+        .wh-flow-val { font-size:2rem; font-weight:800; line-height:1; color:var(--text); }
         .wh-flow-val.loading { color:#cbd5e1; }
-        .wh-flow-label { font-size:.86rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-top:8px; color:var(--text); }
-        .wh-flow-sub { font-size:.66rem; color:var(--muted); margin-top:4px; opacity:.8; }
+        .wh-flow-label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-top:5px; color:var(--text); }
+        .wh-flow-sub { font-size:.62rem; color:var(--muted); margin-top:3px; opacity:.8; }
+
+        /* ─── Inline Transfers Out list (in the pipeline card) ─── */
+        .wh-tr { margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
+        .wh-tr-hd { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+        .wh-tr-hd .t { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--text); }
+        .wh-tr-hd .n { font-size:.68rem; font-weight:700; color:#5b21b6; background:#ede9fe; padding:1px 8px; border-radius:10px; }
+        .wh-tr-hd .inc { margin-left:auto; font-size:.72rem; color:var(--muted); cursor:pointer; }
+        .wh-tr-hd .inc:hover { color:#0d9488; }
+        .wh-tr-hd .inc b { color:#0d9488; }
+        .wh-tr-hd .all { font-size:.7rem; color:#2563eb; cursor:pointer; text-decoration:none; }
+        .wh-tr-list { display:flex; flex-direction:column; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+        .wh-tr-row { display:grid; grid-template-columns:96px 1fr 92px 60px; gap:10px; align-items:center; padding:7px 12px; font-size:.8rem; border-bottom:1px solid #f1f5f9; cursor:pointer; background:#fff; }
+        .wh-tr-row:last-child { border-bottom:0; }
+        .wh-tr-row:hover { background:#f5f3ff; }
+        .wh-tr-row .tn { font-weight:700; color:#6d28d9; white-space:nowrap; }
+        .wh-tr-row .to { font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .wh-tr-row .to small { color:var(--muted); font-weight:400; }
+        .wh-tr-row .rf { color:var(--muted); font-size:.72rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .wh-tr-row .dt { color:var(--muted); font-variant-numeric:tabular-nums; text-align:right; font-size:.74rem; }
+        .wh-tr-row .bd { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; padding:2px 7px; border-radius:5px; white-space:nowrap; text-align:center; }
+        .wh-tr-row .bd.in-transit { background:#ede9fe; color:#5b21b6; }
+        .wh-tr-row .bd.ordered { background:#e0e7ff; color:#3730a3; }
+        .wh-tr-empty { padding:16px; text-align:center; color:var(--muted); font-size:.78rem; }
         .wh-flow-arrow { display:flex; align-items:center; color:#cbd5e1; font-size:1.4rem; font-weight:700; flex:0 0 auto; }
         .stage-ordered { border-top-color:#3b82f6; } .stage-ordered .wh-flow-val { color:#1e40af; }
         .stage-picking { border-top-color:#f59e0b; } .stage-picking .wh-flow-val { color:#b45309; }
@@ -525,19 +548,15 @@
                         </div>
                     </div>
 
-                    <!-- Transfers / logistics footer -->
-                    <div class="wh-flow-foot">
-                        <div class="wh-foot-item clickable" onclick="openTransfersModal('outbound')">
-                            <span class="wh-foot-val" id="whTransfersVal">—</span>
-                            <span class="wh-foot-label">Transfers Out</span>
-                            <span class="wh-foot-sub" id="whTransfersSub"></span>
+                    <!-- Transfers Out — inline list (leaving Main). Click a row to open the pick sheet. -->
+                    <div class="wh-tr">
+                        <div class="wh-tr-hd">
+                            <span class="t">Transfers Out</span>
+                            <span class="n" id="whTransfersVal">—</span>
+                            <span class="inc" onclick="openTransfersModal('inbound')" title="Incoming to Main">Incoming <b id="whIncomingVal">—</b></span>
+                            <a class="all" onclick="openTransfersModal('outbound')">View all ›</a>
                         </div>
-                        <div class="wh-foot-sep"></div>
-                        <div class="wh-foot-item clickable" onclick="openTransfersModal('inbound')">
-                            <span class="wh-foot-val" id="whIncomingVal">—</span>
-                            <span class="wh-foot-label">Incoming</span>
-                            <span class="wh-foot-sub" id="whIncomingSub"></span>
-                        </div>
+                        <div class="wh-tr-list" id="whTrList"><div class="wh-tr-empty">loading…</div></div>
                     </div>
 
                     <!-- Weekly trend: picks (bars) + pick accuracy % (line) -->
@@ -1452,6 +1471,7 @@
                         setKpi('flowCompleted', completedToday, 'today');
                         setKpi('whTransfers', outInTransit + outOrdered, `${outInTransit} in transit · ${outOrdered} ordered`);
                         setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
+                        renderInlineTransfers();
 
                         // Sync freshness
                         const syncTimes = pipeline.map(r => r.synced_at).filter(Boolean).sort();
@@ -2206,6 +2226,27 @@
         // ══════════════════════════════════════════════════════
         let _trDirectionFilter = 'all'; // 'all', 'outbound', 'inbound'
         let _trStatusFilter = 'all';    // 'all', 'IN TRANSIT', 'ORDERED'
+
+        // Inline Transfers-Out list on the dashboard (click a row → editable pick sheet).
+        function renderInlineTransfers() {
+            const el = document.getElementById('whTrList'); if (!el) return;
+            const MAIN_WH = 'Main Warehouse';
+            const data = (window.__transferData || []).filter(r => r.from_location === MAIN_WH && ['ORDERED', 'IN TRANSIT'].includes(String(r.status || '').toUpperCase()));
+            const ord = { 'IN TRANSIT': 0, 'ORDERED': 1 };
+            data.sort((a, b) => ((ord[a.status] ?? 9) - (ord[b.status] ?? 9)) || String(b.order_date || '').localeCompare(a.order_date || ''));
+            if (!data.length) { el.innerHTML = '<div class="wh-tr-empty">No transfers leaving Main right now.</div>'; return; }
+            const fmt = d => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[3]}/${m[2]}` : ''; };
+            const cls = s => String(s || '').toLowerCase().replace(/\s+/g, '-');
+            el.innerHTML = data.slice(0, 12).map(r => {
+                const rj = JSON.stringify(r).replace(/'/g, '&#39;');
+                return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print">
+                    <span class="tn">${r.number || '—'}</span>
+                    <span class="to">${r.to_location || '—'}${r.reference ? ` <small>· ${r.reference}</small>` : ''}</span>
+                    <span class="dt">${fmt(r.order_date)}</span>
+                    <span class="bd ${cls(r.status)}">${String(r.status || '').replace('IN TRANSIT', 'Transit')}</span>
+                </div>`;
+            }).join('');
+        }
 
         function openTransfersModal(direction) {
             if (direction === 'outbound' || direction === 'inbound') {
