@@ -781,7 +781,7 @@ function rtRenderTLines() {
     <td class="rt-selcol" style="${adv ? '' : 'display:none'}"><input type="checkbox" ${l._sel ? 'checked' : ''} onclick="rtTSelect(${i},this.checked)" /></td>
     <td class="rt-dc5-cell">${esc(l.dc5 || '')}</td>
     <td><strong>${esc(l.sku)}</strong><div class="sub">${esc((l.name || '').slice(0, 26))}${l.reason ? ' · ' + esc(l.reason) : ''}</div></td>
-    <td><span class="rt-cond">${esc(l.condition || '—')}</span></td>
+    <td class="rt-cond">${esc(l.condition || '—')}</td>
     <td><select class="rt-input" onchange="rtTSet(${i},'return_status',this.value)"><option value="">— status —</option>${RET_STATUSES.map(r => `<option ${l.return_status === r ? 'selected' : ''}>${r}</option>`).join('')}</select>
         <div class="rt-tl-flag${done ? ' ok' : ''}" id="rtTFlag${i}" style="${flagTxt ? '' : 'display:none'}">${flagTxt}</div></td>
     <td class="rt-advcol" style="${adv ? '' : 'display:none'}"><input class="rt-input" value="${esc(l.credit_note || '')}" placeholder="${l.return_status === NEEDS_CREDIT_NOTE ? 'Required' : 'n/a'}" oninput="rtTSet(${i},'credit_note',this.value)" /></td>
