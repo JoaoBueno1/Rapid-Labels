@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Transfer Out — print</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+  :root { --ink:#1a2230; --muted:#5b6b86; --line:#333; --hair:#c8d0dc; --head:#eef2f7; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; background:#7a8398; }
+  body { font-family:"Segoe UI", Arial, sans-serif; color:var(--ink); }
+  .bar { position:sticky; top:0; display:flex; gap:10px; align-items:center; justify-content:center;
+         background:#111827; color:#fff; padding:10px; font-size:13px; z-index:5; }
+  .bar button { background:#2563eb; color:#fff; border:0; border-radius:6px; padding:8px 14px; font-size:13px; cursor:pointer; }
+  .bar a { color:#c9d4e6; text-decoration:none; }
+  .sheet { width:297mm; min-height:210mm; margin:16px auto; background:#fff; padding:8mm 9mm; box-shadow:0 8px 40px rgba(0,0,0,.35); }
+  .hd { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--line); padding-bottom:8px; }
+  .title { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; }
+  .dest { font-size:30px; font-weight:800; line-height:1.05; margin:1px 0 3px; }
+  .fromline { font-size:12px; color:var(--muted); margin-top:5px; }
+  .fromline .lbl { text-transform:uppercase; font-size:10px; letter-spacing:.06em; }
+  .fromline b { color:var(--ink); font-size:13px; }
+  .hd-right { text-align:right; }
+  .trno { font-size:22px; font-weight:700; }
+  .meta { font-size:11px; color:var(--muted); margin-top:2px; }
+  .meta b { color:var(--ink); }
+  svg.bc { margin-top:6px; }
+  .shipstrip { display:flex; flex-wrap:wrap; gap:24px; align-items:center; margin:8px 0 4px; padding:8px 12px; border:1px solid var(--hair); border-radius:7px; background:#fbfcfe; }
+  .shipstrip .fld { display:flex; align-items:center; gap:8px; }
+  .shipstrip .lbl { color:var(--muted); text-transform:uppercase; font-size:10px; letter-spacing:.05em; }
+  .shipstrip .wr { border-bottom:1.6px solid #8a97ab; min-width:56px; height:16px; }
+  .shipstrip .wr.big { min-width:180px; }
+  .summary { display:flex; gap:18px; font-size:11px; color:var(--muted); margin:8px 0 6px; }
+  .summary b { color:var(--ink); }
+  table { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
+  thead th { background:var(--head); border:1px solid var(--line); padding:6px 7px; text-align:left; font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#37435a; }
+  tbody td { border:1px solid var(--hair); padding:6px 7px; height:28px; vertical-align:middle; overflow:hidden; }
+  .dc { width:58px; text-align:center; font-variant-numeric:tabular-nums; font-weight:600; }
+  .code { width:140px; font-family:"Consolas",monospace; font-weight:600; }
+  .qty { width:40px; text-align:center; font-weight:700; font-size:14px; }
+  .sent { width:96px; background:#fbfcfe; }
+  .loc { width:118px; font-family:"Consolas",monospace; }
+  .box { width:48px; background:#fbfcfe; }
+  tbody tr:nth-child(even) td { background:#fafbfd; }
+  tbody tr:nth-child(even) td.sent, tbody tr:nth-child(even) td.box { background:#f4f7fb; }
+  tr.aisle td { border-top:2px solid #7d8aa0; }
+  .foot { margin-top:16px; font-size:11px; color:var(--muted); page-break-inside:avoid; }
+  .sign { display:flex; gap:60px; max-width:66%; }
+  .sign div { flex:1; border-top:1px solid #8a97ab; padding-top:4px; }
+  .footline { display:flex; justify-content:space-between; margin-top:14px; }
+  @media print {
+    html,body { background:#fff; }
+    .bar { display:none; }
+    .sheet { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; }
+    thead { display:table-header-group; }
+    tr { page-break-inside:avoid; }
+    .foot { page-break-inside:avoid; }
+    @page { size:A4 landscape; margin:8mm 9mm 10mm;
+            @bottom-right { content:"Page " counter(page) " of " counter(pages); font-size:9px; color:#8a97ab; } }
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button onclick="window.print()">🖨️ Print / PDF</button>
+    <a href="transfer-out.html">← Back to Transfer Out</a>
+  </div>
+
+  <div class="sheet">
+    <div class="hd">
+      <div>
+        <div class="title">Stock Transfer</div>
+        <div class="dest">→ <span id="pDest">—</span></div>
+        <div class="fromline"><span class="lbl">From</span> <b>Main Warehouse</b>
+          &nbsp;•&nbsp; <span class="lbl">To</span> <span id="pToAddr">—</span></div>
+      </div>
+      <div class="hd-right">
+        <div class="trno" id="pTr">—</div>
+        <div class="meta">Date <b id="pDate">—</b></div>
+        <svg class="bc" id="barcode"></svg>
+      </div>
+    </div>
+
+    <div class="shipstrip">
+      <div class="fld"><span class="lbl">Consignment / Tracking #</span><span class="wr big"></span></div>
+      <div class="fld"><span class="lbl">Pallets</span><span class="wr"></span></div>
+      <div class="fld"><span class="lbl">Cartons</span><span class="wr"></span></div>
+      <div class="fld"><span class="lbl">Long items</span><span class="wr"></span></div>
+    </div>
+
+    <div class="summary"><span><b id="nlines">0</b> lines</span><span><b id="nunits">0</b> units total</span><span>Sorted by pickbay (Location)</span></div>
+
+    <table>
+      <thead><tr>
+        <th class="dc">5DC</th><th class="code">Rapid Code</th><th class="prod">Product</th>
+        <th class="qty">Qty</th><th class="sent">Sent</th><th class="loc">Location</th><th class="box">Box</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <div class="foot">
+      <div class="sign"><div>Picked by</div><div>Checked by</div></div>
+      <div class="footline"><span>Rapid LED · Transfer Out</span><span id="stamp"></span></div>
+    </div>
+  </div>
+
+<script>
+const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
+const aisle = loc => (String(loc).match(/^MA-([A-Z])/) || [])[1] || '';
+
+// Staged data from the Transfer Out staging modal (already sorted by pickbay).
+let DATA = null;
+try { DATA = JSON.parse(sessionStorage.getItem('transferOutPrint') || 'null'); } catch (_) {}
+if (!DATA) { document.getElementById('rows').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No transfer loaded — open one from the Transfer Out list.</td></tr>'; }
+else {
+  // sort by pickbay (guaranteed, even after edits) — blanks last
+  const key = l => (l.loc && l.loc.trim()) ? l.loc.trim() : '~~~';
+  const LINES = (DATA.lines || []).slice().sort((a,b) => key(a).localeCompare(key(b), undefined, { numeric:true }));
+
+  document.getElementById('pDest').textContent = (DATA.to_name || '—').toUpperCase();
+  document.getElementById('pToAddr').textContent = DATA.to_addr || '—';
+  document.getElementById('pTr').textContent = DATA.tr || '—';
+  document.getElementById('pDate').textContent = DATA.date || '—';
+  document.title = 'Transfer Out — ' + (DATA.tr || '');
+
+  let prev = null, units = 0;
+  document.getElementById('rows').innerHTML = LINES.map(l => {
+    units += Number(l.qty) || 0;
+    const brk = aisle(l.loc) !== prev; prev = aisle(l.loc);
+    return `<tr class="${brk?'aisle':''}">
+      <td class="dc">${esc(l.dc)}</td>
+      <td class="code">${esc(l.code)}</td>
+      <td class="prod">${esc(l.product)}</td>
+      <td class="qty">${esc(l.qty)}</td>
+      <td class="sent"></td>
+      <td class="loc">${esc(l.loc)}</td>
+      <td class="box"></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('nlines').textContent = LINES.length;
+  document.getElementById('nunits').textContent = units;
+
+  if (DATA.tr) JsBarcode("#barcode", DATA.tr, { format:"CODE128", width:1.7, height:38, fontSize:13, margin:0, displayValue:true });
+
+  const now = new Date(); const pad = n => String(n).padStart(2,'0');
+  let h = now.getHours(); const ampm = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12;
+  const sheet = document.querySelector('.sheet');
+  const pages = Math.max(1, Math.ceil(sheet.getBoundingClientRect().height / ((210-18)*3.7795)));
+  document.getElementById('stamp').textContent =
+    `Printed ${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()} ${h}:${pad(now.getMinutes())} ${ampm} · ${pages} page${pages>1?'s':''}`;
+}
+</script>
+</body>
+</html>
