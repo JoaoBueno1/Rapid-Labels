@@ -2306,7 +2306,10 @@
             const data = window.__transferData || [];
             const search = (document.getElementById('trSearch')?.value || '').toLowerCase();
 
+            const CLOSED_TR = ['COMPLETED', 'VOIDED', 'CANCELLED', 'CLOSED', 'INVOICED'];
             let rows = data.filter(r => {
+                // Hide finished transfers — only open ones (ORDERED / IN TRANSIT) matter here
+                if (CLOSED_TR.includes(String(r.status || '').toUpperCase())) return false;
                 // Direction filter
                 if (_trDirectionFilter === 'outbound' && r.from_location !== MAIN_WH) return false;
                 if (_trDirectionFilter === 'inbound' && r.to_location !== MAIN_WH) return false;
