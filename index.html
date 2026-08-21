@@ -600,10 +600,6 @@
                             <span>Returns</span>
                             <span class="cat-badge" id="returnsCount" style="display:none"></span>
                         </a>
-                        <a class="cat-btn" href="features/transfer-out/transfer-out.html">
-                            <span class="cat-btn-icon">📤</span>
-                            <span>Transfer Out</span>
-                        </a>
                         <a class="cat-btn" href="restock-v2.html" style="flex-wrap:wrap">
                             <span class="cat-btn-icon">♻️</span>
                             <span>Re-Stock V2</span>
@@ -1098,6 +1094,7 @@
 
         <!-- Scripts -->
     <script src="supabase-config.js?v=20260302g"></script>
+    <script src="features/transfer-out/transfer-out-staging.js?v=1"></script>
     <script src="scanner.js"></script>
     <script src="multi-label.js?v=20260710a"></script>
     <script src="app.js?v=20260302k"></script>
@@ -2283,8 +2280,11 @@
             tbody.innerHTML = rows.map(r => {
                 const isOutbound = r.from_location === MAIN_WH;
                 const dirIcon = isOutbound ? '📤' : '📥';
-                return `<tr>
-                    <td class="tr-num">${dirIcon} ${r.number || '—'}</td>
+                const rj = JSON.stringify(r).replace(/'/g, "&#39;");
+                // Outbound rows open the editable pick sheet (staging → print). Inbound just listed.
+                const openAttr = isOutbound ? ` style="cursor:pointer" title="Open pick sheet — edit & print" onclick='TOStaging.open(${rj})'` : '';
+                return `<tr${openAttr}>
+                    <td class="tr-num">${dirIcon} ${r.number || '—'}${isOutbound ? ' <span style="font-size:11px" title="printable pick sheet">🖨️</span>' : ''}</td>
                     <td class="tr-route"><span class="tr-from">${r.from_location || '?'}</span><span class="tr-arrow">→</span><span class="tr-to">${r.to_location || '?'}</span></td>
                     <td><span class="tr-badge ${statusClass(r.status)}">${r.status || '—'}</span></td>
                     <td class="tr-date">${fmtDate(r.order_date)}</td>

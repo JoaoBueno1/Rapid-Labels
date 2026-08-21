@@ -63,8 +63,9 @@ TO.render = function () {
   </tr>`).join('');
 };
 
-// ── open a TR into the staging table ──
-TO.open = async function (row) {
+// ── open a TR into the shared editable staging modal ──
+TO.open = function (row) { return TOStaging.open(row); };
+TO._openOld = async function (row) {   // superseded by the shared TOStaging module (kept dead)
   TO.sel = row; TO.lines = [];
   $('mDest').textContent = String(row.to_location || '—').replace(/\s+Warehouse$/i, '');
   $('mMeta').innerHTML = `<b>${esc(row.number || '')}</b> · ${esc(row.status || '')} · ${esc(fmtD(row.order_date))} · loading lines…`;

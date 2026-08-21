@@ -110,7 +110,7 @@ const aisle = loc => (String(loc).match(/^MA-([A-Z])/) || [])[1] || '';
 
 // Staged data from the Transfer Out staging modal (already sorted by pickbay).
 let DATA = null;
-try { DATA = JSON.parse(sessionStorage.getItem('transferOutPrint') || 'null'); } catch (_) {}
+try { DATA = JSON.parse(localStorage.getItem('transferOutPrint') || 'null'); } catch (_) {}
 if (!DATA) { document.getElementById('rows').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No transfer loaded — open one from the Transfer Out list.</td></tr>'; }
 else {
   // sort by pickbay (guaranteed, even after edits) — blanks last
