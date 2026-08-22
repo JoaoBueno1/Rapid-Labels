@@ -32,7 +32,7 @@
         .nav-link:hover { background:rgba(255,255,255,.08); opacity:1; }
         .nav-link.active { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); opacity:1; }
         .main-container { background:var(--surface)!important; padding:24px 28px!important; border-radius:0!important; box-shadow:none!important; max-width:100%!important; width:100%!important; margin:0 auto!important; text-align:left!important; flex:1; }
-        .home-container { max-width:100%!important; }
+        .home-container { max-width:100%!important; padding:0!important; display:flex; flex-direction:column; }
         h1 { font-size:1.7rem!important; color:var(--text)!important; margin-bottom:18px!important; font-weight:800!important; text-shadow:none!important; }
         .home-subtitle { color:var(--muted); font-size:.85rem; font-weight:500; margin-left:6px; }
 
@@ -42,12 +42,16 @@
            The three action cards became a 248px rail, which is the whole point: the board
            is read from across a warehouse, so the dashboard should own the width and the
            navigation should cost as little of it as possible. */
-        .home-shell { display:grid; grid-template-columns:248px minmax(0,1fr); gap:20px; align-items:start; }
+        /* gap:0 and stretch, not gap:20 and start — the rail is a wall against the edge
+           of the page, not a card floating in it. flex:1 makes it reach the footer without
+           hardcoding the header and footer heights. */
+        .home-shell { display:grid; grid-template-columns:248px minmax(0,1fr); gap:0; align-items:stretch; flex:1; }
         
         .sb-sprite { position:absolute; width:0; height:0; overflow:hidden; }
         
-        .sb { background:#1b2537; border:1px solid #131c2b; border-radius:14px; padding:6px 0 14px;
-              position:sticky; top:14px; box-shadow:0 2px 10px rgba(15,23,42,.12); }
+        .sb { background:#1b2537; border:0; border-right:1px solid #131c2b; border-radius:0;
+              padding:0; min-height:100%; }
+        .sb-inner { position:sticky; top:0; padding:2px 0 16px; }
         .sb-head { display:flex; align-items:center; gap:9px; padding:14px 16px 10px; }
         .sb-head b { color:#fff; font-size:.95rem; font-weight:700; letter-spacing:.2px; }
         .sb-head .sb-ic { color:#f97316; width:19px; height:19px; flex-basis:19px; opacity:1; }
@@ -95,7 +99,8 @@
            becomes a short wrapped grid underneath instead of a full screen of scrolling. */
         @media (max-width:900px) {
           .home-shell { grid-template-columns:1fr; }
-          .sb { position:static; order:2; padding-bottom:10px; }
+          .sb { order:2; min-height:0; border-right:0; border-top:1px solid #131c2b; }
+          .sb-inner { position:static; padding-bottom:10px; }
           .dash-panel { order:1; }
           .sb-head { display:none; }
           .sb-group { display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); }
@@ -106,7 +111,7 @@
         }
 
         /* ─── Dashboard Panel (left) ─── */
-        .dash-panel { display:flex; flex-direction:column; gap:16px; }
+        .dash-panel { display:flex; flex-direction:column; gap:16px; min-width:0; padding:20px 24px; }
 
         /* KPI Cards Row */
         .kpi-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; }

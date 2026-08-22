@@ -65,99 +65,103 @@
 
             <!-- ═══ LEFT: navigation ═══ -->
             <aside class="sb">
-                <div class="sb-head">
-                    <svg class="sb-ic"><use href="#i-dash"/></svg>
-                    <b>Warehouse</b>
+                <!-- Sticky inner: the rail itself stretches to the footer so it
+                     reads as a wall, and the nav stays in view on a long page. -->
+                <div class="sb-inner">
+                    <div class="sb-head">
+                        <svg class="sb-ic"><use href="#i-dash"/></svg>
+                        <b>Warehouse</b>
+                    </div>
+
+                    <nav class="sb-group">
+                        <div class="sb-label">Overview</div>
+                        <a class="sb-item is-active" href="index.html" aria-current="page">
+                            <svg class="sb-ic"><use href="#i-dash"/></svg><span class="t">Dashboard</span>
+                        </a>
+                    </nav>
+
+                    <nav class="sb-group">
+                        <div class="sb-label">Operations</div>
+                        <a class="sb-item" href="collections.html">
+                            <svg class="sb-ic"><use href="#i-box"/></svg><span class="t">Collections</span>
+                            <span class="sb-badge" id="collectionsCount" style="display:none"></span>
+                        </a>
+                        <a class="sb-item" href="features/returns/returns.html">
+                            <svg class="sb-ic"><use href="#i-return"/></svg><span class="t">Returns</span>
+                            <span class="sb-badge" id="returnsCount" style="display:none"></span>
+                        </a>
+                        <a class="sb-item" href="features/logistics/open-orders.html">
+                            <svg class="sb-ic"><use href="#i-list"/></svg><span class="t">Open Orders</span>
+                        </a>
+                        <a class="sb-item" href="restock-v2.html">
+                            <svg class="sb-ic"><use href="#i-cycle"/></svg><span class="t">Re-Stock V2</span>
+                            <span class="sb-tag">BETA</span>
+                            <span id="syncBadgeRestock" class="sb-sync" style="display:none"></span>
+                        </a>
+                    </nav>
+
+                    <nav class="sb-group">
+                        <div class="sb-label">Labels &amp; Barcodes</div>
+                        <button type="button" class="sb-item" onclick="openSearchModal()">
+                            <svg class="sb-ic"><use href="#i-tag"/></svg><span class="t">Search &amp; Print</span>
+                        </button>
+                        <button type="button" class="sb-item" onclick="openManualModal()">
+                            <svg class="sb-ic"><use href="#i-pencil"/></svg><span class="t">Custom Label</span>
+                        </button>
+                        <button type="button" class="sb-item" onclick="openBarcodesModal()">
+                            <svg class="sb-ic"><use href="#i-barcode"/></svg><span class="t">Barcodes</span>
+                        </button>
+                        <button type="button" class="sb-item" onclick="openMultiLabelModal()">
+                            <svg class="sb-ic"><use href="#i-layers"/></svg><span class="t">Multi-Label</span>
+                        </button>
+                        <a class="sb-item" href="features/label-sheets/label-sheets.html">
+                            <svg class="sb-ic"><use href="#i-grid"/></svg><span class="t">Label Sheets</span>
+                        </a>
+                    </nav>
+
+                    <!-- Whole section behind the PIN now, not just four of its seven items:
+                         it carries per-operator productivity and anomaly review. -->
+                    <nav class="sb-group" id="sbQuality">
+                        <div class="sb-label">Quality &amp; Compliance</div>
+                        <button type="button" class="sb-item sb-locked" id="qcLockBtn" onclick="qcAskPin()">
+                            <svg class="sb-ic"><use href="#i-lock"/></svg><span class="t">Unlock</span>
+                        </button>
+                        <div class="sb-pin" id="qcPinRow" hidden>
+                            <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN"
+                                   onkeydown="if(event.key==='Enter')qcUnlock();if(event.key==='Escape')qcAskPin()">
+                            <button type="button" onclick="qcUnlock()">Go</button>
+                        </div>
+                        <div id="qcGated" hidden>
+                            <a class="sb-item" href="features/pick-anomalies/pick-anomalies.html">
+                                <svg class="sb-ic"><use href="#i-alert"/></svg><span class="t">Pick Anomalies</span>
+                                <span id="syncBadgePA" class="sb-sync" style="display:none"></span>
+                            </a>
+                            <a class="sb-item" href="features/replenishment/replenishment.html">
+                                <svg class="sb-ic"><use href="#i-truck"/></svg><span class="t">Branch Replenishment</span>
+                            </a>
+                            <a class="sb-item" href="gateway-main.html">
+                                <svg class="sb-ic"><use href="#i-factory"/></svg><span class="t">Gateway</span>
+                                <span id="syncBadgeGateway" class="sb-sync" style="display:none"></span>
+                            </a>
+                            <a class="sb-item" href="features/pick-productivity/pick-productivity.html">
+                                <svg class="sb-ic"><use href="#i-trend"/></svg><span class="t">Pick Productivity</span>
+                            </a>
+                            <a class="sb-item" href="features/container-check/container-check.html">
+                                <svg class="sb-ic"><use href="#i-inbox"/></svg><span class="t">Container Check</span>
+                            </a>
+                            <a class="sb-item" href="features/sync-monitor/sync-monitor.html">
+                                <svg class="sb-ic"><use href="#i-sync"/></svg><span class="t">Sync Monitor</span>
+                            </a>
+                        </div>
+                    </nav>
+
+                    <nav class="sb-group">
+                        <div class="sb-label">External</div>
+                        <a class="sb-item" href="https://www.rapidexpress.com.au/" target="_blank" rel="noopener">
+                            <svg class="sb-ic"><use href="#i-ext"/></svg><span class="t">Rapid Express</span>
+                        </a>
+                    </nav>
                 </div>
-
-                <nav class="sb-group">
-                    <div class="sb-label">Overview</div>
-                    <a class="sb-item is-active" href="index.html" aria-current="page">
-                        <svg class="sb-ic"><use href="#i-dash"/></svg><span class="t">Dashboard</span>
-                    </a>
-                </nav>
-
-                <nav class="sb-group">
-                    <div class="sb-label">Operations</div>
-                    <a class="sb-item" href="collections.html">
-                        <svg class="sb-ic"><use href="#i-box"/></svg><span class="t">Collections</span>
-                        <span class="sb-badge" id="collectionsCount" style="display:none"></span>
-                    </a>
-                    <a class="sb-item" href="features/returns/returns.html">
-                        <svg class="sb-ic"><use href="#i-return"/></svg><span class="t">Returns</span>
-                        <span class="sb-badge" id="returnsCount" style="display:none"></span>
-                    </a>
-                    <a class="sb-item" href="features/logistics/open-orders.html">
-                        <svg class="sb-ic"><use href="#i-list"/></svg><span class="t">Open Orders</span>
-                    </a>
-                    <a class="sb-item" href="restock-v2.html">
-                        <svg class="sb-ic"><use href="#i-cycle"/></svg><span class="t">Re-Stock V2</span>
-                        <span class="sb-tag">BETA</span>
-                        <span id="syncBadgeRestock" class="sb-sync" style="display:none"></span>
-                    </a>
-                </nav>
-
-                <nav class="sb-group">
-                    <div class="sb-label">Labels &amp; Barcodes</div>
-                    <button type="button" class="sb-item" onclick="openSearchModal()">
-                        <svg class="sb-ic"><use href="#i-tag"/></svg><span class="t">Search &amp; Print</span>
-                    </button>
-                    <button type="button" class="sb-item" onclick="openManualModal()">
-                        <svg class="sb-ic"><use href="#i-pencil"/></svg><span class="t">Custom Label</span>
-                    </button>
-                    <button type="button" class="sb-item" onclick="openBarcodesModal()">
-                        <svg class="sb-ic"><use href="#i-barcode"/></svg><span class="t">Barcodes</span>
-                    </button>
-                    <button type="button" class="sb-item" onclick="openMultiLabelModal()">
-                        <svg class="sb-ic"><use href="#i-layers"/></svg><span class="t">Multi-Label</span>
-                    </button>
-                    <a class="sb-item" href="features/label-sheets/label-sheets.html">
-                        <svg class="sb-ic"><use href="#i-grid"/></svg><span class="t">Label Sheets</span>
-                    </a>
-                </nav>
-
-                <!-- Whole section behind the PIN now, not just four of its seven items:
-                     it carries per-operator productivity and anomaly review. -->
-                <nav class="sb-group" id="sbQuality">
-                    <div class="sb-label">Quality &amp; Compliance</div>
-                    <button type="button" class="sb-item sb-locked" id="qcLockBtn" onclick="qcAskPin()">
-                        <svg class="sb-ic"><use href="#i-lock"/></svg><span class="t">Unlock</span>
-                    </button>
-                    <div class="sb-pin" id="qcPinRow" hidden>
-                        <input id="qcPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN"
-                               onkeydown="if(event.key==='Enter')qcUnlock();if(event.key==='Escape')qcAskPin()">
-                        <button type="button" onclick="qcUnlock()">Go</button>
-                    </div>
-                    <div id="qcGated" hidden>
-                        <a class="sb-item" href="features/pick-anomalies/pick-anomalies.html">
-                            <svg class="sb-ic"><use href="#i-alert"/></svg><span class="t">Pick Anomalies</span>
-                            <span id="syncBadgePA" class="sb-sync" style="display:none"></span>
-                        </a>
-                        <a class="sb-item" href="features/replenishment/replenishment.html">
-                            <svg class="sb-ic"><use href="#i-truck"/></svg><span class="t">Branch Replenishment</span>
-                        </a>
-                        <a class="sb-item" href="gateway-main.html">
-                            <svg class="sb-ic"><use href="#i-factory"/></svg><span class="t">Gateway</span>
-                            <span id="syncBadgeGateway" class="sb-sync" style="display:none"></span>
-                        </a>
-                        <a class="sb-item" href="features/pick-productivity/pick-productivity.html">
-                            <svg class="sb-ic"><use href="#i-trend"/></svg><span class="t">Pick Productivity</span>
-                        </a>
-                        <a class="sb-item" href="features/container-check/container-check.html">
-                            <svg class="sb-ic"><use href="#i-inbox"/></svg><span class="t">Container Check</span>
-                        </a>
-                        <a class="sb-item" href="features/sync-monitor/sync-monitor.html">
-                            <svg class="sb-ic"><use href="#i-sync"/></svg><span class="t">Sync Monitor</span>
-                        </a>
-                    </div>
-                </nav>
-
-                <nav class="sb-group">
-                    <div class="sb-label">External</div>
-                    <a class="sb-item" href="https://www.rapidexpress.com.au/" target="_blank" rel="noopener">
-                        <svg class="sb-ic"><use href="#i-ext"/></svg><span class="t">Rapid Express</span>
-                    </a>
-                </nav>
             </aside>
 
             <!-- ═══ RIGHT: the dashboard. Everything the sidebar freed goes here. ═══ -->
