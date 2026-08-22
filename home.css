@@ -76,8 +76,6 @@
         .sb-badge { flex:0 0 auto; min-width:20px; padding:1px 6px; border-radius:9px; background:#f97316;
                     color:#fff; font-size:.66rem; font-weight:800; text-align:center; line-height:1.55; }
         .sb-badge.zero { background:#2f3d54; color:#8493aa; }
-        .sb-tag { flex:0 0 auto; font-size:.55rem; font-weight:800; letter-spacing:.06em; color:#7dd3fc;
-                  border:1px solid #2c4257; padding:1px 5px; border-radius:5px; }
         
         /* home.js writes "● Last sync: 22/08 14:30 · 2h ago" in here. At 248px the sentence
            has nowhere to go, so the dot carries the state and the sentence moves to the
