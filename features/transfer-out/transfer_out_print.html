@@ -29,7 +29,7 @@
   .shipstrip .fld { display:flex; align-items:center; gap:8px; }
   .shipstrip .lbl { color:var(--muted); text-transform:uppercase; font-size:10px; letter-spacing:.05em; }
   .shipstrip .wr { border-bottom:1.6px solid #8a97ab; min-width:56px; height:16px; }
-  .shipstrip .wr.big { min-width:180px; }
+  .shipstrip .wr.big { min-width:235px; }
   .summary { display:flex; gap:18px; font-size:11px; color:var(--muted); margin:8px 0 6px; }
   .summary b { color:var(--ink); }
   table { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
@@ -45,8 +45,11 @@
   tbody tr:nth-child(even) td.sent, tbody tr:nth-child(even) td.box { background:#f4f7fb; }
   tr.aisle td { border-top:2px solid #7d8aa0; }
   .foot { margin-top:16px; font-size:11px; color:var(--muted); page-break-inside:avoid; }
-  .sign { display:flex; gap:60px; max-width:66%; }
+  .sign { display:flex; gap:100px; margin-top:34px; }
   .sign div { flex:1; border-top:1px solid #8a97ab; padding-top:4px; }
+  .notes { margin-top:24px; }
+  .notes .nlbl { text-transform:uppercase; font-size:10px; letter-spacing:.06em; color:var(--muted); margin-bottom:16px; }
+  .nline { border-bottom:1px solid #b6c0cf; height:20px; margin-bottom:14px; }
   .footline { display:flex; justify-content:space-between; margin-top:14px; }
   @media print {
     html,body { background:#fff; }
@@ -100,6 +103,12 @@
 
     <div class="foot">
       <div class="sign"><div>Picked by</div><div>Checked by</div></div>
+      <div class="notes">
+        <div class="nlbl">Notes</div>
+        <div class="nline"></div>
+        <div class="nline"></div>
+        <div class="nline"></div>
+      </div>
       <div class="footline"><span>Rapid LED · Transfer Out</span><span id="stamp"></span></div>
     </div>
   </div>
