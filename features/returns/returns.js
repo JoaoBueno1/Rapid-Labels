@@ -734,6 +734,7 @@ function rtSetMode(m) {
   $('rtModeAdv').classList.toggle('is-on', adv);
   document.querySelectorAll('#rtActModal .rt-advcol, #rtActModal .rt-selcol').forEach(el => { el.style.display = adv ? '' : 'none'; });
   $('rtApplyWrap').style.display = adv ? '' : 'none';
+  const cnw = $('rtCreditNotesWrap'); if (cnw) cnw.style.display = adv ? '' : 'none';
   $('rtActRefLbl').innerHTML = adv ? 'Credit note # <span class="rt-hint" style="margin:0">(for selected)</span>' : 'Credit note #';
   $('rtActByLbl').innerHTML = adv ? 'Processed by <span class="rt-hint" style="margin:0">(for selected)</span>' : 'Processed by <span class="rt-req">*</span>';
   $('rtActRef').placeholder = adv ? 'e.g. 24408 — then Apply to selected' : 'e.g. 24408 — fills every line';
@@ -797,6 +798,7 @@ function rtRenderTLines() {
     el.className = 'rt-hint' + (n && done === n ? ' rt-hint-ok' : '');
   }
   const all = $('rtSelAll'); if (all) all.checked = n > 0 && RT.tlines.every(l => l._sel);
+  rtUpdateCreditNotesView();
 }
 function rtTSet(i, k, v) {
   RT.tlines[i][k] = v;
@@ -805,6 +807,7 @@ function rtTSet(i, k, v) {
   // that changed. Without this the row still read "needs credit note" after one was
   // typed, and only the counter above moved.
   if (k === 'return_status') rtRenderTLines(); else { rtRowFlag(i); rtUpdateProgress(); }
+  if (k === 'credit_note') rtUpdateCreditNotesView();
 }
 function rtRowFlag(i) {
   const l = RT.tlines[i], row = $('rtTRow' + i), flag = $('rtTFlag' + i);
@@ -821,6 +824,18 @@ function rtUpdateProgress() {
   const el = $('rtLinesProgress'); if (!el) return;
   el.textContent = n ? `${done} of ${n} line(s) ready${done < n ? ' — the rest can be finished later' : ''}` : '';
   el.className = 'rt-hint' + (n && done === n ? ' rt-hint-ok' : '');
+}
+// Read-only roll-up of the distinct credit notes across the lines — a return can carry
+// several, and this shows all of them (chips) without opening each line.
+function rtUpdateCreditNotesView() {
+  const el = $('rtCreditNotesView'); if (!el) return;
+  const notes = [...new Set(RT.tlines.map(l => String(l.credit_note || '').trim()).filter(Boolean))];
+  el.classList.toggle('rt-cn-multi', notes.length > 1);
+  el.innerHTML = notes.length
+    ? notes.map(n => `<span class="cn-chip">${esc(n)}</span>`).join('')
+    : '<span class="cn-none">— none yet</span>';
+  el.title = notes.length > 1 ? `${notes.length} credit notes on this return`
+    : (notes.length === 1 ? 'One credit note on file' : 'No credit note entered yet');
 }
 function rtTSplit(i) {
   const l = RT.tlines[i];
