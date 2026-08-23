@@ -213,6 +213,12 @@ tr.rt-row.st-void:hover td { background: #eceff2; }
 .rt-mode-btn.is-on { background: #fff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,.12); }
 .rt-apply-field { display: flex; flex-direction: column; justify-content: flex-end; }
 
+/* Read-only credit-note roll-up (advanced mode): shows every note on the lines. */
+.rt-cn-view { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 38px; padding: 7px 10px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #f8fafc; }
+.rt-cn-view.rt-cn-multi { border-color: #f59e0b; background: #fffbeb; }
+.rt-cn-view .cn-chip { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: #e0e7ff; color: #3730a3; }
+.rt-cn-view .cn-none { font-size: 13px; color: #94a3b8; }
+
 /* Ready lines fade back so the eye lands on what still needs doing — the whole
    point of a part-finished return is finding the open lines fast. */
 .rt-lines tr.rt-tl-done { background: #fbfdfb; }
