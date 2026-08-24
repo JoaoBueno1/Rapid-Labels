@@ -16,7 +16,7 @@ const state = {
   user: localStorage.getItem('gatewayUser') || '',
   inv:  { q: '', filter: 'in_stock', sort: 'oldest', offset: 0, limit: 100, total: 0 },
   tr:   { q: '', status: '', rows: [] },
-  rec:  { weeks: 4, rows: [], selected: new Set() },
+  ov:   { weeks: 4, cov: 'all', rows: [], selected: new Set() },
   recon:{ state: '', rows: [] },
   qual: { batches: [], issues: [], severity: '' },
   caps: {},
@@ -186,7 +186,7 @@ async function boot() {
     state.caps = (await api('/capabilities')).capabilities || {};
   } catch { /* engine may not be up; the views will report it */ }
 
-  wireInventory(); wireTransfers(); wireRecommend(); wireRecon(); wireQuality();
+  wireOverview(); wireInventory(); wireTransfers(); wireRecon(); wireQuality();
   await loadOverview();
 }
 
@@ -197,10 +197,25 @@ function switchView(v) {
     s.style.display = s.id === `view-${v}` ? '' : 'none';
   });
   ({ overview: loadOverview, inventory: loadInventory, transfers: loadTransfers,
-     recommend: loadRecommend, recon: loadRecon, quality: loadQuality }[v] || (() => {}))();
+     recon: loadRecon, quality: loadQuality }[v] || (() => {}))();
 }
 
 // ═══════════ OVERVIEW ═══════════
+function wireOverview() {
+  $('ovWeeks').onchange = e => { state.ov.weeks = Number(e.target.value); loadRestock(); };
+  document.querySelectorAll('#view-overview .gw-chip[data-cov]').forEach(c => {
+    c.onclick = () => {
+      state.ov.cov = c.dataset.cov;
+      document.querySelectorAll('#view-overview .gw-chip[data-cov]').forEach(x => x.classList.toggle('active', x === c));
+      renderRestock();
+    };
+  });
+  $('ovAll').onchange = e => {
+    document.querySelectorAll('.ov-cb').forEach(cb => { cb.checked = e.target.checked; toggleOv(cb); });
+  };
+  $('ovBuild').onclick = buildTransferFromRestock;
+}
+
 async function loadOverview() {
   let s;
   try {
@@ -216,18 +231,15 @@ async function loadOverview() {
   const ageMin = synced ? Math.round((Date.now() - synced) / 60000) : null;
   $('syncDot').className = 'gw-dot ' + (ageMin == null ? 'dead' : ageMin < 120 ? 'fresh' : ageMin < 480 ? 'stale' : 'dead');
   $('syncText').textContent = synced
-    ? `Cin7 stock synced ${ageMin < 90 ? `${ageMin} min` : `${Math.round(ageMin / 60)} h`} ago`
-    : 'Cin7 sync unknown';
+    ? `Cin7 sincronizado há ${ageMin < 90 ? `${ageMin} min` : `${Math.round(ageMin / 60)} h`}`
+    : 'sync do Cin7 desconhecido';
 
+  // KPIs enxutos — só o que ajuda a decidir
   const tiles = [
-    ['Products',        nfmt(s.products),      'holding stock',            ''],
-    ['Units on hand',   nfmt(s.units),         'across all shelves',       ''],
-    ['Reserved',        nfmt(s.reserved),      'held by open transfers',   s.reserved > 0 ? 'warn' : ''],
-    ['Open transfers',  nfmt(s.open_transfers),'started, not finished',    ''],
-    ['Old stock',       nfmt(s.aging_alert),   `over ${s.settings.age_alert_days || 120} days`, s.aging_alert > 0 ? 'bad' : 'good'],
-    ['No arrival date', nfmt(s.undated_lots),  'pallets — FIFO ranks oldest', s.undated_lots > 0 ? 'warn' : 'good'],
-    ['Cin7 differences',nfmt(s.discrepancies), `${nfmt(s.discrepancy_units)} units apart`, s.discrepancies > 0 ? 'warn' : 'good'],
-    ['Import issues',   nfmt(s.open_import_issues), 'awaiting review',     s.open_import_issues > 0 ? 'warn' : 'good'],
+    ['Produtos na Gateway', nfmt(s.products),      'com estoque',                 ''],
+    ['Unidades',            nfmt(s.units),         'total na Gateway',            ''],
+    ['Transfers abertas',   nfmt(s.open_transfers),'em andamento',                s.open_transfers > 0 ? 'warn' : ''],
+    ['Reservado',           nfmt(s.reserved),      'preso em transfers abertas',  s.reserved > 0 ? 'warn' : ''],
   ];
   $('tiles').innerHTML = tiles.map(([l, v, sub, cls]) => `
     <div class="gw-tile ${cls}">
@@ -246,35 +258,106 @@ async function loadOverview() {
   badge('tabRecon', s.discrepancies, 'warn');
   badge('tabQuality', s.open_import_issues, 'warn');
 
-  let a;
-  try { a = await api('/attention'); } catch (e) { return fail(e); }
+  await Promise.all([loadRestock(), loadOverviewTransfers()]);
+}
 
-  $('attnAging').innerHTML = a.aging_stock.length ? a.aging_stock.map(r => `
-    <tr class="clickable" onclick="showSku('${esc(r.sku)}')">
-      <td class="mono">${esc(r.sku)}</td><td>${esc(r.product_name || '—')}</td>
-      <td class="r num">${nfmt(r.local_qty)}</td><td class="r">${ageCell(r.oldest_age_days)}</td>
-      <td class="gw-sub">${esc(r.shelves || '—')}</td></tr>`).join('')
-    : empty(5, 'Nothing older than the alert threshold');
+// ── Restock: o que a Main está baixa e a Gateway pode suprir ──
+async function loadRestock() {
+  let d;
+  try { d = await api(`/recommendations?weeks=${state.ov.weeks}&limit=500`); } catch (e) { return fail(e); }
+  state.ov.rows = d.rows || [];
+  state.ov.counts = d.counts || { lt2: 0, lt4: 0, lt6: 0 };
+  state.ov.selected.clear();
+  $('ovBuild').disabled = true;
+  $('covAll').textContent = nfmt((d.rows || []).length);
+  $('covLt2').textContent = nfmt(state.ov.counts.lt2);
+  $('covLt4').textContent = nfmt(state.ov.counts.lt4);
+  $('covLt6').textContent = nfmt(state.ov.counts.lt6);
+  renderRestock();
+}
 
-  $('attnRecon').innerHTML = a.discrepancies.length ? a.discrepancies.map(r => `
-    <tr class="clickable" onclick="showSku('${esc(r.sku)}')">
-      <td class="mono">${esc(r.sku)}</td>
-      <td class="r num">${nfmt(r.local_qty)}</td><td class="r num">${nfmt(r.cin7_qty)}</td>
-      <td class="r num">${diffCell(r.difference)}</td><td>${stateTag(r.state)}</td></tr>`).join('')
-    : empty(5, 'We agree with Cin7 on every SKU');
+function renderRestock() {
+  const cov = state.ov.cov;
+  const rows = state.ov.rows.filter(r => {
+    if (cov === 'all') return true;
+    if (cov === 'lt2') return r.weeks_cover < 2;
+    if (cov === 'lt4') return r.weeks_cover < 4;
+    if (cov === 'lt6') return r.weeks_cover < 6;
+    return true;
+  });
+  const covClass = w => w < 2 ? 'var-neg' : w < 4 ? 'age-warn' : '';
+  $('ovRestock').innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td class="c"><input type="checkbox" class="ov-cb" data-sku="${esc(r.sku)}" data-qty="${r.recommended_qty}" /></td>
+      <td class="mono clickable" onclick="showSku('${esc(r.sku)}')">${esc(r.sku)}</td>
+      <td>${esc(r.product_name || '—')}</td>
+      <td class="r num">${nfmt(r.main_qty)}</td>
+      <td class="r num gw-sub">${nfmt(r.weekly_demand, 1)}</td>
+      <td class="r num ${covClass(r.weeks_cover)}"><b>${nfmt(r.weeks_cover, 1)}</b> sem</td>
+      <td class="r num"><b>${nfmt(r.recommended_qty)}</b>${r.capped_by_gateway ? ' <span class="tag tag-amber">limitado</span>' : ''}</td>
+      <td class="r num">${nfmt(r.gateway_available)}</td>
+      <td>${r.oldest_received_on ? esc(dfmt(r.oldest_received_on)) : '<span class="age-unknown">sem data</span>'}</td>
+      <td class="gw-sub">${esc(r.shelves || '—')}</td>
+    </tr>`).join('') : empty(10, 'Nada a sugerir — a Main está coberta no alvo escolhido');
+  document.querySelectorAll('.ov-cb').forEach(cb => { cb.onchange = () => toggleOv(cb); });
+  $('ovAll').checked = false;
+}
 
-  $('attnTransfers').innerHTML = a.open_transfers.length ? a.open_transfers.map(t => `
-    <tr class="clickable" onclick="showTransfer(${t.id})">
-      <td class="mono">${esc(t.transfer_no)}</td><td>${dirLabel(t.direction)}</td>
-      <td>${statusTag(t.status)}</td><td class="mono gw-sub">${esc(t.cin7_reference || '—')}</td>
-      <td class="r num">${nfmt(t.line_count)}</td><td class="r num">${nfmt(t.qty_requested)}</td></tr>`).join('')
-    : empty(6, 'No open transfers');
+function toggleOv(cb) {
+  if (cb.checked) state.ov.selected.add(cb.dataset.sku);
+  else state.ov.selected.delete(cb.dataset.sku);
+  const n = state.ov.selected.size;
+  $('ovBuild').disabled = n === 0;
+  $('ovBuild').textContent = n ? `Criar transfer de ${n} produto(s)` : 'Criar transfer do selecionado';
+}
 
-  $('attnUndated').innerHTML = a.undated_stock.length ? a.undated_stock.map(r => `
-    <tr class="clickable" onclick="showSku('${esc(r.sku)}')">
-      <td class="mono">${esc(r.sku)}</td><td>${esc(r.product_name || '—')}</td>
-      <td class="r num">${nfmt(r.local_qty)}</td><td class="r num">${nfmt(r.undated_lots)}</td></tr>`).join('')
-    : empty(4, 'Every pallet has an arrival date');
+async function buildTransferFromRestock() {
+  const picks = [...document.querySelectorAll('.ov-cb')].filter(c => c.checked)
+    .map(c => ({ sku: c.dataset.sku, qty: Number(c.dataset.qty) }));
+  if (!picks.length) return;
+  try {
+    const t = await api('/transfers', { method: 'POST', body: JSON.stringify({
+      direction: 'gateway_to_main', reference: `Restock ${state.ov.weeks}sem`,
+      notes: `Criada do restock (alvo ${state.ov.weeks} semanas de cobertura)`,
+    }) });
+    // linhas ficam PENDENTES de alocação (allocate:false) — você aloca conforme
+    // o motorista colocou na Gateway, com sugestão FIFO.
+    for (const p of picks) {
+      await api(`/transfers/${t.id}/lines`, { method: 'POST', body: JSON.stringify({
+        sku: p.sku, qty_requested: p.qty, source: 'recommendation', allocate: false,
+      }) });
+    }
+    toast(`${t.transfer_no} criada com ${picks.length} produto(s) — aloque as prateleiras`);
+    switchView('transfers'); showTransfer(t.id);
+  } catch (e) { fail(e); }
+}
+
+// ── Transfers no overview: em aberto + histórico recente ──
+async function loadOverviewTransfers() {
+  try {
+    const [open, hist] = await Promise.all([
+      api('/transfers?status=draft,ready_for_cin7,cin7_created,picking,dispatched&limit=25'),
+      api('/transfers?status=completed&limit=8'),
+    ]);
+    $('ovOpenTr').innerHTML = (open.rows || []).length ? open.rows.map(t => `
+      <tr class="clickable" onclick="showTransfer(${t.id})">
+        <td class="mono">${esc(t.transfer_no)}</td>
+        <td>${statusTag(t.status)}</td>
+        <td>${Number(t.qty_allocated) < Number(t.qty_requested)
+          ? `<span class="tag tag-amber">${nfmt(t.qty_allocated)}/${nfmt(t.qty_requested)}</span>`
+          : '<span class="tag tag-green">completa</span>'}</td>
+        <td class="r num">${nfmt(t.line_count)}</td>
+        <td class="r num">${nfmt(t.qty_requested)}</td>
+        <td class="gw-sub">${esc(dtfmt(t.created_at))}</td></tr>`).join('')
+      : empty(6, 'Nenhuma transfer em aberto');
+    $('ovHistTr').innerHTML = (hist.rows || []).length ? hist.rows.map(t => `
+      <tr class="clickable" onclick="showTransfer(${t.id})">
+        <td class="mono">${esc(t.transfer_no)}</td>
+        <td class="mono gw-sub">${esc(t.cin7_reference || '—')}</td>
+        <td class="r num">${nfmt(t.qty_moved)}</td>
+        <td class="gw-sub">${esc(dtfmt(t.completed_at))}</td></tr>`).join('')
+      : empty(4, 'Nenhuma transfer concluída ainda');
+  } catch (e) { fail(e); }
 }
 
 // ═══════════ INVENTORY ═══════════
@@ -625,8 +708,12 @@ async function showTransfer(id) {
                 <span class="gw-sub">${a.lot?.received_on ? esc(dfmt(a.lot.received_on)) : 'date unknown'}</span>
                 ${a.is_fifo_override ? `<span class="tag tag-amber" title="${esc(a.override_reason || '')}">out of FIFO order</span>` : ''}
                 ${editable ? `<button class="gw-btn gw-btn-sm no-print" onclick="removeAlloc(${a.id}, ${t.id})">remove</button>` : ''}
-              </div>`).join('') || '<span class="gw-sub">nothing allocated</span>'}
-              ${editable && outbound ? `<button class="gw-btn gw-btn-sm no-print" onclick="overrideModal(${l.id}, '${esc(l.sku)}', ${t.id})">pick a different pallet</button>` : ''}
+              </div>`).join('') || '<span class="gw-sub">alocação pendente</span>'}
+              ${editable && outbound && Number(l.qty_allocated) < Number(l.qty_requested)
+                ? `<div class="no-print" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+                     <button class="gw-btn gw-btn-primary gw-btn-sm" onclick="allocFifo(${l.id}, ${t.id})">Alocar FIFO (auto)</button>
+                     <button class="gw-btn gw-btn-sm" onclick="overrideModal(${l.id}, '${esc(l.sku)}', ${t.id})">Escolher prateleira / split</button>
+                   </div>` : ''}
             </td>
             ${editable ? `<td class="r no-print"><button class="gw-btn gw-btn-sm" onclick="removeLine(${t.id}, ${l.id})">Remove</button></td>` : ''}
           </tr>`;
@@ -648,26 +735,44 @@ async function showTransfer(id) {
   bind('btnCancel', () => cancelModal(t.id));
 }
 
+// Um clique: aloca a linha pela ordem FIFO (o auto já splita entre as
+// prateleiras mais antigas; sem data entra primeiro).
+async function allocFifo(lineId, transferId) {
+  try {
+    const r = await api(`/transfers/${transferId}/allocate`, { method: 'POST',
+      body: JSON.stringify({ line_id: lineId }) });
+    toast(Number(r.shortfall) > 0
+      ? `Alocado ${nfmt(r.allocated)} — faltaram ${nfmt(r.shortfall)} sem estoque livre`
+      : `Alocado ${nfmt(r.allocated)} (FIFO)`, Number(r.shortfall) > 0);
+    showTransfer(transferId);
+  } catch (e) { fail(e); }
+}
+
 function addLineModal(transferId, direction) {
-  modal('Add a product', `
+  const outbound = direction === 'gateway_to_main';
+  modal('Adicionar produto', `
     <div class="gw-field"><label>SKU</label>
-      <input class="gw-input" id="alSku" placeholder="e.g. R6052-WH-TRI" />
-      <div class="hint" id="alHint">${direction === 'gateway_to_main'
-        ? 'The oldest free stock is allocated automatically.'
-        : 'Stock arriving into Gateway. It becomes a new pallet when you confirm the move.'}</div></div>
-    <div class="gw-field"><label>Quantity</label>
+      <input class="gw-input" id="alSku" placeholder="ex. R6052-WH-TRI" />
+      <div class="hint" id="alHint">${outbound
+        ? 'Deixe pendente e aloque as prateleiras conforme o motorista pegou, ou marque para alocar FIFO já.'
+        : 'Stock entrando na Gateway. Vira uma nova prateleira quando você confirmar o movimento.'}</div></div>
+    <div class="gw-field"><label>Quantidade</label>
       <input class="gw-input" id="alQty" type="number" min="0.001" step="any" /></div>
+    ${outbound ? `<div class="gw-field"><label style="display:flex;align-items:center;gap:8px;font-weight:500">
+      <input type="checkbox" id="alAuto" /> Alocar FIFO automaticamente agora
+      </label><div class="hint">Deixe desmarcado para alocar prateleira por prateleira depois.</div></div>` : ''}
     <div id="alFifo"></div>`,
   [
-    { label: 'Cancel', onClick: closeModal },
-    { label: 'Add', cls: 'gw-btn-primary', onClick: async () => {
+    { label: 'Cancelar', onClick: closeModal },
+    { label: 'Adicionar', cls: 'gw-btn-primary', onClick: async () => {
+      const auto = outbound && $('alAuto') && $('alAuto').checked;
       const r = await api(`/transfers/${transferId}/lines`, { method: 'POST', body: JSON.stringify({
-        sku: $('alSku').value, qty_requested: Number($('alQty').value),
+        sku: $('alSku').value, qty_requested: Number($('alQty').value), allocate: auto,
       }) });
       closeModal();
-      if (r.allocation && r.allocation.shortfall > 0) {
-        toast(`Added — only ${nfmt(r.allocation.allocated)} was free, short ${nfmt(r.allocation.shortfall)}`, true);
-      } else toast('Added');
+      if (auto && r.allocation && r.allocation.shortfall > 0) {
+        toast(`Adicionado — só ${nfmt(r.allocation.allocated)} livre, faltam ${nfmt(r.allocation.shortfall)}`, true);
+      } else toast(auto ? 'Adicionado e alocado (FIFO)' : 'Adicionado — alocação pendente');
       showTransfer(transferId);
     } },
   ]);
@@ -702,37 +807,37 @@ async function overrideModal(lineId, sku, transferId) {
   try { q = await api(`/fifo/${encodeURIComponent(sku)}`); } catch (e) { return fail(e); }
   if (!q.length) return toast('No free stock for that SKU', true);
 
-  modal(`Take ${sku} from a different pallet`, `
-    <div class="gw-note gw-note-warn">
-      FIFO wants the oldest stock. Choosing otherwise is recorded against your name with the
-      reason, alongside what was recommended.
+  modal(`Alocar ${sku} — escolher prateleira`, `
+    <div class="gw-note gw-note-info">
+      Sugestão em ordem FIFO (mais antigo primeiro; sem data entra primeiro). Escolha a
+      prateleira que o motorista pegou. Para <b>splitar</b> em várias prateleiras, aloque uma,
+      depois abra de novo e aloque a próxima. Só precisa de motivo se fugir do FIFO.
     </div>
-    <div class="gw-field"><label>Pallet</label>
+    <div class="gw-field"><label>Prateleira / pallet</label>
       <select class="gw-input" id="ovLot">${q.map(l => `
         <option value="${l.lot_id}" data-free="${l.qty_available}">
-          ${l.fifo_rank === 1 ? '[FIFO] ' : ''}${l.received_on ? dfmt(l.received_on) : 'date unknown'}
-          · shelf ${l.shelf_id || l.shelf_text || '?'}${l.pallet_number ? ` · pallet ${l.pallet_number}` : ''}
-          · ${nfmt(l.qty_available)} free
+          ${l.fifo_rank === 1 ? '★ FIFO · ' : ''}prat. ${l.shelf_id || l.shelf_text || '?'}${l.pallet_number ? ` · pallet ${l.pallet_number}` : ''}
+          · ${l.received_on ? dfmt(l.received_on) : 'sem data'} · ${nfmt(l.qty_available)} livre
         </option>`).join('')}</select></div>
-    <div class="gw-field"><label>Quantity</label>
+    <div class="gw-field"><label>Quantidade desta prateleira</label>
       <input class="gw-input" id="ovQty" type="number" min="0.001" step="any" value="${q[0].qty_available}" /></div>
-    <div class="gw-field"><label>Why not the oldest?</label>
+    <div class="gw-field"><label>Motivo (só se não for a mais antiga)</label>
       <select class="gw-input" id="ovPreset">
-        <option value="">Choose or type below…</option>
-        <option>Damaged cartons in the older stock</option>
-        <option>Older pallet is not accessible</option>
-        <option>Allocated to a project</option>
-        <option>Older stock needs a quality check first</option>
+        <option value="">Opcional — escolha ou digite…</option>
+        <option>Cartons danificados no lote mais antigo</option>
+        <option>Pallet mais antigo inacessível</option>
+        <option>Alocado a um projeto</option>
+        <option>Lote mais antigo precisa de verificação</option>
       </select></div>
-    <div class="gw-field"><textarea class="gw-input" id="ovReason" rows="2" placeholder="Required"></textarea></div>`,
+    <div class="gw-field"><textarea class="gw-input" id="ovReason" rows="2" placeholder="Opcional"></textarea></div>`,
   [
-    { label: 'Cancel', onClick: closeModal },
-    { label: 'Allocate from this pallet', cls: 'gw-btn-primary', onClick: async () => {
+    { label: 'Cancelar', onClick: closeModal },
+    { label: 'Alocar desta prateleira', cls: 'gw-btn-primary', onClick: async () => {
       await api(`/transfers/${transferId}/override`, { method: 'POST', body: JSON.stringify({
         line_id: lineId, lot_id: Number($('ovLot').value),
         qty: Number($('ovQty').value), reason: $('ovReason').value,
       }) });
-      closeModal(); toast('Allocated, and the override is on record');
+      closeModal(); toast('Prateleira alocada');
       showTransfer(transferId);
     } },
   ]);
@@ -910,71 +1015,6 @@ async function printPicklist(id) {
 }
 
 // ═══════════ RECOMMENDATIONS ═══════════
-function wireRecommend() {
-  $('recWeeks').onchange = e => { state.rec.weeks = Number(e.target.value); loadRecommend(); };
-  $('recAll').onchange = e => {
-    document.querySelectorAll('.rec-cb').forEach(cb => { cb.checked = e.target.checked; toggleRec(cb); });
-  };
-  $('recBuild').onclick = buildFromRecommendations;
-}
-
-async function loadRecommend() {
-  let d;
-  try { d = await api(`/recommendations?weeks=${state.rec.weeks}`); } catch (e) { return fail(e); }
-  state.rec.rows = d.rows;
-  state.rec.selected.clear();
-  $('recBuild').disabled = true;
-
-  $('recBody').innerHTML = d.rows.length ? d.rows.map(r => `
-    <tr>
-      <td class="c"><input type="checkbox" class="rec-cb" data-sku="${esc(r.sku)}" data-qty="${r.recommended_qty}" /></td>
-      <td class="mono">${esc(r.sku)}</td>
-      <td>${esc(r.product_name || '—')}</td>
-      <td class="r num">${nfmt(r.main_qty)}</td>
-      <td class="r num">${nfmt(r.weekly_demand, 1)}</td>
-      <td class="r num ${r.weeks_cover < 1 ? 'var-neg' : ''}">${nfmt(r.weeks_cover, 1)}</td>
-      <td class="r num gw-sub">${nfmt(r.target_qty)}</td>
-      <td class="r num"><b>${nfmt(r.recommended_qty)}</b>${r.capped_by_gateway
-        ? ' <span class="tag tag-amber">capped</span>' : ''}</td>
-      <td class="r num">${nfmt(r.gateway_available)}</td>
-      <td>${r.oldest_received_on ? esc(dfmt(r.oldest_received_on)) : '<span class="age-unknown">unknown</span>'}</td>
-      <td class="gw-sub">${esc(r.shelves || '—')}</td>
-    </tr>`).join('') : empty(11, 'Nothing to suggest — every product with a demand figure has cover');
-
-  document.querySelectorAll('.rec-cb').forEach(cb => { cb.onchange = () => toggleRec(cb); });
-  $('recCount').textContent = `${nfmt(d.total)} suggestions`;
-}
-
-function toggleRec(cb) {
-  if (cb.checked) state.rec.selected.add(cb.dataset.sku);
-  else state.rec.selected.delete(cb.dataset.sku);
-  $('recBuild').disabled = state.rec.selected.size === 0;
-  $('recBuild').textContent = state.rec.selected.size
-    ? `Build a transfer from ${state.rec.selected.size} product(s)`
-    : 'Build a transfer from selected';
-}
-
-async function buildFromRecommendations() {
-  const picks = [...document.querySelectorAll('.rec-cb')].filter(c => c.checked)
-    .map(c => ({ sku: c.dataset.sku, qty: Number(c.dataset.qty) }));
-  if (!picks.length) return;
-  try {
-    const t = await api('/transfers', { method: 'POST', body: JSON.stringify({
-      direction: 'gateway_to_main', reference: `Replenishment ${state.rec.weeks}wk`,
-      notes: `Built from recommendations targeting ${state.rec.weeks} weeks of cover`,
-    }) });
-    let short = 0;
-    for (const p of picks) {
-      const r = await api(`/transfers/${t.id}/lines`, { method: 'POST', body: JSON.stringify({
-        sku: p.sku, qty_requested: p.qty, source: 'recommendation',
-      }) });
-      if (r.allocation && r.allocation.shortfall > 0) short++;
-    }
-    toast(`${t.transfer_no} created with ${picks.length} product(s)` + (short ? `, ${short} short of stock` : ''));
-    switchView('transfers'); showTransfer(t.id);
-  } catch (e) { fail(e); }
-}
-
 // ═══════════ RECONCILIATION ═══════════
 function wireRecon() {
   $('reconState').onchange = e => { state.recon.state = e.target.value; loadRecon(); };

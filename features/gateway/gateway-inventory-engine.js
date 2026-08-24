@@ -96,7 +96,8 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
       const [bal, tr, recon, iss, fresh, settings] = await Promise.all([
         sb.from('gateway_v_sku_balance').select('sku,qty_on_hand,qty_reserved,oldest_age_days,undated_lots'),
         sb.from('gateway_v_transfers').select('id,status,direction'),
-        sb.from('gateway_v_reconciliation').select('state,difference'),
+        sb.from('gateway_v_reconciliation').select('state,difference,local_qty,cin7_qty')
+          .or('local_qty.neq.0,cin7_qty.neq.0'),
         sb.from('gateway_import_issues').select('id', { count: 'exact', head: true }).eq('resolved', false),
         sb.schema(CIN7).from('stock_snapshot')
           .select('synced_at').eq('location_name', GATEWAY_LOCATION)
@@ -148,6 +149,13 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
         const like = `*${q}*`;
         query = query.or(`sku.ilike.${like},product_name.ilike.${like},five_dc.ilike.${like},shelves.ilike.${like}`);
       }
+      // Hide pure noise: 171 '-CartonNN' UOM-variant SKUs sit in the Cin7
+      // Gateway snapshot at 0 on hand and show as "Only Cin7 / 0 / 0". They
+      // are not stock and not a real discrepancy — drop any row that is zero
+      // on both sides (unless the caller explicitly asked for the zero view).
+      if (filter !== 'zero') {
+        query = query.or('local_qty.neq.0,cin7_qty.neq.0');
+      }
       switch (filter) {
         case 'mismatch':    query = query.neq('state', 'match'); break;
         case 'cin7_only':   query = query.eq('state', 'cin7_only'); break;
@@ -155,7 +163,7 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
         case 'undated':     query = query.gt('undated_lots', 0); break;
         case 'reserved':    query = query.gt('open_lots', 0); break;
         case 'in_stock':    query = query.gt('local_qty', 0); break;
-        case 'zero':        query = query.eq('local_qty', 0); break;
+        case 'zero':        query = query.eq('local_qty', 0).gt('cin7_qty', 0); break;
         case 'aging':       query = query.gte('oldest_age_days', Number(req.query.age_days) || 120); break;
       }
       const order = {
@@ -231,7 +239,8 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
         sb.from('gateway_v_reconciliation').select('sku,product_name,local_qty,oldest_age_days,shelves')
           .gte('oldest_age_days', alertDays).order('oldest_age_days', { ascending: false }).limit(25),
         sb.from('gateway_v_reconciliation').select('sku,product_name,local_qty,cin7_qty,difference,state,issue_status')
-          .neq('state', 'match').order('difference', { ascending: true }).limit(25),
+          .neq('state', 'match').or('local_qty.neq.0,cin7_qty.neq.0')
+          .order('difference', { ascending: true }).limit(25),
         sb.from('gateway_v_reconciliation').select('sku,product_name,local_qty,undated_lots')
           .gt('undated_lots', 0).order('local_qty', { ascending: false }).limit(25),
         sb.from('gateway_v_transfers').select('*')
@@ -425,11 +434,15 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
     if (!num(b.line_id))  return fail(res, 400, 'line_id is required');
     if (!num(b.lot_id))   return fail(res, 400, 'lot_id is required');
     if (!(num(b.qty) > 0)) return fail(res, 400, 'qty must be greater than zero');
-    if (!str(b.reason))   return fail(res, 400, 'A reason is required to take stock out of FIFO order');
+    // Reason is optional at the UI: allocating to the shelf the driver actually
+    // used is the norm. The RPC still requires one and flags is_fifo_override
+    // only when the chosen lot differs from FIFO, so a default note keeps it
+    // frictionless without losing the audit trail.
+    const reason = str(b.reason) || 'Alocado conforme colocação na Gateway';
 
     const { data, error } = await sb.rpc('gateway_allocate_override', {
       p_line_id: Number(b.line_id), p_lot_id: Number(b.lot_id),
-      p_qty: num(b.qty), p_reason: str(b.reason), p_user: user(req),
+      p_qty: num(b.qty), p_reason: reason, p_user: user(req),
     });
     if (error) return pgFail(res, error);
     ok(res, data);
@@ -627,6 +640,8 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
     const limit  = Math.min(Number(req.query.limit) || 200, 1000);
     const offset = Number(req.query.offset) || 0;
     let q = sb.from('gateway_v_reconciliation').select('*', { count: 'exact' });
+    // Drop the zero-on-both-sides carton-variant noise (see /inventory).
+    q = q.or('local_qty.neq.0,cin7_qty.neq.0');
     if (req.query.state) q = q.in('state', String(req.query.state).split(','));
     else                 q = q.neq('state', 'match');
     if (req.query.issue_status) q = q.eq('issue_status', str(req.query.issue_status));
@@ -709,7 +724,7 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
       const [gw, mainRows, avg] = await Promise.all([
         sb.from('gateway_v_sku_balance').select('sku,product_name,five_dc,qty_available,oldest_received_on,oldest_age_days,shelves'),
         sb.schema(CIN7).from('stock_snapshot').select('sku,on_hand').eq('location_name', 'Main Warehouse'),
-        sb.from('branch_avg_monthly_sales').select('product,avg_mth_main,avg_sales_main'),
+        sb.from('branch_avg_monthly_sales').select('product,avg_mth_main,avg_sales_main,avg_transfer_main'),
       ]);
       if (gw.error) return pgFail(res, gw.error);
 
@@ -717,28 +732,42 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
       for (const r of mainRows.data || []) {
         mainBySku[r.sku] = (mainBySku[r.sku] || 0) + Number(r.on_hand || 0);
       }
-      // branch_avg_monthly_sales is keyed by product NAME, upper-cased.
-      const avgByName = {};
+      // branch_avg_monthly_sales.product is the Rapid CODE/SKU (e.g. 'R3206-TRI'),
+      // not the description — so key by SKU, not name. Weeks of cover uses
+      // avg_mth_main = TOTAL monthly movement out of Main (sales + transfers to
+      // branches), which is how the old Gateway screen did it; avg_sales_main
+      // alone understates demand and overstates cover.
+      const avgByCode = {};
       for (const r of avg.data || []) {
         const k = String(r.product || '').toUpperCase().trim();
-        if (k) avgByName[k] = Number(r.avg_sales_main ?? r.avg_mth_main ?? 0);
+        if (k) avgByCode[k] = {
+          total: Number(r.avg_mth_main ?? 0),
+          sales: Number(r.avg_sales_main ?? 0),
+          transfer: Number(r.avg_transfer_main ?? 0),
+        };
       }
 
       const rows = [];
       for (const g of gw.data || []) {
         const available = Number(g.qty_available || 0);
         if (available <= 0) continue;
-        const monthly = avgByName[String(g.product_name || '').toUpperCase().trim()] || 0;
+        const a = avgByCode[String(g.sku || '').toUpperCase().trim()]
+               || avgByCode[String(g.product_name || '').toUpperCase().trim()] || null;
+        const monthly = a ? a.total : 0;
         const weekly  = monthly / 4.33;
         const main    = mainBySku[g.sku] || 0;
         if (!weekly) continue;                       // no demand signal, no recommendation
+        const weeksCover = Math.round((main / weekly) * 10) / 10;
         const target  = weekly * weeksTarget;
         const gap     = target - main;
-        if (gap <= 0) continue;
+        if (gap <= 0) continue;                       // Main already covered
+        // bucket by how little cover Main has left — the "less than N weeks" view
+        const bucket = weeksCover < 2 ? 'lt2' : weeksCover < 4 ? 'lt4' : weeksCover < 6 ? 'lt6' : 'ok';
         rows.push({
           sku: g.sku, product_name: g.product_name, five_dc: g.five_dc,
-          main_qty: main, weekly_demand: Math.round(weekly * 10) / 10,
-          weeks_cover: weekly ? Math.round((main / weekly) * 10) / 10 : null,
+          main_qty: main,
+          weekly_demand: Math.round(weekly * 10) / 10,
+          weeks_cover: weeksCover, bucket,
           target_qty: Math.round(target),
           recommended_qty: Math.min(Math.round(gap), available),
           gateway_available: available,
@@ -749,10 +778,13 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
         });
       }
       rows.sort((a, b) => (a.weeks_cover ?? 1e9) - (b.weeks_cover ?? 1e9));
+      const counts = { lt2: 0, lt4: 0, lt6: 0, ok: 0 };
+      rows.forEach(r => { counts[r.bucket]++; });
       ok(res, {
         rows: rows.slice(0, limit), total: rows.length, weeks_target: weeksTarget,
-        note: 'Recommended only. Demand is Main average monthly sales / 4.33; ' +
-              'products with no average are not suggested at all.',
+        counts,
+        note: 'Cobertura = stock da Main ÷ (avg mensal total da Main ÷ 4.33). ' +
+              'Só sugere o que a Gateway tem e o que a Main está abaixo do alvo.',
       });
     } catch (e) { pgFail(res, e); }
   });
