@@ -338,7 +338,7 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
         sb.from('gateway_v_transfers').select('*').eq('id', id).maybeSingle(),
         sb.from('gateway_transfer_lines').select('*').eq('transfer_id', id).order('line_no').order('sku'),
         sb.from('gateway_transfer_allocations')
-          .select('*, lot:gateway_lots(id,received_on,date_confidence,shelf_id,shelf_text,pallet_number,qty_received,qty_remaining)')
+          .select('*, lot:gateway_lots!lot_id(id,received_on,date_confidence,shelf_id,shelf_text,pallet_number,qty_received,qty_remaining)')
           .eq('transfer_id', id).order('id'),
       ]);
       if (!tr.data) return fail(res, 404, 'Transfer not found');
@@ -579,7 +579,7 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
         sb.from('gateway_transfer_allocations')
           .select('id,qty,fifo_rank,is_fifo_override,override_reason,state,' +
                   'line:gateway_transfer_lines(sku,five_dc,product_name,uom),' +
-                  'lot:gateway_lots(id,received_on,date_confidence,shelf_id,shelf_text,pallet_number,qty_remaining)')
+                  'lot:gateway_lots!lot_id(id,received_on,date_confidence,shelf_id,shelf_text,pallet_number,qty_remaining)')
           .eq('transfer_id', id).neq('state', 'released'),
         sb.from('gateway_transfer_lines').select('*').eq('transfer_id', id),
       ]);
@@ -589,8 +589,30 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
         ((await sb.from('gateway_shelves').select('id,area,shelf_number,pick_sequence')).data || [])
           .map(s => [s.id, s]));
 
+      // Carton size per SKU, for the "Carton/Pallet" column of the delivery
+      // docket. Best-effort: only where Cin7 knows carton_quantity (~33% of
+      // SKUs); otherwise the column is left blank for the picker to write.
+      const skus = [...new Set((allocs.data || []).map(a => a.line?.sku).filter(Boolean))];
+      const cartonBySku = {};
+      for (let i = 0; i < skus.length; i += 150) {
+        const chunk = skus.slice(i, i + 150);
+        const { data: prods } = await sb.schema(CIN7).from('products')
+          .select('sku,carton_quantity').in('sku', chunk);
+        for (const p of prods || []) {
+          const c = Number(p.carton_quantity);
+          if (c > 0) cartonBySku[p.sku] = c;
+        }
+      }
+      const packLabel = (sku, qty) => {
+        const c = cartonBySku[sku];
+        if (!c || qty < c) return null;          // loose units — picker writes it
+        if (qty % c === 0) { const n = qty / c; return `${n} ${n === 1 ? 'carton' : 'cartons'}`; }
+        return `${Math.floor(qty / c)}+ cartons`;
+      };
+
       const rows = (allocs.data || []).map(a => {
         const s = shelves[a.lot?.shelf_id] || {};
+        const qty = Number(a.qty);
         return {
           allocation_id: a.id,
           shelf: a.lot?.shelf_id || a.lot?.shelf_text || null,
@@ -599,7 +621,8 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
           shelf_number: s.shelf_number ?? null,
           pallet: a.lot?.pallet_number || null,
           sku: a.line?.sku, five_dc: a.line?.five_dc, product_name: a.line?.product_name,
-          qty: Number(a.qty), uom: a.line?.uom || 'Item',
+          qty, uom: a.line?.uom || 'Item',
+          carton_pack: packLabel(a.line?.sku, qty),
           received_on: a.lot?.received_on || null,
           date_confidence: a.lot?.date_confidence,
           fifo_rank: a.fifo_rank,

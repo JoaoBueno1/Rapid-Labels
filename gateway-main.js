@@ -949,63 +949,87 @@ function cancelModal(id) {
 }
 
 // ─── the pick sheet ────────────────────────────────────────────────────
+// Delivery docket — mirrors the Gateway Excel template the team already uses
+// ('PALLET DELIVERY TO MAIN'): No. | Location | Pallet # | 5DC | Description |
+// Units | Carton/Pallet | Sent | Left, then "please fill everything" + sign.
+// No FIFO decoration and no Cin7-TR consignment — this is the picker's paper.
+// Re-sortable on screen (walk route / shelf / SKU) before printing.
+let _picklist = null;
 async function printPicklist(id) {
-  let d;
-  try { d = await api(`/transfers/${id}/picklist`); } catch (e) { return fail(e); }
-  const t = d.transfer;
+  try { _picklist = await api(`/transfers/${id}/picklist`); } catch (e) { return fail(e); }
+  _picklist.sort = 'route';
+  openDrawer(esc(_picklist.transfer.transfer_no), 'Delivery docket');
+  renderPicklist(id);
+}
+
+function renderPicklist(id) {
+  const d = _picklist, t = d.transfer;
+  const toMain = t.direction === 'gateway_to_main';
   const printed = new Date().toLocaleString('en-AU', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     timeZone: 'Australia/Brisbane',
   });
 
-  openDrawer(esc(t.transfer_no), 'Pick sheet');
+  // sort the docket the way the user wants to walk it
+  const rows = [...d.rows];
+  const bySku   = (a, b) => String(a.sku || '').localeCompare(String(b.sku || ''));
+  const byShelf = (a, b) => String(a.shelf || '~').localeCompare(String(b.shelf || '~')) || bySku(a, b);
+  const byRoute = (a, b) =>
+    (a.pick_sequence ?? 1e9) - (b.pick_sequence ?? 1e9) ||
+    String(a.area || '~').localeCompare(String(b.area || '~')) ||
+    (a.shelf_number ?? 1e9) - (b.shelf_number ?? 1e9) || byShelf(a, b);
+  rows.sort(d.sort === 'sku' ? bySku : d.sort === 'shelf' ? byShelf : byRoute);
+  rows.forEach((r, i) => { r.line_no = i + 1; });
+
+  const sortBtn = (key, label) =>
+    `<button class="gw-btn gw-btn-sm ${d.sort === key ? 'gw-btn-primary' : ''}" onclick="setPicklistSort(${id},'${key}')">${label}</button>`;
+
   $('drBody').innerHTML = `
     <div class="gw-toolbar no-print">
       <button class="gw-btn gw-btn-primary" onclick="window.print()">Print</button>
       <button class="gw-btn" onclick="showTransfer(${id})">Back to the transfer</button>
+      <span style="margin-left:auto;font-size:12px;color:#5b6b86">Sort:</span>
+      ${sortBtn('route', 'Walk route')} ${sortBtn('shelf', 'Location')} ${sortBtn('sku', 'SKU')}
     </div>
+
     <div class="gw-print-only">
       <div class="print-hd">
         <div>
-          <div class="print-title">GATEWAY &rarr; MAIN</div>
-          <div>Transfer ${esc(t.transfer_no)}</div>
+          <div class="print-title">PALLET DELIVERY TO ${toMain ? 'MAIN' : 'GATEWAY'}</div>
+          <div>${esc(t.transfer_no)}${t.cin7_reference ? ' · Cin7 ' + esc(t.cin7_reference) : ''}</div>
         </div>
         <div class="print-meta">
-          Printed ${esc(printed)}<br />
-          Cin7: ${esc(t.cin7_reference || 'not yet entered')}<br />
-          ${nfmt(d.rows.length)} lines · ${nfmt(d.rows.reduce((s, r) => s + r.qty, 0))} units
+          ${esc(printed)}<br />
+          ${nfmt(rows.length)} lines · ${nfmt(rows.reduce((s, r) => s + r.qty, 0))} units
         </div>
       </div>
       ${d.unallocated.length ? `<div class="print-warn">
-        SHORT OF STOCK: ${d.unallocated.map(u =>
-          `${esc(u.sku)} wanted ${nfmt(u.requested)}, only ${nfmt(u.allocated)} available`).join(' — ')}
+        NOT YET ALLOCATED: ${d.unallocated.map(u =>
+          `${esc(u.sku)} — ${nfmt(u.short)} of ${nfmt(u.requested)}`).join(' · ')}
       </div>` : ''}
     </div>
 
     <div class="gw-table-wrap"><table class="gw-table">
       <thead><tr>
-        <th class="c">#</th><th>Shelf</th><th>Pallet</th><th>SKU</th><th>Product</th>
-        <th class="r">Qty</th><th>Arrived</th><th>Take</th><th class="c">Picked</th>
+        <th class="c">No.</th><th>Location</th><th>Pallet #</th><th>5DC</th><th>Description</th>
+        <th class="r">Units</th><th>Carton/Pallet</th><th class="c">Sent</th><th class="c">Left</th>
       </tr></thead>
-      <tbody>${d.rows.length ? d.rows.map(r => `
+      <tbody>${rows.length ? rows.map(r => `
         <tr>
-          <td class="c num">${r.pick_no}</td>
+          <td class="c num">${r.line_no}</td>
           <td class="mono"><b>${esc(r.shelf || '—')}</b></td>
           <td class="mono">${esc(r.pallet || '—')}</td>
+          <td class="mono gw-sub">${esc(r.five_dc || '—')}</td>
           <td class="mono">${esc(r.sku)}</td>
-          <td>${esc(r.product_name || '—')}</td>
           <td class="r num"><b>${nfmt(r.qty)}</b></td>
-          <td>${r.received_on ? esc(dfmt(r.received_on)) : 'unknown'}</td>
-          <td>${r.fifo_rank === 1 && !r.is_fifo_override
-                ? '<span class="use-first">USE FIRST</span>'
-                : r.is_fifo_override
-                  ? `<span class="use-first">NOT OLDEST</span><div class="gw-sub">${esc(r.override_reason || '')}</div>`
-                  : '<span class="gw-sub">then</span>'}</td>
-          <td class="c" style="min-width:70px">&nbsp;</td>
-        </tr>`).join('') : empty(9, 'Nothing allocated')}</tbody>
+          <td>${esc(r.carton_pack || '')}</td>
+          <td class="c" style="min-width:56px">&nbsp;</td>
+          <td class="c" style="min-width:56px">&nbsp;</td>
+        </tr>`).join('') : empty(9, 'Nothing allocated yet — allocate the lines first')}</tbody>
     </table></div>
 
     <div class="gw-print-only">
+      <div style="margin-top:8pt;font-size:9.5pt">*** Please fill everything and return to Joao ***</div>
       <div class="print-sign">
         <div>Picked by &nbsp; / &nbsp; date</div>
         <div>Driver &nbsp; / &nbsp; date</div>
@@ -1013,6 +1037,8 @@ async function printPicklist(id) {
       </div>
     </div>`;
 }
+
+function setPicklistSort(id, key) { if (_picklist) { _picklist.sort = key; renderPicklist(id); } }
 
 // ═══════════ RECOMMENDATIONS ═══════════
 // ═══════════ RECONCILIATION ═══════════
