@@ -44,54 +44,54 @@
   <section class="gw-view" id="view-overview">
     <div class="gw-tiles" id="tiles"></div>
 
-    <!-- Restock: o que a Main está baixa e a Gateway pode suprir -->
+    <!-- Restock: what Main is low on and Gateway can supply -->
     <div class="gw-sec">
       <div class="gw-sec-hd">
-        <span class="gw-sec-title">Restock — o que mandar pra Main</span>
-        <span class="gw-sec-hint">cobertura = stock da Main &divide; demanda semanal (avg mensal total &divide; 4,33)</span>
+        <span class="gw-sec-title">Restock — send to Main</span>
+        <span class="gw-sec-hint">cover = Main stock &divide; weekly demand (total monthly avg &divide; 4.33)</span>
       </div>
       <div class="gw-toolbar">
-        <span style="font-weight:600;color:#5b6b86;font-size:13px">Cobertura da Main:</span>
-        <button class="gw-chip active" data-cov="all">Todos <span id="covAll">0</span></button>
-        <button class="gw-chip" data-cov="lt2" style="border-color:#f6c9c4">&lt; 2 sem <span id="covLt2">0</span></button>
-        <button class="gw-chip" data-cov="lt4" style="border-color:#fbe3b3">&lt; 4 sem <span id="covLt4">0</span></button>
-        <button class="gw-chip" data-cov="lt6" style="border-color:#c4e0f5">&lt; 6 sem <span id="covLt6">0</span></button>
-        <label style="margin-left:auto;font-size:13px;color:#5b6b86">Alvo de cobertura
+        <span style="font-weight:600;color:#5b6b86;font-size:13px">Main cover:</span>
+        <button class="gw-chip active" data-cov="all">All <span id="covAll">0</span></button>
+        <button class="gw-chip" data-cov="lt2" style="border-color:#f6c9c4">&lt; 2 wk <span id="covLt2">0</span></button>
+        <button class="gw-chip" data-cov="lt4" style="border-color:#fbe3b3">&lt; 4 wk <span id="covLt4">0</span></button>
+        <button class="gw-chip" data-cov="lt6" style="border-color:#c4e0f5">&lt; 6 wk <span id="covLt6">0</span></button>
+        <label style="margin-left:auto;font-size:13px;color:#5b6b86">Target cover
           <select class="gw-input gw-btn-sm" id="ovWeeks" style="margin-left:6px">
-            <option value="2">2 semanas</option>
-            <option value="4" selected>4 semanas</option>
-            <option value="6">6 semanas</option>
-            <option value="8">8 semanas</option>
+            <option value="2">2 weeks</option>
+            <option value="4" selected>4 weeks</option>
+            <option value="6">6 weeks</option>
+            <option value="8">8 weeks</option>
           </select>
         </label>
-        <button class="gw-btn gw-btn-primary gw-btn-sm" id="ovBuild" disabled>Criar transfer do selecionado</button>
+        <button class="gw-btn gw-btn-primary gw-btn-sm" id="ovBuild" disabled>Create transfer from selected</button>
       </div>
       <div class="gw-table-wrap"><table class="gw-table">
         <thead><tr>
-          <th class="c"><input type="checkbox" id="ovAll" title="Selecionar todos" /></th>
-          <th>SKU</th><th>Produto</th>
-          <th class="r">Main</th><th class="r">Sem/sem</th><th class="r">Cobertura</th>
-          <th class="r">Sugerido</th><th class="r">Gateway livre</th><th>Mais antigo</th><th>Prateleiras</th>
+          <th class="c"><input type="checkbox" id="ovAll" title="Select all" /></th>
+          <th>SKU</th><th>Product</th>
+          <th class="r">Main</th><th class="r">Weekly</th><th class="r">Cover</th>
+          <th class="r">Suggested</th><th class="r">Gateway free</th><th>Oldest</th><th>Shelves</th>
         </tr></thead>
         <tbody id="ovRestock"><tr><td colspan="10" class="gw-empty">Loading…</td></tr></tbody>
       </table></div>
     </div>
 
-    <!-- Gateway → Main transfers: em aberto + histórico recente -->
+    <!-- Gateway → Main transfers: open + recent history -->
     <div class="gw-grid-2">
       <div class="gw-sec">
-        <div class="gw-sec-hd"><span class="gw-sec-title">Transfers em aberto</span>
-          <span class="gw-sec-hint">criadas e ainda não concluídas</span></div>
+        <div class="gw-sec-hd"><span class="gw-sec-title">Open transfers</span>
+          <span class="gw-sec-hint">created and not yet completed</span></div>
         <div class="gw-table-wrap"><table class="gw-table">
-          <thead><tr><th>Transfer</th><th>Status</th><th>Alocação</th><th class="r">Linhas</th><th class="r">Pedido</th><th>Criada</th></tr></thead>
+          <thead><tr><th>Transfer</th><th>Status</th><th>Allocation</th><th class="r">Lines</th><th class="r">Requested</th><th>Created</th></tr></thead>
           <tbody id="ovOpenTr"><tr><td colspan="6" class="gw-empty">Loading…</td></tr></tbody>
         </table></div>
       </div>
       <div class="gw-sec">
-        <div class="gw-sec-hd"><span class="gw-sec-title">Histórico recente</span>
-          <span class="gw-sec-hint">últimas transfers processadas</span></div>
+        <div class="gw-sec-hd"><span class="gw-sec-title">Recent history</span>
+          <span class="gw-sec-hint">last processed transfers</span></div>
         <div class="gw-table-wrap"><table class="gw-table">
-          <thead><tr><th>Transfer</th><th>Cin7</th><th class="r">Movido</th><th>Concluída</th></tr></thead>
+          <thead><tr><th>Transfer</th><th>Cin7</th><th class="r">Moved</th><th>Completed</th></tr></thead>
           <tbody id="ovHistTr"><tr><td colspan="4" class="gw-empty">Loading…</td></tr></tbody>
         </table></div>
       </div>

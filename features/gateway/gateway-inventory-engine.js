@@ -438,7 +438,7 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
     // used is the norm. The RPC still requires one and flags is_fifo_override
     // only when the chosen lot differs from FIFO, so a default note keeps it
     // frictionless without losing the audit trail.
-    const reason = str(b.reason) || 'Alocado conforme colocação na Gateway';
+    const reason = str(b.reason) || 'Allocated as placed at Gateway';
 
     const { data, error } = await sb.rpc('gateway_allocate_override', {
       p_line_id: Number(b.line_id), p_lot_id: Number(b.lot_id),
@@ -783,8 +783,8 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
       ok(res, {
         rows: rows.slice(0, limit), total: rows.length, weeks_target: weeksTarget,
         counts,
-        note: 'Cobertura = stock da Main ÷ (avg mensal total da Main ÷ 4.33). ' +
-              'Só sugere o que a Gateway tem e o que a Main está abaixo do alvo.',
+        note: 'Cover = Main stock ÷ (Main total monthly avg ÷ 4.33). ' +
+              'Only suggests what Gateway has and what Main is below target on.',
       });
     } catch (e) { pgFail(res, e); }
   });

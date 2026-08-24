@@ -231,15 +231,15 @@ async function loadOverview() {
   const ageMin = synced ? Math.round((Date.now() - synced) / 60000) : null;
   $('syncDot').className = 'gw-dot ' + (ageMin == null ? 'dead' : ageMin < 120 ? 'fresh' : ageMin < 480 ? 'stale' : 'dead');
   $('syncText').textContent = synced
-    ? `Cin7 sincronizado há ${ageMin < 90 ? `${ageMin} min` : `${Math.round(ageMin / 60)} h`}`
-    : 'sync do Cin7 desconhecido';
+    ? `Cin7 stock synced ${ageMin < 90 ? `${ageMin} min` : `${Math.round(ageMin / 60)} h`} ago`
+    : 'Cin7 sync unknown';
 
-  // KPIs enxutos — só o que ajuda a decidir
+  // Slim KPIs — only what helps decide
   const tiles = [
-    ['Produtos na Gateway', nfmt(s.products),      'com estoque',                 ''],
-    ['Unidades',            nfmt(s.units),         'total na Gateway',            ''],
-    ['Transfers abertas',   nfmt(s.open_transfers),'em andamento',                s.open_transfers > 0 ? 'warn' : ''],
-    ['Reservado',           nfmt(s.reserved),      'preso em transfers abertas',  s.reserved > 0 ? 'warn' : ''],
+    ['Products in Gateway', nfmt(s.products),      'holding stock',            ''],
+    ['Units',               nfmt(s.units),         'total in Gateway',         ''],
+    ['Open transfers',      nfmt(s.open_transfers),'in progress',              s.open_transfers > 0 ? 'warn' : ''],
+    ['Reserved',            nfmt(s.reserved),      'held by open transfers',   s.reserved > 0 ? 'warn' : ''],
   ];
   $('tiles').innerHTML = tiles.map(([l, v, sub, cls]) => `
     <div class="gw-tile ${cls}">
@@ -261,7 +261,7 @@ async function loadOverview() {
   await Promise.all([loadRestock(), loadOverviewTransfers()]);
 }
 
-// ── Restock: o que a Main está baixa e a Gateway pode suprir ──
+// ── Restock: what Main is low on and Gateway can supply ──
 async function loadRestock() {
   let d;
   try { d = await api(`/recommendations?weeks=${state.ov.weeks}&limit=500`); } catch (e) { return fail(e); }
@@ -293,12 +293,12 @@ function renderRestock() {
       <td>${esc(r.product_name || '—')}</td>
       <td class="r num">${nfmt(r.main_qty)}</td>
       <td class="r num gw-sub">${nfmt(r.weekly_demand, 1)}</td>
-      <td class="r num ${covClass(r.weeks_cover)}"><b>${nfmt(r.weeks_cover, 1)}</b> sem</td>
-      <td class="r num"><b>${nfmt(r.recommended_qty)}</b>${r.capped_by_gateway ? ' <span class="tag tag-amber">limitado</span>' : ''}</td>
+      <td class="r num ${covClass(r.weeks_cover)}"><b>${nfmt(r.weeks_cover, 1)}</b> wk</td>
+      <td class="r num"><b>${nfmt(r.recommended_qty)}</b>${r.capped_by_gateway ? ' <span class="tag tag-amber">capped</span>' : ''}</td>
       <td class="r num">${nfmt(r.gateway_available)}</td>
-      <td>${r.oldest_received_on ? esc(dfmt(r.oldest_received_on)) : '<span class="age-unknown">sem data</span>'}</td>
+      <td>${r.oldest_received_on ? esc(dfmt(r.oldest_received_on)) : '<span class="age-unknown">no date</span>'}</td>
       <td class="gw-sub">${esc(r.shelves || '—')}</td>
-    </tr>`).join('') : empty(10, 'Nada a sugerir — a Main está coberta no alvo escolhido');
+    </tr>`).join('') : empty(10, 'Nothing to suggest — Main is covered at the chosen target');
   document.querySelectorAll('.ov-cb').forEach(cb => { cb.onchange = () => toggleOv(cb); });
   $('ovAll').checked = false;
 }
@@ -308,7 +308,7 @@ function toggleOv(cb) {
   else state.ov.selected.delete(cb.dataset.sku);
   const n = state.ov.selected.size;
   $('ovBuild').disabled = n === 0;
-  $('ovBuild').textContent = n ? `Criar transfer de ${n} produto(s)` : 'Criar transfer do selecionado';
+  $('ovBuild').textContent = n ? `Create transfer from ${n} product(s)` : 'Create transfer from selected';
 }
 
 async function buildTransferFromRestock() {
@@ -317,22 +317,22 @@ async function buildTransferFromRestock() {
   if (!picks.length) return;
   try {
     const t = await api('/transfers', { method: 'POST', body: JSON.stringify({
-      direction: 'gateway_to_main', reference: `Restock ${state.ov.weeks}sem`,
-      notes: `Criada do restock (alvo ${state.ov.weeks} semanas de cobertura)`,
+      direction: 'gateway_to_main', reference: `Restock ${state.ov.weeks}wk`,
+      notes: `Built from restock (target ${state.ov.weeks} weeks of cover)`,
     }) });
-    // linhas ficam PENDENTES de alocação (allocate:false) — você aloca conforme
-    // o motorista colocou na Gateway, com sugestão FIFO.
+    // Lines start with allocation PENDING (allocate:false) — you allocate the
+    // shelves as the driver actually pulled them, with a FIFO suggestion.
     for (const p of picks) {
       await api(`/transfers/${t.id}/lines`, { method: 'POST', body: JSON.stringify({
         sku: p.sku, qty_requested: p.qty, source: 'recommendation', allocate: false,
       }) });
     }
-    toast(`${t.transfer_no} criada com ${picks.length} produto(s) — aloque as prateleiras`);
+    toast(`${t.transfer_no} created with ${picks.length} product(s) — allocate the shelves`);
     switchView('transfers'); showTransfer(t.id);
   } catch (e) { fail(e); }
 }
 
-// ── Transfers no overview: em aberto + histórico recente ──
+// ── Overview transfers: open + recent history ──
 async function loadOverviewTransfers() {
   try {
     const [open, hist] = await Promise.all([
@@ -345,18 +345,18 @@ async function loadOverviewTransfers() {
         <td>${statusTag(t.status)}</td>
         <td>${Number(t.qty_allocated) < Number(t.qty_requested)
           ? `<span class="tag tag-amber">${nfmt(t.qty_allocated)}/${nfmt(t.qty_requested)}</span>`
-          : '<span class="tag tag-green">completa</span>'}</td>
+          : '<span class="tag tag-green">full</span>'}</td>
         <td class="r num">${nfmt(t.line_count)}</td>
         <td class="r num">${nfmt(t.qty_requested)}</td>
         <td class="gw-sub">${esc(dtfmt(t.created_at))}</td></tr>`).join('')
-      : empty(6, 'Nenhuma transfer em aberto');
+      : empty(6, 'No open transfers');
     $('ovHistTr').innerHTML = (hist.rows || []).length ? hist.rows.map(t => `
       <tr class="clickable" onclick="showTransfer(${t.id})">
         <td class="mono">${esc(t.transfer_no)}</td>
         <td class="mono gw-sub">${esc(t.cin7_reference || '—')}</td>
         <td class="r num">${nfmt(t.qty_moved)}</td>
         <td class="gw-sub">${esc(dtfmt(t.completed_at))}</td></tr>`).join('')
-      : empty(4, 'Nenhuma transfer concluída ainda');
+      : empty(4, 'No completed transfers yet');
   } catch (e) { fail(e); }
 }
 
@@ -708,11 +708,11 @@ async function showTransfer(id) {
                 <span class="gw-sub">${a.lot?.received_on ? esc(dfmt(a.lot.received_on)) : 'date unknown'}</span>
                 ${a.is_fifo_override ? `<span class="tag tag-amber" title="${esc(a.override_reason || '')}">out of FIFO order</span>` : ''}
                 ${editable ? `<button class="gw-btn gw-btn-sm no-print" onclick="removeAlloc(${a.id}, ${t.id})">remove</button>` : ''}
-              </div>`).join('') || '<span class="gw-sub">alocação pendente</span>'}
+              </div>`).join('') || '<span class="gw-sub">allocation pending</span>'}
               ${editable && outbound && Number(l.qty_allocated) < Number(l.qty_requested)
                 ? `<div class="no-print" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
-                     <button class="gw-btn gw-btn-primary gw-btn-sm" onclick="allocFifo(${l.id}, ${t.id})">Alocar FIFO (auto)</button>
-                     <button class="gw-btn gw-btn-sm" onclick="overrideModal(${l.id}, '${esc(l.sku)}', ${t.id})">Escolher prateleira / split</button>
+                     <button class="gw-btn gw-btn-primary gw-btn-sm" onclick="allocFifo(${l.id}, ${t.id})">Allocate FIFO (auto)</button>
+                     <button class="gw-btn gw-btn-sm" onclick="overrideModal(${l.id}, '${esc(l.sku)}', ${t.id})">Pick shelf / split</button>
                    </div>` : ''}
             </td>
             ${editable ? `<td class="r no-print"><button class="gw-btn gw-btn-sm" onclick="removeLine(${t.id}, ${l.id})">Remove</button></td>` : ''}
@@ -735,44 +735,44 @@ async function showTransfer(id) {
   bind('btnCancel', () => cancelModal(t.id));
 }
 
-// Um clique: aloca a linha pela ordem FIFO (o auto já splita entre as
-// prateleiras mais antigas; sem data entra primeiro).
+// One click: allocate the line in FIFO order (auto splits across the oldest
+// shelves; undated stock goes first).
 async function allocFifo(lineId, transferId) {
   try {
     const r = await api(`/transfers/${transferId}/allocate`, { method: 'POST',
       body: JSON.stringify({ line_id: lineId }) });
     toast(Number(r.shortfall) > 0
-      ? `Alocado ${nfmt(r.allocated)} — faltaram ${nfmt(r.shortfall)} sem estoque livre`
-      : `Alocado ${nfmt(r.allocated)} (FIFO)`, Number(r.shortfall) > 0);
+      ? `Allocated ${nfmt(r.allocated)} — ${nfmt(r.shortfall)} short of free stock`
+      : `Allocated ${nfmt(r.allocated)} (FIFO)`, Number(r.shortfall) > 0);
     showTransfer(transferId);
   } catch (e) { fail(e); }
 }
 
 function addLineModal(transferId, direction) {
   const outbound = direction === 'gateway_to_main';
-  modal('Adicionar produto', `
+  modal('Add a product', `
     <div class="gw-field"><label>SKU</label>
-      <input class="gw-input" id="alSku" placeholder="ex. R6052-WH-TRI" />
+      <input class="gw-input" id="alSku" placeholder="e.g. R6052-WH-TRI" />
       <div class="hint" id="alHint">${outbound
-        ? 'Deixe pendente e aloque as prateleiras conforme o motorista pegou, ou marque para alocar FIFO já.'
-        : 'Stock entrando na Gateway. Vira uma nova prateleira quando você confirmar o movimento.'}</div></div>
-    <div class="gw-field"><label>Quantidade</label>
+        ? 'Leave pending and allocate the shelves as the driver pulled them, or tick to allocate FIFO now.'
+        : 'Stock arriving into Gateway. It becomes a new shelf lot when you confirm the move.'}</div></div>
+    <div class="gw-field"><label>Quantity</label>
       <input class="gw-input" id="alQty" type="number" min="0.001" step="any" /></div>
     ${outbound ? `<div class="gw-field"><label style="display:flex;align-items:center;gap:8px;font-weight:500">
-      <input type="checkbox" id="alAuto" /> Alocar FIFO automaticamente agora
-      </label><div class="hint">Deixe desmarcado para alocar prateleira por prateleira depois.</div></div>` : ''}
+      <input type="checkbox" id="alAuto" /> Allocate FIFO automatically now
+      </label><div class="hint">Leave unticked to allocate shelf by shelf later.</div></div>` : ''}
     <div id="alFifo"></div>`,
   [
-    { label: 'Cancelar', onClick: closeModal },
-    { label: 'Adicionar', cls: 'gw-btn-primary', onClick: async () => {
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Add', cls: 'gw-btn-primary', onClick: async () => {
       const auto = outbound && $('alAuto') && $('alAuto').checked;
       const r = await api(`/transfers/${transferId}/lines`, { method: 'POST', body: JSON.stringify({
         sku: $('alSku').value, qty_requested: Number($('alQty').value), allocate: auto,
       }) });
       closeModal();
       if (auto && r.allocation && r.allocation.shortfall > 0) {
-        toast(`Adicionado — só ${nfmt(r.allocation.allocated)} livre, faltam ${nfmt(r.allocation.shortfall)}`, true);
-      } else toast(auto ? 'Adicionado e alocado (FIFO)' : 'Adicionado — alocação pendente');
+        toast(`Added — only ${nfmt(r.allocation.allocated)} free, ${nfmt(r.allocation.shortfall)} short`, true);
+      } else toast(auto ? 'Added and allocated (FIFO)' : 'Added — allocation pending');
       showTransfer(transferId);
     } },
   ]);
@@ -807,37 +807,37 @@ async function overrideModal(lineId, sku, transferId) {
   try { q = await api(`/fifo/${encodeURIComponent(sku)}`); } catch (e) { return fail(e); }
   if (!q.length) return toast('No free stock for that SKU', true);
 
-  modal(`Alocar ${sku} — escolher prateleira`, `
+  modal(`Allocate ${sku} — pick a shelf`, `
     <div class="gw-note gw-note-info">
-      Sugestão em ordem FIFO (mais antigo primeiro; sem data entra primeiro). Escolha a
-      prateleira que o motorista pegou. Para <b>splitar</b> em várias prateleiras, aloque uma,
-      depois abra de novo e aloque a próxima. Só precisa de motivo se fugir do FIFO.
+      Suggested in FIFO order (oldest first; undated stock first). Pick the shelf the driver
+      pulled from. To <b>split</b> across shelves, allocate one, then open again and allocate
+      the next. A reason is only needed if you go against FIFO.
     </div>
-    <div class="gw-field"><label>Prateleira / pallet</label>
+    <div class="gw-field"><label>Shelf / pallet</label>
       <select class="gw-input" id="ovLot">${q.map(l => `
         <option value="${l.lot_id}" data-free="${l.qty_available}">
-          ${l.fifo_rank === 1 ? '★ FIFO · ' : ''}prat. ${l.shelf_id || l.shelf_text || '?'}${l.pallet_number ? ` · pallet ${l.pallet_number}` : ''}
-          · ${l.received_on ? dfmt(l.received_on) : 'sem data'} · ${nfmt(l.qty_available)} livre
+          ${l.fifo_rank === 1 ? '★ FIFO · ' : ''}shelf ${l.shelf_id || l.shelf_text || '?'}${l.pallet_number ? ` · pallet ${l.pallet_number}` : ''}
+          · ${l.received_on ? dfmt(l.received_on) : 'no date'} · ${nfmt(l.qty_available)} free
         </option>`).join('')}</select></div>
-    <div class="gw-field"><label>Quantidade desta prateleira</label>
+    <div class="gw-field"><label>Quantity from this shelf</label>
       <input class="gw-input" id="ovQty" type="number" min="0.001" step="any" value="${q[0].qty_available}" /></div>
-    <div class="gw-field"><label>Motivo (só se não for a mais antiga)</label>
+    <div class="gw-field"><label>Reason (only if not the oldest)</label>
       <select class="gw-input" id="ovPreset">
-        <option value="">Opcional — escolha ou digite…</option>
-        <option>Cartons danificados no lote mais antigo</option>
-        <option>Pallet mais antigo inacessível</option>
-        <option>Alocado a um projeto</option>
-        <option>Lote mais antigo precisa de verificação</option>
+        <option value="">Optional — choose or type…</option>
+        <option>Damaged cartons in the older lot</option>
+        <option>Older pallet not accessible</option>
+        <option>Allocated to a project</option>
+        <option>Older lot needs a quality check</option>
       </select></div>
-    <div class="gw-field"><textarea class="gw-input" id="ovReason" rows="2" placeholder="Opcional"></textarea></div>`,
+    <div class="gw-field"><textarea class="gw-input" id="ovReason" rows="2" placeholder="Optional"></textarea></div>`,
   [
-    { label: 'Cancelar', onClick: closeModal },
-    { label: 'Alocar desta prateleira', cls: 'gw-btn-primary', onClick: async () => {
+    { label: 'Cancel', onClick: closeModal },
+    { label: 'Allocate from this shelf', cls: 'gw-btn-primary', onClick: async () => {
       await api(`/transfers/${transferId}/override`, { method: 'POST', body: JSON.stringify({
         line_id: lineId, lot_id: Number($('ovLot').value),
         qty: Number($('ovQty').value), reason: $('ovReason').value,
       }) });
-      closeModal(); toast('Prateleira alocada');
+      closeModal(); toast('Shelf allocated');
       showTransfer(transferId);
     } },
   ]);
