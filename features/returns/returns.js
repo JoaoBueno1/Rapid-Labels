@@ -42,13 +42,16 @@ function rtMode(r) {
   const by = new Set(tl.map(l => String(l.processed_by || '').trim()).filter(Boolean));
   return (cn.size > 1 || by.size > 1) ? 'advanced' : 'simple';
 }
-// Chips under the return number. withMode adds the simple/advanced hint (processed queues).
-function rtTypeTag(r, withMode) {
+// Its own table cell (a column, right of Lines) — the type chip only.
+function rtTypeCell(r) {
   const t = rtType(r);
-  const type = t ? `<span class="rt-type ${t}">${RT_TYPE_LABEL[t]}</span>` : '';
-  const m = withMode ? rtMode(r) : null;
-  const mode = m ? `<span class="rt-mode" title="Processed in ${m} mode">${m}</span>` : '';
-  return (type || mode) ? `<div class="rt-typerow">${type}${mode}</div>` : '';
+  const type = t ? `<span class="rt-type ${t}">${RT_TYPE_LABEL[t]}</span>` : '<span class="rt-type-none">—</span>';
+  return `<td class="rt-typecell">${type}</td>`;
+}
+// Processed mode (simple/advanced) — small, under the return number. Empty until processed.
+function rtModeTag(r) {
+  const m = rtMode(r);
+  return m ? `<div class="rt-mode" title="Processed in ${m} mode">${m}</div>` : '';
 }
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
@@ -149,12 +152,12 @@ function rtRenderActive() {
 function rtActHead(rec) {
   // Section-specific columns (kept lean so neither table needs a sideways scroll).
   return rec
-    ? '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Received by</th><th>Processed by</th><th class="r">Lines</th><th class="r">Actions</th></tr></thead>'
-    : '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Received by</th><th class="r">Lines</th><th>Status</th><th class="r">Actions</th></tr></thead>';
+    ? '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Received by</th><th>Processed by</th><th class="r">Lines</th><th>Type</th><th class="r">Actions</th></tr></thead>'
+    : '<thead><tr><th>Return #</th><th>Date</th><th>Business</th><th>Warehouse</th><th>Received by</th><th class="r">Lines</th><th>Type</th><th>Status</th><th class="r">Actions</th></tr></thead>';
 }
 function rtActiveSection(d, list) {
   const rec = d.key === 'putaway';   // the put-away queue shows the record so far
-  const cols = 8;
+  const cols = 9;
   const body = list.map(r => rtActiveRow(r, rec)).join('') || `<tr><td colspan="${cols}" class="rt-sec-empty">Nothing here right now.</td></tr>`;
   return `<div class="rt-sec-block">
     <div class="rt-sec-hd"><span class="rt-dot st-${d.dot || ''}"></span><span class="rt-sec-name">${esc(d.title)}</span><span class="rt-sec-count">${list.length}</span>${d.hint ? `<span class="rt-sec-hint">${esc(d.hint)}</span>` : ''}</div>
@@ -171,14 +174,15 @@ function rtActiveRow(r, rec) {
   const act = `<td class="r rt-actions" onclick="event.stopPropagation()">${actions}</td>`;
   // Lean Active queue: Ready-to-put-away = Received by · Processed by; Awaiting office
   // = Received by · Status. Sales order / Invoice / Account live in the details, not here.
+  const typeCell = rtTypeCell(r);   // Type column, right of Lines
   const mid = rec
     ? rcv
       + `<td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>`
-      + lines + act
-    : rcv + lines
+      + lines + typeCell + act
+    : rcv + lines + typeCell
       + `<td class="rt-status ${r.status}">${statusLabel(r.status)}</td>` + act;
   return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
-    <td class="num"><strong>${esc(r.return_no)}</strong>${rtTypeTag(r, rec)}</td>
+    <td class="num"><strong>${esc(r.return_no)}</strong>${rtModeTag(r)}</td>
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.warehouse || '—')}</td>
@@ -228,23 +232,31 @@ async function rtDoPutaway() {
     rtPutawayClose(); await loadReturns();
   } catch (e) { toast('Put-away failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
 }
-function rtRenderHistory() {
+// Current History view after its filters (status / warehouse / search / show-voided),
+// unpaginated. Shared by the table render and the CSV export so "what you see is what
+// you export".
+function rtHistoryFiltered() {
   const q = ($('rtHistSearch').value || '').toLowerCase();
   const sf = ($('rtHistStatus') && $('rtHistStatus').value) || '';
   const wf = ($('rtHistWh') && $('rtHistWh').value) || '';
   const showVoided = ($('rtShowVoided') && $('rtShowVoided').checked) || sf === 'void';
-  let rows = RT.history;                         // History now lists ALL returns, newest first
+  let rows = RT.history;                          // History lists ALL returns, newest first
   if (sf) rows = rows.filter(r => r.status === sf);
   if (!showVoided) rows = rows.filter(r => r.status !== 'void');   // voided hidden unless "Show voided" (or the void filter)
   if (wf) rows = rows.filter(r => r.warehouse === wf);
   if (q) rows = rows.filter(r => `${r.return_no} ${r.customer_name || ''} ${r.treatment_ref || ''} ${r.operator || ''} ${r.treated_by || ''} ${r.putaway_by || ''} ${r.voided_by || ''} ${r.warehouse || ''}`.toLowerCase().includes(q));
+  return rows;
+}
+function rtRenderHistory() {
+  let rows = rtHistoryFiltered();
   $('rtHistCount').textContent = `${rows.length} return(s)`;
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
   $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row st-${r.status} ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
-    <td class="num"><strong>${esc(r.return_no)}</strong>${rtTypeTag(r, true)}</td>
+    <td class="num"><strong>${esc(r.return_no)}</strong>${rtModeTag(r)}</td>
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.warehouse || '—')}</td>
+    ${rtTypeCell(r)}
     <td class="rt-status ${r.status}">${statusLabel(r.status)}${r.status === 'void' ? `<div class="sub">${r.voided_by ? esc(r.voided_by) + ' · ' : ''}${fmtDT(r.voided_at || r.updated_at)}</div>` : ''}</td>
     <td>${r.operator ? `${esc(r.operator)}<div class="sub">${fmtT(r.created_at)}</div>` : '—'}</td>
     <td>${r.treated_by ? `${esc(r.treated_by)}<div class="sub">${fmtDT(r.treated_at)}</div>` : '—'}</td>
@@ -253,7 +265,7 @@ function rtRenderHistory() {
       <button class="rt-btn rt-btn-sm" onclick="rtView('${r.id}')">View</button>
       <button class="rt-btn rt-btn-sm" onclick="rtPrint('${r.id}')">Print</button>
     </td>
-  </tr>`).join('') || '<tr><td colspan="9" class="rt-empty">No returns match.</td></tr>';
+  </tr>`).join('') || '<tr><td colspan="10" class="rt-empty">No returns match.</td></tr>';
 }
 function rtHdr(id) { return RT.active.concat(RT.history).find(r => r.id === id); }
 
@@ -565,15 +577,22 @@ async function rtView(id) {
   ]);
   const lines = ln.data || [], tlines = tl.data || [], logs = (lg && lg.data) || [];
   const rowsC = lines.map(l => `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc(l.product_name || '')}</td><td class="r">${l.qty}</td><td>${esc(l.reason || '')}</td><td>${esc(l.condition || '')}</td></tr>`).join('');
-  const treatBlock = (r.status === 'completed' || r.status === 'in_treatment') ? `
+  const bySku = {}; lines.forEach(l => { if (!(l.sku in bySku)) bySku[l.sku] = l; });   // product/5DC for the treatment lines
+  const md = rtMode(r);
+  // Show the processing record whenever the return has been processed — including the
+  // Ready-to-put-away queue (status to_putaway), which was previously left blank here.
+  const hasTreat = tlines.length > 0 || ['completed', 'in_treatment', 'to_putaway'].includes(r.status);
+  const treatBlock = hasTreat ? `
     <div class="rt-sec-title">Processing</div>
     <div class="rt-kv-grid">
       <div class="rt-kv"><span>Credit note #</span><b>${esc(r.treatment_ref || '—')}</b></div>
-      <div class="rt-kv"><span>Put away by</span><b>${r.putaway_by ? esc(r.putaway_by) + ' · ' + fmtDT(r.putaway_at) + (r.putaway_location ? ' · ' + esc(r.putaway_location) : '') : '—'}</b></div>
+      <div class="rt-kv"><span>Mode</span><b>${md ? (md === 'advanced' ? 'Advanced (per-line)' : 'Simple') : '—'}</b></div>
       <div class="rt-kv"><span>Processed by</span><b>${esc(r.treated_by || '—')} ${r.treated_at ? '· ' + fmtDT(r.treated_at) : ''}</b></div>
+      <div class="rt-kv"><span>Put away by</span><b>${r.putaway_by ? esc(r.putaway_by) + ' · ' + fmtDT(r.putaway_at) + (r.putaway_location ? ' · ' + esc(r.putaway_location) : '') : '—'}</b></div>
       ${r.treatment_notes ? `<div class="rt-kv" style="grid-column:1/-1"><span>Notes</span><b>${esc(r.treatment_notes)}</b></div>` : ''}
     </div>
-    ${tlines.length ? `<table class="rt-table" style="margin-top:8px"><thead><tr><th>SKU</th><th>Return status</th><th>Credit note</th><th>Processed by</th><th class="r">Qty</th><th>Reason</th></tr></thead><tbody>${tlines.map(t => `<tr><td>${esc(t.sku)}</td><td>${esc(t.return_status || '')}</td><td>${esc(t.credit_note || '—')}</td><td>${t.processed_by ? esc(t.processed_by) + (t.processed_at ? `<div class="sub">${fmtDT(t.processed_at)}</div>` : '') : '—'}</td><td class="r">${t.qty}</td><td>${esc(t.reason || '')}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${tlines.length ? `<div class="rt-sec-sub">Per-line disposition — who processed each line and its credit note</div>
+    <table class="rt-table rt-treat" style="margin-top:6px"><thead><tr><th>5DC</th><th>SKU</th><th>Product</th><th class="r">Qty</th><th>Return status</th><th>Credit note</th><th>Processed by</th></tr></thead><tbody>${tlines.map(t => { const p = bySku[t.sku] || {}; return `<tr><td class="rt-dc5-cell">${esc(p.dc5 || '')}</td><td><strong>${esc(t.sku)}</strong></td><td>${esc((p.product_name || '').slice(0, 42))}</td><td class="r">${t.qty}</td><td>${esc(t.return_status || '—')}</td><td class="rt-cn-cell">${esc(t.credit_note || '—')}</td><td>${t.processed_by ? esc(t.processed_by) + (t.processed_at ? `<div class="sub">${fmtDT(t.processed_at)}</div>` : '') : '—'}</td></tr>`; }).join('')}</tbody></table>` : ''}
     ${logs.length ? `<div class="rt-sec-title" style="margin-top:12px">Line history</div><div class="rt-linelog">${logs.map(rtLogLine).join('')}</div>` : ''}
   ` : '';
   $('rtViewBody').innerHTML = `
@@ -1032,36 +1051,44 @@ async function rtSaveAct(complete) {
   finally { RT._saving = false; btns.forEach(b => { b.disabled = false; }); }
 }
 
-// ─── CSV export (History) — mirrors the team's credit-note sheet + our detail ───
+// ─── CSV export (History) — ONE ROW PER LINE. Each product on its own row, every field
+// its own column, so there is no ambiguity about which SKU got which credit note or who
+// processed it. 5DC / product / reason / condition come from the creation line; the
+// disposition (return status / credit note / processed by) from the treatment line. ───
 const csvCell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-const rtProductsStr = r => (r.returns_lines || []).slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0)).map(l => {
-  const extra = [l.reason, l.condition].filter(Boolean).join(' / ');
-  return `${l.qty}× ${l.sku}${extra ? ' (' + extra + ')' : ''}`;
-}).join(' | ');
-const rtStatuses = r => [...new Set((r.returns_treatment_lines || []).map(t => t.return_status).filter(Boolean))].join('; ');
-// The header Credit Note column collapses to "24408; 24409" once a return carries more
-// than one, which says nothing about WHICH sku got which. This spells it out — the whole
-// reason the team asked for per-line credit notes was to answer exactly that.
-const rtCreditPerLine = r => (r.returns_treatment_lines || []).slice()
-  .sort((a, b) => (a.line_no || 0) - (b.line_no || 0))
-  .filter(t => t.credit_note || t.processed_by)
-  .map(t => `${t.sku}=${t.credit_note || '—'}${t.processed_by ? ' (' + t.processed_by + ')' : ''}`).join(' | ');
-const rtQtyTotal = r => (r.returns_lines || []).reduce((s, l) => s + (Number(l.qty) || 0), 0);
 function rtExportCsv() {
-  const rows = RT.history;
-  if (!rows.length) return toast('No completed returns to export', 'err');
-  const headers = ['Date', 'Return #', 'Business', 'Contact', 'Account', 'Email', 'Warehouse', 'Rep', 'Invoice', 'Sales order', 'Cust. reference', 'Products (qty × sku / reason / condition)', 'Total Qty', 'Credit Note', 'Credit note per line (sku=note (who))', 'Return status', 'Emailed', 'Received by', 'Processed by', 'Processed Date', 'Comments', 'Processing Notes'];
-  const lines = [headers.map(csvCell).join(',')];
-  rows.forEach(r => lines.push([
-    fmtD(r.created_at), r.return_no, r.customer_name, r.contact_name, r.customer_id, r.customer_email, r.warehouse, r.rep, r.invoice_number, r.origin_order, r.customer_reference,
-    rtProductsStr(r), rtQtyTotal(r), r.treatment_ref, rtCreditPerLine(r), rtStatuses(r), r.customer_emailed, r.operator, r.treated_by, fmtD(r.treated_at),
-    r.notes, r.treatment_notes,
-  ].map(csvCell).join(',')));
-  const csv = '﻿' + lines.join('\r\n'); // BOM so Excel reads UTF-8
+  const rows = rtHistoryFiltered();               // export exactly what the History filters show
+  if (!rows.length) return toast('Nothing to export — adjust the History filters', 'err');
+  const headers = ['Return #', 'Date', 'Status', 'Business', 'Account', 'Warehouse', 'Sales order', 'Invoice',
+    '5DC', 'SKU', 'Product', 'Qty', 'Reason', 'Condition', 'Return status', 'Credit note',
+    'Received by', 'Processed by', 'Processed date'];
+  const out = [headers.map(csvCell).join(',')];
+  let n = 0;
+  rows.forEach(r => {
+    const cl = (r.returns_lines || []).slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0));
+    const bySku = {}; cl.forEach(l => { if (!(l.sku in bySku)) bySku[l.sku] = l; });
+    const tl = (r.returns_treatment_lines || []).slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0));
+    const usingT = tl.length > 0;                 // processed → one row per treatment line; else per creation line
+    (usingT ? tl : cl).forEach(l => {
+      const c = usingT ? (bySku[l.sku] || {}) : l; // 5DC / product / reason / condition from the creation line
+      // Per-line credit note / processor when set (advanced); otherwise the return-level
+      // value (simple, and pre-per-line returns where it only lived on the header).
+      const credit = l.credit_note || r.treatment_ref || '';
+      const proc = l.processed_by || r.treated_by || '';
+      const procAt = l.processed_at || r.treated_at || '';
+      out.push([
+        r.return_no, fmtD(r.created_at), statusLabel(r.status), r.customer_name, r.customer_id, r.warehouse, r.origin_order, r.invoice_number,
+        c.dc5 || '', l.sku, c.product_name || '', l.qty, c.reason || '', c.condition || '',
+        l.return_status || '', credit, r.operator || '', proc, fmtD(procAt),
+      ].map(csvCell).join(','));
+      n++;
+    });
+  });
+  const csv = '﻿' + out.join('\r\n');             // BOM so Excel reads UTF-8
   const stamp = new Date().toISOString().slice(0, 10);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = `returns_export_${stamp}.csv`; a.click();
+  const a = document.createElement('a'); a.href = url; a.download = `returns_${stamp}.csv`; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  toast(`Exported ${rows.length} return(s)`, 'ok');
+  toast(`Exported ${n} line(s) across ${rows.length} return(s)`, 'ok');
 }
