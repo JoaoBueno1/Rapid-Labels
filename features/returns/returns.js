@@ -21,6 +21,35 @@ const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''
 const fmtDT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return fmtD(iso); return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).format(d).replace(/\b([ap])m\b/i, (_, p) => p.toUpperCase() + 'M'); };
 const fmtT = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: true }).format(d).replace(/\b([ap])m\b/i, (_, p) => p.toUpperCase() + 'M'); };
 const statusLabel = s => ({ pending: 'Pending', in_treatment: 'Processing', to_putaway: 'Ready to put away', completed: 'Completed', void: 'Voided' }[s] || s);
+
+// ── Return type (Returns / Faulty / Mixed) from the warehouse's per-line condition ──
+// Faulty = warranty path; Resaleable / Not Resaleable = Returns (credit); a mix = Mixed.
+// Shown under the return number on every list so the office can split the queue at a
+// glance: the faulty person and the returns person each grab their own, Mixed needs both.
+const RT_TYPE_LABEL = { returns: 'Returns', faulty: 'Faulty', mixed: 'Mixed' };
+function rtType(r) {
+  const c = (r.returns_lines || []).map(l => String(l.condition || '').trim()).filter(Boolean);
+  if (!c.length) return null;                        // not assessed yet
+  const f = c.some(x => x === 'Faulty'), nf = c.some(x => x !== 'Faulty');
+  return f && nf ? 'mixed' : f ? 'faulty' : 'returns';
+}
+// How it was processed. There is no stored mode — derived: Advanced when the lines carry
+// more than one credit note or more than one processor (per-line handling); else Simple.
+function rtMode(r) {
+  const tl = r.returns_treatment_lines || [];
+  if (!tl.length) return null;                       // not processed yet
+  const cn = new Set(tl.map(l => String(l.credit_note || '').trim()).filter(Boolean));
+  const by = new Set(tl.map(l => String(l.processed_by || '').trim()).filter(Boolean));
+  return (cn.size > 1 || by.size > 1) ? 'advanced' : 'simple';
+}
+// Chips under the return number. withMode adds the simple/advanced hint (processed queues).
+function rtTypeTag(r, withMode) {
+  const t = rtType(r);
+  const type = t ? `<span class="rt-type ${t}">${RT_TYPE_LABEL[t]}</span>` : '';
+  const m = withMode ? rtMode(r) : null;
+  const mode = m ? `<span class="rt-mode" title="Processed in ${m} mode">${m}</span>` : '';
+  return (type || mode) ? `<div class="rt-typerow">${type}${mode}</div>` : '';
+}
 const sb = () => window.supabase;
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'rt-toast ' + (kind || ''); el.textContent = msg; $('rtToast').appendChild(el); setTimeout(() => el.remove(), 3500); }
 function rtInvalid(id) { const el = $(id); if (!el) return; el.classList.add('rt-invalid'); try { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} el.addEventListener('input', function h() { el.classList.remove('rt-invalid'); el.removeEventListener('input', h); }); }
@@ -149,7 +178,7 @@ function rtActiveRow(r, rec) {
     : rcv + lines
       + `<td class="rt-status ${r.status}">${statusLabel(r.status)}</td>` + act;
   return `<tr class="rt-row st-${r.status}" onclick="rtView('${r.id}')">
-    <td class="num"><strong>${esc(r.return_no)}</strong></td>
+    <td class="num"><strong>${esc(r.return_no)}</strong>${rtTypeTag(r, rec)}</td>
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.warehouse || '—')}</td>
@@ -212,7 +241,7 @@ function rtRenderHistory() {
   $('rtHistCount').textContent = `${rows.length} return(s)`;
   const pg = paginate(rows, RT.histPage); rows = pg.slice; $('rtHistPager').innerHTML = pagerHtml('history', pg);
   $('rtHistBody').innerHTML = rows.map(r => `<tr class="rt-row st-${r.status} ${r.status === 'void' ? 'rt-row-void' : ''}" onclick="rtView('${r.id}')">
-    <td class="num"><strong>${esc(r.return_no)}</strong></td>
+    <td class="num"><strong>${esc(r.return_no)}</strong>${rtTypeTag(r, true)}</td>
     <td>${fmtDT(r.created_at)}</td>
     <td>${esc(r.customer_name || '—')}</td>
     <td>${esc(r.warehouse || '—')}</td>
