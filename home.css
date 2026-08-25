@@ -379,7 +379,13 @@
         .orders-table tbody tr.order-aged { background:#fef2f2; box-shadow:inset 3px 0 0 #ef4444; }
         .orders-table tbody tr.order-aged:hover, .orders-table tbody tr.order-aged.expanded { background:#fee2e2; }
         .order-expand { display:inline-block; width:12px; color:#94a3b8; transition:transform .15s; font-size:.75rem; }
-        tr.expanded .order-expand { transform:rotate(90deg); color:#1e40af; }
+        tr.expanded .order-expand { transform:rotate(90deg); color:#475569; }
+        /* Professional orders modal — neutral, no per-status colour (severity lives on the board's Exceptions) */
+        .orders-table .order-num { color:var(--text); }
+        .orders-table .order-tr { color:#475569; font-weight:700; }
+        .ord-wh { color:#64748b; font-size:.82rem; white-space:nowrap; }
+        .ord-status { display:inline-block; font-size:.72rem; font-weight:600; letter-spacing:.2px; color:#475569; }
+        .ord-age { color:#64748b; font-weight:600; }
         .order-detail-row > td { background:#f8fafc; padding:0 16px 14px 38px; border-bottom:2px solid #e2e8f0; }
         .od-wrap { padding:12px 0; }
         .od-meta { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:.8rem; color:#475569; margin-bottom:10px; }

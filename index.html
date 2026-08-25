@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css?v=20250709">
     <!-- Home page styles. Loaded between styles.css and the returns theme, the same
          place the inline <style> block sat, so the cascade is unchanged. -->
-    <link rel="stylesheet" href="home.css?v=20260825c">
+    <link rel="stylesheet" href="home.css?v=20260825d">
     <!-- Returns-style home theme (PREVIEW, reversible — delete this one line to revert) -->
     <link rel="stylesheet" href="home-returns-theme.css?v=1">
     <!-- Supabase CDN -->
@@ -595,7 +595,7 @@
     <div class="orders-modal-overlay" id="ordersModalOverlay" onclick="if(event.target===this)closeOrdersModal()">
         <div class="orders-modal">
             <div class="orders-modal-header">
-                <h2 id="ordersModalTitle">📦 Order Pipeline</h2>
+                <h2 id="ordersModalTitle">Order Pipeline</h2>
                 <span class="orders-count" id="ordersCount"></span>
                 <button class="orders-modal-close" onclick="closeOrdersModal()">&times;</button>
             </div>
@@ -603,14 +603,14 @@
                 <input class="orders-search" id="ordersSearch" placeholder="Search order #, customer, ref..." oninput="renderOrdersTable()">
                 <div class="orders-filter-group">
                     <span class="orders-filter-group-label">View</span>
-                    <button class="orders-filter-btn active" data-view="active" onclick="toggleViewFilter(this)">📋 Active</button>
-                    <button class="orders-filter-btn" data-view="completed" onclick="toggleViewFilter(this)">✅ Completed</button>
+                    <button class="orders-filter-btn active" data-view="active" onclick="toggleViewFilter(this)">Active</button>
+                    <button class="orders-filter-btn" data-view="completed" onclick="toggleViewFilter(this)">Completed</button>
                 </div>
                 <div class="orders-filter-group">
                     <span class="orders-filter-group-label">Type</span>
                     <button class="orders-filter-btn active" data-filter="all" onclick="toggleOrderFilter(this)">All</button>
-                    <button class="orders-filter-btn" data-filter="SO" onclick="toggleOrderFilter(this)">🛒 Sales</button>
-                    <button class="orders-filter-btn" data-filter="TR" onclick="toggleOrderFilter(this)">🔄 Transfers</button>
+                    <button class="orders-filter-btn" data-filter="SO" onclick="toggleOrderFilter(this)">Sales</button>
+                    <button class="orders-filter-btn" data-filter="TR" onclick="toggleOrderFilter(this)">Transfers</button>
                 </div>
             </div>
             <div class="orders-modal-body">
@@ -618,6 +618,7 @@
                     <thead>
                         <tr>
                             <th>Order #</th>
+                            <th>Warehouse</th>
                             <th>Customer / Destination</th>
                             <th class="status-header-wrap" onclick="toggleStatusDropdown(event)">
                                 Status ▾
@@ -644,6 +645,6 @@
     <script src="multi-label.js?v=20260710a"></script>
     <script src="app.js?v=20260302k"></script>
     <script src="assets/vendor/chart.umd.min.js?v=441"></script>
-    <script src="home.js?v=20260825c"></script>
+    <script src="home.js?v=20260825d"></script>
 </body>
 </html>

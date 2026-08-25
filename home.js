@@ -879,7 +879,7 @@
         let _ordersStageFilter = 'all'; // 'all' | 'ordered' | 'picking' | 'topack' (from a clicked flow tile)
         const _STAGE_LABEL = { ordered: 'Ordered', picking: 'Picking', topack: 'To Pack', completed: 'Completed',
             aged: 'Aged — awaiting pick > 2d', backorder: 'Backordered', packbacklog: 'Pack backlog', dispatch: 'Dispatch backlog' };
-        const _activeStatuses = ['PICKING', 'PICKED', 'PACKING', 'ORDERED'];
+        const _activeStatuses = ['ORDERED', 'PICKING', 'PICKED', 'PACKING', 'BACKORDERED'];
         const _completedModalStatuses = ['COMPLETED'];
 
         function openOrdersModal(stage) {
@@ -901,7 +901,9 @@
         function _setOrdersModalScope() {
             const h = document.getElementById('ordersModalTitle'); if (!h) return;
             const lbl = _STAGE_LABEL[_ordersStageFilter];
-            h.innerHTML = lbl ? `📦 Order Pipeline <span style="color:#64748b;font-weight:500">— ${lbl}</span>` : '📦 Order Pipeline';
+            const scope = window.__whFocusValue && window.__whFocusValue !== '__all__' ? window.__whFocusValue : (window.__whFocusValue === '__all__' ? 'All warehouses' : '');
+            const bits = [lbl, scope].filter(Boolean).join(' · ');
+            h.innerHTML = bits ? `Order Pipeline <span style="color:#64748b;font-weight:500">— ${bits}</span>` : 'Order Pipeline';
         }
         function closeOrdersModal() {
             document.getElementById('ordersModalOverlay').classList.remove('active');
@@ -973,13 +975,12 @@
             // What belongs in each view. Active = genuine pipeline only — exclude
             // packed/invoiced/completed/backordered so done-from-other-days don't
             // clutter the daily view (the chart handles history).
+            // Active view = every OPEN order, all stages — including backordered and
+            // packed-awaiting-dispatch, so the modal shows the full picture (the funnel
+            // tiles still scope to one stage via inStage below).
             const inView = r => {
                 if (isCompleted) return r.status === 'COMPLETED' && !(r.completed_at && r.completed_at < sevenDaysAgo);
-                if (DONE.includes(r.status)) return false;
-                if (r.pack_status === 'PACKED') return false;   // already packed → done (awaiting dispatch)
-                if (r.status === 'BACKORDERED') return false;   // awaiting stock, not pickable
-                const awaitingPick = r.status === 'ORDERED' && r.pick_status !== 'PICKING' && r.pick_status !== 'PICKED';
-                return awaitingPick || r.pick_status === 'PICKING' || (r.pick_status === 'PICKED' && r.pack_status !== 'PACKED');
+                return !DONE.includes(r.status);
             };
 
             // Stage scope (set when a flow tile is clicked). 'completed' is already
@@ -1066,13 +1067,14 @@
                 const numDisplay = fNum > 1 ? `${r.number} <span style="color:#94a3b8;font-weight:600;font-size:.78rem">#${fNum}</span>` : (r.number || '—');
                 const custOrLoc = r.type === 'TR' ? `→ ${r.to_location || '?'}` : (r.customer || '—');
                 const ageDays = r.order_date ? Math.floor((Date.now() - new Date(r.order_date + 'T00:00:00').getTime()) / 86400000) : 0;
-                const aged = !isCompleted && ageDays > 5;
+                const aged = !isCompleted && ageDays > 2;    // single neutral emphasis, no red
                 const dateCell = isCompleted ? fmtCompletedDate(r.completed_at)
-                    : fmtDate(r.order_date) + (aged ? ` <span style="color:#dc2626;font-weight:700">· ${ageDays}d</span>` : '');
-                return `<tr class="${aged ? 'order-aged' : ''}" onclick="toggleOrderDetail('${r.id}', this)">
-                    <td class="${numClass}"><span class="order-expand">▸</span> ${numDisplay}</td>
+                    : fmtDate(r.order_date) + (aged ? ` <span class="ord-age">· ${ageDays}d</span>` : '');
+                return `<tr onclick="toggleOrderDetail('${r.id}', this)">
+                    <td class="${numClass}"><span class="order-expand">›</span> ${numDisplay}</td>
+                    <td class="ord-wh">${r.from_location || '—'}</td>
                     <td>${custOrLoc}</td>
-                    <td><span class="orders-badge ${statusClass(r.status)}">${r.status || '—'}</span></td>
+                    <td><span class="ord-status">${r.status || '—'}</span></td>
                     <td class="order-date">${dateCell}</td>
                 </tr>`;
             }).join('');
@@ -1140,7 +1142,7 @@
             const r = (window.__ordersById || {})[id] || {};
             const detail = document.createElement('tr');
             detail.className = 'order-detail-row';
-            detail.innerHTML = `<td colspan="4"><div class="od-wrap"><div class="od-loading">Loading items…</div></div></td>`;
+            detail.innerHTML = `<td colspan="5"><div class="od-wrap"><div class="od-loading">Loading items…</div></div></td>`;
             tr.after(detail);
             let lines = [], live = null;
             try {
