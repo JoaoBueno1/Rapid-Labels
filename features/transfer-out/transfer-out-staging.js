@@ -52,7 +52,7 @@
    table.tost-t .qty{width:46px;text-align:center;font-weight:700}
    table.tost-t .loc{width:128px;font-family:Consolas,monospace}
    table.tost-t .act{width:34px;text-align:center}
-   table.tost-t tr:nth-child(even) td{background:#fafbfd}
+   table.tost-t tr.zebra td{background:#fafbfd}
    table.tost-t input{width:100%;border:0;padding:6px 8px;font:inherit;font-size:12px;background:#eff4ff;color:var(--ink);outline:none}
    table.tost-t input:focus{background:#fff;box-shadow:inset 0 0 0 2px #1e3a8a}
    table.tost-t .dc input{text-align:center;font-weight:600}
@@ -66,7 +66,18 @@
    .tost-x:hover{background:#fbeaea;border-color:#e7bcbc}
    .tost-empty{text-align:center;color:#9aa6ba;padding:22px}
    .tost-spin{display:inline-block;width:15px;height:15px;border:2px solid #cbd5e1;border-top-color:#1e3a8a;border-radius:50%;animation:tostsp .8s linear infinite;vertical-align:middle}
-   @keyframes tostsp{to{transform:rotate(360deg)}}`;
+   @keyframes tostsp{to{transform:rotate(360deg)}}
+   table.tost-t tr.kit td{background:#f4f8ff;height:24px;border-top:0;border-bottom-color:#e4ecf9}
+   table.tost-t tr.kit td.qty{font-weight:700;color:#1e3a8a}
+   table.tost-t tr.kit .cell{padding:3px 8px}
+   .tost-kt{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.09em;color:#1e3a8a;background:#dbe6fd;border-radius:4px;padding:1px 6px}
+   .tost-kt.note{color:#8a6d1f;background:#fdf3d9}
+   .tost-khd{font-size:11px;color:#4a5c78}
+   .tost-khd b{color:#1e3a8a}
+   .tost-kname{font-size:12px;color:#26324a}
+   .tost-kname::before{content:'•';color:#9aa8bf;margin-right:7px;margin-left:10px}
+   .tost-kper{font-size:10px;color:#8493ab;margin-left:6px}
+   .tost-knote{font-size:11px;color:#8a6d1f;font-style:italic}`;
 
   function ensureDom() {
     if ($('tostMask')) return;
@@ -129,6 +140,7 @@
       st.toAddr = await lookupAddr(row.to_location);
       $('tostToAddr').textContent = st.toAddr || row.to_location || '—';
       sortLines(); render();
+      loadKits(skus);          // kit components land a moment later and re-render
     } catch (e) { $('tostRows').innerHTML = `<tr><td colspan="6" class="tost-empty">Could not load lines: ${esc(e.message)}</td></tr>`; }
   }
 
@@ -145,11 +157,74 @@
   function sortLines() { st.lines.sort((a, b) => locKey(a).localeCompare(locKey(b), undefined, { numeric: true })); }
   function sort() { sortLines(); render(); }
 
+  // ── kit components (product Internal Note) ──
+  // Cin7 gives us no readable BOM over the API, so the InternalNote the team writes on
+  // the product is the recipe: one component per line, "End caps x 2". Those numbers are
+  // PER UNIT of the parent line — printing them raw is exactly how a picker sends 2 end
+  // caps for a line of 2 kits instead of 4, so the sheet multiplies them out.
+  const KIT_LINE = /^(.+?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*$/i;
+  const fmtQ = n => String(Math.round(n * 100) / 100);
+
+  function parseKit(note) {
+    const parts = [], plain = [];
+    String(note || '').split(/\r?\n/).forEach(raw => {
+      const t = raw.trim(); if (!t) return;
+      const m = KIT_LINE.exec(t);
+      const name = m ? m[1].replace(/[:;,\-–]\s*$/, '').trim() : '';
+      if (m && /[a-z0-9]/i.test(name)) parts.push({ name, per: Number(String(m[2]).replace(',', '.')) || 0 });
+      else plain.push(t);                       // free-form note ("Module must be set to 6w")
+    });
+    return { parts, plain };
+  }
+
+  function kitRows(l) {
+    const k = l._kit;
+    if (!k) return '';
+    const parts = k.parts || [], plain = k.plain || [];
+    if (!parts.length && !plain.length) return '';
+    const q = Number(l.qty) || 0;
+    const tag = t => `<td class="code"><div class="cell"><span class="tost-kt${t === 'NOTE' ? ' note' : ''}">${t}</span></div></td>`;
+    // A note with no parseable components is just an instruction ("Module must be set
+    // to 6w") — it gets no KIT header and no multiplication, or the sheet would claim
+    // totals for something that has no quantity at all.
+    if (!parts.length) {
+      return plain.map((t, i) => `<tr class="kit"><td class="dc"></td>${i ? '<td class="code"></td>' : tag('NOTE')}
+        <td colspan="4"><div class="cell tost-knote">${esc(t)}</div></td></tr>`).join('');
+    }
+    const head = `<tr class="kit"><td class="dc"></td>${tag('KIT')}
+      <td colspan="4"><div class="cell tost-khd">Pick these with the item &mdash; ${q ? `totals are for <b>${esc(l.qty)}</b> unit${q === 1 ? '' : 's'}` : 'quantities are per unit'}</div></td></tr>`;
+    const partRows = parts.map(p => `<tr class="kit"><td class="dc"></td><td class="code"></td>
+      <td><div class="cell"><span class="tost-kname">${esc(p.name)}</span><span class="tost-kper">${fmtQ(p.per)} per unit</span></div></td>
+      <td class="qty"><div class="cell">${fmtQ(q ? p.per * q : p.per)}</div></td>
+      <td class="loc"></td><td class="act"></td></tr>`).join('');
+    const plainRows = plain.map(t => `<tr class="kit"><td class="dc"></td><td class="code"></td>
+      <td colspan="4"><div class="cell tost-knote">${esc(t)}</div></td></tr>`).join('');
+    return head + partRows + plainRows;
+  }
+
+  // Fired after the first render so a slow Cin7 lookup never holds the sheet back.
+  async function loadKits(skus) {
+    if (!skus.length) return;
+    try {
+      const j = await (await fetch('/api/transfer-out/product-notes?skus=' + encodeURIComponent(skus.join(',')))).json();
+      if (!j || !j.success) return;
+      let touched = false;
+      st.lines.forEach(l => {
+        const note = j.notes[l.code];
+        if (!note) return;
+        l._note = note; l._kit = parseKit(note); touched = true;
+      });
+      if (touched) render();
+    } catch (_) { /* the sheet is still correct without the notes */ }
+  }
+
   function render() {
     const units = st.lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
     $('tostSum').innerHTML = `<span><b>${st.lines.length}</b> lines</span><span><b>${units}</b> units total</span><span>Sorted by pickbay (Location)</span>`;
+    let z = 0;
     $('tostRows').innerHTML = st.lines.map((l, i) => {
-      if (l._manual) return `<tr class="manual">
+      const zebra = (z++ % 2) ? ' zebra' : '';
+      if (l._manual) return `<tr class="manual${zebra}">
         <td class="dc"><input value="${esc(l.dc)}" oninput="TOStaging.set(${i},'dc',this.value)" placeholder="5DC" /></td>
         <td class="code"><input value="${esc(l.code)}" oninput="TOStaging.set(${i},'code',this.value)" placeholder="code" /></td>
         <td><input value="${esc(l.product)}" oninput="TOStaging.set(${i},'product',this.value)" placeholder="description — non-stock item, free to type" /></td>
@@ -157,14 +232,14 @@
         <td class="loc"><input value="${esc(l.loc)}" oninput="TOStaging.set(${i},'loc',this.value)" placeholder="pickbay" /></td>
         <td class="act"><button class="tost-x" title="Remove this added line" onclick="TOStaging.remove(${i})">×</button></td>
       </tr>`;
-      return `<tr>
+      return `<tr class="${zebra.trim()}">
         <td class="dc ro"><div class="cell">${esc(l.dc)}</div></td>
         <td class="code ro"><div class="cell">${esc(l.code)}</div></td>
         <td class="ro"><div class="cell">${esc(l.product)}</div></td>
         <td class="qty ro"><div class="cell">${esc(l.qty)}</div></td>
         <td class="loc"><input value="${esc(l.loc)}" oninput="TOStaging.set(${i},'loc',this.value)" placeholder="set pickbay" /></td>
         <td class="act"></td>
-      </tr>`;
+      </tr>` + kitRows(l);
     }).join('') || '<tr><td colspan="6" class="tost-empty">No lines.</td></tr>';
   }
 
@@ -180,7 +255,7 @@
     const data = {
       tr: r.number || '', to_name: String(r.to_location || '').replace(/\s+Warehouse$/i, ''),
       to_addr: st.toAddr || '', date: fmtD(r.order_date),
-      lines: st.lines.map(l => ({ dc: l.dc, code: l.code, product: l.product, qty: l.qty, loc: l.loc })),
+      lines: st.lines.map(l => ({ dc: l.dc, code: l.code, product: l.product, qty: l.qty, loc: l.loc, kit: l._kit || null })),
     };
     try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (_) {}
     window.open(PRINT_URL, '_blank');

@@ -41,9 +41,22 @@
   .sent { width:96px; background:#fbfcfe; }
   .loc { width:118px; font-family:"Consolas",monospace; }
   .box { width:48px; background:#fbfcfe; }
-  tbody tr:nth-child(even) td { background:#fafbfd; }
-  tbody tr:nth-child(even) td.sent, tbody tr:nth-child(even) td.box { background:#f4f7fb; }
+  tbody tr.zebra td { background:#fafbfd; }
+  tbody tr.zebra td.sent, tbody tr.zebra td.box { background:#f4f7fb; }
   tr.aisle td { border-top:2px solid #7d8aa0; }
+  /* Kit sub-lines: components that must travel with the item above. Deliberately not
+     tickable — Sent/Box stay hatched so nobody signs off a component as a line of its own. */
+  tr.kit td { height:20px; border-top:0; border-color:#dbe4f2; background:#f3f7ff !important; }
+  tr.kit td.qty { font-weight:700; }
+  tr.kit td.sent, tr.kit td.box { background:repeating-linear-gradient(135deg,#eef2f8,#eef2f8 3px,#e3e9f3 3px,#e3e9f3 6px) !important; }
+  .kt { display:inline-block; font-size:8.5px; font-weight:800; letter-spacing:.09em; color:#1e3a8a; background:#dbe6fd; border:1px solid #bfd0f5; border-radius:3px; padding:0 5px; }
+  .kt.note { color:#8a6d1f; background:#fdf3d9; border-color:#eddcae; }
+  .khd { font-size:10px; color:#4a5c78; }
+  .khd b { color:#1a2230; }
+  .kname { font-size:11.5px; }
+  .kname::before { content:'•'; color:#9aa8bf; margin-right:7px; margin-left:10px; }
+  .kper { font-size:9.5px; color:#8493ab; margin-left:6px; }
+  .knote { font-size:10px; color:#8a6d1f; font-style:italic; }
   .foot { margin-top:16px; font-size:11px; color:var(--muted); page-break-inside:avoid; }
   .sign { display:flex; gap:100px; margin-top:34px; }
   .sign div { flex:1; border-top:1px solid #8a97ab; padding-top:4px; }
@@ -132,11 +145,43 @@ else {
   document.getElementById('pDate').textContent = DATA.date || '—';
   document.title = 'Transfer Out — ' + (DATA.tr || '');
 
-  let prev = null, units = 0;
+  // Kit sub-lines. The staged sheet carries the product's Cin7 Internal Note already
+  // parsed into components, whose quantities are PER UNIT of the line — so they are
+  // multiplied out here. A line of 2 kits needs 4 end caps, and the sheet says 4.
+  const fmtQ = n => String(Math.round(n * 100) / 100);
+  function kitRows(l) {
+    const k = l.kit;
+    if (!k) return '';
+    const parts = k.parts || [], plain = k.plain || [];
+    if (!parts.length && !plain.length) return '';
+    const q = Number(l.qty) || 0;
+    const tail = '<td class="sent"></td><td class="loc"></td><td class="box"></td></tr>';
+    const tag = t => `<td class="code"><span class="kt${t === 'NOTE' ? ' note' : ''}">${t}</span></td>`;
+    // A note with no parseable components is just an instruction ("Module must be set
+    // to 6w") — no KIT header and no multiplication, or the sheet would claim totals
+    // for something that has no quantity at all.
+    if (!parts.length) {
+      return plain.map((t, i) => `<tr class="kit"><td class="dc"></td>${i ? '<td class="code"></td>' : tag('NOTE')}
+        <td class="prod knote" colspan="2">${esc(t)}</td>${tail}`).join('');
+    }
+    const head = `<tr class="kit"><td class="dc"></td>${tag('KIT')}
+      <td class="prod khd" colspan="2">Pick these with the item — totals are for <b>${esc(l.qty)}</b> unit${q === 1 ? '' : 's'}</td>${tail}`;
+    const partRows = parts.map(p => `<tr class="kit">
+      <td class="dc"></td><td class="code"></td>
+      <td class="prod"><span class="kname">${esc(p.name)}</span><span class="kper">${fmtQ(p.per)} per unit</span></td>
+      <td class="qty">${fmtQ(q ? p.per * q : p.per)}</td>${tail}`).join('');
+    const plainRows = plain.map(t => `<tr class="kit">
+      <td class="dc"></td><td class="code"></td>
+      <td class="prod knote" colspan="2">${esc(t)}</td>${tail}`).join('');
+    return head + partRows + plainRows;
+  }
+
+  let prev = null, units = 0, z = 0;
   document.getElementById('rows').innerHTML = LINES.map(l => {
     units += Number(l.qty) || 0;
     const brk = aisle(l.loc) !== prev; prev = aisle(l.loc);
-    return `<tr class="${brk?'aisle':''}">
+    const cls = [brk ? 'aisle' : '', (z++ % 2) ? 'zebra' : ''].filter(Boolean).join(' ');
+    return `<tr class="${cls}">
       <td class="dc">${esc(l.dc)}</td>
       <td class="code">${esc(l.code)}</td>
       <td class="prod">${esc(l.product)}</td>
@@ -144,7 +189,7 @@ else {
       <td class="sent"></td>
       <td class="loc">${esc(l.loc)}</td>
       <td class="box"></td>
-    </tr>`;
+    </tr>` + kitRows(l);
   }).join('');
   document.getElementById('nlines').textContent = LINES.length;
   document.getElementById('nunits').textContent = units;
