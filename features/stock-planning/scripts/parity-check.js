@@ -81,7 +81,7 @@ function readBlocks(ws, wantSkus) {
       WHERE week_ending >= $1 ORDER BY week_ending LIMIT $2`, [state.reporting_week, WEEKS + 1]);
 
   const skuRows = await db.query(`
-    SELECT sku, sku_key, supplier_code, wk_avg, target_cover_weeks, soh_available, project_orders, undated_qty
+    SELECT sku, sku_key, supplier_code, wk_avg, wk_avg_input, lifecycle_status, target_cover_weeks, soh_available, project_orders, undated_qty
       FROM rapid_inv.v_sp_planning_skus
      WHERE wk_avg IS NOT NULL AND soh_available <> 0
        ${ONLY_SUPPLIER ? 'AND supplier_code = $1' : ''}
@@ -245,7 +245,8 @@ function readBlocks(ws, wantSkus) {
         if (Math.abs(ours - theirs) <= TOL) { matched++; continue; }
         perField[field]++;
         diffs.push({ sku: s.sku, key: s.sku_key, supplier: s.supplier_code, week: wk, field, ours, theirs,
-                     delta: +(ours - theirs).toFixed(2), factor: row.factor, wkAvg: Number(s.wk_avg) });
+                     delta: +(ours - theirs).toFixed(2), factor: row.factor, wkAvg: Number(s.wk_avg),
+                     lifecycle: s.lifecycle_status, wkAvgInput: Number(s.wk_avg_input || 0) });
       }
     }
   }
@@ -260,6 +261,15 @@ function readBlocks(ws, wantSkus) {
   if (diffs.length) {
     // Classifica cada divergência. Só a categoria REAL conta contra o motor.
     for (const d of diffs) {
+      // Divergência DELIBERADA: SKU descontinuado não vende mais, então a
+      // projeção zera a venda de propósito. O Excel segue projetando o Wk/Avg
+      // digitado — é a diferença que o módulo existe para criar.
+      if (d.lifecycle && d.lifecycle !== 'ACTIVE') {
+        if (d.field === 'sales' && d.ours === 0 && Math.abs(d.theirs - d.wkAvgInput * d.factor) <= TOL) {
+          d.klass = 'LIFECYCLE'; continue;
+        }
+        d.klass = 'CASCADE_LIFECYCLE'; continue;
+      }
       if (d.field === 'sales') {
         // A venda projetada é Wk/Avg × fator. Quando o Excel exibe justamente
         // Wk/Avg numa semana de fator diferente de 1, a célula não foi
@@ -309,6 +319,8 @@ function readBlocks(ws, wantSkus) {
       STALE_EXCEL: 'célula do Excel com valor velho: a fórmula existe, mas o cache não bate com o próprio SUMIFS dela',
       CASCADE_STALE_EXCEL: 'arrasto da célula velha acima pelo encadeamento das semanas',
       OFF_GRID: 'demanda que o Excel perdia por pick date fora do domingo — é o defeito que o módulo corrige',
+      LIFECYCLE: 'SKU descontinuado: a venda foi zerada de propósito. O Excel segue projetando produto que a empresa parou de vender',
+      CASCADE_LIFECYCLE: 'arrasto do SKU descontinuado pelo encadeamento das semanas',
       OVERWRITTEN_FORMULA: 'alguém digitou um valor por cima da fórmula de QTY to Pick nessa linha',
       CASCADE_OVERWRITTEN_FORMULA: 'arrasto da fórmula sobrescrita',
       CASCADE_OFF_GRID: 'arrasto da demanda recuperada',
