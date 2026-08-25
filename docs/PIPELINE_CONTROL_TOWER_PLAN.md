@@ -89,7 +89,7 @@ Meta: capturar todo pedido, todo estágio, toda transição — e mostrar o mais
 - [ ] Alinhar o threshold vermelho do sync à cadência (~130-150 min = 2 runs perdidas) e corrigir o comentário `:15` vs `:35` no YAML.
 
 ### Fase 2 — Tempo real de estágio · modelo de dados
-- [ ] Tabela **status-history / event log** por estágio → tempo-em-estágio (horas) e cycle time reais.
+- [ ] Tabela **status-history / event log** por estágio → tempo-em-estágio (horas), cycle time e **hora (AM/PM) por stage**. **Migração pronta: `sql/order_stage_events.sql`** — Joao aplica no SQL Editor. Depois: capturar via webhook (Pick/Pack/ShipmentAuthorised) + backfill pelo sync; exibir "Picked 2:14pm" nas listas.
 - [ ] Alimentar Ordered/Picking/ToPack por **webhook** → funil ~1min.
 - [ ] Sincronizar a **data ship-by** do Cin7 pro `order_pipeline` → SLA e **on-time-ship %** reais.
 - [ ] Persistir `completed_at` = ShipmentDate real (ou declarar `fulfilled_date` como única fonte de conclusão).
