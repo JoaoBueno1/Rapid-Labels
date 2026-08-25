@@ -5,7 +5,7 @@
 > armazéns, todos os pedidos abertos **e** processados, em todo estágio. Transformar o board
 > passivo de contagens num **control tower** que lidera por exceções.
 
-- **Status:** planejamento — nada implementado ainda. Trabalhar a partir deste doc.
+- **Status:** **Fase 0 implementada no dev** (seletor de armazém, faixa de exceções + backorders, modal profissional, fixes de fullscreen). Pendente na Fase 0: limpeza de código morto + carimbo de freshness. Fases 1+ a seguir.
 - **Escopo:** app Rapid-Labels (Node/Express + vanilla JS), home dashboard.
 - **Fonte da verdade dos fatos:** análise multi-agente de 25/08/2026 (5 leituras do código real + sonda ao vivo). Artifact: `Pipeline Control Tower`. Referências em `arquivo:linha` mantidas abaixo.
 - **Regra de ouro:** nunca inventar dado. Métrica de scanner NÃO existe fora do Main → mostrar "sem scanner / n/a", **nunca "0"**.
@@ -69,23 +69,23 @@ Meta: capturar todo pedido, todo estágio, toda transição — e mostrar o mais
 ## 4. Workstreams por fase (com aceite)
 
 ### Fase 0 — Rede + Exceções · **só front-end, zero dado novo** · ALTO valor
-- [ ] **Faixa A de rede:** tirar o filtro Main; agrupar Ordered/Picking/ToPack por `from_location` (roll-up de todos os sites). Reusar a lógica de estágio `home.js:322-328` sem mudança.
+- [x] **Faixa A de rede:** tirar o filtro Main; agrupar Ordered/Picking/ToPack por `from_location` (roll-up de todos os sites). Reusar a lógica de estágio `home.js:322-328` sem mudança.
   - *Aceite:* os 10 armazéns aparecem; totais batem com o mirror; Main continua com seu funil detalhado.
-- [ ] **Faixa de exceções** (oldest-first, cada uma com estado **vermelho/âmbar** clicável → abre modal filtrado):
+- [x] **Faixa de exceções** (oldest-first, cada uma com estado **vermelho/âmbar** clicável → abre modal filtrado):
   - Pick atrasado (`ORDERED`, não picking/picked, `order_date` > N dias úteis)
   - Backorder pile-up (`BACKORDERED`, contagem + idade do mais velho) — **dar visibilidade**
   - Pack backlog (`PICKED` e não `PACKED`, > X h)
   - Dispatch backlog (`PACKED` e não shipped)
   - *Aceite:* backorders deixam de ser invisíveis; thresholds coloram o tile; clique leva à fila.
-- [ ] **Fullscreen:** re-parentar (ou mover) os modais pra dentro do elemento fullscreen; re-aplicar a paleta dark do gráfico no rebuild de 5min.
+- [x] **Fullscreen:** re-parentar (ou mover) os modais pra dentro do elemento fullscreen; re-aplicar a paleta dark do gráfico no rebuild de 5min.
   - *Aceite:* na parede, tiles e "all ›" abrem; o gráfico continua legível depois de 5min.
-- [ ] **Título + escopo:** "Warehouse Pipeline" visível; rótulo por faixa (Rede vs Main-scanner).
+- [x] **Título + escopo:** "Warehouse Pipeline" visível; rótulo por faixa (Rede vs Main-scanner).
 - [ ] **Limpeza:** apagar CSS morto (`.wh-hero*`, `.wh-flow-foot`, `.wh-foot-*`, `.wh-kpi*`) e o feed `addActivity`/health/KPIs mortos.
 - [ ] **Refresh honesto:** carimbo de idade/fonte por faixa (mirror horário vs webhook ~1min).
 
 ### Fase 1 — Honestidade + cutoff + heartbeat · front + 1 workflow
 - [ ] `sync_runs` para o order-pipeline sync + board lendo dele + `if: failure()` no cron.
-- [ ] Relógio de **cutoff** (regra de negócio, ex. 14h AEST — **a confirmar**) + burndown "due-today vs shipped" no Main (usando `fulfilled_date` fresco).
+- [ ] Relógio de **cutoff** (regra de negócio, **17h AEST** — D1 confirmado) + burndown "due-today vs shipped" no Main (usando `fulfilled_date` fresco).
 - [ ] Alinhar o threshold vermelho do sync à cadência (~130-150 min = 2 runs perdidas) e corrigir o comentário `:15` vs `:35` no YAML.
 
 ### Fase 2 — Tempo real de estágio · modelo de dados

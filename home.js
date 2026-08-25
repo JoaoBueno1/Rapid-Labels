@@ -437,11 +437,24 @@
                 (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
             }
         }
+        // Modals live outside #whPipelineCard, so under requestFullscreen(card) they render
+        // behind it — dead clicks on the wall. While in fullscreen, move the open overlay into
+        // the fullscreen element; restore it home on close or when fullscreen exits.
+        function _mountModalInFs(id) {
+            const fs = document.fullscreenElement || document.webkitFullscreenElement;
+            const ov = document.getElementById(id);
+            if (fs && ov && ov.parentElement !== fs) { ov.__home = ov.parentElement; fs.appendChild(ov); }
+        }
+        function _restoreModal(id) {
+            const ov = document.getElementById(id);
+            if (ov && ov.__home && ov.parentElement !== ov.__home) { ov.__home.appendChild(ov); ov.__home = null; }
+        }
         function _onFsChange() {
             const card = document.getElementById('whPipelineCard');
             const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
             const on = !!card && fsEl === card;
             if (card) card.classList.toggle('pipeline-fs', on);
+            if (!on) { _restoreModal('ordersModalOverlay'); _restoreModal('trModalOverlay'); }
             _paintChart(on);
         }
         // The chart draws on a canvas, so CSS cannot reach its axis labels, legend or
@@ -589,6 +602,10 @@
                 });
                 const note = document.getElementById('whChartNote');
                 if (note) note.textContent = `· Main Warehouse · Sales + TR (branches) + FG per day · last ${DAYS} days`;
+                // The 5-min rebuild recreates the chart with the light palette — re-apply the
+                // dark wall palette if we're in fullscreen, or the axes vanish on the navy.
+                const _fsCard = document.getElementById('whPipelineCard');
+                if ((document.fullscreenElement || document.webkitFullscreenElement) === _fsCard) _paintChart(true);
             } catch (e) { console.warn('pipeline chart error', e); }
         }
 
@@ -894,6 +911,7 @@
             const dh = document.getElementById('dateHeader'); if (dh) dh.innerHTML = label + ' ' + (_ordersDateSort === 'desc' ? '▼' : '▲');
             _setOrdersModalScope();
             document.getElementById('ordersModalOverlay').classList.add('active');
+            _mountModalInFs('ordersModalOverlay');   // clickable on the wall when in fullscreen
             document.body.style.overflow = 'hidden';
             renderOrdersTable();
         }
@@ -907,6 +925,7 @@
         }
         function closeOrdersModal() {
             document.getElementById('ordersModalOverlay').classList.remove('active');
+            _restoreModal('ordersModalOverlay');
             document.body.style.overflow = '';
         }
         function toggleViewFilter(btn) {
@@ -1245,11 +1264,13 @@
                 });
             }
             document.getElementById('trModalOverlay').classList.add('active');
+            _mountModalInFs('trModalOverlay');
             document.body.style.overflow = 'hidden';
             renderTransfersTable();
         }
         function closeTransfersModal() {
             document.getElementById('trModalOverlay').classList.remove('active');
+            _restoreModal('trModalOverlay');
             document.body.style.overflow = '';
         }
         function setTrDirection(btn) {
