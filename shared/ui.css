@@ -1,0 +1,134 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Sistema de botões e ações — Inventory Management
+
+   Cinco páginas, cinco vocabulários: .gw-btn, .cc-btn, .action-btn,
+   .filter-btn, .sp-btn. Mesma intenção, cinco alturas, cinco raios de canto,
+   cinco azuis. Este arquivo define UM conjunto e apelida os nomes que já
+   existem para ele — nenhum HTML muda, e cada página vai se alinhando.
+
+   Carrega DEPOIS do CSS da página, então empata em especificidade e vence
+   por ordem. Onde a página usa um seletor mais específico, ela continua
+   mandando — alinhamento progressivo, não troca de tapete.
+
+   ── A peça central: .ui-act ────────────────────────────────────────────
+   O botão "Allocate" da linha de PO. Compacto, retangular, neutro, dentro
+   da célula, e abre um painel lateral. Ele diz "tem mais coisa aqui" sem
+   gritar, e não rouba a atenção da linha. É o padrão para ação de linha em
+   grade densa — que é o que estas cinco telas são.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root{
+  --ui-accent:#0b95d1;  --ui-accent-d:#0a7cb0;  --ui-accent-soft:#e4f2fb;
+  --ui-ink:#1a2230;     --ui-ink-2:#3c4a5e;     --ui-mut:#5b6b86;
+  --ui-line:#d3dae6;    --ui-line-2:#c3cdda;    --ui-surface:#fff;   --ui-surface-2:#f4f7fa;
+  --ui-danger:#c0392b;  --ui-danger-soft:#fdecea;
+  --ui-warn:#9c5700;    --ui-warn-soft:#fff2cc;
+  --ui-ok:#0f7a4f;      --ui-ok-soft:#e3f4ec;
+  --ui-r:7px;           --ui-r-sm:5px;
+  --ui-h:30px;          --ui-h-sm:24px;
+}
+
+/* ── botão ──────────────────────────────────────────────────────────── */
+.ui-btn,
+.gw-btn, .cc-btn, .action-btn, .filter-btn, .sp-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:var(--ui-h); padding:0 12px;
+  border:1px solid var(--ui-line-2); border-radius:var(--ui-r);
+  background:var(--ui-surface); color:var(--ui-ink-2);
+  font-family:inherit; font-size:13px; font-weight:500; line-height:1;
+  white-space:nowrap; cursor:pointer; text-decoration:none;
+  transition:background .12s, border-color .12s, color .12s;
+}
+.ui-btn:hover,
+.gw-btn:hover, .cc-btn:hover, .action-btn:hover, .filter-btn:hover, .sp-btn:hover{
+  background:var(--ui-surface-2); border-color:#aab6c7; color:var(--ui-ink);
+}
+.ui-btn:active,.gw-btn:active,.cc-btn:active,.action-btn:active,.sp-btn:active{transform:translateY(.5px)}
+.ui-btn:disabled,.gw-btn:disabled,.cc-btn:disabled,.sp-btn:disabled{
+  opacity:.45; cursor:not-allowed; transform:none;
+}
+.ui-btn:focus-visible,.gw-btn:focus-visible,.cc-btn:focus-visible,
+.action-btn:focus-visible,.filter-btn:focus-visible,.sp-btn:focus-visible{
+  outline:2px solid var(--ui-accent); outline-offset:1px;
+}
+
+.ui-btn--primary, .gw-btn-primary, .cc-btn-primary, .sp-btn.is-primary{
+  background:var(--ui-accent); border-color:var(--ui-accent); color:#fff; font-weight:600;
+}
+.ui-btn--primary:hover, .gw-btn-primary:hover, .cc-btn-primary:hover, .sp-btn.is-primary:hover{
+  background:var(--ui-accent-d); border-color:var(--ui-accent-d); color:#fff;
+}
+.ui-btn--danger, .gw-btn-danger{
+  background:var(--ui-surface); border-color:var(--ui-danger); color:var(--ui-danger); font-weight:600;
+}
+.ui-btn--danger:hover, .gw-btn-danger:hover{ background:var(--ui-danger-soft); color:var(--ui-danger); }
+.ui-btn--ghost, .sp-btn.is-ghost{
+  border-color:transparent; background:none; color:var(--ui-mut);
+}
+.ui-btn--ghost:hover, .sp-btn.is-ghost:hover{ background:var(--ui-surface-2); color:var(--ui-ink); }
+.ui-btn--sm, .gw-btn-sm, .cc-mini-btn, .search-btn-small{
+  height:var(--ui-h-sm); padding:0 9px; font-size:12px; border-radius:var(--ui-r-sm);
+}
+
+/* ── ação de linha: o padrão do "Allocate" ──────────────────────────── */
+.ui-act, .cc-hist-act{
+  display:inline-flex; align-items:center; gap:5px;
+  height:19px; padding:0 7px;
+  border:1px solid var(--ui-line); border-radius:4px;
+  background:#eef2f7; color:var(--ui-ink-2);
+  font-family:inherit; font-size:11px; font-weight:600; letter-spacing:.02em; line-height:1;
+  white-space:nowrap; cursor:pointer; vertical-align:1px;
+  transition:background .12s, border-color .12s, color .12s;
+}
+.ui-act:hover, .cc-hist-act:hover{
+  background:var(--ui-accent-soft); border-color:var(--ui-accent); color:var(--ui-accent-d);
+}
+.ui-act:focus-visible{outline:2px solid var(--ui-accent); outline-offset:1px}
+.ui-act--warn{background:var(--ui-warn-soft); border-color:#e6cf8f; color:var(--ui-warn)}
+.ui-act--danger{background:var(--ui-danger-soft); border-color:#e8b4ae; color:var(--ui-danger)}
+.ui-act--ok{background:var(--ui-ok-soft); border-color:#a9d8c2; color:var(--ui-ok)}
+/* Só ícone: a seta que abre o painel, sem rótulo. */
+.ui-act--icon{padding:0 5px; font-size:12px}
+
+/* ── filtro que liga e desliga ──────────────────────────────────────── */
+.ui-chip, .gw-chip, .chip, .sp-chip{
+  display:inline-flex; align-items:center; gap:6px;
+  height:var(--ui-h-sm); padding:0 11px;
+  border:1px solid var(--ui-line); border-radius:20px;
+  background:var(--ui-surface); color:var(--ui-mut);
+  font-family:inherit; font-size:12.5px; font-weight:500; line-height:1;
+  white-space:nowrap; cursor:pointer;
+  transition:background .12s, border-color .12s, color .12s;
+}
+.ui-chip:hover, .gw-chip:hover, .chip:hover, .sp-chip:hover{ border-color:var(--ui-line-2); color:var(--ui-ink) }
+.ui-chip.is-on, .gw-chip.active, .chip.active, .sp-chip.is-on{
+  background:var(--ui-accent-soft); border-color:var(--ui-accent);
+  color:var(--ui-accent-d); font-weight:600;
+}
+
+/* ── etiqueta de estado — retângulo, não cápsula ────────────────────────
+   Cápsula colorida arredondada em toda parte foi o que ficou com cara de
+   gerado por IA. Retângulo de canto pequeno lê como planilha, que é o que
+   estas telas são. */
+.ui-tag{
+  display:inline-block; padding:1px 6px; border-radius:3px;
+  font-family:inherit; font-size:10.5px; font-weight:700; letter-spacing:.03em; line-height:1.55;
+  vertical-align:1px; white-space:nowrap;
+}
+.ui-tag--neutral{background:#e5ecf5; color:var(--ui-ink-2)}
+.ui-tag--ok{background:var(--ui-ok-soft); color:var(--ui-ok)}
+.ui-tag--warn{background:var(--ui-warn-soft); color:var(--ui-warn)}
+.ui-tag--danger{background:var(--ui-danger-soft); color:var(--ui-danger)}
+.ui-tag--info{background:var(--ui-accent-soft); color:var(--ui-accent-d)}
+
+/* ── barra de ações no topo de uma tela ─────────────────────────────── */
+.ui-bar{display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+.ui-bar .ui-gap{margin-left:auto}
+.ui-bar input[type=search], .ui-bar input[type=text], .ui-bar select{
+  height:var(--ui-h); padding:0 10px; border:1px solid var(--ui-line);
+  border-radius:var(--ui-r); background:var(--ui-surface); color:var(--ui-ink);
+  font-family:inherit; font-size:13px;
+}
+.ui-bar input:focus, .ui-bar select:focus{outline:2px solid var(--ui-accent); outline-offset:-1px; border-color:var(--ui-accent)}
+
+@media print{ .ui-btn, .ui-act, .ui-chip{display:none} }

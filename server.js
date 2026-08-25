@@ -363,6 +363,15 @@ try {
   console.warn('⚠️  Could not register WMS routes:', e.message);
 }
 
+// ── Contadores do rail lateral ──
+// O rail aparece em todas as páginas; os contadores dele não podem depender do
+// cliente Supabase que só a home carrega.
+try {
+  require('./shared/nav-counts').register(app);
+} catch (e) {
+  console.warn('⚠️  Could not register nav counts:', e.message);
+}
+
 // ── Stock Planning (substitui o Excel Rapid-Inventory SKU) ──
 // Feature isolada e atrás de flag. API em /api/stock-planning/*; a tela é
 // montada em /planning. Fala direto com o Postgres porque o schema rapid_inv

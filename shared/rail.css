@@ -113,3 +113,19 @@ html.rl-min .rl-grp-sep{display:block;height:1px;background:#26334a;margin:7px 1
    ela passa a ser uma coluna só — sem precisar mexer no home.css. */
 html.rl-on .home-shell{grid-template-columns:minmax(0,1fr)!important}
 html.rl-on .sb{display:none!important}
+
+/* Grupos que abrem e fecham. Vale a pena porque são 6 grupos e 16 itens: quem
+   só usa estoque fecha os outros quatro e o rail vira cinco linhas. Mas o
+   grupo da página aberta nunca fecha — perder a referência de onde se está é
+   pior do que a lista ser longa. Fechado, o grupo mostra quantos itens
+   escondeu, senão vira um beco sem saída visual. */
+button.rl-grp{display:flex;align-items:center;gap:6px;width:100%;text-align:left;
+  background:none;border:0;cursor:pointer;font-family:inherit}
+button.rl-grp:hover{color:#9db0cb}
+.rl-caret{width:11px;height:11px;flex:none;fill:none;stroke:currentColor;stroke-width:2.6;
+  stroke-linecap:round;stroke-linejoin:round;transform:rotate(90deg);transition:transform .13s;opacity:.7}
+button.rl-grp.shut .rl-caret{transform:rotate(0deg)}
+.rl-grp-n{margin-left:auto;font-style:normal;font-size:.6rem;font-weight:700;color:#5d6f8a;
+  background:rgba(255,255,255,.06);border-radius:8px;padding:1px 6px}
+html.rl-min button.rl-grp{display:none}
+@media (max-width:1100px){ html.rl-on button.rl-grp{display:none} }

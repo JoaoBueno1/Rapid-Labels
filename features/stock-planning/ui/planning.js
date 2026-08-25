@@ -420,16 +420,16 @@ function lineState(r) {
 }
 function drawCell(r) {
   if (!r.draw_count) return Number(r.qty_to_pick) > 0
-    ? `<span class="sp-mark m-tba" data-draws="${r.id}">plan it</span>`
+    ? `<button class="ui-act ui-act--warn" data-draws="${r.id}">plan it</button>`
     : `<span class="faint">—</span>`;
   if (r.draw_count === 1) {
     const d = r.draws[0];
     return d && d.planned_date
-      ? `<span class="sp-mark m-n" data-draws="${r.id}">${d10(d.planned_date)}</span>`
-      : `<span class="sp-mark m-tba" data-draws="${r.id}">TBA</span>`;
+      ? `<button class="ui-act" data-draws="${r.id}">${d10(d.planned_date)}</button>`
+      : `<button class="ui-act ui-act--warn" data-draws="${r.id}">TBA</button>`;
   }
-  return `<span class="sp-mark m-n" data-draws="${r.id}">${r.draw_count} draws</span>`
-       + (r.over_planned ? ' <span class="sp-mark m-over">over</span>' : '');
+  return `<button class="ui-act" data-draws="${r.id}">${r.draw_count} draws</button>`
+       + (r.over_planned ? ' <span class="ui-tag ui-tag--danger">over</span>' : '');
 }
 
 let pjRows = [], pjOrders = [];
@@ -489,7 +489,7 @@ function renderProjects() {
         <span class="sep"></span><span class="dt">${d10(o.dt)}</span>
         <span class="rt">
           <span class="mt">${lines.length} lines · ${n0(qty)} ordered · ${n0(pick)} to pick</span>
-          ${o.id?`<button class="act" data-project="${o.id}">Open</button>`:''}
+          ${o.id?`<button class="ui-act" data-project="${o.id}">Open</button>`:''}
         </span></div></td></tr>
       ${lines.map(r=>`<tr class="sp-ln ${lineState(r)}" data-row="${r.id}">
         ${LN.map(([k,l,c,w,fn])=>{
@@ -587,9 +587,9 @@ function drawEditor(row) {
   return `<div class="dw-head">
       <b>${esc(row.sku)}</b>
       <span>${n0(row.qty_to_pick)} to pick · ${n0(planned)} planned</span>
-      ${left>0 ? `<span class="sp-mark m-tba">${n0(left)} unplanned</span>`
-        : left<0 ? `<span class="sp-mark m-over">${n0(-left)} over</span>`
-        : '<span class="sp-mark m-ok">balanced</span>'}
+      ${left>0 ? `<span class="ui-tag ui-tag--warn">${n0(left)} unplanned</span>`
+        : left<0 ? `<span class="ui-tag ui-tag--danger">${n0(-left)} over</span>`
+        : '<span class="ui-tag ui-tag--ok">balanced</span>'}
     </div>
     <div class="dw-list">
       ${(row.draws||[]).map(d=>`<span class="dw ${d.planned_date?'':'tba'}" data-draw="${d.id}">
@@ -761,9 +761,9 @@ function renderSupply() {
     const lc = r.lifecycle_status === 'RUN_OUT' ? 'lc-runout'
              : r.lifecycle_status === 'DISCONTINUED' ? 'lc-disc' : '';
     const lcMark = r.lifecycle_status === 'RUN_OUT'
-        ? `<span class="lc-mark lc-runout-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Selling what is left; not reordered')}">RUN-OUT</span>`
+        ? `<span class="ui-tag ui-tag--warn lc-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Selling what is left; not reordered')}">RUN-OUT</span>`
       : r.lifecycle_status === 'DISCONTINUED'
-        ? `<span class="lc-mark lc-disc-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Discontinued')}">DISC</span>`
+        ? `<span class="ui-tag ui-tag--neutral lc-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Discontinued')}">DISC</span>`
         : '';
     const sup = r.superseded_by
         ? `<span class="sup-to">→ <b data-goto="${esc(r.superseded_by)}">${esc(r.superseded_by)}</b></span>` : '';
@@ -998,7 +998,7 @@ async function loadPOs() {
           <td class="n mono">${r.unit_cost_usd==null?'':usd(r.unit_cost_usd)}</td>
           <td class="n mono" style="color:var(--mut-3)">${r.fx_used||''}</td>
           <td class="n mono">${r.value_aud==null?'':aud(r.value_aud)}</td>
-          <td><button class="sp-mark m-n" data-alloc="${r.id}">Allocate</button></td></tr>`;
+          <td><button class="ui-act" data-alloc="${r.id}">Allocate</button></td></tr>`;
       }).join('')}</tbody>`;
   } catch (e) { toast(e.message, true); }
 }
@@ -1180,7 +1180,7 @@ function alSkuRow(s) {
         <span class="al-sku">${esc(s.sku)}</span>
         <span class="al-sup">${esc(s.supplier||'')}</span>
         <span class="al-msgs">${s._shown.map(a=>`<span class="al-tag" title="${esc(a.message)}">${esc(AL[a.code]||a.code)}</span>`).join('')}</span>
-        <span class="al-go"><button class="sp-btn" data-open="1">Open week grid</button></span>
+        <span class="al-go"><button class="ui-act" data-open="1">Open week grid</button></span>
       </div>
       ${alFacts(s)}
       <div class="al-why">${s._shown.map(a=>esc(a.message)).join(' · ')}</div>

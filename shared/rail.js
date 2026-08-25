@@ -56,13 +56,15 @@
     { group: 'Operations', items: [
       { t: 'Collections', href: '/collections.html', ic: 'box', badge: 'collectionsCount' },
       { t: 'Returns', href: '/features/returns/returns.html', ic: 'ret', badge: 'returnsCount' },
-      { t: 'Open Orders', href: '/features/logistics/open-orders.html', ic: 'list' },
+      { t: 'Re-Stock', href: '/restock-v2.html', ic: 'cycle', dot: 'railDotRestock' },
     ]},
     { group: 'Inventory Management', items: [
+      // Sem badge de propósito: o número de SKUs em risco fica sempre perto de
+      // 500 e nunca zera. Badge que não vai a zero deixa de ser sinal e vira
+      // enfeite — o alerta útil está dentro da tela, agrupado por SKU.
       { t: 'Stock Planning', href: '/planning', ic: 'plan', match: ['/planning', '/planning/', '/features/stock-planning/ui/planning.html'] },
       { t: 'Container Check', href: '/features/container-check/container-check.html', ic: 'inbox' },
       { t: 'Gateway', href: '/gateway-main.html', ic: 'fact', dot: 'railDotGateway' },
-      { t: 'Re-Stock', href: '/restock-v2.html', ic: 'cycle', dot: 'railDotRestock' },
       { t: 'Branch Replenishment', href: '/features/replenishment/replenishment.html', ic: 'truck',
         match: ['/features/replenishment/replenishment.html', '/features/replenishment/replenishment-branch.html'] },
     ]},
@@ -74,6 +76,9 @@
       { t: 'Label Sheets', href: '/features/label-sheets/label-sheets.html', ic: 'grid' },
     ]},
     { group: 'Quality & Compliance', pin: true, items: [
+      // Fica FORA do PIN: é ferramenta de uso diário, e travá-la só faria as
+      // pessoas digitarem o PIN todo dia — que é como um PIN vira post-it.
+      { t: 'Open Orders', href: '/features/logistics/open-orders.html', ic: 'list', badge: 'openOrdersCount', nopin: true },
       { t: 'Pick Anomalies', href: '/features/pick-anomalies/pick-anomalies.html', ic: 'alert', dot: 'railDotPA' },
       { t: 'Pick Productivity', href: '/features/pick-productivity/pick-productivity.html', ic: 'trend' },
       { t: 'Sync Monitor', href: '/features/sync-monitor/sync-monitor.html', ic: 'sync' },
@@ -101,6 +106,9 @@
   try { unlocked = sessionStorage.getItem('qcUnlocked') === '1'; } catch (_) {}
   let collapsed = false;
   try { collapsed = localStorage.getItem('rail.min') === '1'; } catch (_) {}
+  let shut = new Set();
+  try { shut = new Set(JSON.parse(localStorage.getItem('rail.shut') || '[]')); } catch (_) {}
+  const saveShut = () => { try { localStorage.setItem('rail.shut', JSON.stringify([...shut])); } catch (_) {} };
 
   function itemHTML(it) {
     const on = isActive(it) ? ' on' : '';
@@ -118,15 +126,27 @@
   }
 
   function groupHTML(g) {
+    // O grupo da página aberta nunca fica fechado: perder a referência de onde
+    // se está é pior do que a lista ser longa.
+    const hasActive = g.items.some(isActive);
+    const isShut = shut.has(g.group) && !hasActive;
+    const cls = isShut ? ' shut' : '';
+    const head = `<div class="rl-grp-sep"></div>
+      <button type="button" class="rl-grp${cls}" data-grp="${esc(g.group)}">
+        <svg class="rl-caret" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+        <span>${esc(g.group)}</span>
+        ${isShut ? `<i class="rl-grp-n">${g.pin && !unlocked ? 1 : g.items.length}</i>` : ''}
+      </button>`;
+    if (isShut) return head;
     if (g.pin && !unlocked) {
-      return `<div class="rl-grp-sep"></div><div class="rl-grp">${esc(g.group)}</div>
+      return head + g.items.filter((it) => it.nopin).map(itemHTML).join('') + `
         <button type="button" class="rl-item" id="rlLock" title="Unlock">${svg('lock')}<span class="t">Unlock</span></button>
         <div class="rl-pin" id="rlPinRow" hidden>
           <input id="rlPin" type="password" maxlength="4" inputmode="numeric" placeholder="PIN">
           <button type="button" id="rlPinGo">Go</button>
         </div>`;
     }
-    return `<div class="rl-grp-sep"></div><div class="rl-grp">${esc(g.group)}</div>` + g.items.map(itemHTML).join('');
+    return head + g.items.map(itemHTML).join('');
   }
 
   function render() {
@@ -170,6 +190,13 @@
       document.documentElement.classList.toggle('rl-min', collapsed);
       try { localStorage.setItem('rail.min', collapsed ? '1' : '0'); } catch (_) {}
     };
+    el.querySelectorAll('[data-grp]').forEach((b) => {
+      b.onclick = () => {
+        const k = b.dataset.grp;
+        if (shut.has(k)) shut.delete(k); else shut.add(k);
+        saveShut(); render();
+      };
+    });
     el.querySelectorAll('[data-modal]').forEach((b) => {
       b.onclick = () => { const fn = window[b.dataset.modal]; if (typeof fn === 'function') fn(); };
     });
@@ -188,10 +215,34 @@
         history.replaceState(null, '', location.pathname);
       }
     }
+    loadCounts();
+    setInterval(loadCounts, 60000);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();
+
+  /**
+   * Busca os contadores no servidor. Roda em toda página, não só na home —
+   * o número é o que diz que há trabalho esperando, e escondê-lo das outras
+   * telas tirava metade da utilidade do menu.
+   */
+  async function loadCounts() {
+    try {
+      const r = await fetch('/api/nav/counts');
+      if (!r.ok) return;
+      const c = await r.json();
+      const put = (id, v) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (v == null || v === 0) { el.style.display = 'none'; return; }
+        el.textContent = v > 999 ? '999+' : v; el.style.display = '';
+      };
+      put('collectionsCount', c.collections);
+      put('returnsCount', c.returns);
+      put('openOrdersCount', c.openOrders);
+    } catch (_) { /* contador é conforto, não função: falhar em silêncio */ }
+  }
 
   /** Para a página escrever contador ou pontinho de sync sem conhecer o rail. */
   window.RailBadge = {
