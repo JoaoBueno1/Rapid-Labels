@@ -368,7 +368,8 @@ try {
 // montada em /planning. Fala direto com o Postgres porque o schema rapid_inv
 // não é exposto pelo PostgREST. Nada mais no site é tocado, e sem
 // STOCK_PLANNING_ENABLED=1 nem carrega.
-if (process.env.STOCK_PLANNING_ENABLED === '1') {
+// Ligado por padrão desde que entrou no menu lateral; STOCK_PLANNING_ENABLED=0 desliga.
+if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   try {
     require('./features/stock-planning/routes/stock-planning-routes').register(app);
     app.use('/planning', express.static(path.join(__dirname, 'features/stock-planning/ui'), { index: 'planning.html' }));

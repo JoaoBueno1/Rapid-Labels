@@ -596,6 +596,172 @@ function register(app) {
     res.json(out);
   }));
 
+  // ── Overview: cinco análises ────────────────────────────────────────
+  // Todo o SQL pesado mora em views (db/006). A rota só junta e devolve.
+  app.get(`${R}/overview/stock-health`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const [totals, matrix, suppliers] = await Promise.all([
+      db.one(`SELECT * FROM rapid_inv.v_sp_stock_totals`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_stock_health ORDER BY abc, cover_band`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_supplier_health ORDER BY excess_value_aud DESC`),
+    ]);
+    res.json({ totals, matrix, suppliers, ms: Date.now() - t0 });
+  }));
+
+  /**
+   * Em que semana cada SKU fica negativo. Roda a mesma cascata do motor —
+   * não uma aproximação — para que este número e o da grade nunca discordem.
+   */
+  app.get(`${R}/overview/coverage-risk`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const horizon = asInt(req.query.weeks, 13, 4, 52);
+    const state = await db.one(`SELECT * FROM rapid_inv.planning_state WHERE id=1`);
+    const weeks = await db.query(
+      `SELECT week_ending, factor FROM rapid_inv.v_sp_weeks WHERE week_ending >= $1
+        ORDER BY week_ending LIMIT $2`, [state.reporting_week, horizon + 1]);
+    const skus = await db.query(`SELECT * FROM rapid_inv.v_sp_planning_skus`);
+    const keys = skus.map((s) => s.sku_key);
+    const last = weeks[weeks.length - 1].week_ending;
+    const [draws, incoming] = await Promise.all([
+      db.query(`SELECT sku, week_ending, qty FROM rapid_inv.v_sp_draw_demand
+                 WHERE sku = ANY($1) AND week_ending BETWEEN $2 AND $3`, [keys, state.reporting_week, last]),
+      db.query(`SELECT sku, week_ending, qty FROM rapid_inv.v_sp_incoming
+                 WHERE sku = ANY($1) AND week_ending BETWEEN $2 AND $3`, [keys, state.reporting_week, last]),
+    ]);
+    const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
+    const drawIdx = index(draws), inIdx = index(incoming);
+    const engineWeeks = weeks.map((w, i) => ({ weekEnding: w.week_ending, factor: Number(w.factor), isReporting: i === 0 }));
+
+    const buckets = new Map();
+    const rows = [];
+    for (const s of skus) {
+      const p = projectSku({
+        weeks: engineWeeks, soh: Number(s.soh_available),
+        wkAvg: s.wk_avg == null ? null : Number(s.wk_avg),
+        incoming: inIdx[s.sku_key] || {}, draws: drawIdx[s.sku_key] || {},
+        undatedQty: Number(s.undated_qty || 0), targetCoverWeeks: s.target_cover_weeks || 7,
+        projectOrders: Number(s.project_orders || 0),
+      });
+      const wk = p.summary.weeksToStockout;
+      const key = wk == null ? 'none' : String(wk);
+      buckets.set(key, (buckets.get(key) || 0) + 1);
+      if (wk != null) {
+        rows.push({
+          sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code, week_index: wk,
+          week_ending: p.summary.firstStockoutWeek, shortfall: p.summary.minClosing,
+          soh: Number(s.soh_available), wk_avg: s.wk_avg,
+          incoming: p.summary.totalIncoming, draws: p.summary.totalDraws,
+        });
+      }
+    }
+    rows.sort((a, b) => a.week_index - b.week_index || a.shortfall - b.shortfall);
+    res.json({
+      horizon, reporting_week: state.reporting_week,
+      weeks: weeks.slice(1).map((w, i) => ({
+        week_ending: w.week_ending, label: shortLabel(w.week_ending),
+        skus: buckets.get(String(i + 1)) || 0,
+      })),
+      safe: buckets.get('none') || 0,
+      exposed: rows.length,
+      rows: rows.slice(0, asInt(req.query.limit, 300, 1, 2000)),
+      ms: Date.now() - t0,
+    });
+  }));
+
+  app.get(`${R}/overview/inbound`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const [byWeek, bySupplier, overdue] = await Promise.all([
+      db.query(`SELECT * FROM rapid_inv.v_sp_inbound_week ORDER BY week_ending`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_inbound_supplier ORDER BY value_aud DESC NULLS LAST`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_inbound_overdue ORDER BY due_date LIMIT 60`),
+    ]);
+    res.json({ byWeek, bySupplier, overdue, ms: Date.now() - t0 });
+  }));
+
+  app.get(`${R}/overview/demand-book`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const [byWeek, tba, held, undated] = await Promise.all([
+      db.query(`SELECT * FROM rapid_inv.v_sp_demand_week ORDER BY week_ending LIMIT 60`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_tba_customer ORDER BY tba_units DESC LIMIT 40`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_held_aging ORDER BY band_order`),
+      db.one(`SELECT count(*)::int skus, sum(qty)::numeric units FROM rapid_inv.v_sp_undated_demand`),
+    ]);
+    res.json({ byWeek, tba, held, undated, ms: Date.now() - t0 });
+  }));
+
+  app.get(`${R}/overview/demand-signal`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const [summary, rows] = await Promise.all([
+      db.query(`SELECT verdict, count(*)::int skus, round(sum(stock_value_aud)::numeric,0) value_aud
+                  FROM rapid_inv.v_sp_demand_signal GROUP BY 1 ORDER BY 2 DESC`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_demand_signal
+                 WHERE wk_avg > 0 AND verdict IS NOT NULL AND verdict <> 'in line'
+                 ORDER BY abs(bias_units) DESC NULLS LAST LIMIT $1`, [asInt(req.query.limit, 120, 1, 500)]),
+    ]);
+    res.json({ summary, rows, window_weeks: 9, ms: Date.now() - t0 });
+  }));
+
+  // ── Filiais e alocação de linha de PO ───────────────────────────────
+  app.get(`${R}/branches`, wrap(async (req, res) => {
+    res.json(await db.query(`SELECT * FROM rapid_inv.v_sp_branches`));
+  }));
+
+  app.get(`${R}/po-lines/:id/allocations`, wrap(async (req, res) => {
+    const id = asInt(req.params.id, 0, 1, 1e12);
+    const [summary, rows] = await Promise.all([
+      db.one(`SELECT * FROM rapid_inv.v_sp_po_allocation WHERE po_line_id = $1`, [id]),
+      db.query(`SELECT a.*, w.name AS branch_name FROM rapid_inv.po_line_allocations a
+                  JOIN rapid_inv.warehouses w ON w.code = a.branch_code
+                 WHERE a.po_line_id = $1 ORDER BY w.sort_order, a.seq`, [id]),
+    ]);
+    if (!summary) return res.status(404).json({ error: 'PO line not found' });
+    res.json({ ...summary, allocations: rows });
+  }));
+
+  /**
+   * Grava a alocação inteira de uma vez: o que a tela mostra é o que fica.
+   * Alocar mais que a linha AVISA e não trava — mesma disciplina dos draws.
+   * O saldo não alocado fica com o MAIN, e isso aparece como linha na view,
+   * para que a soma por filial seja sempre igual ao total da linha.
+   */
+  app.put(`${R}/po-lines/:id/allocations`, wrap(async (req, res) => {
+    const id = asInt(req.params.id, 0, 1, 1e12);
+    const items = Array.isArray(req.body.allocations) ? req.body.allocations : [];
+    const actor = actorOf(req);
+    const out = await db.tx(async (c) => {
+      const line = (await c.query(`SELECT id, qty FROM rapid_inv.po_lines WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      if (!line) return null;
+      await c.query(`DELETE FROM rapid_inv.po_line_allocations WHERE po_line_id = $1`, [id]);
+      let seq = 0;
+      for (const a of items) {
+        const qty = Number(a.qty);
+        if (!(qty > 0) || !a.branch_code) continue;
+        await c.query(
+          `INSERT INTO rapid_inv.po_line_allocations
+             (po_line_id, seq, branch_code, qty, eta_date, note, source, updated_by)
+           VALUES ($1,$2,$3,$4,$5,$6,'MANUAL',$7)`,
+          [id, ++seq, a.branch_code, qty, toISODate(a.eta_date), a.note || null, actor]);
+      }
+      return true;
+    }, actor);
+    if (!out) return res.status(404).json({ error: 'PO line not found' });
+    const summary = await db.one(`SELECT * FROM rapid_inv.v_sp_po_allocation WHERE po_line_id = $1`, [id]);
+    const rows = await db.query(
+      `SELECT a.*, w.name AS branch_name FROM rapid_inv.po_line_allocations a
+         JOIN rapid_inv.warehouses w ON w.code = a.branch_code
+        WHERE a.po_line_id = $1 ORDER BY w.sort_order, a.seq`, [id]);
+    res.json({ ...summary, allocations: rows });
+  }));
+
+  app.get(`${R}/incoming-by-branch`, wrap(async (req, res) => {
+    const where = [], p = [];
+    if (req.query.sku) { p.push(req.query.sku.toUpperCase()); where.push(`sku = $${p.length}`); }
+    if (req.query.branch) { p.push(req.query.branch); where.push(`branch_code = $${p.length}`); }
+    const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    res.json(await db.query(
+      `SELECT * FROM rapid_inv.v_sp_incoming_branch ${w} ORDER BY week_ending, branch_code LIMIT 2000`, p));
+  }));
+
   console.log('✅ Stock Planning routes montadas em /api/stock-planning');
 }
 

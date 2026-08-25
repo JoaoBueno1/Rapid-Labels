@@ -43,6 +43,18 @@ const nOrNull = (v) => {
 };
 const isErr = (v) => typeof v === 'string' && v.startsWith('#');
 
+/**
+ * As abas de estoque do workbook são exports de pivot, e trazem a linha de
+ * totais junto. Sem este filtro, "Grand Total" entra no banco como se fosse
+ * um SKU com 619.264 unidades e envenena qualquer SUM() direto nas tabelas.
+ * (Aconteceu: soh_snapshot e branch_soh tinham essa linha.)
+ */
+const JUNK_SKU = /^(grand\s*total|total|subtotal|sum)$/i;
+const isRealSku = (v) => {
+  const s = txt(v);
+  return !!s && !JUNK_SKU.test(s) && /[A-Za-z0-9]/.test(s);
+};
+
 function grid(wb, sheet, fromRow) {
   const ws = wb.Sheets[sheet];
   if (!ws) return [];
@@ -217,22 +229,22 @@ function readPOs(wb) {
 // ─────────────────────────────────────────────────────────────────────────
 function readStock(wb) {
   const soh = grid(wb, 'SOH', 2)
-    .filter((r) => txt(r[0]))
+    .filter((r) => isRealSku(r[0]))
     .map((r) => ({ sku: txt(r[0]), qty_on_hand: nz(r[1]), allocated: nz(r[2]), on_order: nz(r[3]) }));
 
   const commitment = grid(wb, 'Projects', 2)
-    .filter((r) => txt(r[0]))
+    .filter((r) => isRealSku(r[0]))
     .map((r) => ({ sku: txt(r[0]), qty_on_hand: nz(r[3]), allocated: nz(r[4]), on_order: nz(r[5]) }));
 
   const branch = [];
   for (const [sheet, code] of [['DALTON', 'MAIN'], ['GATEWAY', 'GATEWAY']]) {
     for (const r of grid(wb, sheet, 2)) {
-      if (!txt(r[0])) continue;
+      if (!isRealSku(r[0])) continue;
       branch.push({ branch_code: code, sku: txt(r[0]), qty_on_hand: nz(r[2]), allocated: nz(r[3]), on_order: nz(r[4]) });
     }
   }
 
-  const salesRows = grid(wb, 'WEEK SALES', 6).filter((r) => txt(r[0]));
+  const salesRows = grid(wb, 'WEEK SALES', 6).filter((r) => isRealSku(r[0]));
   const period = {};
   for (const r of grid(wb, 'WEEK SALES', 0).slice(0, 4)) {
     const s = txt(r[0]) || '';

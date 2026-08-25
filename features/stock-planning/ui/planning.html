@@ -3,175 +3,184 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stock Planning — Rapid</title>
-<link rel="stylesheet" href="planning.css">
+<title>Stock Planning — Rapid LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="planning.css?v=2">
 </head>
 <body>
 
-<div class="sp-top">
-  <div class="sp-brand">Stock Planning <span>· Rapid</span></div>
-  <nav class="sp-tabs" id="tabs">
-    <button class="sp-tab on" data-view="overview">Overview</button>
-    <button class="sp-tab" data-view="projects">Projects <span class="n" id="tabProjects"></span></button>
-    <button class="sp-tab" data-view="supply">Supply Planning</button>
-    <button class="sp-tab" data-view="pos">Purchase Orders <span class="n" id="tabPos"></span></button>
-    <button class="sp-tab" data-view="alerts">Alerts <span class="n" id="tabAlerts"></span></button>
-  </nav>
-  <div class="sp-top-right">
-    <span>Reporting week</span>
-    <span class="sp-week" id="repWeek">—</span>
-    <input class="sp-who" id="who" placeholder="Your name" autocomplete="name" title="Gravado no histórico de cada alteração">
-  </div>
-</div>
-
-<!-- ══ OVERVIEW ══════════════════════════════════════════════════════ -->
-<section class="sp-view on" data-view="overview">
-  <div class="sp-pad">
-    <div class="sp-cards" id="ovCards"></div>
-    <h4 style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--sp-muted)">Por fornecedor</h4>
-    <div class="sp-scroll" style="border:1px solid var(--sp-line);border-radius:9px;max-height:52vh">
-      <table class="sp-grid" id="ovSuppliers"></table>
+<header class="sp-header">
+  <div class="sp-header-inner">
+    <a class="sp-back" href="/index.html">&larr; Back</a>
+    <span class="sp-brand"><span class="sp-logo">S</span> Stock Planning</span>
+    <nav class="sp-tabs" id="tabs">
+      <button class="sp-tab is-on" data-view="overview">Overview</button>
+      <button class="sp-tab" data-view="projects">Projects</button>
+      <button class="sp-tab" data-view="supply">Supply Planning</button>
+      <button class="sp-tab" data-view="pos">Purchase Orders</button>
+      <button class="sp-tab" data-view="alerts">Alerts <span class="sp-pip" id="pipAlerts"></span></button>
+    </nav>
+    <div class="sp-status" id="status">
+      <span class="sp-dot" id="statusDot"></span><span id="statusText">Loading…</span>
     </div>
   </div>
+</header>
+
+<main class="sp-main">
+
+<!-- ══ OVERVIEW ══════════════════════════════════════════════════════ -->
+<section class="sp-view is-on" data-view="overview">
+  <nav class="sp-subtabs" id="ovTabs">
+    <button class="sp-subtab is-on" data-ov="health">Stock Health</button>
+    <button class="sp-subtab" data-ov="risk">Coverage Risk</button>
+    <button class="sp-subtab" data-ov="inbound">Inbound Pipeline</button>
+    <button class="sp-subtab" data-ov="demand">Demand Book</button>
+    <button class="sp-subtab" data-ov="signal">Demand Signal</button>
+  </nav>
+  <div id="ovBody"><div class="sp-loading">Loading…</div></div>
 </section>
 
 <!-- ══ PROJECTS ══════════════════════════════════════════════════════ -->
 <section class="sp-view" data-view="projects">
   <div class="sp-bar">
-    <input type="search" id="pjSearch" placeholder="SO, cliente, referência, SKU ou texto de REQUIRED…">
+    <input type="search" id="pjSearch" placeholder="Sales order, customer, reference, SKU or REQUIRED text…">
     <select id="pjStatus">
       <option value="ACTIVE">Active</option>
       <option value="COMPLETED">Completed</option>
       <option value="CANCELLED">Cancelled</option>
     </select>
-    <select id="pjRep"><option value="">Todos os reps</option></select>
-    <button class="sp-chip" data-only="outstanding">Com saldo</button>
-    <button class="sp-chip" data-only="tba">TBA</button>
-    <button class="sp-chip" data-only="held">Em espera</button>
-    <button class="sp-chip" data-only="over_planned">Draws &gt; linha</button>
-    <span class="sp-spacer"></span>
+    <select id="pjRep"><option value="">All reps</option></select>
+    <button class="sp-chip" data-only="outstanding">Outstanding</button>
+    <button class="sp-chip" data-only="tba">No pick date</button>
+    <button class="sp-chip" data-only="held">Held</button>
+    <button class="sp-chip" data-only="over_planned">Over-planned</button>
+    <span class="sp-gap"></span>
+    <button class="sp-btn" id="pjFilters" title="Filter each column">Column filters</button>
     <span class="sp-count" id="pjCount"></span>
-    <button class="sp-btn primary" id="btnImportSO">+ Add Project / Import Sales Order</button>
+    <button class="sp-btn is-primary" id="btnImportSO">+ Add project</button>
   </div>
-  <div class="sp-scroll"><table class="sp-grid" id="pjGrid"></table></div>
-  <div class="sp-legend">
-    <span>Clique em <b>PICK DATE</b> para abrir os draws</span>
-    <span>·</span><span><kbd>Enter</kbd> grava</span>
-    <span>·</span><span><kbd>Esc</kbd> desfaz</span>
-    <span>·</span><span>Concluir um projeto não move linha nenhuma — é só o status</span>
+  <div class="sp-scroll"><table class="sp-grid sp-projects" id="pjGrid"></table></div>
+  <div class="sp-foot">
+    <span>Each block is one sales order</span><i></i>
+    <span>Click <b>PICK DATE</b> to plan the draws for a line</span><i></i>
+    <span><kbd>Enter</kbd> saves · <kbd>Esc</kbd> reverts</span><i></i>
+    <span>Completing a project moves no rows — it is only a status</span>
   </div>
 </section>
 
 <!-- ══ SUPPLY PLANNING ═══════════════════════════════════════════════ -->
 <section class="sp-view" data-view="supply">
   <div class="sp-bar">
-    <select id="spSupplier"><option value="">Escolha um fornecedor…</option></select>
-    <input type="search" id="spSearch" placeholder="Filtrar SKU…">
+    <select id="spSupplier"><option value="">Pick a supplier…</option></select>
+    <input type="search" id="spSearch" placeholder="Filter SKU…">
     <select id="spWeeks">
-      <option value="12">12 semanas</option>
-      <option value="26" selected>26 semanas</option>
-      <option value="52">52 semanas</option>
+      <option value="12">12 weeks</option>
+      <option value="26" selected>26 weeks</option>
+      <option value="52">52 weeks</option>
     </select>
-    <button class="sp-chip" id="spRisk">Só o que está em risco</button>
-    <span class="sp-spacer"></span>
+    <button class="sp-chip" id="spRisk">At risk only</button>
+    <button class="sp-chip" id="spExpand">Show the working</button>
+    <span class="sp-gap"></span>
     <span class="sp-count" id="spCount"></span>
   </div>
-  <div class="sp-scroll"><table class="sp-grid" id="spGrid"></table></div>
-  <div class="sp-legend">
-    <span><i style="background:var(--sp-crit-soft);border:1px solid var(--sp-crit)"></i>projeção negativa</span>
-    <span><i style="background:var(--sp-warn-soft);border:1px solid var(--sp-warn)"></i>abaixo da meta de cobertura</span>
-    <span><i style="background:var(--sp-in)"></i>PO chegando (traço em cima)</span>
-    <span><i style="background:var(--sp-accent)"></i>draw de projeto (traço embaixo)</span>
-    <span>·</span><span>Clique numa célula para ver de onde vem o número</span>
+  <div class="sp-scroll"><table class="sp-grid sp-supply" id="spGrid"></table></div>
+  <div class="sp-foot">
+    <span><i class="k k-neg"></i>projected below zero</span><i></i>
+    <span><i class="k k-low"></i>drops below target cover</span><i></i>
+    <span><i class="k k-in"></i>PO arriving</span><i></i>
+    <span><i class="k k-dr"></i>project draw</span><i></i>
+    <span>Click a cell to see where the number comes from</span>
   </div>
 </section>
 
 <!-- ══ PURCHASE ORDERS ═══════════════════════════════════════════════ -->
 <section class="sp-view" data-view="pos">
   <div class="sp-bar">
-    <input type="search" id="poSearch" placeholder="PO, SKU ou navio…">
-    <select id="poSupplier"><option value="">Todos os fornecedores</option></select>
-    <button class="sp-chip on" id="poOpen">Só as em aberto</button>
-    <span class="sp-spacer"></span>
+    <input type="search" id="poSearch" placeholder="PO number, SKU or vessel…">
+    <select id="poSupplier"><option value="">All suppliers</option></select>
+    <button class="sp-chip is-on" id="poOpen">Open only</button>
+    <button class="sp-chip" id="poOverdue">Overdue</button>
+    <span class="sp-gap"></span>
     <span class="sp-count" id="poCount"></span>
-    <button class="sp-btn primary" id="btnAddPO">+ Add PO</button>
+    <button class="sp-btn is-primary" id="btnAddPO">+ Add PO</button>
   </div>
-  <div class="sp-scroll"><table class="sp-grid" id="poGrid"></table></div>
-  <div class="sp-legend">
-    <span>A entrada de estoque vem do <b>Due Date</b> — não da data da PO nem do Finish Date</span>
-    <span>·</span><span>V1 não cria PO no Cin7</span>
+  <div class="sp-scroll"><table class="sp-grid sp-pos" id="poGrid"></table></div>
+  <div class="sp-foot">
+    <span>Stock arriving is driven by <b>Due Date</b> — not the PO date, not the finish date</span><i></i>
+    <span>Click <b>Allocation</b> to split a line across branches</span><i></i>
+    <span>V1 does not create POs in Cin7</span>
   </div>
 </section>
 
 <!-- ══ ALERTS ════════════════════════════════════════════════════════ -->
 <section class="sp-view" data-view="alerts">
   <div class="sp-bar">
-    <select id="alSupplier"><option value="">Todos os fornecedores</option></select>
-    <span class="sp-spacer"></span>
+    <select id="alSupplier"><option value="">All suppliers</option></select>
+    <span class="sp-gap"></span>
     <span class="sp-count" id="alCount"></span>
   </div>
-  <div class="sp-pad" id="alBody"></div>
+  <div id="alBody"><div class="sp-loading">Loading…</div></div>
 </section>
 
-<!-- ══ painel lateral ════════════════════════════════════════════════ -->
+</main>
+
+<!-- ══ side panel ════════════════════════════════════════════════════ -->
 <aside class="sp-side" id="side">
-  <header><h3 id="sideTitle">Detalhe</h3><button class="sp-btn ghost" id="sideClose">✕</button></header>
-  <div class="body" id="sideBody"></div>
+  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose">&times;</button></header>
+  <div class="sp-side-body" id="sideBody"></div>
 </aside>
 
-<!-- ══ modal: importar Sales Order ═══════════════════════════════════ -->
+<!-- ══ modal: import sales order ═════════════════════════════════════ -->
 <div class="sp-modal" id="mdImport">
-  <div class="box">
-    <header><h3>Add Project / Import Sales Order</h3><button class="sp-btn ghost" data-close>✕</button></header>
-    <div class="body">
+  <div class="sp-box">
+    <header><h3>Add project from a sales order</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
+    <div class="sp-box-body">
       <label class="sp-field">
-        <span>Procurar Sales Order</span>
-        <input id="soSearch" placeholder="Número do SO, cliente ou referência" autocomplete="off">
+        <span>Find the sales order</span>
+        <input id="soSearch" placeholder="SO number, customer or reference" autocomplete="off">
       </label>
       <div class="sp-results" id="soResults"></div>
-      <p class="sp-hint" id="soHint">
-        Busca nos Sales Orders já sincronizados do Cin7. Confira as linhas antes de importar.
-      </p>
       <div id="soPreview"></div>
     </div>
     <footer>
-      <button class="sp-btn" data-close>Cancelar</button>
-      <button class="sp-btn primary" id="soImport" disabled>Importar como projeto</button>
+      <button class="sp-btn" data-close>Cancel</button>
+      <button class="sp-btn is-primary" id="soImport" disabled>Import as project</button>
     </footer>
   </div>
 </div>
 
-<!-- ══ modal: nova PO ════════════════════════════════════════════════ -->
+<!-- ══ modal: new PO ═════════════════════════════════════════════════ -->
 <div class="sp-modal" id="mdPO">
-  <div class="box">
-    <header><h3>Add Purchase Order</h3><button class="sp-btn ghost" data-close>✕</button></header>
-    <div class="body">
+  <div class="sp-box">
+    <header><h3>Add purchase order</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
+    <div class="sp-box-body">
       <div class="sp-row3">
-        <label class="sp-field"><span>PO #</span><input id="npoNumber" placeholder="PO-15900"></label>
-        <label class="sp-field"><span>Data da PO</span><input id="npoDate" type="date"></label>
-        <label class="sp-field"><span>Fornecedor</span><select id="npoSupplier"></select></label>
+        <label class="sp-field"><span>PO number</span><input id="npoNumber" placeholder="PO-15900"></label>
+        <label class="sp-field"><span>PO date</span><input id="npoDate" type="date"></label>
+        <label class="sp-field"><span>Supplier</span><select id="npoSupplier"></select></label>
       </div>
       <div class="sp-row2">
-        <label class="sp-field"><span>Due date padrão</span><input id="npoDue" type="date"></label>
-        <label class="sp-field"><span>Navio</span><input id="npoVessel" placeholder="MSC Unity"></label>
+        <label class="sp-field"><span>Default due date</span><input id="npoDue" type="date"></label>
+        <label class="sp-field"><span>Vessel</span><input id="npoVessel" placeholder="MSC Unity"></label>
       </div>
       <label class="sp-field">
-        <span>Linhas — cole do Excel ou digite: SKU, quantidade, custo USD, due date</span>
-        <textarea id="npoLines" placeholder="R1021-WH-TRI	12090	1.80	2026-12-20
-R3560-TRI	240	10.57"></textarea>
+        <span>Lines — paste from Excel: SKU, quantity, unit cost USD, due date</span>
+        <textarea id="npoLines" placeholder="R1021-WH-TRI	12090	1.80	20/12/2026&#10;R3560-TRI	240	10.57"></textarea>
       </label>
-      <p class="sp-hint">Separadores aceitos: tabulação, vírgula ou ponto-e-vírgula. Custo e due date são opcionais —
-      sem due date a linha usa o padrão acima. O câmbio é resolvido pela vigência, não digitado.</p>
+      <p class="sp-hint">Tab, comma or semicolon all work as separators. Cost and due date are optional —
+      a line without a due date uses the default above. The exchange rate is resolved by effective date, not typed.</p>
       <div id="npoPreview"></div>
     </div>
     <footer>
-      <button class="sp-btn" data-close>Cancelar</button>
-      <button class="sp-btn primary" id="npoSave">Gravar PO</button>
+      <button class="sp-btn" data-close>Cancel</button>
+      <button class="sp-btn is-primary" id="npoSave">Save PO</button>
     </footer>
   </div>
 </div>
 
 <div class="sp-toast" id="toast"></div>
-<script src="planning.js"></script>
+<script src="planning.js?v=2"></script>
 </body>
 </html>
