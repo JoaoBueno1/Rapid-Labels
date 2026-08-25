@@ -1,0 +1,115 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   O rail lateral, compartilhado por todas as páginas.
+
+   Antes ele existia só no index.html, como HTML estático, e cada feature era
+   uma ilha com o próprio header e um "← Back". Agora a definição do menu vive
+   num lugar só (shared/rail.js) e toda página inclui dois arquivos.
+
+   O rail é FIXO e o body ganha padding à esquerda, em vez de cada página ter
+   o DOM reestruturado num grid. É a forma menos invasiva de acrescentar isto
+   a 16 páginas que já funcionam — nenhuma delas precisa mudar de layout.
+
+   A cor é a mesma #1b2537 do rail da home: continua sendo a única peça escura
+   da interface, e é assim que se reconhece que é a mesma casa.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root{ --rl-w:236px; --rl-w-min:52px; }
+html.rl-on{ --rl-cur:var(--rl-w); }
+html.rl-on.rl-min{ --rl-cur:var(--rl-w-min); }
+/* !important porque home.css:24 e o <style> inline da replenishment declaram
+   `padding: 0 !important` no body. Sem isso o rail cobre o conteúdo nessas
+   duas páginas — e só nelas, o que é o pior tipo de bug para achar depois. */
+html.rl-on body{ padding-left:var(--rl-cur)!important; transition:padding-left .14s ease }
+
+.rl{
+  position:fixed; top:0; left:0; bottom:0; width:var(--rl-cur); z-index:900;
+  background:#1b2537; border-right:1px solid #131c2b;
+  display:flex; flex-direction:column; overflow:hidden;
+  transition:width .14s ease;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','IBM Plex Sans',Roboto,Arial,sans-serif;
+}
+.rl *{box-sizing:border-box}
+.rl-head{display:flex;align-items:center;gap:9px;padding:13px 14px 10px;flex:none}
+.rl-head img{width:22px;height:22px;border-radius:6px;object-fit:contain;flex:none}
+.rl-head b{color:#fff;font-size:.9rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rl-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:8px}
+.rl-scroll::-webkit-scrollbar{width:6px}
+.rl-scroll::-webkit-scrollbar-thumb{background:#2c3a52;border-radius:3px}
+
+.rl-grp{font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:#6b7d96;padding:12px 15px 5px;white-space:nowrap}
+.rl-item{display:flex;align-items:center;gap:11px;width:100%;padding:7px 14px;
+  font:inherit;font-size:.82rem;font-weight:500;text-align:left;color:#c3cede;
+  text-decoration:none;cursor:pointer;background:none;border:0;
+  border-left:3px solid transparent;transition:background .13s,color .13s;white-space:nowrap}
+.rl-item:hover{background:rgba(255,255,255,.055);color:#fff}
+.rl-item.on{background:rgba(255,255,255,.07);border-left-color:#f97316;color:#fff;font-weight:700}
+.rl-ic{width:17px;height:17px;flex:0 0 17px;fill:none;stroke:currentColor;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.rl-item.on .rl-ic{opacity:1}
+.rl-item .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rl-badge{min-width:19px;padding:1px 6px;border-radius:9px;background:#f97316;color:#fff;
+  font-size:.64rem;font-weight:800;line-height:1.55;text-align:center}
+.rl-dot{width:7px;height:7px;border-radius:50%;background:#4b5c78;flex:none}
+.rl-dot.fresh{background:#22c55e}.rl-dot.stale{background:#f59e0b}.rl-dot.dead{background:#ef4444}
+
+/* display:flex venceria o atributo [hidden], e o campo de PIN aparecia
+   sozinho em toda página. */
+.rl-pin{display:flex;gap:6px;padding:5px 14px 8px}
+.rl-pin[hidden]{display:none}
+.rl-pin input{flex:1;min-width:0;padding:5px 8px;border:1px solid #33425c;border-radius:6px;
+  background:#131c2b;color:#e7edf5;font:inherit;font-size:.78rem;letter-spacing:.2em;text-align:center}
+.rl-pin input.bad{border-color:#ef4444}
+.rl-pin button{padding:5px 11px;border:1px solid #33425c;border-radius:6px;background:#22304a;
+  color:#c3cede;font:inherit;font-size:.76rem;font-weight:600;cursor:pointer}
+.rl-pin button:hover{background:#2c3a52;color:#fff}
+
+.rl-foot{flex:none;border-top:1px solid #131c2b;padding:6px 0}
+.rl-toggle{display:flex;align-items:center;gap:11px;width:100%;padding:8px 14px;background:none;
+  border:0;color:#7f90a8;font:inherit;font-size:.76rem;cursor:pointer;white-space:nowrap}
+.rl-toggle:hover{color:#fff;background:rgba(255,255,255,.05)}
+.rl-toggle svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .14s}
+html.rl-min .rl-toggle svg{transform:rotate(180deg)}
+
+/* Recolhido: só os ícones. O rótulo vira title, não some a informação. */
+html.rl-min .rl-grp,
+html.rl-min .rl-item .t,
+html.rl-min .rl-head b,
+html.rl-min .rl-toggle span,
+html.rl-min .rl-pin{display:none}
+html.rl-min .rl-item{justify-content:center;padding:9px 0;gap:0}
+html.rl-min .rl-badge{position:absolute;margin-left:22px;margin-top:-14px;min-width:0;padding:0 4px;font-size:.58rem}
+html.rl-min .rl-item{position:relative}
+html.rl-min .rl-head{justify-content:center;padding:13px 0 10px}
+html.rl-min .rl-toggle{justify-content:center;padding:9px 0}
+html.rl-min .rl-grp-sep{display:block;height:1px;background:#26334a;margin:7px 12px}
+.rl-grp-sep{display:none}
+
+/* Telas estreitas: o rail some e vira uma barra de ícones no rodapé. Numa
+   grade densa de 1620px não há espaço para os dois, e a grade é o trabalho. */
+@media (max-width:1100px){
+  html.rl-on{--rl-cur:var(--rl-w-min)}
+  html.rl-on .rl-grp,html.rl-on .rl-item .t,html.rl-on .rl-head b,
+  html.rl-on .rl-toggle span,html.rl-on .rl-pin{display:none}
+  html.rl-on .rl-item{justify-content:center;padding:9px 0;gap:0;position:relative}
+  html.rl-on .rl-head{justify-content:center;padding:13px 0 10px}
+  html.rl-on .rl-grp-sep{display:block;height:1px;background:#26334a;margin:7px 12px}
+}
+@media (max-width:760px){
+  html.rl-on body{padding-left:0!important;padding-bottom:50px!important}
+  .rl{top:auto;right:0;bottom:0;width:100%;height:50px;flex-direction:row;
+      border-right:0;border-top:1px solid #131c2b;overflow-x:auto}
+  .rl-head,.rl-foot{display:none}
+  .rl-scroll{display:flex;flex-direction:row;padding:0}
+  html.rl-on .rl-grp,.rl-grp-sep{display:none!important}
+  html.rl-on .rl-item{border-left:0;border-bottom:3px solid transparent;padding:0 14px}
+  html.rl-on .rl-item.on{border-left:0;border-bottom-color:#f97316}
+}
+
+@media print{ .rl{display:none} html.rl-on body{padding-left:0} }
+
+/* A home tinha o rail dentro de um grid de duas colunas. Com o rail fixo,
+   ela passa a ser uma coluna só — sem precisar mexer no home.css. */
+html.rl-on .home-shell{grid-template-columns:minmax(0,1fr)!important}
+html.rl-on .sb{display:none!important}
