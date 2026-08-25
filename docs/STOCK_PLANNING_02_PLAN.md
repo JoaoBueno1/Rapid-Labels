@@ -154,10 +154,14 @@ exceção operacional. Implementação: **aviso, não bloqueio**. Uma view
 badge âmbar na grade e como alerta. Nunca impede salvar — a operação tem casos legítimos
 (cliente pediu a mais, split entre armazéns) e travar faria o time voltar pro Excel.
 
-**Migração das linhas atuais:** toda linha do Excel vira 1 linha + 1 draw
-(`qty = qty_to_pick`, `planned_date = PICK DATE`). Linhas duplicadas do mesmo `SO+SKU` viram
-**draws da mesma linha** quando `QTY`, `TYPE` e `UNIT PRICE` batem — os 391 casos multi-data.
-Quando não batem, ficam linhas separadas. Regra conservadora: **na dúvida, não funde.**
+**Migração das linhas atuais — regra revista depois de olhar os dados.** Toda linha do Excel
+vira 1 linha + 1 draw (`qty = qty_to_pick`, `planned_date = PICK DATE`), e **nada é fundido**.
+
+A ideia inicial era juntar linhas repetidas de `SO+SKU` como parcelas de uma linha só. Não se
+sustenta: em `SO 207455 / R5511` cada uma das oito linhas tem sua QTY, sua QTY INV e seu
+próprio texto de agenda ("Delivery 15th May", "16th June", "16th July"). São chamadas de
+entrega distintas — **a linha do Excel já é o draw**. Fundir teria embaralhado o histórico de
+faturamento e apagado o cronograma que o vendedor escreveu linha a linha.
 
 ### 2.3 DDL — `002_planning.sql`
 

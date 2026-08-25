@@ -83,6 +83,17 @@ em texto livre — 94% das linhas têm. Não pode ser descartada.
 O time **já faz** planejamento por parcelas. O Excel só não tem onde guardar isso, então
 duplica a linha. Isso valida sozinho o modelo `Projeto → Linha → Draw`.
 
+⚠️ **Correção importante sobre o que essas linhas repetidas são.** A primeira leitura supôs que
+fossem parcelas de uma mesma linha. Os dados dizem outra coisa. Em `SO 207455 / R5511` há oito
+linhas, cada uma com sua QTY, sua QTY INV e seu próprio texto de agenda: *"Delivery 15th May
+2025"*, *"Delivery 16th June 2025"*, *"Delivery 16th July 2025"*… Não são parcelas de uma
+linha: são **chamadas de entrega distintas**. **A linha do Excel já é o draw.**
+
+Consequência para a migração: o import é **1-para-1**, e nada é fundido. Cada linha do
+workbook vira uma linha com um draw. O ganho do modelo aparece daí em diante — quando o
+planejador quiser dividir um saldo em duas datas, ele acrescenta um draw em vez de duplicar
+a linha inteira.
+
 ---
 
 ### 2.2 `Completed Projects` — o arquivo (18.767 linhas / 1.680 SOs)
@@ -358,7 +369,7 @@ Passos 5 e 6 são a parte que corrompe o arquivo. Passo 8 é a decisão que o Ex
 | # | Achado | Número | Consequência |
 |---|---|---|---|
 | 1 | **Pick dates fora do domingo** | **32 de 2.668** | `SUMIFS` não casa → **a demanda some do forecast, sem erro** |
-| 2 | **PO due dates fora do domingo** | **8 de 1.467** | incoming nunca aparece |
+| 2 | **PO due dates fora do domingo** | **7 de 1.466** | incoming nunca aparece |
 | 3 | **`Mths Stock` em branco quando SOH ≤ 0** | **714 de 1.988** | SKU pior fica invisível |
 | 4 | **Células de erro nas abas de fornecedor** | **5.133** | linhas de SKU sem projeção |
 | 5 | Demanda sem pick date | **2.683 de 5.351 (50%)** | metade da demanda conhecida fora do forecast |
@@ -370,8 +381,36 @@ Passos 5 e 6 são a parte que corrompe o arquivo. Passo 8 é a decisão que o Ex
 | 11 | Sem controle de acesso | — | qualquer um edita qualquer célula |
 | 12 | Arquivo de usuário único | — | 50–80 pessoas não podem trabalhar juntas |
 
+| 13 | **Células com valor velho** | ver §4.1 | a fórmula está lá; o cache não bate com ela |
+| 14 | **Fórmula de QTY to Pick sobrescrita** | **5 linhas** | alguém digitou por cima; a linha mente |
+| 15 | **SKU em caixa diferente entre abas** | ver §4.2 | invisível no Excel, quebra qualquer sistema |
+
 Os itens 1, 2 e 3 são os graves: **eles não dão erro.** O número aparece, parece certo, e está
 errado. É exatamente o tipo de coisa que um banco de dados elimina por construção.
+
+### 4.1 O workbook mostra números que ele mesmo não recalcularia
+
+Achado durante a validação de paridade, comparando célula a célula contra um `SUMIFS`
+recomputado a partir da aba `Project`:
+
+- `C328-42600DB-F`, semana de 30-Ago, aba Kinglumi: a célula exibe **262**. Ela **tem fórmula**.
+  Um `SUMIFS` correto sobre a aba `Project` dá **270**.
+- `R6336-TRI`, aba AGC: exibe **5 / 3 / 26 / 14** em quatro semanas. O `SUMIFS` real dá **0**
+  em todas. Aquela demanda não existe mais na aba `Project`.
+- Linhas de venda de vários SKUs exibem o `Wk/Avg` cru em semanas de Ano Novo Chinês — o fator
+  da linha 2 está lá e simplesmente não foi aplicado.
+
+Com 990 mil fórmulas, ninguém deixa o Excel em cálculo automático. A consequência é que
+**a tela de decisão mostra números defasados em relação aos próprios dados do arquivo**, sem
+nenhum sinal de que estão defasados.
+
+### 4.2 O mesmo SKU escrito de dois jeitos
+
+A aba `PO's` grava `12V-IP20-012W`; as abas de estoque e planejamento gravam `12v-IP20-012w`.
+O `SUMIFS` do Excel ignora caixa e casa. Qualquer sistema que use igualdade exata não casa —
+e some estoque entrando. Num único SKU da primeira amostra de paridade isso valia **312
+unidades**. Também existem dois pares de SKU que diferem *só* na caixa dentro da mesma aba
+(`R2121-Trim-BK` × `R2121-TRIM-BK`, `R-TVPAL-F-v2` × `R-TVPAL-F-V2`).
 
 ---
 
