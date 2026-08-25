@@ -461,7 +461,7 @@ async function showSku(sku) {
             <td class="r num">${Number(l.qty_reserved) ? nfmt(l.qty_reserved) : '—'}</td>
             <td class="r num">${nfmt(l.qty_available)}</td>
             <td class="mono gw-sub">${esc(l.source_reference || '—')}</td>
-            <td class="r"><button class="gw-btn gw-btn-sm" onclick="adjustModal(${l.id}, '${esc(sku)}', ${l.qty_remaining})">Adjust</button></td>
+            <td class="r"><button class="ui-act" onclick="adjustModal(${l.id}, '${esc(sku)}', ${l.qty_remaining})">Adjust</button></td>
           </tr>`).join('') : empty(11, 'No stock on hand')}</tbody>
       </table></div>
     </div>
@@ -707,7 +707,7 @@ async function showTransfer(id) {
                 ${a.lot?.pallet_number ? `<span class="gw-sub">pallet ${esc(a.lot.pallet_number)}</span>` : ''}
                 <span class="gw-sub">${a.lot?.received_on ? esc(dfmt(a.lot.received_on)) : 'date unknown'}</span>
                 ${a.is_fifo_override ? `<span class="tag tag-amber" title="${esc(a.override_reason || '')}">out of FIFO order</span>` : ''}
-                ${editable ? `<button class="gw-btn gw-btn-sm no-print" onclick="removeAlloc(${a.id}, ${t.id})">remove</button>` : ''}
+                ${editable ? `<button class="ui-act ui-act--danger no-print" onclick="removeAlloc(${a.id}, ${t.id})">remove</button>` : ''}
               </div>`).join('') || '<span class="gw-sub">allocation pending</span>'}
               ${editable && outbound && Number(l.qty_allocated) < Number(l.qty_requested)
                 ? `<div class="no-print" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">

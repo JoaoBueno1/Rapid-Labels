@@ -38,6 +38,22 @@ function register(app) {
       res.status(500).json({ error: e.message });
     }
   });
+  // Aquece o cache na subida: sem isso o PRIMEIRO usuário do dia paga a
+  // conexão do pool mais as cinco contagens, e vê o rail sem número.
+  setTimeout(() => {
+    Promise.all([
+      count(`SELECT count(*)::int n FROM public.collections_active`),
+      count(`SELECT count(*)::int n FROM public.returns_active WHERE COALESCE(status,'') <> 'completed'`),
+      count(`SELECT count(*)::int n FROM cin7_mirror.order_pipeline
+              WHERE type='SO' AND status NOT IN ('COMPLETED','CLOSED','VOIDED','CANCELLED')`),
+      count(`SELECT count(*)::int n FROM cin7_mirror.order_pipeline WHERE type='SO' AND status='BACKORDERED'`),
+      count(`SELECT count(*)::int n FROM rapid_inv.v_sp_planning_skus WHERE soh_nonpositive OR mths_stock < 1`),
+    ]).then(([collections, returns, openOrders, backordered, planningAlerts]) => {
+      cache = { collections, returns, openOrders, backordered, planningAlerts, at: new Date().toISOString() };
+      cachedAt = Date.now();
+    }).catch(() => {});
+  }, 1500);
+
   console.log('✅ Nav counts endpoint registered: /api/nav/counts');
 }
 

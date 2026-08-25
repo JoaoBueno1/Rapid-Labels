@@ -1,14 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
    Sistema de botões e ações — Inventory Management
 
-   Cinco páginas, cinco vocabulários: .gw-btn, .cc-btn, .action-btn,
-   .filter-btn, .sp-btn. Mesma intenção, cinco alturas, cinco raios de canto,
-   cinco azuis. Este arquivo define UM conjunto e apelida os nomes que já
-   existem para ele — nenhum HTML muda, e cada página vai se alinhando.
-
-   Carrega DEPOIS do CSS da página, então empata em especificidade e vence
-   por ordem. Onde a página usa um seletor mais específico, ela continua
-   mandando — alinhamento progressivo, não troca de tapete.
+   Este arquivo ACRESCENTA um padrão; não reescreve o que cada página já tem.
+   Uma primeira versão apelidava .gw-btn, .cc-btn, .action-btn e .filter-btn
+   para cá, e o efeito foi trocar o visual de botões que já funcionavam. Não
+   era o pedido. As classes .ui-* agora são opt-in: valem onde forem escritas
+   no HTML, e em nenhum outro lugar.
 
    ── A peça central: .ui-act ────────────────────────────────────────────
    O botão "Allocate" da linha de PO. Compacto, retangular, neutro, dentro
@@ -29,8 +26,7 @@
 }
 
 /* ── botão ──────────────────────────────────────────────────────────── */
-.ui-btn,
-.gw-btn, .cc-btn, .action-btn, .filter-btn, .sp-btn{
+.ui-btn, .sp-btn{
   display:inline-flex; align-items:center; justify-content:center; gap:6px;
   height:var(--ui-h); padding:0 12px;
   border:1px solid var(--ui-line-2); border-radius:var(--ui-r);
@@ -39,39 +35,37 @@
   white-space:nowrap; cursor:pointer; text-decoration:none;
   transition:background .12s, border-color .12s, color .12s;
 }
-.ui-btn:hover,
-.gw-btn:hover, .cc-btn:hover, .action-btn:hover, .filter-btn:hover, .sp-btn:hover{
+.ui-btn:hover, .sp-btn:hover{
   background:var(--ui-surface-2); border-color:#aab6c7; color:var(--ui-ink);
 }
-.ui-btn:active,.gw-btn:active,.cc-btn:active,.action-btn:active,.sp-btn:active{transform:translateY(.5px)}
-.ui-btn:disabled,.gw-btn:disabled,.cc-btn:disabled,.sp-btn:disabled{
+.ui-btn:active,.sp-btn:active{transform:translateY(.5px)}
+.ui-btn:disabled,.sp-btn:disabled{
   opacity:.45; cursor:not-allowed; transform:none;
 }
-.ui-btn:focus-visible,.gw-btn:focus-visible,.cc-btn:focus-visible,
-.action-btn:focus-visible,.filter-btn:focus-visible,.sp-btn:focus-visible{
+.ui-btn:focus-visible,.sp-btn:focus-visible{
   outline:2px solid var(--ui-accent); outline-offset:1px;
 }
 
-.ui-btn--primary, .gw-btn-primary, .cc-btn-primary, .sp-btn.is-primary{
+.ui-btn--primary, .sp-btn.is-primary{
   background:var(--ui-accent); border-color:var(--ui-accent); color:#fff; font-weight:600;
 }
-.ui-btn--primary:hover, .gw-btn-primary:hover, .cc-btn-primary:hover, .sp-btn.is-primary:hover{
+.ui-btn--primary:hover, .sp-btn.is-primary:hover{
   background:var(--ui-accent-d); border-color:var(--ui-accent-d); color:#fff;
 }
-.ui-btn--danger, .gw-btn-danger{
+.ui-btn--danger{
   background:var(--ui-surface); border-color:var(--ui-danger); color:var(--ui-danger); font-weight:600;
 }
-.ui-btn--danger:hover, .gw-btn-danger:hover{ background:var(--ui-danger-soft); color:var(--ui-danger); }
+.ui-btn--danger:hover{ background:var(--ui-danger-soft); color:var(--ui-danger); }
 .ui-btn--ghost, .sp-btn.is-ghost{
   border-color:transparent; background:none; color:var(--ui-mut);
 }
 .ui-btn--ghost:hover, .sp-btn.is-ghost:hover{ background:var(--ui-surface-2); color:var(--ui-ink); }
-.ui-btn--sm, .gw-btn-sm, .cc-mini-btn, .search-btn-small{
+.ui-btn--sm{
   height:var(--ui-h-sm); padding:0 9px; font-size:12px; border-radius:var(--ui-r-sm);
 }
 
 /* ── ação de linha: o padrão do "Allocate" ──────────────────────────── */
-.ui-act, .cc-hist-act{
+.ui-act{
   display:inline-flex; align-items:center; gap:5px;
   height:19px; padding:0 7px;
   border:1px solid var(--ui-line); border-radius:4px;
@@ -80,7 +74,7 @@
   white-space:nowrap; cursor:pointer; vertical-align:1px;
   transition:background .12s, border-color .12s, color .12s;
 }
-.ui-act:hover, .cc-hist-act:hover{
+.ui-act:hover{
   background:var(--ui-accent-soft); border-color:var(--ui-accent); color:var(--ui-accent-d);
 }
 .ui-act:focus-visible{outline:2px solid var(--ui-accent); outline-offset:1px}
@@ -91,7 +85,7 @@
 .ui-act--icon{padding:0 5px; font-size:12px}
 
 /* ── filtro que liga e desliga ──────────────────────────────────────── */
-.ui-chip, .gw-chip, .chip, .sp-chip{
+.ui-chip, .sp-chip{
   display:inline-flex; align-items:center; gap:6px;
   height:var(--ui-h-sm); padding:0 11px;
   border:1px solid var(--ui-line); border-radius:20px;
@@ -100,8 +94,8 @@
   white-space:nowrap; cursor:pointer;
   transition:background .12s, border-color .12s, color .12s;
 }
-.ui-chip:hover, .gw-chip:hover, .chip:hover, .sp-chip:hover{ border-color:var(--ui-line-2); color:var(--ui-ink) }
-.ui-chip.is-on, .gw-chip.active, .chip.active, .sp-chip.is-on{
+.ui-chip:hover, .sp-chip:hover{ border-color:var(--ui-line-2); color:var(--ui-ink) }
+.ui-chip.is-on, .sp-chip.is-on{
   background:var(--ui-accent-soft); border-color:var(--ui-accent);
   color:var(--ui-accent-d); font-weight:600;
 }

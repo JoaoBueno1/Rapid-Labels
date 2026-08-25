@@ -426,7 +426,7 @@
       const items = data.items || [];
       if (!items.length) { body.innerHTML = `<div class="cc-hist-empty">${data.note ? esc(data.note) : 'no history yet'}</div>`; return; }
       body.innerHTML = items.map(l =>
-        `<div class="cc-hist-row"><span class="cc-hist-act">${actionLabel(l.action)}</span>${histDetails(l.action, l.details)}
+        `<div class="cc-hist-row"><span class="cc-hist-act ui-act">${actionLabel(l.action)}</span>${histDetails(l.action, l.details)}
            <span class="cc-hist-meta">${esc(l.actor || '—')} · ${esc(fmtTime(l.created_at))}</span></div>`).join('');
     } catch (e) {
       body.innerHTML = `<div class="cc-hist-empty">history unavailable: ${esc(e.message)}</div>`;

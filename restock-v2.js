@@ -386,7 +386,7 @@
         const star = `<button type="button" class="fav-btn" aria-label="Toggle favorite" data-sku="${skuKey}" onclick="restockToggleFavorite('${skuKey}')" title="${favOn ? 'Unfavorite' : 'Favorite'}" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1">${favOn ? '★' : '☆'}</button>`;
         const actionButtons = `
           <div class="action-buttons" style="display:flex;gap:6px;justify-content:center;white-space:nowrap">
-            <button type="button" class="action-btn edit" onclick="openEditProductModal('${skuKey}')" title="Configure capacity" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;border:none;padding:6px 12px;border-radius:8px;font-weight:600;cursor:pointer;min-width:50px;height:28px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .3s;font-size:13px;white-space:nowrap">⚙ Edit</button>
+            <button type="button" class="ui-act" onclick="openEditProductModal('${skuKey}')" title="Configure capacity" >⚙ Edit</button>
           </div>`;
         const wrapText = (text, chunkSize) => { if (!text) return ''; const e = escapeHtml(text); const c = []; for (let j = 0; j < e.length; j += chunkSize) c.push(e.substring(j, j + chunkSize)); return c.join('<br>'); };
         const notesHtml = r.__notes ? wrapText(r.__notes, 10) : '';

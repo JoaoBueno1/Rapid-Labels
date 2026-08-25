@@ -194,6 +194,10 @@
       document.documentElement.classList.toggle('rl-min', collapsed);
       try { localStorage.setItem('rail.min', collapsed ? '1' : '0'); } catch (_) {}
     };
+    // Pinta o último valor conhecido no mesmo quadro em que o rail aparece.
+    const cached = readCache();
+    if (cached) paintCounts(cached.v);
+
     el.querySelectorAll('[data-grp]').forEach((b) => {
       b.onclick = () => {
         const k = b.dataset.grp;
@@ -220,31 +224,62 @@
       }
     }
     loadCounts();
-    setInterval(loadCounts, 60000);
+    setInterval(() => loadCounts(true), 60000);
+    // Voltar para a aba depois de um tempo fora merece um número fresco.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) loadCounts(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();
 
   /**
-   * Busca os contadores no servidor. Roda em toda página, não só na home —
-   * o número é o que diz que há trabalho esperando, e escondê-lo das outras
-   * telas tirava metade da utilidade do menu.
+   * Contadores.
+   *
+   * A primeira versão só buscava do servidor no load, e o efeito era ruim: a
+   * cada troca de página o número sumia e voltava um segundo depois. Um badge
+   * que pisca é pior que badge nenhum — o olho persegue o movimento.
+   *
+   * Agora o último valor conhecido é pintado JUNTO com o rail, do
+   * localStorage, e a busca só corrige se mudou. Trocar de página deixa de
+   * ter piscada, e o número velho por trinta segundos é melhor que nenhum.
    */
-  async function loadCounts() {
+  const COUNT_KEY = 'rail.counts';
+  const COUNT_TTL = 45000;
+
+  function readCache() {
+    try {
+      const raw = localStorage.getItem(COUNT_KEY);
+      if (!raw) return null;
+      const c = JSON.parse(raw);
+      return c && c.v ? c : null;
+    } catch (_) { return null; }
+  }
+
+  function paintCounts(v) {
+    if (!v) return;
+    const put = (id, n) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (n == null || n === 0) { el.style.display = 'none'; return; }
+      const txt = n > 999 ? '999+' : String(n);
+      if (el.textContent !== txt) el.textContent = txt;
+      el.style.display = '';
+    };
+    put('collectionsCount', v.collections);
+    put('returnsCount', v.returns);
+    put('openOrdersCount', v.openOrders);
+  }
+
+  async function loadCounts(force) {
+    const cached = readCache();
+    if (cached && !force && Date.now() - cached.at < COUNT_TTL) return;
     try {
       const r = await fetch('/api/nav/counts');
       if (!r.ok) return;
       const c = await r.json();
-      const put = (id, v) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        if (v == null || v === 0) { el.style.display = 'none'; return; }
-        el.textContent = v > 999 ? '999+' : v; el.style.display = '';
-      };
-      put('collectionsCount', c.collections);
-      put('returnsCount', c.returns);
-      put('openOrdersCount', c.openOrders);
+      const v = { collections: c.collections, returns: c.returns, openOrders: c.openOrders };
+      try { localStorage.setItem(COUNT_KEY, JSON.stringify({ v, at: Date.now() })); } catch (_) {}
+      paintCounts(v);
     } catch (_) { /* contador é conforto, não função: falhar em silêncio */ }
   }
 
