@@ -730,11 +730,16 @@ function register(app) {
     const [summary, rows] = await Promise.all([
       db.query(`SELECT verdict, count(*)::int skus, round(sum(stock_value_aud)::numeric,0) value_aud
                   FROM rapid_inv.v_sp_demand_signal GROUP BY 1 ORDER BY 2 DESC`),
-      db.query(`SELECT * FROM rapid_inv.v_sp_demand_signal
-                 WHERE wk_avg > 0 AND verdict IS NOT NULL AND verdict <> 'in line'
-                 ORDER BY abs(bias_units) DESC NULLS LAST LIMIT $1`, [asInt(req.query.limit, 120, 1, 500)]),
+      db.query(`SELECT * FROM rapid_inv.v_sp_wkavg_drift
+                 WHERE typed > 0 AND reading IS NOT NULL AND reading <> 'in line'
+                 ORDER BY abs(gap) DESC NULLS LAST LIMIT $1`, [asInt(req.query.limit, 120, 1, 500)]),
     ]);
-    res.json({ summary, rows, window_weeks: 9, ms: Date.now() - t0 });
+    const [age] = await db.query(`
+      SELECT count(*) FILTER (WHERE days_since_touched > 180)::int stale_180,
+             count(*) FILTER (WHERE days_since_touched > 365)::int stale_365,
+             round(avg(days_since_touched))::int avg_days
+        FROM rapid_inv.v_sp_wkavg_drift WHERE typed > 0`);
+    res.json({ summary, rows, age, window_weeks: 9, ms: Date.now() - t0 });
   }));
 
   /**
@@ -774,6 +779,132 @@ function register(app) {
       [status, req.body.superseded_by || null, req.body.lifecycle_note || null, actor, key])).rows[0], actor);
     if (!row) return res.status(404).json({ error: 'SKU not found' });
     res.json(await db.one(`SELECT * FROM rapid_inv.v_sp_planning_skus WHERE sku_key=$1`, [key]));
+  }));
+
+  /**
+   * QUANTO COMPRAR — o passo que o Excel nunca deu.
+   *
+   * O ritual semanal terminava em "ler Analysis!F, decidir o que recomprar —
+   * e calcular a quantidade fora do Excel". Isto é esse fora-do-Excel.
+   *
+   * A conta, em uma frase: se eu emitir a PO hoje, ela chega na semana
+   * lead + review. Entre agora e essa semana mais a cobertura-alvo, qual é o
+   * pior ponto do saldo? Compre o suficiente para esse pior ponto ficar no
+   * alvo — arredondado para caixa fechada e respeitando o MOQ.
+   *
+   * Roda a MESMA cascata da grade, de propósito: a sugestão e o número que o
+   * planejador vê na tela não podem discordar.
+   */
+  app.get(`${R}/buy-recommendation`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const state = await db.one(`SELECT * FROM rapid_inv.planning_state WHERE id=1`);
+
+    const where = ['s.lifecycle_status = \'ACTIVE\'', 's.wk_avg > 0'], p = [];
+    if (req.query.supplier) { p.push(req.query.supplier); where.push(`s.supplier_code = $${p.length}`); }
+    const skus = await db.query(`
+      SELECT s.*, lt.lead_weeks, lt.lead_source, lt.sd_weeks, lt.review_weeks,
+             lt.moq_units, lt.carton_qty, v.unit_cost_aud
+        FROM rapid_inv.v_sp_planning_skus s
+        JOIN rapid_inv.v_sp_sku_leadtime lt ON lt.sku_key = s.sku_key
+        LEFT JOIN rapid_inv.v_sp_sku_cost v ON v.sku_key = s.sku_key
+       WHERE ${where.join(' AND ')}`, p);
+    if (!skus.length) return res.json({ rows: [], total: 0, ms: Date.now() - t0 });
+
+    // O horizonte tem de cobrir o SKU mais lento: nada de cortar em 26 semanas
+    // e depois dizer que ele nunca falta.
+    const maxWeeks = Math.min(104, Math.ceil(Math.max(
+      ...skus.map((s) => Number(s.lead_weeks) + Number(s.review_weeks) + Number(s.target_cover_weeks || 0))
+    )) + 2);
+    const weeks = await db.query(
+      `SELECT week_ending, factor FROM rapid_inv.v_sp_weeks WHERE week_ending >= $1
+        ORDER BY week_ending LIMIT $2`, [state.reporting_week, maxWeeks + 1]);
+    const keys = skus.map((s) => s.sku_key);
+    const last = weeks[weeks.length - 1].week_ending;
+    const [draws, incoming] = await Promise.all([
+      db.query(`SELECT sku, week_ending, qty FROM rapid_inv.v_sp_draw_demand
+                 WHERE sku = ANY($1) AND week_ending BETWEEN $2 AND $3`, [keys, state.reporting_week, last]),
+      db.query(`SELECT sku, week_ending, qty FROM rapid_inv.v_sp_incoming
+                 WHERE sku = ANY($1) AND week_ending BETWEEN $2 AND $3`, [keys, state.reporting_week, last]),
+    ]);
+    const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
+    const drawIdx = index(draws), inIdx = index(incoming);
+    const engineWeeks = weeks.map((w, i) => ({ weekEnding: w.week_ending, factor: Number(w.factor), isReporting: i === 0 }));
+
+    const rows = [];
+    for (const s of skus) {
+      const proj = projectSku({
+        weeks: engineWeeks, soh: Number(s.soh_available),
+        wkAvg: Number(s.wk_avg), incoming: inIdx[s.sku_key] || {}, draws: drawIdx[s.sku_key] || {},
+        undatedQty: Number(s.undated_qty || 0), targetCoverWeeks: s.target_cover_weeks || 7,
+        projectOrders: Number(s.project_orders || 0),
+      });
+      const lead = Number(s.lead_weeks), review = Number(s.review_weeks);
+      const arrival = Math.ceil(lead + review);
+      const coverUntil = Math.min(arrival + Number(s.target_cover_weeks || 0), proj.rows.length - 1);
+      const window = proj.rows.slice(1, coverUntil + 1);
+      if (!window.length) continue;
+
+      let low = window[0];
+      for (const r of window) if (r.closing < low.closing) low = r;
+      const target = Number(proj.summary.targetQty || 0);
+      const rawNeed = Math.max(0, target - low.closing);
+      if (rawNeed <= 0) continue;
+
+      // Caixa fechada e MOQ não são refinamento: sem eles o comprador corrige
+      // à mão, e a partir daí para de confiar no número.
+      const carton = Number(s.carton_qty) > 0 ? Number(s.carton_qty) : 1;
+      const cartons = Math.ceil(rawNeed / carton);
+      let suggested = cartons * carton;
+      const moq = Number(s.moq_units) || 0;
+      let moqApplied = false;
+      if (moq > 0 && suggested < moq) { suggested = Math.ceil(moq / carton) * carton; moqApplied = true; }
+
+      // Quando pedir: a semana em que o saldo cruza o alvo, menos o lead time.
+      const cross = proj.rows.findIndex((r, i) => i > 0 && r.closing < target);
+      const orderByWeek = cross > 0 ? proj.rows[Math.max(0, cross - arrival)].weekEnding : proj.rows[0].weekEnding;
+      const late = cross > 0 && cross - arrival <= 0;
+
+      rows.push({
+        sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code,
+        soh: Number(s.soh_available), on_order: Number(s.soh_on_order),
+        wk_avg: Number(s.wk_avg), target_cover_weeks: s.target_cover_weeks, target_qty: target,
+        lead_weeks: lead, lead_source: s.lead_source, sd_weeks: s.sd_weeks == null ? null : Number(s.sd_weeks),
+        arrival_week_index: arrival, cover_until_index: coverUntil,
+        low_point: low.closing, low_week: low.weekEnding,
+        raw_need: Math.round(rawNeed), carton_qty: carton, cartons, moq_applied: moqApplied,
+        suggested,
+        value_aud: s.unit_cost_aud ? Math.round(suggested * Number(s.unit_cost_aud)) : null,
+        order_by_week: orderByWeek, already_late: late,
+        first_stockout: proj.summary.firstStockoutWeek,
+      });
+    }
+    rows.sort((a, b) => (a.already_late === b.already_late ? 0 : a.already_late ? -1 : 1)
+                     || a.order_by_week.localeCompare(b.order_by_week)
+                     || (b.value_aud || 0) - (a.value_aud || 0));
+
+    const bySupplier = {};
+    for (const r of rows) {
+      const k = r.supplier || '—';
+      bySupplier[k] = bySupplier[k] || { supplier: k, skus: 0, units: 0, value_aud: 0, late: 0 };
+      bySupplier[k].skus++; bySupplier[k].units += r.suggested;
+      bySupplier[k].value_aud += r.value_aud || 0;
+      if (r.already_late) bySupplier[k].late++;
+    }
+    res.json({
+      reporting_week: state.reporting_week, horizon_weeks: maxWeeks,
+      total: rows.length,
+      total_units: rows.reduce((n, r) => n + r.suggested, 0),
+      total_value_aud: rows.reduce((n, r) => n + (r.value_aud || 0), 0),
+      late: rows.filter((r) => r.already_late).length,
+      bySupplier: Object.values(bySupplier).sort((a, b) => b.value_aud - a.value_aud),
+      rows: rows.slice(0, asInt(req.query.limit, 300, 1, 2000)),
+      ms: Date.now() - t0,
+    });
+  }));
+
+  app.get(`${R}/leadtime`, wrap(async (req, res) => {
+    res.json(await db.query(
+      `SELECT * FROM rapid_inv.v_sp_supplier_leadtime ORDER BY median_weeks DESC NULLS LAST`));
   }));
 
   // ── Filiais e alocação de linha de PO ───────────────────────────────

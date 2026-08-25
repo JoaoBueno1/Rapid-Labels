@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="planning.css?v=2">
+<link rel="stylesheet" href="planning.css?v=3">
   <link rel="stylesheet" href="/shared/rail.css?v=3">
   <script defer src="/shared/rail.js?v=3"></script>
 </head>
@@ -20,6 +20,7 @@
       <button class="sp-tab is-on" data-view="overview">Overview</button>
       <button class="sp-tab" data-view="projects">Projects</button>
       <button class="sp-tab" data-view="supply">Supply Planning</button>
+      <button class="sp-tab" data-view="buy">Buy <span class="sp-pip" id="pipBuy"></span></button>
       <button class="sp-tab" data-view="pos">Purchase Orders</button>
       <button class="sp-tab" data-view="alerts">Alerts <span class="sp-pip" id="pipAlerts"></span></button>
     </nav>
@@ -98,6 +99,18 @@
     <span><i class="k" style="background:var(--xl-closed);border:1px solid var(--line-3)"></i>discontinued</span><i></i>
     <span>Click a cell to see where the number comes from</span>
   </div>
+</section>
+
+<!-- ══ BUY ═══════════════════════════════════════════════════════════ -->
+<section class="sp-view" data-view="buy">
+  <div class="sp-bar">
+    <select id="byySupplier"><option value="">All suppliers</option></select>
+    <button class="sp-chip is-on" id="byyLate">Already late</button>
+    <span class="sp-gap"></span>
+    <span class="sp-count" id="byyCount"></span>
+    <button class="sp-btn" id="byyCopy">Copy for PO</button>
+  </div>
+  <div id="byyBody"><div class="sp-loading">Working out what to buy…</div></div>
 </section>
 
 <!-- ══ PURCHASE ORDERS ═══════════════════════════════════════════════ -->
@@ -191,6 +204,6 @@
 </div>
 
 <div class="sp-toast" id="toast"></div>
-<script src="planning.js?v=2"></script>
+<script src="planning.js?v=3"></script>
 </body>
 </html>

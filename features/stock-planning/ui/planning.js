@@ -18,6 +18,7 @@ const S = {
   supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{} },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { supplier:'' },
+  buy:      { supplier:'', late:true },
   suppliers: [], branches: [], state: null,
 };
 
@@ -79,7 +80,7 @@ function show(view) {
   S.view = view;
   $$('.sp-tab').forEach(b => b.classList.toggle('is-on', b.dataset.view === view));
   $$('.sp-view').forEach(s => s.classList.toggle('is-on', s.dataset.view === view));
-  ({ overview:loadOverview, projects:loadProjects, supply:loadSupply, pos:loadPOs, alerts:loadAlerts }[view] || (()=>{}))();
+  ({ overview:loadOverview, projects:loadProjects, supply:loadSupply, buy:loadBuy, pos:loadPOs, alerts:loadAlerts }[view] || (()=>{}))();
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('.sp-tab'); if (b) show(b.dataset.view); });
 
@@ -102,6 +103,7 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     $('#statusText').textContent = `Week ${d10(st.reporting_week)} · stock from ${src}`;
     const opts = sup.map(s => `<option value="${esc(s.code)}">${esc(s.code)} (${s.sku_count})</option>`).join('');
     $('#spSupplier').innerHTML = '<option value="">Pick a supplier…</option>' + opts;
+    $('#byySupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#poSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#alSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#npoSupplier').innerHTML = '<option value="">—</option>' + opts;
@@ -312,19 +314,21 @@ async function ovSignal() {
         ${tile(n0(none.skus),'Forecast, no sales in 9 weeks','carrying cover for demand that is not arriving','bad')}
         ${tile(n0(under.skus),'Selling faster than forecast','these run out earlier than the grid says','bad')}
         ${tile(n0(miss.skus),'Selling with no Wk/Avg','invisible to the planning grid','warn')}
+        ${d.age ? tile(n0(d.age.stale_365),'Untouched over a year',`average across all of them: ${n0(d.age.avg_days)} days since anyone edited the number`,'warn') : ''}
       </div>
       <div class="sp-panel">
         <h4>Wk/Avg against actual sales
           <span>Wk/Avg is typed by hand — 837 blocks checked in the workbook, not one formula. It drives every purchase and had never been measured.
           Window: last ${d.window_weeks} complete weeks, project orders excluded so draws are not counted twice.</span></h4>
-        <table><thead><tr><th>SKU</th><th>Supplier</th><th class="n">Wk/Avg (typed)</th><th class="n">Actual/week</th>
-          <th class="n">Gap</th><th class="n">Gap %</th><th class="n">Cover</th><th class="n">Stock value</th><th>Reading</th></tr></thead>
+        <table><thead><tr><th>SKU</th><th>Supplier</th><th class="n">Typed</th><th class="n">Actual/week</th>
+          <th class="n">Gap</th><th class="n">Gap %</th><th class="n">Untouched</th><th class="n">Stock value</th><th>Reading</th></tr></thead>
         <tbody>${d.rows.map(r=>`<tr class="click" data-sku="${esc(r.sku_key)}" data-sup="${esc(r.supplier_code||'')}">
           <td class="em mono">${esc(r.sku)}</td><td>${esc(r.supplier_code||'')}</td>
-          <td class="n">${n1(r.wk_avg)}</td><td class="n">${n1(r.actual_wk)}</td>
-          <td class="n" style="color:${Number(r.bias_units)<0?'#9c5700':'#9c0006'}">${n1(r.bias_units)}</td>
-          <td class="n">${r.bias_pct==null?'':r.bias_pct+'%'}</td><td class="n">${r.mths_stock==null?'':n1(r.mths_stock)}</td>
-          <td class="n">${aud(r.stock_value_aud)}</td><td>${esc(r.verdict)}</td></tr>`).join('')}</tbody></table>
+          <td class="n">${n1(r.typed)}</td><td class="n">${n1(r.actual)}</td>
+          <td class="n" style="color:${Number(r.gap)<0?'#9c5700':'#9c0006'}">${n1(r.gap)}</td>
+          <td class="n">${r.gap_pct==null?'':r.gap_pct+'%'}</td>
+          <td class="n"${r.days_since_touched>365?' style="color:#9c0006;font-weight:600"':''} title="${esc(r.touched_by||'')}">${r.days_since_touched==null?'':n0(r.days_since_touched)+' d'}</td>
+          <td class="n">${aud(r.stock_value_aud)}</td><td>${esc(r.reading)}</td></tr>`).join('')}</tbody></table>
       </div>`;
     $('#ovBody').onclick = e => { const tr = e.target.closest('tr[data-sku]'); if (tr) jumpSupply(tr.dataset.sup, tr.dataset.sku); };
   } catch (e) { $('#ovBody').innerHTML = `<div class="sp-empty">${esc(e.message)}</div>`; }
@@ -876,6 +880,88 @@ async function openLifecycle(skuKey) {
     } catch (e) { toast(e.message, true); }
   };
 }
+
+/* ═══ BUY ═══════════════════════════════════════════════════════════
+   O passo que o Excel nunca deu. O ritual semanal terminava em "ler
+   Analysis!F, decidir o que recomprar — e calcular a quantidade fora do
+   Excel". Esta é a tela do fora-do-Excel.
+
+   Cada linha se explica sozinha: quanto tem, quanto vende, quanto demora
+   para chegar, qual é o pior ponto do saldo nessa janela, e por isso
+   quantas caixas. Se o comprador não conseguir repetir a conta em voz
+   alta, ele não vai confiar nela. */
+let buyData = null;
+async function loadBuy() {
+  const qs = new URLSearchParams({ limit: 400 });
+  if (S.buy.supplier) qs.set('supplier', S.buy.supplier);
+  $('#byyBody').innerHTML = '<div class="sp-loading">Working out what to buy…</div>';
+  try {
+    buyData = await api('/buy-recommendation?' + qs);
+    const pip = $('#pipBuy'); pip.textContent = n0(buyData.late); pip.classList.toggle('on', buyData.late > 0);
+    renderBuy();
+  } catch (e) { $('#byyBody').innerHTML = `<div class="sp-empty">${esc(e.message)}</div>`; }
+}
+function renderBuy() {
+  const d = buyData;
+  const rows = S.buy.late ? d.rows.filter(r => r.already_late) : d.rows;
+  $('#byyCount').textContent = `${n0(rows.length)} of ${n0(d.total)} SKUs · ${d.ms} ms`;
+  $('#byyBody').innerHTML = `
+    <div class="sp-tiles">
+      ${tile(aud(d.total_value_aud),'To order','at Cin7 average cost')}
+      ${tile(n0(d.total_units),'Units',`across ${n0(d.total)} SKUs`)}
+      ${tile(n0(d.late),'Already past the order date','with the measured lead time, these should have gone out weeks ago','bad')}
+      ${tile(n0(d.bySupplier.length),'Suppliers','group the order by supplier to fill a container')}
+    </div>
+    <div class="sp-panel">
+      <h4>By supplier <span>a purchase order per supplier — and the start of a container</span></h4>
+      <table><thead><tr><th>Supplier</th><th class="n">SKUs</th><th class="n">Units</th><th class="n">Value</th><th class="n">Late</th></tr></thead>
+      <tbody>${d.bySupplier.map(s=>`<tr class="click" data-sup="${esc(s.supplier)}">
+        <td class="em">${esc(s.supplier)}</td><td class="n">${s.skus}</td><td class="n">${n0(s.units)}</td>
+        <td class="n">${aud(s.value_aud)}</td>
+        <td class="n"${s.late?' style="color:#9c0006;font-weight:600"':''}>${s.late||''}</td></tr>`).join('')}</tbody></table>
+    </div>
+    <div class="sp-panel">
+      <h4>What to order <span>soonest order date first · every number here comes from the same cascade as the week grid</span></h4>
+      <table><thead><tr>
+        <th>SKU</th><th>Supplier</th><th class="n">Stock</th><th class="n">Wk/Avg</th>
+        <th class="n">Lead</th><th class="n">Low point</th><th class="n">Need</th>
+        <th class="n">Cartons</th><th class="n">Order</th><th class="n">Value</th><th class="n">Order by</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr class="click" data-sku="${esc(r.sku_key)}" data-sup="${esc(r.supplier||'')}">
+        <td class="em mono">${esc(r.sku)}</td><td>${esc(r.supplier||'')}</td>
+        <td class="n"${r.soh<=0?' style="color:#9c0006;font-weight:600"':''}>${n0(r.soh)}</td>
+        <td class="n">${n1(r.wk_avg)}</td>
+        <td class="n" title="${esc(r.lead_source)}${r.sd_weeks?` ±${r.sd_weeks} wk`:''}">${n1(r.lead_weeks)}w${r.lead_source==='MEASURED'?'':' *'}</td>
+        <td class="n"${r.low_point<0?' style="color:#9c0006;font-weight:600"':''} title="worst week: ${d10(r.low_week)}">${n0(r.low_point)}</td>
+        <td class="n">${n0(r.raw_need)}</td>
+        <td class="n" title="${r.carton_qty} per carton${r.moq_applied?' · MOQ applied':''}">${n0(r.cartons)}${r.moq_applied?' ᴹ':''}</td>
+        <td class="n em">${n0(r.suggested)}</td>
+        <td class="n">${r.value_aud?aud(r.value_aud):''}</td>
+        <td class="n"${r.already_late?' style="color:#9c0006;font-weight:600"':''}>${r.already_late?'overdue':d10(r.order_by_week)}</td>
+      </tr>`).join('') || '<tr><td colspan="11"><div class="sp-empty">Nothing to order with these filters.</div></td></tr>'}</tbody></table>
+    </div>
+    <p class="sp-hint" style="max-width:70ch">
+      The rule, in one sentence: <b>if the PO goes out today it lands in week lead + review;
+      buy enough that the worst point between now and there plus the cover target sits at the target</b> —
+      rounded up to a full carton, and never under the MOQ.
+      A lead time marked <b>*</b> is a supplier default, not measured.</p>`;
+  $('#byyBody').onclick = e => {
+    const su = e.target.closest('[data-sup]:not([data-sku])');
+    if (su) { S.buy.supplier = su.dataset.sup; $('#byySupplier').value = su.dataset.sup; return loadBuy(); }
+    const tr = e.target.closest('[data-sku]');
+    if (tr) return jumpSupply(tr.dataset.sup, tr.dataset.sku);
+  };
+}
+$('#byySupplier').addEventListener('change', e => { S.buy.supplier = e.target.value; loadBuy(); });
+$('#byyLate').addEventListener('click', e => { S.buy.late = !S.buy.late; e.currentTarget.classList.toggle('is-on', S.buy.late); renderBuy(); });
+$('#byyCopy').addEventListener('click', () => {
+  if (!buyData) return;
+  const rows = S.buy.late ? buyData.rows.filter(r => r.already_late) : buyData.rows;
+  // Formato que a tela de Add PO já entende: SKU, qty, custo, due date.
+  const text = rows.map(r => `${r.sku}\t${r.suggested}`).join('\n');
+  navigator.clipboard.writeText(text)
+    .then(() => toast(`${rows.length} lines copied — paste straight into Add PO`))
+    .catch(() => toast('Could not reach the clipboard', true));
+});
 
 /* ═══ PURCHASE ORDERS ═══════════════════════════════════════════════ */
 let poRows = [];
