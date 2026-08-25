@@ -170,6 +170,34 @@
         .wh-focus-sel { font-family:inherit; font-size:.7rem; font-weight:600; text-transform:none; letter-spacing:0; color:var(--text); background:#fff; border:1px solid var(--border); border-radius:7px; padding:3px 9px; cursor:pointer; }
         .wh-focus-sel:hover { border-color:#94a3b8; }
         .wh-pipeline.pipeline-fs .wh-focus-sel { background:#0f172a; color:#e2e8f0; border-color:#334155; }
+
+        /* Exceptions strip — severity IS the signal here (red = act now, amber = watch) */
+        .wh-exc { margin-top:14px; }
+        .wh-exc-hd { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--text); margin-bottom:8px; }
+        .wh-exc-hd .wh-exc-hint { font-weight:500; text-transform:none; letter-spacing:0; color:var(--muted); font-size:.68rem; margin-left:6px; }
+        .wh-exc-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+        @media(max-width:640px){ .wh-exc-grid{ grid-template-columns:repeat(2,1fr); } }
+        .wh-exc-tile { border:1px solid var(--border); border-left:4px solid #cbd5e1; border-radius:10px; padding:10px 12px; background:#fff; }
+        .wh-exc-tile.clickable { cursor:pointer; transition:box-shadow .15s, transform .15s; }
+        .wh-exc-tile.clickable:hover { box-shadow:0 4px 12px rgba(0,0,0,.08); transform:translateY(-1px); }
+        .wh-exc-tile .ev { font-size:1.7rem; font-weight:800; line-height:1; color:var(--text); font-variant-numeric:tabular-nums; }
+        .wh-exc-tile .el { font-size:.7rem; font-weight:600; color:var(--text); margin-top:5px; }
+        .wh-exc-tile .es { font-size:.62rem; color:var(--muted); margin-top:2px; min-height:.8em; }
+        .wh-exc-tile.ok { border-left-color:#cbd5e1; opacity:.7; }
+        .wh-exc-tile.ok .ev { color:#94a3b8; }
+        .wh-exc-tile.warn { border-left-color:#f59e0b; background:#fffbeb; }
+        .wh-exc-tile.warn .ev { color:#b45309; }
+        .wh-exc-tile.crit { border-left-color:#dc2626; background:#fef2f2; }
+        .wh-exc-tile.crit .ev { color:#b91c1c; }
+        .wh-pipeline.pipeline-fs .wh-exc-hd { color:#fff; }
+        .wh-pipeline.pipeline-fs .wh-exc-tile { background:#0f1e34; border-color:#233650; }
+        .wh-pipeline.pipeline-fs .wh-exc-tile .ev, .wh-pipeline.pipeline-fs .wh-exc-tile .el { color:#e2e8f0; }
+        .wh-pipeline.pipeline-fs .wh-exc-tile.ok { opacity:.55; }
+        .wh-pipeline.pipeline-fs .wh-exc-tile.ok .ev { color:#64748b; }
+        .wh-pipeline.pipeline-fs .wh-exc-tile.crit { background:#3a1414; border-left-color:#ef4444; }
+        .wh-pipeline.pipeline-fs .wh-exc-tile.crit .ev { color:#fca5a5; }
+        .wh-pipeline.pipeline-fs .wh-exc-tile.warn { background:#332411; border-left-color:#f59e0b; }
+        .wh-pipeline.pipeline-fs .wh-exc-tile.warn .ev { color:#fcd34d; }
         .wh-sync-btn { background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:.85rem; color:var(--muted); padding:2px 6px; transition:all .2s; line-height:1; margin-left:4px; }
         .wh-sync-btn:hover { background:#e0f2fe; color:#0284c7; border-color:#93c5fd; }
         .wh-sync-btn.syncing { animation:spin 1s linear infinite; pointer-events:none; opacity:.6; }

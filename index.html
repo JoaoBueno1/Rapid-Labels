@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css?v=20250709">
     <!-- Home page styles. Loaded between styles.css and the returns theme, the same
          place the inline <style> block sat, so the cascade is unchanged. -->
-    <link rel="stylesheet" href="home.css?v=20260825a">
+    <link rel="stylesheet" href="home.css?v=20260825b">
     <!-- Returns-style home theme (PREVIEW, reversible — delete this one line to revert) -->
     <link rel="stylesheet" href="home-returns-theme.css?v=1">
     <!-- Supabase CDN -->
@@ -203,6 +203,25 @@
                             <div class="wh-flow-val loading" id="flowCompletedVal">—</div>
                             <div class="wh-flow-label">Completed</div>
                             <div class="wh-flow-sub">today</div>
+                        </div>
+                    </div>
+
+                    <!-- Exceptions — what needs action now (scoped to the selected warehouse) -->
+                    <div class="wh-exc">
+                        <div class="wh-exc-hd">Exceptions <span class="wh-exc-hint">what needs action now</span></div>
+                        <div class="wh-exc-grid">
+                            <div class="wh-exc-tile ok clickable" id="excAged" onclick="openOrdersModal('aged')">
+                                <div class="ev" id="excAgedVal">—</div><div class="el">Pick atrasado &gt; 2d</div><div class="es" id="excAgedSub"></div>
+                            </div>
+                            <div class="wh-exc-tile ok clickable" id="excBackorder" onclick="openOrdersModal('backorder')">
+                                <div class="ev" id="excBackorderVal">—</div><div class="el">Backordered</div><div class="es" id="excBackorderSub"></div>
+                            </div>
+                            <div class="wh-exc-tile ok clickable" id="excPack" onclick="openOrdersModal('packbacklog')">
+                                <div class="ev" id="excPackVal">—</div><div class="el">Pack backlog</div><div class="es" id="excPackSub"></div>
+                            </div>
+                            <div class="wh-exc-tile ok clickable" id="excDispatch" onclick="openOrdersModal('dispatch')">
+                                <div class="ev" id="excDispatchVal">—</div><div class="el">Dispatch backlog</div><div class="es" id="excDispatchSub"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -625,6 +644,6 @@
     <script src="multi-label.js?v=20260710a"></script>
     <script src="app.js?v=20260302k"></script>
     <script src="assets/vendor/chart.umd.min.js?v=441"></script>
-    <script src="home.js?v=20260825a"></script>
+    <script src="home.js?v=20260825b"></script>
 </body>
 </html>

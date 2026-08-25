@@ -371,6 +371,20 @@
                         setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
                         renderInlineTransfers(trWh);
 
+                        // ── Exceptions (scoped to the focused warehouse) — what needs action now ──
+                        // Aging is by order_date (Cin7 has no per-stage timestamp yet — that's Phase 2);
+                        // so ">2d" here means the ORDER is 2+ days old and still stuck at that stage.
+                        const _age = r => r.order_date ? Math.floor((Date.now() - new Date(r.order_date + 'T00:00:00').getTime()) / 86400000) : 0;
+                        const oldest = arr => arr.length ? Math.max.apply(null, arr.map(_age)) : 0;
+                        const agedPick    = orderedRows.filter(r => _age(r) > 2);
+                        const backorders  = soFocus.filter(r => r.status === 'BACKORDERED');
+                        const packStuck   = openSO.filter(r => isPicked(r) && !isPacked(r) && _age(r) > 2);
+                        const dispatchStk = soFocus.filter(r => isPacked(r) && !_completedStatuses.includes(r.status) && String(r.ship_status || '').toUpperCase() !== 'SHIPPED');
+                        setExc('excAged',      agedPick.length,    agedPick.length ? `oldest ${oldest(agedPick)}d` : 'clear', 'crit');
+                        setExc('excBackorder', backorders.length,  backorders.length ? `oldest ${oldest(backorders)}d` : 'clear', 'crit');
+                        setExc('excPack',      packStuck.length,   packStuck.length ? 'picked > 2d ago' : 'clear', 'warn');
+                        setExc('excDispatch',  dispatchStk.length, dispatchStk.length ? 'packed, not shipped' : 'clear', 'warn');
+
                         // Sync freshness
                         const syncTimes = pipeline.map(r => r.synced_at).filter(Boolean).sort();
                         const syncEl = document.getElementById('whSyncInfo');
@@ -863,7 +877,8 @@
         let _ordersStatusFilter = 'all'; // 'all' or specific status
         let _ordersDateSort = 'desc'; // 'desc' = newest first, 'asc' = oldest first
         let _ordersStageFilter = 'all'; // 'all' | 'ordered' | 'picking' | 'topack' (from a clicked flow tile)
-        const _STAGE_LABEL = { ordered: 'Ordered', picking: 'Picking', topack: 'To Pack', completed: 'Completed' };
+        const _STAGE_LABEL = { ordered: 'Ordered', picking: 'Picking', topack: 'To Pack', completed: 'Completed',
+            aged: 'Aged — awaiting pick > 2d', backorder: 'Backordered', packbacklog: 'Pack backlog', dispatch: 'Dispatch backlog' };
         const _activeStatuses = ['PICKING', 'PICKED', 'PACKING', 'ORDERED'];
         const _completedModalStatuses = ['COMPLETED'];
 
@@ -969,11 +984,17 @@
 
             // Stage scope (set when a flow tile is clicked). 'completed' is already
             // handled by the completed view above, so only the 3 active stages gate here.
+            const _ageD = r => r.order_date ? Math.floor((Date.now() - new Date(r.order_date + 'T00:00:00').getTime()) / 86400000) : 0;
             const inStage = r => {
                 if (r.type !== 'SO') return false;   // the flow funnel is sales-orders only (TR live in the footer)
                 if (_ordersStageFilter === 'ordered') return r.status === 'ORDERED' && r.pick_status !== 'PICKING' && r.pick_status !== 'PICKED';
                 if (_ordersStageFilter === 'picking') return r.pick_status === 'PICKING';
                 if (_ordersStageFilter === 'topack')  return r.pick_status === 'PICKED' && r.pack_status !== 'PACKED';
+                // Exception scopes (from the Exceptions strip)
+                if (_ordersStageFilter === 'backorder')   return r.status === 'BACKORDERED';
+                if (_ordersStageFilter === 'aged')        return r.status === 'ORDERED' && r.pick_status !== 'PICKING' && r.pick_status !== 'PICKED' && _ageD(r) > 2;
+                if (_ordersStageFilter === 'packbacklog') return r.pick_status === 'PICKED' && r.pack_status !== 'PACKED' && _ageD(r) > 2;
+                if (_ordersStageFilter === 'dispatch')    return r.pack_status === 'PACKED' && String(r.ship_status || '').toUpperCase() !== 'SHIPPED';
                 return true;
             };
 
@@ -1172,6 +1193,15 @@
             sel.dataset.built = '1';
         }
         function setWhFocus(v) { window.__whFocus = v; if (window.reloadWhBoard) window.reloadWhBoard(); }
+
+        // Paint one exception tile: value + sub + a severity class (crit/warn), muted when zero.
+        function setExc(id, n, sub, sev) {
+            const tile = document.getElementById(id); if (!tile) return;
+            const v = document.getElementById(id + 'Val'); if (v) v.textContent = n;
+            const s = document.getElementById(id + 'Sub'); if (s) s.textContent = sub || '';
+            tile.classList.remove('crit', 'warn', 'ok');
+            tile.classList.add(n > 0 ? sev : 'ok');
+        }
 
         function renderInlineTransfers(wh) {
             const MAIN_WH = (wh && wh !== '__all__') ? wh : 'Main Warehouse';
