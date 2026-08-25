@@ -250,6 +250,35 @@
         .wh-tr-row .bd.ordered { background:#e0e7ff; color:#3730a3; }
         .wh-tr-row .ln { font-size:.66rem; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
         .wh-tr-empty { padding:14px; text-align:center; color:var(--muted); font-size:.74rem; }
+        /* Find TR — one direct Cin7 lookup, for a transfer the webhook hasn't delivered yet. */
+        .wh-tr-find { display:flex; align-items:center; gap:6px; margin-bottom:7px; }
+        .wh-tr-find .ff-inp { flex:0 1 130px; min-width:0; padding:5px 9px; border:1px solid var(--border); border-radius:7px; font-size:.74rem; font-family:inherit; color:var(--text); background:#fff; outline:none; }
+        .wh-tr-find .ff-inp:focus { border-color:#7c3aed; box-shadow:0 0 0 2px rgba(124,58,237,.15); }
+        .wh-tr-find .ff-btn { padding:5px 12px; border:0; border-radius:7px; background:#6d28d9; color:#fff; font-size:.72rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+        .wh-tr-find .ff-btn:hover { background:#5b21b6; }
+        .wh-tr-find .ff-btn[disabled] { opacity:.55; cursor:default; }
+        .wh-tr-find .ff-msg { font-size:.66rem; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .wh-tr-find .ff-msg.err { color:#b91c1c; }
+        .wh-tr-find .ff-msg.ok { color:#047857; }
+        .wh-tr-row .live { font-size:.55rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; background:#fef9c3; color:#854d0e; padding:1px 5px; border-radius:4px; margin-left:5px; }
+        /* Incoming rows open their contents, so they get the same affordance as Out rows. */
+        .wh-tr-row.info { cursor:pointer; }
+        .wh-tr-row.info:hover { background:#f0fdfa; }
+        /* Incoming contents modal */
+        .trl-modal { background:#fff; border-radius:14px; width:100%; max-width:640px; max-height:86vh; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.25); overflow:hidden; }
+        .trl-head { display:flex; align-items:flex-start; gap:12px; padding:15px 18px; border-bottom:1px solid var(--border); }
+        .trl-no { font-size:1.15rem; font-weight:800; color:#0f766e; }
+        .trl-route { font-size:.76rem; color:var(--muted); margin-top:2px; }
+        .trl-badge { font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; padding:3px 8px; border-radius:6px; background:#ccfbf1; color:#0f766e; margin-left:auto; white-space:nowrap; }
+        .trl-sum { padding:8px 18px; font-size:.72rem; color:var(--muted); border-bottom:1px solid var(--border); background:#f8fafc; }
+        .trl-sum b { color:var(--text); }
+        .trl-body { overflow:auto; padding:0; }
+        .trl-t { width:100%; border-collapse:collapse; font-size:.78rem; }
+        .trl-t th { position:sticky; top:0; background:#f8fafc; text-align:left; padding:7px 18px; font-size:.6rem; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); border-bottom:1px solid var(--border); }
+        .trl-t td { padding:7px 18px; border-bottom:1px solid #f1f5f9; }
+        .trl-t tr:last-child td { border-bottom:0; }
+        .trl-t .c-sku { font-family:Consolas,monospace; font-weight:600; white-space:nowrap; }
+        .trl-t .c-qty { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
         @media (max-width:640px) { .wh-tr-cols { grid-template-columns:1fr; } }
         .wh-flow-arrow { display:flex; align-items:center; color:#cbd5e1; font-size:1.4rem; font-weight:700; flex:0 0 auto; }
         .stage-ordered { border-top-color:#3b82f6; } .stage-ordered .wh-flow-val { color:#1e40af; }
@@ -298,6 +327,9 @@
         .wh-pipeline.pipeline-fs .wh-tr-row .to .m,
         .wh-pipeline.pipeline-fs .wh-tr-row .ln { color:#8fa0b8; }
         .wh-pipeline.pipeline-fs .wh-tr-empty { color:#8fa0b8; }
+        .wh-pipeline.pipeline-fs .wh-tr-row.info:hover { background:#16233a; }
+        .wh-pipeline.pipeline-fs .wh-tr-find .ff-inp { background:#111c30; border-color:#1e293b; color:#e2e8f0; }
+        .wh-pipeline.pipeline-fs .wh-tr-find .ff-msg { color:#8fa0b8; }
         .wh-pipeline.pipeline-fs .wh-chart-wrap { border-top-color:#1e293b; margin-top:2vh; }
         .wh-pipeline.pipeline-fs .wh-chart-title { color:#cbd5e1; }
         /* A definite height, not flex-fill. Chart.js sizes its canvas from the container

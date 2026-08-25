@@ -111,10 +111,14 @@ module.exports = function registerTransferOutRoutes(app) {
       const q = String(req.query.q || '').trim();
       if (!q) return res.json({ success: true, results: [] });
       const j = await cin7(`stockTransferList?Page=1&Limit=50&Search=${encodeURIComponent(q)}`);
+      // stockTransferList carries no OrderDate/CreatedDate — only DepartureDate and
+      // CompletionDate, both null while a transfer is still ORDERED. Mapping the fields
+      // it doesn't have left every live-found transfer dateless; the staging modal fills
+      // the date from the detail call instead, which does have it.
       const results = (j.StockTransferList || []).map(t => ({
         id: t.TaskID, number: t.Number,
         from_location: t.FromLocation, to_location: t.ToLocation,
-        status: t.Status, order_date: d(t.OrderDate || t.CreatedDate), reference: t.Reference,
+        status: t.Status, order_date: d(t.DepartureDate || t.CompletionDate), reference: t.Reference,
       }));
       res.json({ success: true, results });
     } catch (err) {

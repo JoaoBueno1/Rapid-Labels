@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css?v=20250709">
     <!-- Home page styles. Loaded between styles.css and the returns theme, the same
          place the inline <style> block sat, so the cascade is unchanged. -->
-    <link rel="stylesheet" href="home.css?v=20260825g">
+    <link rel="stylesheet" href="home.css?v=20260826a">
     <!-- Returns-style home theme (PREVIEW, reversible — delete this one line to revert) -->
     <link rel="stylesheet" href="home-returns-theme.css?v=1">
     <!-- Supabase CDN -->
@@ -233,6 +233,15 @@
                                     <span class="t">Transfers Out</span>
                                     <span class="n out" id="whTransfersVal">—</span>
                                     <a class="all" onclick="openTransfersModal('outbound')">all ›</a>
+                                </div>
+                                <!-- Find TR: one direct Cin7 call for one transfer. The list below
+                                     comes from the mirror, which waits on a webhook; a TR created a
+                                     minute ago isn't in it yet. This is the way to print anyway. -->
+                                <div class="wh-tr-find">
+                                    <input id="whFindTr" class="ff-inp" placeholder="TR-49952" autocomplete="off"
+                                           onkeydown="if(event.key==='Enter'){event.preventDefault();findTR();}" />
+                                    <button type="button" class="ff-btn" id="whFindBtn" onclick="findTR()">Find TR</button>
+                                    <span class="ff-msg" id="whFindMsg"></span>
                                 </div>
                                 <div class="wh-tr-list" id="whTrListOut"><div class="wh-tr-empty">loading…</div></div>
                             </div>
@@ -553,6 +562,23 @@
     </div>
 
     <!-- ═══ Transfers Modal ═══ -->
+    <!-- What is actually inside an incoming transfer. The pipeline row only carries the
+         header, so the items are fetched live from Cin7 the moment the row is opened. -->
+    <div class="tr-modal-overlay" id="trLinesOverlay" onclick="if(event.target===this)closeTrLines()">
+        <div class="trl-modal">
+            <div class="trl-head">
+                <div>
+                    <div class="trl-no" id="trlNo">—</div>
+                    <div class="trl-route" id="trlRoute">—</div>
+                </div>
+                <span class="trl-badge" id="trlBadge"></span>
+                <button class="tr-modal-close" onclick="closeTrLines()">&times;</button>
+            </div>
+            <div class="trl-sum" id="trlSum"></div>
+            <div class="trl-body" id="trlBody"><div class="wh-tr-empty">Loading items…</div></div>
+        </div>
+    </div>
+
     <div class="tr-modal-overlay" id="trModalOverlay" onclick="if(event.target===this)closeTransfersModal()">
         <div class="tr-modal">
             <div class="tr-modal-header">
@@ -640,11 +666,11 @@
 
         <!-- Scripts -->
     <script src="supabase-config.js?v=20260302g"></script>
-    <script src="features/transfer-out/transfer-out-staging.js?v=3"></script>
+    <script src="features/transfer-out/transfer-out-staging.js?v=4"></script>
     <script src="scanner.js"></script>
     <script src="multi-label.js?v=20260710a"></script>
     <script src="app.js?v=20260302k"></script>
     <script src="assets/vendor/chart.umd.min.js?v=441"></script>
-    <script src="home.js?v=20260825g"></script>
+    <script src="home.js?v=20260826a"></script>
 </body>
 </html>

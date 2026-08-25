@@ -138,6 +138,13 @@
     try {
       const j = await (await fetch('/api/transfer-out/detail/' + encodeURIComponent(row.id))).json();
       if (!j.success) throw new Error(j.error || 'detail failed');
+      // A transfer opened straight from a live Cin7 lookup has no date on it — the list
+      // endpoint doesn't return one. The detail does, so fill it in now rather than
+      // printing a sheet headed "Date —".
+      if (!row.order_date && j.header && j.header.date) {
+        st.sel = row = { ...row, order_date: j.header.date };
+        $('tostMeta').innerHTML = `Date <b>${esc(fmtD(row.order_date))}</b> · ${esc(row.status || '')}`;
+      }
       const lines = j.lines || [];
       const skus = [...new Set(lines.map(l => l.sku).filter(Boolean))];
       const map = {};
