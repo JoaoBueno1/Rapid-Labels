@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monthly Review — Rapid LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
+<link rel="stylesheet" href="/shared/rail.css?v=4">
+<link rel="stylesheet" href="/shared/ui.css?v=1">
+<link rel="stylesheet" href="analytics.css?v=2">
+<script defer src="/shared/rail.js?v=6"></script>
+</head>
+<body>
+
+<header class="sp-header">
+  <div class="sp-header-inner">
+    <span class="sp-brand"><span class="sp-logo">M</span> Monthly Review</span>
+    <nav class="sp-tabs" id="tabs">
+      <button class="sp-tab is-on" data-view="month">The Month</button>
+      <button class="sp-tab" data-view="stuck">Money Sitting Still</button>
+      <button class="sp-tab" data-view="ops">Operations</button>
+      <button class="sp-tab" data-view="release">Release Now <span class="sp-pip" id="pipRel"></span></button>
+    </nav>
+    <div class="sp-status"><span class="sp-dot fresh"></span><span id="statusText">live from Cin7</span></div>
+  </div>
+</header>
+
+<main class="sp-main">
+  <section class="sp-view is-on" data-view="month"><div id="monthBody"><div class="sp-loading">Loading…</div></div></section>
+  <section class="sp-view" data-view="stuck"><div id="stuckBody"><div class="sp-loading">Loading…</div></div></section>
+  <section class="sp-view" data-view="ops"><div id="opsBody"><div class="sp-loading">Loading…</div></div></section>
+  <section class="sp-view" data-view="release">
+    <div class="sp-bar">
+      <button class="sp-chip is-on" data-kind="">Everything</button>
+      <button class="sp-chip" data-kind="BRANCH">Branch orders</button>
+      <button class="sp-chip" data-kind="PROJECT">Project orders</button>
+      <span class="sp-gap"></span><span class="sp-count" id="relCount"></span>
+    </div>
+    <div id="relBody"><div class="sp-loading">Loading…</div></div>
+  </section>
+</main>
+
+<aside class="sp-side" id="side">
+  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose">&times;</button></header>
+  <div class="sp-side-body" id="sideBody"></div>
+</aside>
+<div class="sp-toast" id="toast"></div>
+<script src="analytics.js?v=3"></script>
+</body>
+</html>

@@ -372,6 +372,16 @@ try {
   console.warn('⚠️  Could not register nav counts:', e.message);
 }
 
+// ── Analytics (o relatório mensal, ao vivo) ──
+if (process.env.STOCK_PLANNING_ENABLED !== '0') {
+  try {
+    require('./features/analytics/routes/analytics-routes').register(app);
+    app.use('/analytics', express.static(path.join(__dirname, 'features/analytics/ui'), { index: 'analytics.html' }));
+  } catch (e) {
+    console.warn('⚠️  Could not register Analytics routes:', e.message);
+  }
+}
+
 // ── Stock Planning (substitui o Excel Rapid-Inventory SKU) ──
 // Feature isolada e atrás de flag. API em /api/stock-planning/*; a tela é
 // montada em /planning. Fala direto com o Postgres porque o schema rapid_inv

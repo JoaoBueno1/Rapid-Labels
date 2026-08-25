@@ -1,0 +1,33 @@
+/* Herda o sistema do Stock Planning: mesma grade, mesmos tokens, mesma
+   gramática de cor. Aqui só o que é próprio do relatório mensal. */
+#monthBody,#stuckBody,#opsBody,#relBody{flex:1;min-height:0;overflow:auto;padding-bottom:24px}
+.sp-view{padding-top:14px}
+
+/* barra de mês — o gráfico que o deck fazia como print de Excel */
+.mbars{display:flex;align-items:flex-end;gap:5px;height:150px;padding:8px 0 0}
+.mbar{flex:1;min-width:16px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;
+  align-items:center;gap:3px;cursor:default;position:relative}
+.mbar .stack{width:100%;display:flex;flex-direction:column;justify-content:flex-end;min-height:2px;
+  border-radius:3px 3px 0 0;overflow:hidden}
+.mbar .gp{background:var(--acc);border-radius:3px 3px 0 0}
+.mbar .cg{background:#b9cbdb}
+.mbar .l{font:10px var(--mono);color:var(--mut-3);white-space:nowrap;margin-top:3px}
+.mbar .t{position:absolute;bottom:100%;margin-bottom:3px;font:600 10px var(--mono);color:var(--ink);white-space:nowrap}
+/* Mês em curso: hachurado, porque comparar mês pela metade com mês inteiro
+   é a forma mais fácil de tirar a conclusão errada. */
+.mbar.partial .stack{opacity:.45}
+.mbar.partial .l{color:var(--xl-warn-ink)}
+.mbar.now .gp{background:var(--acc-d)}
+.mlegend{display:flex;gap:14px;font-size:11.5px;color:var(--mut-2);padding:6px 0 0}
+.mlegend i{width:10px;height:10px;border-radius:2px;display:inline-block;vertical-align:-1px;margin-right:5px}
+
+.grow{font-family:var(--mono);font-weight:600}
+.grow.up{color:var(--xl-good-ink)}
+.grow.down{color:var(--xl-bad-ink)}
+
+.wbar{display:block;height:6px;border-radius:3px;background:var(--acc);min-width:2px}
+.wbar.q{background:var(--xl-bad-ink)}
+.wbar.warn{background:var(--xl-warn-ink)}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:1080px){.two{grid-template-columns:1fr}}

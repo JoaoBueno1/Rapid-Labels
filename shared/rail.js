@@ -83,6 +83,10 @@
       { t: 'Pick Productivity', href: '/features/pick-productivity/pick-productivity.html', ic: 'trend' },
       { t: 'Sync Monitor', href: '/features/sync-monitor/sync-monitor.html', ic: 'sync' },
     ]},
+    { group: 'Analytics', items: [
+      { t: 'Monthly Review', href: '/analytics', ic: 'trend',
+        match: ['/analytics', '/analytics/', '/features/analytics/ui/analytics.html'] },
+    ]},
     { group: 'External', items: [
       { t: 'Rapid Express', href: 'https://rapidexpress.com.au', ic: 'ext', blank: true },
     ]},
