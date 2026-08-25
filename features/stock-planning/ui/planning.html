@@ -38,6 +38,7 @@
     <button class="sp-subtab" data-ov="inbound">Inbound Pipeline</button>
     <button class="sp-subtab" data-ov="demand">Demand Book</button>
     <button class="sp-subtab" data-ov="signal">Demand Signal</button>
+    <button class="sp-subtab" data-ov="dead">Dead Stock</button>
   </nav>
   <div id="ovBody"><div class="sp-loading">Loading…</div></div>
 </section>
@@ -81,6 +82,7 @@
       <option value="52">52 weeks</option>
     </select>
     <button class="sp-chip" id="spRisk">At risk only</button>
+    <select id="spLife"><option value="">All lifecycle</option><option value="ACTIVE">Active only</option><option value="RUN_OUT">Run-out</option><option value="DISCONTINUED">Discontinued</option></select>
     <button class="sp-chip" id="spExpand">Show the working</button>
     <span class="sp-gap"></span>
     <span class="sp-count" id="spCount"></span>
@@ -91,6 +93,8 @@
     <span><i class="k k-low"></i>drops below target cover</span><i></i>
     <span><i class="k k-in"></i>PO arriving</span><i></i>
     <span><i class="k k-dr"></i>project draw</span><i></i>
+    <span><i class="k" style="background:var(--xl-held);border:1px solid var(--xl-warn-ink)"></i>run-out</span><i></i>
+    <span><i class="k" style="background:var(--xl-closed);border:1px solid var(--line-3)"></i>discontinued</span><i></i>
     <span>Click a cell to see where the number comes from</span>
   </div>
 </section>

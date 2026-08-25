@@ -262,6 +262,7 @@ function register(app) {
     if (req.query.supplier) { p.push(req.query.supplier); where.push(`supplier_code = $${p.length}`); }
     if (req.query.q) { p.push(`%${req.query.q}%`); where.push(`sku ILIKE $${p.length}`); }
     if (req.query.only === 'risk') where.push(`(soh_nonpositive OR mths_stock < 1)`);
+    if (req.query.lifecycle) { p.push(req.query.lifecycle); where.push(`lifecycle_status = $${p.length}`); }
     const w = where.join(' AND ');
 
     const [{ total }] = await db.query(`SELECT count(*)::int total FROM rapid_inv.v_sp_planning_skus WHERE ${w}`, p);
@@ -299,6 +300,8 @@ function register(app) {
       return {
         sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code,
         wk_avg: s.wk_avg, target_cover_weeks: s.target_cover_weeks,
+        lifecycle_status: s.lifecycle_status, superseded_by: s.superseded_by,
+        lifecycle_note: s.lifecycle_note, cin7_status: s.cin7_status, wk_avg_input: s.wk_avg_input,
         soh: Number(s.soh_available), on_order: Number(s.soh_on_order),
         project_orders: Number(s.project_orders), main_soh: Number(s.main_soh),
         gateway_soh: Number(s.gateway_soh), comments: s.comments,
@@ -732,6 +735,45 @@ function register(app) {
                  ORDER BY abs(bias_units) DESC NULLS LAST LIMIT $1`, [asInt(req.query.limit, 120, 1, 500)]),
     ]);
     res.json({ summary, rows, window_weeks: 9, ms: Date.now() - t0 });
+  }));
+
+  /**
+   * Estoque morto: o que a empresa já decidiu parar de vender e ainda tem
+   * dinheiro dentro. Substitui o placar do Discontinued Items.xlsx, cujo
+   * total está literalmente #N/A hoje por um VLOOKUP quebrado.
+   */
+  app.get(`${R}/overview/dead-stock`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const [totals, rows, conflicts] = await Promise.all([
+      db.query(`SELECT * FROM rapid_inv.v_sp_dead_stock_totals ORDER BY 1`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_dead_stock
+                 WHERE soh_available > 0 ORDER BY stock_value_aud DESC LIMIT $1`,
+               [asInt(req.query.limit, 150, 1, 800)]),
+      db.query(`SELECT * FROM rapid_inv.v_sp_lifecycle_conflicts ORDER BY conflict, sku LIMIT 100`),
+    ]);
+    const [supplier] = [await db.query(`
+      SELECT supplier_code, count(*)::int skus, sum(soh_available) units,
+             round(sum(stock_value_aud)::numeric,0) value_aud
+        FROM rapid_inv.v_sp_dead_stock WHERE soh_available > 0 AND supplier_code IS NOT NULL
+       GROUP BY 1 ORDER BY value_aud DESC`)];
+    res.json({ totals, rows, conflicts, supplier, ms: Date.now() - t0 });
+  }));
+
+  app.patch(`${R}/skus/:sku/lifecycle`, wrap(async (req, res) => {
+    const key = req.params.sku.toUpperCase();
+    const status = String(req.body.lifecycle_status || '').toUpperCase();
+    if (!['ACTIVE', 'RUN_OUT', 'DISCONTINUED'].includes(status))
+      return res.status(400).json({ error: 'status must be ACTIVE, RUN_OUT or DISCONTINUED' });
+    const actor = actorOf(req);
+    // MANUAL, sempre: decisão de gente nunca é desfeita pelo sync do Cin7.
+    const row = await db.tx(async (c) => (await c.query(
+      `UPDATE rapid_inv.sku_settings
+          SET lifecycle_status=$1, superseded_by=$2, lifecycle_note=$3,
+              lifecycle_source='MANUAL', lifecycle_set_at=now(), lifecycle_set_by=$4
+        WHERE sku_key=$5 RETURNING sku`,
+      [status, req.body.superseded_by || null, req.body.lifecycle_note || null, actor, key])).rows[0], actor);
+    if (!row) return res.status(404).json({ error: 'SKU not found' });
+    res.json(await db.one(`SELECT * FROM rapid_inv.v_sp_planning_skus WHERE sku_key=$1`, [key]));
   }));
 
   // ── Filiais e alocação de linha de PO ───────────────────────────────

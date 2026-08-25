@@ -469,3 +469,18 @@ tr.al-row:hover td{background:var(--card-2)}
 .alf-i b.good{color:var(--xl-good-ink)}
 .sp-tile.is-on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
 .sp-panel > h4 button{font-weight:500}
+
+/* ── ciclo de vida do SKU na grade ──────────────────────────────────────
+   Mesma gramática de cor que o time já lê na aba Project do Excel, aplicada
+   a outro eixo: branco segue ativo, o creme de "retido" vira run-out (ainda
+   sai, mas não se compra mais), e o cinza de "encerrado" vira descontinuado.
+   Precedência incondicional — aqui a cor não divide espaço com zebra. */
+.sp-supply tr.sk.lc-runout td,.sp-supply tr.sk.lc-runout td.wk{background:var(--xl-held)}
+.sp-supply tr.sk.lc-disc td,.sp-supply tr.sk.lc-disc td.wk{background:var(--xl-closed)}
+.sp-supply tr.sk.lc-disc .sku-code{color:var(--mut-2)}
+.lc-mark{display:inline-block;padding:0 5px;border-radius:3px;font:700 9.5px/16px var(--sans);
+  letter-spacing:.03em;vertical-align:1px;margin-left:6px;cursor:pointer}
+.lc-runout-mark{background:var(--xl-held);color:var(--xl-warn-ink);border:1px solid var(--xl-warn-ink)}
+.lc-disc-mark{background:var(--xl-closed);color:var(--mut);border:1px solid var(--line-3)}
+.sup-to{color:var(--mut-3);font-size:11px;margin-left:5px}
+.sup-to b{color:var(--acc);font-weight:600;cursor:pointer}

@@ -15,7 +15,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const S = {
   view: 'overview', ov: 'health',
   projects: { q:'', status:'ACTIVE', rep:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
-  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, expandAll:false, open:{} },
+  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{} },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { supplier:'' },
   suppliers: [], branches: [], state: null,
@@ -121,7 +121,7 @@ $('#ovTabs').addEventListener('click', e => {
 });
 function loadOverview() {
   $('#ovBody').innerHTML = '<div class="sp-loading">Loading…</div>';
-  ({ health:ovHealth, risk:ovRisk, inbound:ovInbound, demand:ovDemand, signal:ovSignal }[S.ov])();
+  ({ health:ovHealth, risk:ovRisk, inbound:ovInbound, demand:ovDemand, signal:ovSignal, dead:ovDead }[S.ov])();
 }
 const tile = (v, label, note, kind='') =>
   `<div class="sp-tile ${kind}"><b>${v}</b><em>${label}</em><small>${note}</small></div>`;
@@ -327,6 +327,54 @@ async function ovSignal() {
           <td class="n">${aud(r.stock_value_aud)}</td><td>${esc(r.verdict)}</td></tr>`).join('')}</tbody></table>
       </div>`;
     $('#ovBody').onclick = e => { const tr = e.target.closest('tr[data-sku]'); if (tr) jumpSupply(tr.dataset.sup, tr.dataset.sku); };
+  } catch (e) { $('#ovBody').innerHTML = `<div class="sp-empty">${esc(e.message)}</div>`; }
+}
+
+async function ovDead() {
+  try {
+    const d = await api('/overview/dead-stock');
+    const g = k => d.totals.find(t => t.lifecycle_status === k) || { skus:0, with_stock:0, units:0, value_aud:0, still_forecast:0 };
+    const disc = g('DISCONTINUED'), run = g('RUN_OUT');
+    const total = Number(disc.value_aud||0) + Number(run.value_aud||0);
+    $('#ovBody').innerHTML = `
+      <div class="sp-tiles">
+        ${tile(aud(total),'Money in product we stopped selling','still on the shelf, still counted in stock value','bad')}
+        ${tile(n0(disc.skus),'Discontinued',`${disc.with_stock} still hold stock · ${n0(disc.units)} units`,'bad')}
+        ${tile(n0(run.skus),'Run-out',`selling down, never reordered · ${n0(run.units)} units`,'warn')}
+        ${tile(n0(Number(disc.still_forecast||0)+Number(run.still_forecast||0)),'Still carry a Wk/Avg','the typed forecast outlived the decision','warn')}
+      </div>
+      <div class="sp-panel">
+        <h4>By supplier <span>where the dead money sits</span></h4>
+        <table><thead><tr><th>Supplier</th><th class="n">SKUs</th><th class="n">Units</th><th class="n">Value</th></tr></thead>
+        <tbody>${d.supplier.map(s=>`<tr class="click" data-sup="${esc(s.supplier_code)}">
+          <td class="em">${esc(s.supplier_code)}</td><td class="n">${s.skus}</td>
+          <td class="n">${n0(s.units)}</td><td class="n">${aud(s.value_aud)}</td></tr>`).join('')}</tbody></table>
+      </div>
+      ${d.conflicts.length ? `<div class="sp-panel">
+        <h4>Where Cin7 and we disagree <span>this is the useful half of the Cin7 status — it marks Deprecated only after stock hits zero</span></h4>
+        <table><thead><tr><th>SKU</th><th>Supplier</th><th>We say</th><th>Cin7 says</th><th class="n">Stock</th><th class="n">Selling/wk</th><th>Reading</th></tr></thead>
+        <tbody>${d.conflicts.map(c=>`<tr class="click" data-sku="${esc(c.sku)}" data-sup="${esc(c.supplier_code||'')}">
+          <td class="em mono">${esc(c.sku)}</td><td>${esc(c.supplier_code||'')}</td>
+          <td>${esc(c.lifecycle_status)}</td><td>${esc(c.cin7_status||'')}</td>
+          <td class="n">${n0(c.soh_available)}</td><td class="n">${n1(c.actual_wk)}</td>
+          <td>${esc(c.conflict)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      <div class="sp-panel">
+        <h4>The stock itself <span>biggest value first</span></h4>
+        <table><thead><tr><th>SKU</th><th>Supplier</th><th>Status</th><th>Replaced by</th>
+          <th class="n">Units</th><th class="n">Unit cost</th><th class="n">Value</th><th>Why</th></tr></thead>
+        <tbody>${d.rows.map(r=>`<tr class="click" data-sku="${esc(r.sku)}" data-sup="${esc(r.supplier_code||'')}">
+          <td class="em mono">${esc(r.sku)}</td><td>${esc(r.supplier_code||'')}</td>
+          <td>${esc(r.lifecycle_status)}</td><td>${esc(r.superseded_by)||''}</td>
+          <td class="n">${n0(r.soh_available)}</td><td class="n">${r.unit_cost_aud?aud(r.unit_cost_aud):''}</td>
+          <td class="n">${aud(r.stock_value_aud)}</td>
+          <td style="color:var(--mut-2);font-size:11.5px">${esc(String(r.lifecycle_note||'').slice(0,60))}</td></tr>`).join('')}</tbody></table>
+      </div>`;
+    $('#ovBody').onclick = e => {
+      const tr = e.target.closest('[data-sku]');
+      if (tr) return jumpSupply(tr.dataset.sup, tr.dataset.sku);
+      const su = e.target.closest('[data-sup]');
+      if (su) return jumpSupply(su.dataset.sup, '');
+    };
   } catch (e) { $('#ovBody').innerHTML = `<div class="sp-empty">${esc(e.message)}</div>`; }
 }
 
@@ -663,6 +711,7 @@ async function loadSupply() {
   const qs = new URLSearchParams({ supplier:s.supplier, weeks:s.weeks, limit:300 });
   if (s.q) qs.set('q', s.q);
   if (s.risk) qs.set('only','risk');
+  if (s.life) qs.set('lifecycle', s.life);
   $('#spCount').textContent = 'calculating…';
   try {
     spData = await api('/planning?' + qs);
@@ -705,8 +754,17 @@ function renderSupply() {
     const r = { ...r0, cells: markCrossings(r0.cells) };
     const open = S.supply.expandAll || S.supply.open[r.sku_key];
     const m = r.summary;
-    const skuRow = `<tr class="sk" data-sku="${esc(r.sku_key)}">
-      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono">${esc(r.sku)}</span></td>
+    const lc = r.lifecycle_status === 'RUN_OUT' ? 'lc-runout'
+             : r.lifecycle_status === 'DISCONTINUED' ? 'lc-disc' : '';
+    const lcMark = r.lifecycle_status === 'RUN_OUT'
+        ? `<span class="lc-mark lc-runout-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Selling what is left; not reordered')}">RUN-OUT</span>`
+      : r.lifecycle_status === 'DISCONTINUED'
+        ? `<span class="lc-mark lc-disc-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Discontinued')}">DISC</span>`
+        : '';
+    const sup = r.superseded_by
+        ? `<span class="sup-to">→ <b data-goto="${esc(r.superseded_by)}">${esc(r.superseded_by)}</b></span>` : '';
+    const skuRow = `<tr class="sk ${lc}" data-sku="${esc(r.sku_key)}">
+      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${sup}</td>
       <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}</td>
       <td class="n">${cellSku(r,'wk_avg',n1(r.wk_avg))}</td>
       <td class="n mono"${m.mthsStock!=null&&m.mthsStock<1?' style="color:#9c0006;font-weight:700"':''}>${m.mthsStock==null?'—':n1(m.mthsStock)}</td>
@@ -739,8 +797,13 @@ $('#spSupplier').addEventListener('change', e => { S.supply.supplier = e.target.
 $('#spSearch').addEventListener('input', debounce(e => { S.supply.q = e.target.value; loadSupply(); }));
 $('#spWeeks').addEventListener('change', e => { S.supply.weeks = +e.target.value; loadSupply(); });
 $('#spRisk').addEventListener('click', e => { S.supply.risk = !S.supply.risk; e.currentTarget.classList.toggle('is-on', S.supply.risk); loadSupply(); });
+$('#spLife').addEventListener('change', e => { S.supply.life = e.target.value; loadSupply(); });
 $('#spExpand').addEventListener('click', e => { S.supply.expandAll = !S.supply.expandAll; e.currentTarget.classList.toggle('is-on', S.supply.expandAll); renderSupply(); });
 $('#spGrid').addEventListener('click', e => {
+  const g = e.target.closest('[data-goto]');
+  if (g) { S.supply.q = g.dataset.goto; $('#spSearch').value = g.dataset.goto; return loadSupply(); }
+  const lf = e.target.closest('[data-life]');
+  if (lf) return openLifecycle(lf.dataset.life);
   const t = e.target.closest('[data-tog]');
   if (t) { const k = t.dataset.tog; S.supply.open[k] = !S.supply.open[k]; return renderSupply(); }
   const td = e.target.closest('td.wk[data-week]');
@@ -776,6 +839,42 @@ async function openWeek(sku, week) {
         <tr><td>Project commitment</td><td>${n0(d.sku?d.sku.project_orders:0)}</td></tr>
       </table>`);
   } catch (e) { toast(e.message, true); }
+}
+
+/** O planejador decide o ciclo de vida. O Cin7 só confirma depois — e
+    confirma tarde: os 2.743 Deprecated dele têm todos estoque zero. */
+async function openLifecycle(skuKey) {
+  const r = spData?.rows.find(x => x.sku_key === skuKey);
+  if (!r) return;
+  side(`${r.sku} · lifecycle`, `
+    <table class="brk">
+      <tr><td>Current</td><td>${esc(r.lifecycle_status||'ACTIVE')}</td></tr>
+      <tr><td>Cin7 says</td><td>${esc(r.cin7_status||'—')}</td></tr>
+      <tr><td>Replaced by</td><td>${esc(r.superseded_by)||'—'}</td></tr>
+      <tr><td>Stock on hand</td><td>${n0(r.soh)}</td></tr>
+      <tr><td>Wk/Avg typed</td><td>${n1(r.wk_avg_input != null ? r.wk_avg_input : r.wk_avg)}</td></tr>
+    </table>
+    ${r.lifecycle_note ? `<p class="sp-hint">${esc(r.lifecycle_note)}</p>` : ''}
+    <h4>Change it</h4>
+    <label class="sp-field"><span>Status</span><select id="lcStatus">
+      <option value="ACTIVE"${r.lifecycle_status==='ACTIVE'?' selected':''}>Active — buy normally</option>
+      <option value="RUN_OUT"${r.lifecycle_status==='RUN_OUT'?' selected':''}>Run-out — sell what is left, stop buying</option>
+      <option value="DISCONTINUED"${r.lifecycle_status==='DISCONTINUED'?' selected':''}>Discontinued — dead</option>
+    </select></label>
+    <label class="sp-field"><span>Replaced by</span><input id="lcSup" value="${esc(r.superseded_by)||''}" placeholder="SKU that takes over"></label>
+    <label class="sp-field"><span>Note</span><input id="lcNote" value="${esc(r.lifecycle_note)||''}" placeholder="Why"></label>
+    <button class="sp-btn is-primary" id="lcSave" data-sku="${esc(skuKey)}">Save</button>
+    <p class="sp-hint">Run-out keeps selling the stock down but never asks to buy again.
+    Discontinued also stops the weekly sale, so the balance stops decaying and the grid says
+    “this is what is left and it is not moving”. Neither hides the money — it stays in the stock value.</p>`);
+  $('#lcSave').onclick = async ev => {
+    try {
+      await api(`/skus/${encodeURIComponent(ev.currentTarget.dataset.sku)}/lifecycle`, { method:'PATCH',
+        body: JSON.stringify({ lifecycle_status: $('#lcStatus').value,
+          superseded_by: $('#lcSup').value.trim() || null, lifecycle_note: $('#lcNote').value.trim() || null }) });
+      toast('Lifecycle saved'); $('#side').classList.remove('is-on'); loadSupply();
+    } catch (e) { toast(e.message, true); }
+  };
 }
 
 /* ═══ PURCHASE ORDERS ═══════════════════════════════════════════════ */

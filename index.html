@@ -94,12 +94,33 @@
                         <a class="sb-item" href="features/logistics/open-orders.html">
                             <svg class="sb-ic"><use href="#i-list"/></svg><span class="t">Open Orders</span>
                         </a>
+                    </nav>
+
+                    <!-- Estoque estava partido em dois grupos: metade em Operations,
+                         metade atrás do PIN de Quality & Compliance, que virou o
+                         armário do que não coube. A ordem aqui segue o caminho
+                         físico de uma unidade pelo prédio: decide-se comprar →
+                         chega e é conferida → fica no overflow → repõe o pickface
+                         → segue para as filiais. Quem trabalha no armazém lê essa
+                         sequência sem precisar de legenda. -->
+                    <nav class="sb-group">
+                        <div class="sb-label">Inventory Management</div>
+                        <a class="sb-item" href="/planning">
+                            <svg class="sb-ic"><use href="#i-plan"/></svg><span class="t">Stock Planning</span>
+                        </a>
+                        <a class="sb-item" href="features/container-check/container-check.html">
+                            <svg class="sb-ic"><use href="#i-inbox"/></svg><span class="t">Container Check</span>
+                        </a>
+                        <a class="sb-item" href="gateway-main.html">
+                            <svg class="sb-ic"><use href="#i-factory"/></svg><span class="t">Gateway</span>
+                            <span id="syncBadgeGateway" class="sb-sync" style="display:none"></span>
+                        </a>
                         <a class="sb-item" href="restock-v2.html">
                             <svg class="sb-ic"><use href="#i-cycle"/></svg><span class="t">Re-Stock</span>
                             <span id="syncBadgeRestock" class="sb-sync" style="display:none"></span>
                         </a>
-                        <a class="sb-item" href="/planning">
-                            <svg class="sb-ic"><use href="#i-plan"/></svg><span class="t">Stock Planning</span>
+                        <a class="sb-item" href="features/replenishment/replenishment.html">
+                            <svg class="sb-ic"><use href="#i-truck"/></svg><span class="t">Branch Replenishment</span>
                         </a>
                     </nav>
 
@@ -139,18 +160,8 @@
                                 <svg class="sb-ic"><use href="#i-alert"/></svg><span class="t">Pick Anomalies</span>
                                 <span id="syncBadgePA" class="sb-sync" style="display:none"></span>
                             </a>
-                            <a class="sb-item" href="features/replenishment/replenishment.html">
-                                <svg class="sb-ic"><use href="#i-truck"/></svg><span class="t">Branch Replenishment</span>
-                            </a>
-                            <a class="sb-item" href="gateway-main.html">
-                                <svg class="sb-ic"><use href="#i-factory"/></svg><span class="t">Gateway</span>
-                                <span id="syncBadgeGateway" class="sb-sync" style="display:none"></span>
-                            </a>
                             <a class="sb-item" href="features/pick-productivity/pick-productivity.html">
                                 <svg class="sb-ic"><use href="#i-trend"/></svg><span class="t">Pick Productivity</span>
-                            </a>
-                            <a class="sb-item" href="features/container-check/container-check.html">
-                                <svg class="sb-ic"><use href="#i-inbox"/></svg><span class="t">Container Check</span>
                             </a>
                             <a class="sb-item" href="features/sync-monitor/sync-monitor.html">
                                 <svg class="sb-ic"><use href="#i-sync"/></svg><span class="t">Sync Monitor</span>
