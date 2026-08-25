@@ -386,6 +386,7 @@
         .ord-wh { color:#64748b; font-size:.82rem; white-space:nowrap; }
         .ord-status { display:inline-block; font-size:.72rem; font-weight:600; letter-spacing:.2px; color:#475569; }
         .ord-age { color:#64748b; font-weight:600; }
+        .ord-stagetime { font-size:.68rem; color:#8595ab; margin-top:2px; font-variant-numeric:tabular-nums; }
         .order-detail-row > td { background:#f8fafc; padding:0 16px 14px 38px; border-bottom:2px solid #e2e8f0; }
         .od-wrap { padding:12px 0; }
         .od-meta { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:.8rem; color:#475569; margin-bottom:10px; }

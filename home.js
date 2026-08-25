@@ -928,6 +928,7 @@
             _mountModalInFs('ordersModalOverlay');   // clickable on the wall when in fullscreen
             document.body.style.overflow = 'hidden';
             renderOrdersTable();
+            _loadStageTimes();   // fetch per-stage times, then re-render with them
         }
         // Show which flow stage the modal is scoped to (title chip)
         function _setOrdersModalScope() {
@@ -995,6 +996,38 @@
             _ordersStageFilter = 'all';  // manual type change clears the flow-tile scope
             _setOrdersModalScope();
             renderOrdersTable();
+        }
+
+        // Per-stage transition times (from cin7_mirror.order_stage_events). The order's CURRENT
+        // stage + when it entered it — shown AM/PM in the list.
+        const _CUR_DONE = ['COMPLETED', 'VOIDED', 'CLOSED', 'INVOICED'];
+        function _curStage(r) {
+            if (r.type !== 'SO' || _CUR_DONE.includes(r.status)) return null;
+            if (r.status === 'BACKORDERED') return 'backordered';
+            if (r.pack_status === 'PACKED') return 'packed';
+            if (r.pack_status === 'PACKING') return 'packing';
+            if (r.pick_status === 'PICKED') return 'picked';
+            if (r.pick_status === 'PICKING') return 'picking';
+            if (r.status === 'ORDERED') return 'ordered';
+            return null;
+        }
+        function _fmtStageTime(iso) {
+            if (!iso) return '';
+            const a = new Date(new Date(iso).getTime() + 10 * 3600000);   // AEST
+            let h = a.getUTCHours(); const ap = h < 12 ? 'am' : 'pm'; h = h % 12 || 12;
+            const t = `${h}:${String(a.getUTCMinutes()).padStart(2, '0')}${ap}`;
+            const day = a.toISOString().slice(0, 10);
+            const today = new Date(Date.now() + 10 * 3600000).toISOString().slice(0, 10);
+            return day === today ? t : `${day.slice(8, 10)}/${day.slice(5, 7)} ${t}`;
+        }
+        function _loadStageTimes() {
+            try {
+                const ids = [...new Set((window.__pipelineData || []).map(r => r.id).filter(Boolean))];
+                if (!ids.length || !window.supabase) return;
+                window.supabase.schema('cin7_mirror').from('order_stage_events').select('order_id,stage,at').in('order_id', ids)
+                    .then(({ data }) => { const m = {}; (data || []).forEach(e => { m[e.order_id + '|' + e.stage] = e.at; }); window.__stageAt = m; renderOrdersTable(); })
+                    .catch(() => {});
+            } catch (e) {}
         }
 
         function renderOrdersTable() {
@@ -1103,11 +1136,14 @@
                 const aged = !isCompleted && ageDays > 2;    // single neutral emphasis, no red
                 const dateCell = isCompleted ? fmtCompletedDate(r.completed_at)
                     : fmtDate(r.order_date) + (aged ? ` <span class="ord-age">· ${ageDays}d</span>` : '');
+                const cs = _curStage(r);
+                const stAt = (cs && window.__stageAt) ? window.__stageAt[r.id + '|' + cs] : null;
+                const stageCell = stAt ? `<div class="ord-stagetime">${cs} · ${_fmtStageTime(stAt)}</div>` : '';
                 return `<tr onclick="toggleOrderDetail('${r.id}', this)">
                     <td class="${numClass}"><span class="order-expand">›</span> ${numDisplay}</td>
                     <td class="ord-wh">${r.from_location || '—'}</td>
                     <td>${custOrLoc}</td>
-                    <td><span class="ord-status">${r.status || '—'}</span></td>
+                    <td><span class="ord-status">${r.status || '—'}</span>${stageCell}</td>
                     <td class="order-date">${dateCell}</td>
                 </tr>`;
             }).join('');

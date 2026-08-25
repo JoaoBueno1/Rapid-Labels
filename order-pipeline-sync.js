@@ -678,6 +678,50 @@ async function writeSyncRun(sb, startTime, status, rows, errors) {
   }
 }
 
+// Stamp the CURRENT stage of each active order into order_stage_events. UNIQUE(order_id,stage)
+// + ignoreDuplicates means each stage keeps the FIRST time the sync saw the order there — so
+// stage times build up accurate-to-the-hour going forward (webhooks can add minute accuracy
+// later). Best-effort: never fails the sync. SO only (the funnel is sales-orders).
+function _stageOf(r) {
+  const DONE = ['COMPLETED', 'VOIDED', 'CLOSED', 'INVOICED'];
+  if (r.type !== 'SO' || DONE.includes(r.status)) return null;
+  if (r.status === 'BACKORDERED') return 'backordered';
+  if (r.pack_status === 'PACKED') return 'packed';
+  if (r.pack_status === 'PACKING') return 'packing';
+  if (r.pick_status === 'PICKED') return 'picked';
+  if (r.pick_status === 'PICKING') return 'picking';
+  if (r.status === 'ORDERED') return 'ordered';
+  return null;
+}
+async function stampStageEvents(sb) {
+  if (FLAGS.dryRun) return;
+  try {
+    const nowIso = new Date().toISOString();
+    let rows = [], from = 0;
+    for (;;) {
+      const { data, error } = await sb.from('order_pipeline')
+        .select('id,number,type,from_location,status,pick_status,pack_status').range(from, from + 999);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      rows.push(...data);
+      if (data.length < 1000) break; from += 1000;
+    }
+    const events = [];
+    for (const r of rows) {
+      const stage = _stageOf(r);
+      if (stage) events.push({ order_id: r.id, order_number: r.number, order_type: r.type, warehouse: r.from_location, stage, at: nowIso, source: 'sync' });
+    }
+    let stamped = 0;
+    for (let i = 0; i < events.length; i += 500) {
+      const { error } = await sb.from('order_stage_events').upsert(events.slice(i, i + 500), { onConflict: 'order_id,stage', ignoreDuplicates: true });
+      if (!error) stamped += Math.min(500, events.length - i);
+    }
+    log('info', 'Stage events stamped', { candidates: events.length });
+  } catch (e) {
+    log('warn', 'stampStageEvents failed (non-fatal)', { error: e.message });
+  }
+}
+
 async function main() {
   const startTime = Date.now();
   callCount = 0; // Reset API call counter for each run
@@ -702,6 +746,8 @@ async function main() {
     const completed = await detectCompleted(sb, soResult.ids, trResult.ids);
 
     const cleaned = await cleanupCompleted(sb);
+
+    await stampStageEvents(sb);   // per-stage transition times (best-effort)
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     log('info', '═══ Order Pipeline Sync Complete ═══', {
