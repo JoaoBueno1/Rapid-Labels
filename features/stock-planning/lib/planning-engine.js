@@ -164,26 +164,26 @@ function buildAlerts(sku, projection, opts = {}) {
 
   if (summary.firstStockoutWeek) {
     push('PROJECTED_STOCKOUT', 'CRITICAL',
-      `Projeção fica negativa em ${summary.firstStockoutWeek} (${summary.minClosing})`,
+      `Runs out in the week ending ${summary.firstStockoutWeek} — down to ${summary.minClosing}`,
       { weekEnding: summary.firstStockoutWeek });
   }
   if (summary.sohNonPositive) {
     push('SOH_NON_POSITIVE', 'CRITICAL',
-      'Estoque disponível zerado ou negativo — no Excel este SKU não apareceria',
+      'Available stock is zero or negative — this SKU would not appear at all in the Excel',
       {});
   }
   if (!summary.firstStockoutWeek && summary.firstBelowTargetWeek) {
     push('BELOW_TARGET_COVER', 'HIGH',
-      `Cai abaixo da meta de cobertura (${summary.targetQty}) em ${summary.firstBelowTargetWeek}`,
+      `Drops below the ${summary.targetQty} target cover in the week ending ${summary.firstBelowTargetWeek}`,
       { weekEnding: summary.firstBelowTargetWeek });
   }
   if (summary.mthsStock != null && summary.mthsStock < 1) {
     push('BELOW_ONE_MONTH', 'HIGH',
-      `Cobertura de ${summary.mthsStock} meses — abaixo do limiar de recompra do Excel`, {});
+      `${summary.mthsStock} months of cover — under the one-month reorder line the Excel uses`, {});
   }
   if (summary.hasUndated) {
     push('UNDATED_DEMAND', 'MEDIUM',
-      `${summary.undatedQty} un. de demanda de projeto sem pick date`, {});
+      `${summary.undatedQty} units of project demand with no pick date`, {});
   }
 
   // PO que chega tarde demais: existe entrada depois da semana da ruptura.
@@ -191,7 +191,7 @@ function buildAlerts(sku, projection, opts = {}) {
     const late = rows.find((r) => r.incoming > 0 && r.weekEnding > summary.firstStockoutWeek);
     if (late) {
       push('PO_AFTER_STOCKOUT', 'HIGH',
-        `PO chega em ${late.weekEnding}, depois da ruptura prevista em ${summary.firstStockoutWeek}`,
+        `PO lands ${late.weekEnding}, after the stockout in ${summary.firstStockoutWeek}`,
         { weekEnding: late.weekEnding });
     }
   }
@@ -202,7 +202,7 @@ function buildAlerts(sku, projection, opts = {}) {
     for (const r of rows) {
       if (r.projectDraws > limit) {
         push('LARGE_DRAW', 'MEDIUM',
-          `Draw de ${r.projectDraws} un. em ${r.weekEnding} — mais de ${largeDrawFactor}× a média semanal`,
+          `Draw of ${r.projectDraws} in ${r.weekEnding} — over ${largeDrawFactor}× the weekly average`,
           { weekEnding: r.weekEnding });
         break;
       }
@@ -213,7 +213,7 @@ function buildAlerts(sku, projection, opts = {}) {
   // atrás de hoje é o normal. Só avisa quando atrasou de verdade.
   if (todayWeek && rows.length && weeksBehind(rows[0].weekEnding, todayWeek) > 1) {
     push('STALE_REPORTING_WEEK', 'MEDIUM',
-      `Semana de reporte é ${rows[0].weekEnding}; hoje já é ${todayWeek}. Rolar o planejamento.`, {});
+      `Reporting week is still ${rows[0].weekEnding}; today is ${todayWeek}. Roll the planning week.`, {});
   }
 
   return out.sort((a, b) => b.rank - a.rank);

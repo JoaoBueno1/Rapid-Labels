@@ -21,11 +21,18 @@
 
 :root{
   /* shell — do app */
-  --bg:#f4f6f9; --card:#fff; --card-2:#f9fbfd;
-  --ink:#1a2230; --ink-2:#3c4a5e;
-  --mut:#5b6b86; --mut-2:#7a8aa2; --mut-3:#8a97ab;
-  --line:#e2e7ef; --line-2:#d3dae6;
-  --acc:#0aa5e6; --acc-d:#0893cc; --acc-soft:#e7f6fd;
+  /* Mesma identidade do app, com mais peso. O tema Returns é muito lavado
+     para uma grade densa: linha some, cabeçalho não segura a coluna e o
+     texto secundário desaparece. Fundo mais fechado, linhas visíveis,
+     cinzas um degrau mais escuros. */
+  --bg:#e9edf3; --card:#fff; --card-2:#f2f5f9;
+  --ink:#141c29; --ink-2:#33405420;
+  --ink-2:#334054;
+  --mut:#4d5d76; --mut-2:#68788f; --mut-3:#8090a5;
+  --line:#dbe1ea; --line-2:#c3ccda; --line-3:#aab6c7;
+  --acc:#0d8fca; --acc-d:#0a769f; --acc-soft:#e2f2fb;
+  --head:#e4eaf2;   /* cabeçalho de grade */
+  --zebra:#fafbfd;
 
   /* ── células — extraídas do próprio workbook (xl/styles.xml) ──────────
      Não são aproximações: são os fills que o time olha todo dia. */
@@ -62,7 +69,7 @@
   --in:#0b6b7d;
   --dr:#0aa5e6;
 
-  --row:26px;
+  --row:24px;
   --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
 }
@@ -77,7 +84,7 @@ button{cursor:pointer}
 .mono,.num,td.n,th.n{font-family:var(--mono);font-feature-settings:'tnum';font-variant-numeric:tabular-nums}
 
 /* ── header ─────────────────────────────────────────────────────────── */
-.sp-header{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40;flex:none}
+.sp-header{background:#fff;border-bottom:1px solid var(--line-3);position:sticky;top:0;z-index:40;flex:none;box-shadow:0 1px 3px rgba(20,28,41,.05)}
 .sp-header-inner{max-width:1620px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:9px 22px}
 .sp-back{color:var(--mut);text-decoration:none;font-size:13px;white-space:nowrap}
 .sp-back:hover{color:var(--ink)}
@@ -105,6 +112,7 @@ button{cursor:pointer}
 .sp-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding-bottom:11px;flex:none}
 .sp-bar input[type=search],.sp-bar input[type=text],.sp-bar select{
   padding:6px 10px;border:1px solid var(--line-2);border-radius:7px;background:#fff;color:var(--ink)}
+.sp-bar input::placeholder{color:var(--mut-3)}
 .sp-bar input[type=search]{min-width:300px}
 .sp-gap{margin-left:auto}
 .sp-count{font-family:var(--mono);font-size:12px;color:var(--mut-3);white-space:nowrap}
@@ -121,7 +129,7 @@ button{cursor:pointer}
 .sp-chip:hover{border-color:#c3cdda;color:var(--ink)}
 .sp-chip.is-on{background:var(--acc-soft);border-color:var(--acc);color:var(--acc-d);font-weight:600}
 
-.sp-scroll{flex:1;min-height:0;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:9px}
+.sp-scroll{flex:1;min-height:0;overflow:auto;background:#fff;border:1px solid var(--line-2);border-radius:9px;box-shadow:0 1px 2px rgba(20,28,41,.04)}
 .sp-loading{padding:44px;text-align:center;color:var(--mut-3)}
 .sp-empty{padding:34px;text-align:center;color:var(--mut-3)}
 
@@ -139,12 +147,17 @@ button{cursor:pointer}
 
 /* ── grade ──────────────────────────────────────────────────────────── */
 table.sp-grid{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
-.sp-grid th{position:sticky;top:0;z-index:3;background:var(--card-2);text-align:left;
-  font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut-2);
-  padding:8px 9px;border-bottom:1px solid var(--line-2);white-space:nowrap;user-select:none}
+.sp-grid th{position:sticky;top:0;z-index:3;background:var(--head);text-align:left;
+  font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);
+  padding:7px 9px;border-bottom:1px solid var(--line-3);white-space:nowrap;user-select:none}
 .sp-grid th.srt{cursor:pointer}.sp-grid th.srt:hover{color:var(--ink)}
 .sp-grid td{padding:0 9px;height:var(--row);border-bottom:1px solid var(--line);
   white-space:nowrap;color:var(--ink-2)}
+/* Zebra ajuda a percorrer a linha na horizontal, mas não pode cobrir o
+   estado da linha nem a faixa de pedido — que carregam significado. */
+.sp-grid tbody tr.sp-ln:nth-child(even) td{background:var(--zebra)}
+.sp-grid tbody tr.sp-ln.st-closed:nth-child(even) td{background:var(--xl-closed)}
+.sp-grid tbody tr.sp-ln.st-held:nth-child(even) td{background:var(--xl-held)}
 .sp-grid td.n,.sp-grid th.n{text-align:right}
 .sp-grid td.clip{max-width:1px;overflow:hidden;text-overflow:ellipsis}
 .sp-grid .em{color:var(--ink);font-weight:600}
@@ -171,11 +184,11 @@ tr.sp-filters.hide{display:none}
 /* ── Projects: bloco por pedido ─────────────────────────────────────── */
 /* Cada tbody é um sales order. É a separação que o Excel não conseguia dar,
    e é o que tira as cinco colunas repetidas de cima da grade. */
-.sp-projects tbody{border-top:2px solid var(--xl-rule)}
+.sp-projects tbody{border-top:3px solid #7a97cc}
 .sp-projects tbody:first-of-type{border-top:0}
-tr.sp-ord td{background:#eef3fa;height:29px;padding:0 10px;border-bottom:1px solid var(--line-2);
-  position:sticky;top:29px;z-index:2}
-tr.sp-ord.flt td{top:57px}
+tr.sp-ord td{background:#dde6f2;height:28px;padding:0 10px;border-bottom:1px solid var(--line-3);
+  border-top:1px solid var(--line-3);position:sticky;top:28px;z-index:2}
+tr.sp-ord.flt td{top:56px}
 .sp-ord-in{display:flex;align-items:center;gap:11px;font-size:12.5px}
 .sp-ord-in .so{font:600 13px var(--mono);color:var(--ink)}
 .sp-ord-in .cu{font-weight:600;color:var(--ink)}
@@ -226,7 +239,7 @@ tr.sp-draw-row td{background:#f7faff;padding:9px 12px;white-space:normal;
 /* ── Supply Planning ────────────────────────────────────────────────── */
 /* Bloco de 5 linhas por SKU, como a aba de fornecedor do Excel.
    Colapsado mostra só o fechamento; expandido mostra a conta inteira. */
-.sp-supply tbody{border-top:2px solid var(--xl-rule)}
+.sp-supply tbody{border-top:2px solid #7a97cc}
 .sp-supply tbody:first-of-type{border-top:0}
 .sp-supply td.wk{text-align:right;font-family:var(--mono);font-size:11.5px;cursor:pointer;
   border-left:1px solid var(--line);min-width:56px;font-variant-numeric:tabular-nums}
@@ -245,7 +258,7 @@ td.wk.has-in{box-shadow:inset 0 2px 0 var(--in)}
 td.wk.has-dr{box-shadow:inset 0 -2px 0 var(--dr)}
 td.wk.has-in.has-dr{box-shadow:inset 0 2px 0 var(--in),inset 0 -2px 0 var(--dr)}
 
-tr.sk td{background:#eef3fa;height:27px;border-bottom:1px solid var(--line-2)}
+tr.sk td{background:#dde6f2;height:26px;border-bottom:1px solid var(--line-3)}
 tr.sk td.wk{background:#fff;font-weight:700;color:var(--ink)}
 tr.sk .tog{border:0;background:none;color:var(--mut);font:600 11px var(--mono);padding:0 5px 0 0}
 tr.sk .tog:hover{color:var(--acc)}
@@ -265,7 +278,7 @@ tr.wrk.close td.wk{color:var(--ink);font-weight:600}
 #ovBody{flex:1;min-height:0;overflow:auto;padding-bottom:20px}
 
 .sp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:10px;margin-bottom:16px}
-.sp-tile{background:#fff;border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+.sp-tile{background:#fff;border:1px solid var(--line-2);border-radius:9px;padding:12px 14px;box-shadow:0 1px 2px rgba(20,28,41,.04)}
 .sp-tile.bad{border-left:3px solid var(--xl-bad-ink)}
 .sp-tile.warn{border-left:3px solid var(--xl-warn-ink)}
 .sp-tile.good{border-left:3px solid var(--xl-good-ink)}
@@ -274,14 +287,14 @@ tr.wrk.close td.wk{color:var(--ink);font-weight:600}
 .sp-tile em{display:block;font-style:normal;font-size:12px;font-weight:600;color:var(--ink);margin-top:7px}
 .sp-tile small{display:block;color:var(--mut-2);font-size:11.5px;line-height:1.35;margin-top:2px}
 
-.sp-panel{background:#fff;border:1px solid var(--line);border-radius:9px;margin-bottom:14px;overflow:hidden}
-.sp-panel > h4{margin:0;padding:10px 14px;border-bottom:1px solid var(--line);font-size:12px;
+.sp-panel{background:#fff;border:1px solid var(--line-2);border-radius:9px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(20,28,41,.04)}
+.sp-panel > h4{margin:0;padding:10px 14px;border-bottom:1px solid var(--line-2);background:var(--card-2);font-size:12px;
   font-weight:600;color:var(--ink);display:flex;align-items:center;gap:9px}
 .sp-panel > h4 span{font-weight:400;color:var(--mut-2);font-size:11.5px}
 .sp-panel .in{padding:13px 14px}
 .sp-panel table{width:100%;border-collapse:collapse;font-size:12.5px}
 .sp-panel th{text-align:left;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
-  color:var(--mut-2);padding:7px 14px;border-bottom:1px solid var(--line);background:var(--card-2)}
+  color:var(--mut);padding:7px 14px;border-bottom:1px solid var(--line-3);background:var(--head)}
 .sp-panel td{padding:6px 14px;border-bottom:1px solid var(--line);color:var(--ink-2)}
 .sp-panel tr:last-child td{border-bottom:0}
 .sp-panel td.n,.sp-panel th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -434,3 +447,26 @@ th.blk-branch,td.blk-branch{background:var(--xl-branch)}
 /* as duas regras condicionais que valem dinheiro */
 td.rule-over{background:var(--xl-bad);color:var(--xl-bad-ink);font-weight:600}   /* Mths Stock > 4 */
 td.rule-thin{background:var(--xl-warn);color:var(--xl-warn-ink);font-weight:600} /* < 6 semanas */
+
+/* ── alertas: o SKU com os números que geraram o alerta ─────────────── */
+tr.al-row td{border-bottom:1px solid var(--line);padding:0}
+tr.al-row:hover td{background:var(--card-2)}
+.al-head{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+.al-sku{font:600 13px var(--mono);color:var(--ink)}
+.al-sup{font-size:11.5px;color:var(--mut-2);background:var(--card-2);border:1px solid var(--line);
+  border-radius:4px;padding:1px 6px}
+.al-msgs{display:flex;gap:5px;flex-wrap:wrap;flex:1}
+.al-tag{font-size:11px;color:var(--mut);background:#fff;border:1px solid var(--line-2);border-radius:4px;padding:1px 7px}
+.al-go{margin-left:auto}
+.al-go .sp-btn{font-size:11.5px;padding:3px 10px}
+.al-why{font-size:11.5px;color:var(--mut-2);margin-top:6px}
+.alf{display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:#fff}
+.alf-i{display:flex;flex-direction:column;gap:1px;padding:6px 12px;border-right:1px solid var(--line);flex:1 1 auto;min-width:104px}
+.alf-i:last-child{border-right:0}
+.alf-i em{font-style:normal;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut-3);font-weight:700}
+.alf-i b{font:600 12.5px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.alf-i b.bad{color:var(--xl-bad-ink)}
+.alf-i b.warn{color:var(--xl-warn-ink)}
+.alf-i b.good{color:var(--xl-good-ink)}
+.sp-tile.is-on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
+.sp-panel > h4 button{font-weight:500}

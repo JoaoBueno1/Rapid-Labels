@@ -543,7 +543,10 @@ function register(app) {
     const engineWeeks = weeks.map((wk, i) => ({ weekEnding: wk.week_ending, factor: Number(wk.factor), isReporting: i === 0 }));
     const today = weekEnding(new Date());
 
+    // Cada SKU alertado volta com os NÚMEROS que geraram o alerta. Sem isso a
+    // tela obriga a sair dela para decidir qualquer coisa — que era o problema.
     const all = [];
+    const bySku = new Map();
     for (const s of skus) {
       const proj = projectSku({
         weeks: engineWeeks, soh: Number(s.soh_available),
@@ -552,13 +555,43 @@ function register(app) {
         undatedQty: Number(s.undated_qty || 0), targetCoverWeeks: s.target_cover_weeks || 7,
         projectOrders: Number(s.project_orders || 0),
       });
-      for (const a of buildAlerts(s.sku, proj, { todayWeek: today }))
-        all.push({ ...a, supplier: s.supplier_code, soh: Number(s.soh_available), wk_avg: s.wk_avg });
+      const list = buildAlerts(s.sku, proj, { todayWeek: today });
+      if (!list.length) continue;
+      const facts = {
+        sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code,
+        soh: Number(s.soh_available), wk_avg: s.wk_avg == null ? null : Number(s.wk_avg),
+        target_cover_weeks: s.target_cover_weeks, target_qty: proj.summary.targetQty,
+        mths_stock: proj.summary.mthsStock, undated: proj.summary.undatedQty,
+        incoming: proj.summary.totalIncoming, draws: proj.summary.totalDraws,
+        first_stockout: proj.summary.firstStockoutWeek, weeks_to_stockout: proj.summary.weeksToStockout,
+        min_closing: proj.summary.minClosing, closing_at_horizon: proj.summary.closingAtHorizon,
+        project_orders: Number(s.project_orders || 0),
+        main_soh: Number(s.main_soh || 0), gateway_soh: Number(s.gateway_soh || 0),
+        // A primeira semana com PO chegando: é a resposta para "e se eu esperar?"
+        next_incoming: (proj.rows.find((r) => r.weekIndex > 0 && r.incoming > 0) || {}).weekEnding || null,
+        next_incoming_qty: (proj.rows.find((r) => r.weekIndex > 0 && r.incoming > 0) || {}).incoming || 0,
+      };
+      bySku.set(s.sku_key, { ...facts, rank: Math.max(...list.map((a) => a.rank)), alerts: list });
+      for (const a of list) all.push({ ...a, supplier: s.supplier_code, soh: facts.soh, wk_avg: facts.wk_avg });
     }
     all.sort((a, b) => b.rank - a.rank || a.sku.localeCompare(b.sku));
+    const skuList = [...bySku.values()].sort((a, b) =>
+      b.rank - a.rank || b.alerts.length - a.alerts.length || (a.weeks_to_stockout ?? 99) - (b.weeks_to_stockout ?? 99));
     const bySeverity = all.reduce((m, a) => { m[a.severity] = (m[a.severity] || 0) + 1; return m; }, {});
     const byCode = all.reduce((m, a) => { m[a.code] = (m[a.code] || 0) + 1; return m; }, {});
-    res.json({ total: all.length, bySeverity, byCode, alerts: all.slice(0, asInt(req.query.limit, 300, 1, 2000)) });
+    const bySupplier = {};
+    for (const s of skuList) {
+      const k = s.supplier || '—';
+      bySupplier[k] = bySupplier[k] || { supplier: k, skus: 0, alerts: 0, critical: 0, value_at_risk: 0 };
+      bySupplier[k].skus++; bySupplier[k].alerts += s.alerts.length;
+      bySupplier[k].critical += s.alerts.filter((a) => a.severity === 'CRITICAL').length;
+    }
+    res.json({
+      total: all.length, skus: skuList.length, bySeverity, byCode,
+      bySupplier: Object.values(bySupplier).sort((a, b) => b.critical - a.critical || b.skus - a.skus),
+      alerts: all.slice(0, asInt(req.query.limit, 400, 1, 2000)),
+      skuList: skuList.slice(0, asInt(req.query.limit, 400, 1, 2000)),
+    });
   }));
 
   // ── Auditoria ───────────────────────────────────────────────────────

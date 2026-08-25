@@ -118,7 +118,12 @@
 <section class="sp-view" data-view="alerts">
   <div class="sp-bar">
     <select id="alSupplier"><option value="">All suppliers</option></select>
+    <select id="alCode"><option value="">All exception types</option></select>
+    <button class="sp-chip is-on" data-grp="sku">By SKU</button>
+    <button class="sp-chip" data-grp="supplier">By supplier</button>
+    <button class="sp-chip" data-grp="flat">Every alert</button>
     <span class="sp-gap"></span>
+    <button class="sp-chip" id="alCrit">Critical only</button>
     <span class="sp-count" id="alCount"></span>
   </div>
   <div id="alBody"><div class="sp-loading">Loading…</div></div>

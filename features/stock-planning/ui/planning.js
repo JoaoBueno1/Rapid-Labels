@@ -887,38 +887,142 @@ async function openAllocation(id) {
   } catch (e) { toast(e.message, true); }
 }
 
-/* ═══ ALERTS ════════════════════════════════════════════════════════ */
+/* ═══ ALERTS ═══════════════════════════════════════════════════════
+   Uma lista de mensagens obriga a sair da tela para decidir qualquer coisa.
+   Aqui cada SKU alertado traz os números que geraram o alerta — estoque,
+   média, cobertura, quando rompe, o que já vem chegando e quando. Dá para
+   decidir sem abrir outra aba. */
 const AL = {
-  PROJECTED_STOCKOUT:'Projection goes negative',
-  SOH_NON_POSITIVE:'Zero or negative stock — invisible in the Excel',
-  BELOW_TARGET_COVER:'Below target cover',
+  PROJECTED_STOCKOUT:'Runs out inside the horizon',
+  SOH_NON_POSITIVE:'Zero or negative stock',
+  BELOW_TARGET_COVER:'Drops below target cover',
   BELOW_ONE_MONTH:'Under one month of cover',
   UNDATED_DEMAND:'Project demand with no pick date',
   PO_AFTER_STOCKOUT:'PO lands after the stockout',
   LARGE_DRAW:'Draw far above this SKU’s pattern',
   STALE_REPORTING_WEEK:'Reporting week is behind',
 };
+let alData = null;
+S.alerts.group = 'sku'; S.alerts.code = ''; S.alerts.crit = false;
+
 async function loadAlerts() {
-  const qs = new URLSearchParams({ limit:400 });
+  const qs = new URLSearchParams({ limit:600 });
   if (S.alerts.supplier) qs.set('supplier', S.alerts.supplier);
   $('#alBody').innerHTML = '<div class="sp-loading">Calculating…</div>';
   try {
-    const d = await api('/alerts?' + qs);
-    const pip = $('#pipAlerts');
-    const crit = d.bySeverity.CRITICAL || 0;
-    pip.textContent = n0(crit); pip.classList.toggle('on', crit > 0);
-    $('#alCount').textContent = `${n0(d.total)} exceptions`;
-    $('#alBody').innerHTML = `
-      <div class="sp-tiles">${Object.entries(d.byCode).sort((a,b)=>b[1]-a[1]).map(([c,n])=>
-        tile(n0(n), AL[c]||c, '', c==='PROJECTED_STOCKOUT'||c==='SOH_NON_POSITIVE' ? 'bad' : '')).join('')}</div>
-      <div class="sp-panel">${d.alerts.map(a=>`<div class="al">
-        <span class="sv sv-${a.severity}">${a.severity}</span>
-        <span class="k" data-sku="${esc(a.sku)}" data-sup="${esc(a.supplier||'')}">${esc(a.sku)}</span>
-        <span class="m">${esc(a.message)}</span></div>`).join('') || '<div class="sp-empty">No exceptions.</div>'}</div>`;
-    $('#alBody').onclick = e => { const k = e.target.closest('.k'); if (k) jumpSupply(k.dataset.sup, k.dataset.sku); };
+    alData = await api('/alerts?' + qs);
+    const crit = alData.bySeverity.CRITICAL || 0;
+    const pip = $('#pipAlerts'); pip.textContent = n0(crit); pip.classList.toggle('on', crit > 0);
+    const sel = $('#alCode');
+    if (sel.options.length <= 1) sel.innerHTML = '<option value="">All exception types</option>' +
+      Object.entries(alData.byCode).sort((a,b)=>b[1]-a[1])
+        .map(([c,n])=>`<option value="${c}">${esc(AL[c]||c)} (${n})</option>`).join('');
+    renderAlerts();
   } catch (e) { $('#alBody').innerHTML = `<div class="sp-empty">${esc(e.message)}</div>`; }
 }
+
+function alFilter(list) {
+  return list.filter(s => {
+    const keep = s.alerts.filter(a =>
+      (!S.alerts.code || a.code === S.alerts.code) && (!S.alerts.crit || a.severity === 'CRITICAL'));
+    if (!keep.length) return false;
+    s._shown = keep; return true;
+  });
+}
+
+/** A linha de fatos: é ela que evita ter de abrir outra tela. */
+function alFacts(s) {
+  const bits = [
+    ['Stock', n0(s.soh), s.soh <= 0 ? 'bad' : ''],
+    ['Wk/Avg', s.wk_avg == null ? '—' : n1(s.wk_avg), ''],
+    ['Cover', s.mths_stock == null ? '—' : n1(s.mths_stock) + ' mth', s.mths_stock != null && s.mths_stock < 1 ? 'bad' : ''],
+    ['Target', s.target_qty == null ? '—' : n0(s.target_qty), ''],
+    ['Runs out', s.first_stockout ? `${d10(s.first_stockout)} (+${s.weeks_to_stockout}w)` : 'not in horizon', s.first_stockout ? 'bad' : 'good'],
+    ['Low point', s.min_closing == null ? '—' : n0(s.min_closing), s.min_closing < 0 ? 'bad' : ''],
+    ['Next PO', s.next_incoming ? `${n0(s.next_incoming_qty)} on ${d10(s.next_incoming)}` : 'none booked', s.next_incoming ? '' : 'bad'],
+    ['Draws', n0(s.draws) + (s.undated ? ` (+${n0(s.undated)} TBA)` : ''), s.undated ? 'warn' : ''],
+    ['Main / Gateway', `${n0(s.main_soh)} / ${n0(s.gateway_soh)}`, ''],
+  ];
+  return `<div class="alf">${bits.map(([k,v,t])=>
+    `<span class="alf-i"><em>${k}</em><b class="${t}">${v}</b></span>`).join('')}</div>`;
+}
+
+function renderAlerts() {
+  const g = S.alerts.group;
+  if (g === 'flat') {
+    const rows = alData.alerts.filter(a =>
+      (!S.alerts.code || a.code === S.alerts.code) && (!S.alerts.crit || a.severity === 'CRITICAL'));
+    $('#alCount').textContent = `${n0(rows.length)} alerts`;
+    $('#alBody').innerHTML = alTiles() + `<div class="sp-panel">${rows.map(a=>`<div class="al">
+      <span class="sv sv-${a.severity}">${a.severity}</span>
+      <span class="k" data-sku="${esc(a.sku)}" data-sup="${esc(a.supplier||'')}">${esc(a.sku)}</span>
+      <span class="m">${esc(a.message)}</span></div>`).join('') || '<div class="sp-empty">Nothing matches.</div>'}</div>`;
+  } else if (g === 'supplier') {
+    const skus = alFilter(alData.skuList);
+    const by = new Map();
+    for (const s of skus) {
+      const k = s.supplier || '—';
+      if (!by.has(k)) by.set(k, { supplier:k, skus:[], critical:0, alerts:0, stockout:0 });
+      const b = by.get(k); b.skus.push(s); b.alerts += s._shown.length;
+      b.critical += s._shown.filter(a=>a.severity==='CRITICAL').length;
+      if (s.first_stockout) b.stockout++;
+    }
+    const list = [...by.values()].sort((a,b)=>b.critical-a.critical||b.skus.length-a.skus.length);
+    $('#alCount').textContent = `${n0(skus.length)} SKUs across ${list.length} suppliers`;
+    $('#alBody').innerHTML = alTiles() + list.map(b=>`
+      <div class="sp-panel">
+        <h4>${esc(b.supplier)}
+          <span>${b.skus.length} SKUs · ${b.alerts} exceptions${b.critical?` · ${b.critical} critical`:''}${b.stockout?` · ${b.stockout} run out in the horizon`:''}</span>
+          <button class="sp-btn" style="margin-left:auto;font-size:11.5px;padding:3px 9px" data-sup-open="${esc(b.supplier)}">Open in planning</button>
+        </h4>
+        <table><tbody>${b.skus.slice(0,40).map(s=>alSkuRow(s)).join('')}</tbody></table>
+        ${b.skus.length>40?`<div class="in" style="color:var(--mut-3);font-size:12px">…and ${b.skus.length-40} more</div>`:''}
+      </div>`).join('');
+  } else {
+    const skus = alFilter(alData.skuList);
+    $('#alCount').textContent = `${n0(skus.length)} SKUs · ${n0(skus.reduce((n,s)=>n+s._shown.length,0))} exceptions`;
+    $('#alBody').innerHTML = alTiles() +
+      `<div class="sp-panel"><table><tbody>${skus.slice(0,200).map(s=>alSkuRow(s)).join('')}</tbody></table>
+       ${skus.length>200?`<div class="in" style="color:var(--mut-3);font-size:12px">…and ${skus.length-200} more. Narrow with the filters above.</div>`:''}</div>`;
+  }
+}
+function alSkuRow(s) {
+  const worst = s._shown[0];
+  return `<tr class="al-row" data-sku="${esc(s.sku_key)}" data-sup="${esc(s.supplier||'')}">
+    <td style="width:100%;padding:9px 14px">
+      <div class="al-head">
+        <span class="sv sv-${worst.severity}">${worst.severity}</span>
+        <span class="al-sku">${esc(s.sku)}</span>
+        <span class="al-sup">${esc(s.supplier||'')}</span>
+        <span class="al-msgs">${s._shown.map(a=>`<span class="al-tag" title="${esc(a.message)}">${esc(AL[a.code]||a.code)}</span>`).join('')}</span>
+        <span class="al-go"><button class="sp-btn" data-open="1">Open week grid</button></span>
+      </div>
+      ${alFacts(s)}
+      <div class="al-why">${s._shown.map(a=>esc(a.message)).join(' · ')}</div>
+    </td></tr>`;
+}
+function alTiles() {
+  return `<div class="sp-tiles">${Object.entries(alData.byCode).sort((a,b)=>b[1]-a[1]).map(([c,n])=>
+    `<div class="sp-tile ${c==='PROJECTED_STOCKOUT'||c==='SOH_NON_POSITIVE'?'bad':''} ${S.alerts.code===c?'is-on':''}"
+       data-code="${c}" style="cursor:pointer"><b>${n0(n)}</b><em>${esc(AL[c]||c)}</em>
+       <small>${S.alerts.code===c?'filtering — click to clear':'click to filter'}</small></div>`).join('')}</div>`;
+}
 $('#alSupplier').addEventListener('change', e => { S.alerts.supplier = e.target.value; loadAlerts(); });
+$('#alCode').addEventListener('change', e => { S.alerts.code = e.target.value; renderAlerts(); });
+$('#alCrit').addEventListener('click', e => { S.alerts.crit = !S.alerts.crit; e.currentTarget.classList.toggle('is-on', S.alerts.crit); renderAlerts(); });
+$$('.sp-view[data-view=alerts] .sp-chip[data-grp]').forEach(c => c.addEventListener('click', () => {
+  S.alerts.group = c.dataset.grp;
+  $$('.sp-view[data-view=alerts] .sp-chip[data-grp]').forEach(x => x.classList.toggle('is-on', x === c));
+  renderAlerts();
+}));
+$('#alBody').addEventListener('click', e => {
+  const t = e.target.closest('[data-code]');
+  if (t) { S.alerts.code = S.alerts.code === t.dataset.code ? '' : t.dataset.code; $('#alCode').value = S.alerts.code; return renderAlerts(); }
+  const so = e.target.closest('[data-sup-open]');
+  if (so) return jumpSupply(so.dataset.supOpen, '');
+  const row = e.target.closest('[data-sku]');
+  if (row) return jumpSupply(row.dataset.sup, row.dataset.sku);
+});
 
 /* ═══ IMPORT SALES ORDER ════════════════════════════════════════════ */
 let soPick = null;
