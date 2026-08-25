@@ -131,17 +131,20 @@ Isso vira base de decisão pra empresa: onde tá o gargalo (por site/estágio), 
 
 ## 7. Decisões a confirmar (reconfirme tudo)
 
-| # | Decisão | Default proposto |
-|---|---|---|
-| D1 | Cutoff de expedição (relógio) | 14h AEST |
-| D2 | Threshold "pick atrasado" | > 2 dias úteis |
-| D3 | Threshold "pack backlog" | > 4h após PICKED |
-| D4 | Armazéns na Faixa A | todos com dado (10) |
-| D5 | Base do aging (sem due date real até Fase 2) | dias desde `order_date`, rotulado como tal (NÃO chamar de SLA) |
-| D6 | Agendador primário do sync | GitHub cron; server atrás de env flag |
-| D7 | Alvo de freshness do funil | webhook ~1min (Fase 2); interino poll 60s |
-| D8 | Canal de alerta (Fase 3) | a definir (e-mail? Slack?) |
-| D9 | Modal: ênfase de "muito antigo" | 1 tom neutro de ênfase, sem paleta semântica |
+| # | Decisão | Valor | Status |
+|---|---|---|---|
+| D1 | Cutoff de expedição (relógio) | **17h AEST** | ✅ confirmado |
+| D2 | Threshold "pick atrasado" | **> 2 dias** | ✅ confirmado |
+| D3 | Threshold "pack backlog" | **> 4h após PICKED** | ✅ confirmado |
+| D4 | Armazéns na Faixa A | **todos (10)** | ✅ confirmado |
+| D10 | **Foco do dashboard** | **Main por padrão + seletor de armazém** ("Todos" = rede) | ✅ confirmado |
+| D9 | Modal | **padrão de mercado, sem cor exagerada, sem emoji, simples e completo** | ✅ confirmado |
+| D5 | Base do aging (sem due date real até Fase 2) | dias desde `order_date`, rotulado como tal (NÃO chamar de SLA) | default |
+| D6 | Agendador primário do sync | GitHub cron; server atrás de env flag | default |
+| D7 | Alvo de freshness do funil | webhook ~1min (Fase 2); interino poll 60s | default |
+| D8 | Canal de alerta (Fase 3) | a definir (e-mail? Slack?) | aberto |
+
+**D10 — seletor de armazém (UX primária do dashboard):** o board **abre focado no Main** (primeiro a usar, pedidos normais). Um **seletor** no topo (segmented/dropdown) troca o foco pra qualquer armazém; opção **"Todos"** mostra o roll-up de rede. As métricas de scanner (accuracy, completed-today, operador) só aparecem quando **Main** está selecionado — nos outros, "sem scanner".
 
 ---
 

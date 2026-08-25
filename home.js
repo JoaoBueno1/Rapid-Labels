@@ -299,17 +299,24 @@
                             from += 1000;
                         }
                         const MAIN_WH = 'Main Warehouse';
-                        const mainPipeline = pipeline.filter(r => r.from_location === MAIN_WH);
-                        window.__pipelineData = mainPipeline;
+                        // Focus warehouse — the board opens on Main; the selector re-scopes it to any
+                        // site, or '__all__' for the whole network. Scanner metrics stay Main-only.
+                        const focus = window.__whFocus || MAIN_WH;
+                        const isAll = focus === '__all__';
+                        const onMain = focus === MAIN_WH;
+                        const scoped = isAll ? pipeline : pipeline.filter(r => r.from_location === focus);
+                        window.__pipelineData = scoped;                 // the orders modal reads the focused scope
                         window.__transferData = pipeline.filter(r => r.type === 'TR');
+                        window.__whFocusValue = focus;
+                        populateWhSelector(pipeline, focus);            // build the selector once, from the data
 
-                        // ── Flow stages: SALES ORDERS @ Main Warehouse ONLY, one stage per order ──
+                        // ── Flow stages: SALES ORDERS for the focused warehouse, one stage per order ──
                         // Cin7 keeps status='ORDERED' even after pick/pack, so we drive the stages off
                         // pick_status/pack_status (not status) to avoid the same order landing in two
                         // tiles. Transfers (TR) are NOT in the SO flow — they live in the footer.
                         const _completedStatuses = ['COMPLETED','VOIDED','CLOSED','INVOICED'];
-                        const soMain  = mainPipeline.filter(r => r.type === 'SO');
-                        const openSO  = soMain.filter(r => !_completedStatuses.includes(r.status));
+                        const soFocus = scoped.filter(r => r.type === 'SO');
+                        const openSO  = soFocus.filter(r => !_completedStatuses.includes(r.status));
                         const isPicking = r => r.pick_status === 'PICKING';
                         const isPicked  = r => r.pick_status === 'PICKED';
                         const isPacked  = r => r.pack_status === 'PACKED';
@@ -334,20 +341,24 @@
                         // its completed_at was the SYNC time (not the real completion time) AND
                         // its sync lags (last run can be a day old). fulfilled_date is webhook-fed
                         // and fresh within ~1min.
+                        // Completed today is SCANNER data (Main only). For any other focus we cannot
+                        // honestly count real-time ships, so show a dash instead of a misleading 0.
                         const aestTodayKey = new Date(Date.now() + 10 * 3600000).toISOString().slice(0, 10);
                         let completedToday = 0;
-                        try {
-                            const { count } = await sb.from('pick_anomaly_orders')
-                                .select('*', { count: 'exact', head: true })
-                                .eq('entity_type', 'sale').eq('fulfilled_date', aestTodayKey);
-                            completedToday = count || 0;
-                        } catch (e) { /* leave 0 on error */ }
+                        if (onMain) {
+                            try {
+                                const { count } = await sb.from('pick_anomaly_orders')
+                                    .select('*', { count: 'exact', head: true })
+                                    .eq('entity_type', 'sale').eq('fulfilled_date', aestTodayKey);
+                                completedToday = count || 0;
+                            } catch (e) { /* leave 0 on error */ }
+                        }
 
-                        // Transfers (logistics footer)
-                        const outboundTR = pipeline.filter(r => r.type === 'TR' && r.from_location === MAIN_WH);
-                        const outInTransit = outboundTR.filter(r => r.status === 'IN TRANSIT').length;
+                        // Transfers (footer) — relative to the focused warehouse (Main as the hub for "All")
+                        const trWh = isAll ? MAIN_WH : focus;
+                        const outboundTR = pipeline.filter(r => r.type === 'TR' && r.from_location === trWh);
                         const outOrdered = outboundTR.filter(r => r.status === 'ORDERED').length;
-                        const inboundTR = pipeline.filter(r => r.type === 'TR' && r.to_location === MAIN_WH && r.from_location !== MAIN_WH);
+                        const inboundTR = pipeline.filter(r => r.type === 'TR' && r.to_location === trWh && r.from_location !== trWh);
                         const inInTransit = inboundTR.filter(r => r.status === 'IN TRANSIT').length;
                         const inOrdered = inboundTR.filter(r => r.status === 'ORDERED').length;
 
@@ -355,10 +366,10 @@
                         setKpi('flowOrdered', ordered, orderedAged ? `awaiting pick · ${orderedAged} aged` : 'awaiting pick');
                         setKpi('flowPicking', picking, pickingAged ? `in progress · ${pickingAged} aged` : 'in progress');
                         setKpi('flowToPack', toPack, 'picked · awaiting pack');
-                        setKpi('flowCompleted', completedToday, 'today');
+                        setKpi('flowCompleted', onMain ? completedToday : '—', onMain ? 'today · scanner' : 'Main only (scanner)');
                         setKpi('whTransfers', outOrdered, `${outOrdered} to send`);
                         setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
-                        renderInlineTransfers();
+                        renderInlineTransfers(trWh);
 
                         // Sync freshness
                         const syncTimes = pipeline.map(r => r.synced_at).filter(Boolean).sort();
@@ -375,16 +386,19 @@
                         if (syncEl) syncEl.textContent = 'sync error';
                     }
 
-                    // Hero — Pick Accuracy (server endpoint, paginated past 1000)
-                    try {
-                        const r = await fetch('/api/pick-anomalies/stats');
-                        const j = await r.json();
-                        if (j.success && j.stats && j.stats.picks > 0) {
-                            const s = j.stats;
-                            setKpi('kpiAccuracy', ((s.correct / s.picks) * 100).toFixed(1) + '%', `${s.orders} orders · ${s.anomalyOrders} with issues`);
-                        }
-                    } catch (e) {}
+                    // Hero — Pick Accuracy (Main scanner only; skip the fetch for other focuses)
+                    if ((window.__whFocus || 'Main Warehouse') === 'Main Warehouse') {
+                        try {
+                            const r = await fetch('/api/pick-anomalies/stats');
+                            const j = await r.json();
+                            if (j.success && j.stats && j.stats.picks > 0) {
+                                const s = j.stats;
+                                setKpi('kpiAccuracy', ((s.correct / s.picks) * 100).toFixed(1) + '%', `${s.orders} orders · ${s.anomalyOrders} with issues`);
+                            }
+                        } catch (e) {}
+                    }
                 }
+                window.reloadWhBoard = loadWarehouseBoard;   // warehouse selector → re-scope + repaint
                 await loadWarehouseBoard();
                 // Auto-refresh the board every 60s (wall display, no manual refresh button)
                 if (!window.__whBoardTimer) window.__whBoardTimer = setInterval(loadWarehouseBoard, 60000);
@@ -1145,8 +1159,22 @@
         let _trStatusFilter = 'all';    // 'all', 'IN TRANSIT', 'ORDERED'
 
         // Inline Transfers-Out list on the dashboard (click a row → editable pick sheet).
-        function renderInlineTransfers() {
-            const MAIN_WH = 'Main Warehouse';
+        // Warehouse focus selector — built once from the data, Main first, then the rest, then "All".
+        function populateWhSelector(pipeline, focus) {
+            const sel = document.getElementById('whFocusSel'); if (!sel || sel.dataset.built) return;
+            const MAIN = 'Main Warehouse';
+            const whs = [...new Set((pipeline || []).map(r => r.from_location).filter(Boolean))]
+                .filter(w => w !== MAIN).sort((a, b) => a.localeCompare(b));
+            sel.innerHTML = [`<option value="${MAIN}">Main Warehouse</option>`]
+                .concat(whs.map(w => `<option value="${w}">${w}</option>`))
+                .concat([`<option value="__all__">All warehouses</option>`]).join('');
+            sel.value = focus || MAIN;
+            sel.dataset.built = '1';
+        }
+        function setWhFocus(v) { window.__whFocus = v; if (window.reloadWhBoard) window.reloadWhBoard(); }
+
+        function renderInlineTransfers(wh) {
+            const MAIN_WH = (wh && wh !== '__all__') ? wh : 'Main Warehouse';
             const all = window.__transferData || [];
             const openS = s => ['ORDERED', 'IN TRANSIT'].includes(String(s || '').toUpperCase());
             const ordv = { 'IN TRANSIT': 0, 'ORDERED': 1 };

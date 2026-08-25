@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css?v=20250709">
     <!-- Home page styles. Loaded between styles.css and the returns theme, the same
          place the inline <style> block sat, so the cascade is unchanged. -->
-    <link rel="stylesheet" href="home.css?v=20260822a">
+    <link rel="stylesheet" href="home.css?v=20260825a">
     <!-- Returns-style home theme (PREVIEW, reversible — delete this one line to revert) -->
     <link rel="stylesheet" href="home-returns-theme.css?v=1">
     <!-- Supabase CDN -->
@@ -173,6 +173,8 @@
                 <!-- Warehouse Pipeline (wall-display flow board) -->
                 <div class="wh-pipeline" id="whPipelineCard">
                     <div class="wh-pipeline-title">
+                        <span class="wh-board-title">Warehouse Pipeline</span>
+                        <select class="wh-focus-sel" id="whFocusSel" title="Focus warehouse" aria-label="Focus warehouse" onchange="setWhFocus(this.value)"></select>
                         <span class="wh-sync-info" id="whSyncInfo">loading…</span>
                         <button class="wh-fs-btn" id="whFsBtn" title="Fullscreen — wall display" onclick="togglePipelineFullscreen()">⛶</button>
                     </div>
@@ -623,6 +625,6 @@
     <script src="multi-label.js?v=20260710a"></script>
     <script src="app.js?v=20260302k"></script>
     <script src="assets/vendor/chart.umd.min.js?v=441"></script>
-    <script src="home.js?v=20260822a"></script>
+    <script src="home.js?v=20260825a"></script>
 </body>
 </html>

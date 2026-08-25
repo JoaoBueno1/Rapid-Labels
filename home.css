@@ -167,6 +167,9 @@
         .wh-pipeline-title { font-size:.8rem; font-weight:700; color:var(--text); margin:0 0 12px 0; display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:.3px; }
         .wh-pipeline-title .icon { font-size:1rem; }
         .wh-pipeline-title .wh-sync-info { margin-left:auto; font-size:.65rem; color:var(--muted); font-weight:500; text-transform:none; letter-spacing:0; }
+        .wh-focus-sel { font-family:inherit; font-size:.7rem; font-weight:600; text-transform:none; letter-spacing:0; color:var(--text); background:#fff; border:1px solid var(--border); border-radius:7px; padding:3px 9px; cursor:pointer; }
+        .wh-focus-sel:hover { border-color:#94a3b8; }
+        .wh-pipeline.pipeline-fs .wh-focus-sel { background:#0f172a; color:#e2e8f0; border-color:#334155; }
         .wh-sync-btn { background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:.85rem; color:var(--muted); padding:2px 6px; transition:all .2s; line-height:1; margin-left:4px; }
         .wh-sync-btn:hover { background:#e0f2fe; color:#0284c7; border-color:#93c5fd; }
         .wh-sync-btn.syncing { animation:spin 1s linear infinite; pointer-events:none; opacity:.6; }
