@@ -366,7 +366,7 @@
                         setKpi('flowOrdered', ordered, orderedAged ? `awaiting pick · ${orderedAged} aged` : 'awaiting pick');
                         setKpi('flowPicking', picking, pickingAged ? `in progress · ${pickingAged} aged` : 'in progress');
                         setKpi('flowToPack', toPack, 'picked · awaiting pack');
-                        setKpi('flowCompleted', onMain ? completedToday : '—', onMain ? 'today · scanner' : 'Main only (scanner)');
+                        setKpi('flowCompleted', onMain ? completedToday : '—', onMain ? 'today · live' : 'Main only (scanner)');
                         setKpi('whTransfers', outOrdered, `${outOrdered} to send`);
                         setKpi('whIncoming', inInTransit + inOrdered, `${inInTransit} in transit · ${inOrdered} ordered`);
                         renderInlineTransfers(trWh);
@@ -385,14 +385,28 @@
                         setExc('excPack',      packStuck.length,   packStuck.length ? 'picked > 2d ago' : 'clear', 'warn');
                         setExc('excDispatch',  dispatchStk.length, dispatchStk.length ? 'packed, not shipped' : 'clear', 'warn');
 
-                        // Sync freshness
+                        // Sync freshness — prefer the order_pipeline heartbeat (real success/failure),
+                        // fall back to the newest row's synced_at until the first heartbeat lands.
                         const syncTimes = pipeline.map(r => r.synced_at).filter(Boolean).sort();
                         const syncEl = document.getElementById('whSyncInfo');
-                        if (syncEl && syncTimes.length) {
-                            const ago = fmtAgo(new Date(syncTimes[syncTimes.length - 1]));
-                            syncEl.innerHTML = ago.min > 120
-                                ? `<span style="color:#ef4444;font-weight:600">⚠ synced ${ago.str}</span>`
-                                : `synced ${ago.str}`;
+                        if (syncEl) {
+                            const fallback = () => {
+                                if (!syncTimes.length) return;
+                                const ago = fmtAgo(new Date(syncTimes[syncTimes.length - 1]));
+                                syncEl.innerHTML = ago.min > 120 ? `<span style="color:#ef4444;font-weight:600">⚠ orders synced ${ago.str}</span>` : `orders synced ${ago.str}`;
+                            };
+                            try {
+                                const { data: hb } = await sb.schema('cin7_mirror').from('sync_runs')
+                                    .select('ended_at,status').eq('sync_type', 'order_pipeline')
+                                    .order('started_at', { ascending: false }).limit(1);
+                                const run = (hb || [])[0];
+                                if (run && run.ended_at) {
+                                    const ago = fmtAgo(new Date(run.ended_at));
+                                    if (run.status !== 'success') syncEl.innerHTML = `<span style="color:#ef4444;font-weight:600">⚠ orders sync failed · ${ago.str}</span>`;
+                                    else if (ago.min > 130) syncEl.innerHTML = `<span style="color:#ef4444;font-weight:600">⚠ orders synced ${ago.str}</span>`;
+                                    else syncEl.innerHTML = `orders synced ${ago.str}`;
+                                } else fallback();
+                            } catch (e) { fallback(); }
                         }
                     } catch (e) {
                         console.warn('Pipeline board error:', e);

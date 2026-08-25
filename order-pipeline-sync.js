@@ -656,6 +656,28 @@ async function cleanupCompleted(sb) {
 // MAIN
 // ============================================================
 
+// Heartbeat: record every run in cin7_mirror.sync_runs so a dead sync is visible and
+// alertable (the board reads a real success/failure, not just row age — this pipeline
+// froze the board for 2 days once with no signal). Best-effort: a failed heartbeat write
+// must NEVER fail the sync itself.
+async function writeSyncRun(sb, startTime, status, rows, errors) {
+  if (FLAGS.dryRun) return;
+  try {
+    await sb.from('sync_runs').insert({
+      started_at: new Date(startTime).toISOString(),
+      ended_at: new Date().toISOString(),
+      status,
+      sync_type: 'order_pipeline',
+      total_api_calls: callCount,
+      stock_rows_synced: rows,
+      duration_ms: Date.now() - startTime,
+      errors: errors || [],
+    });
+  } catch (e) {
+    log('warn', 'sync_runs heartbeat write failed (non-fatal)', { error: e.message });
+  }
+}
+
 async function main() {
   const startTime = Date.now();
   callCount = 0; // Reset API call counter for each run
@@ -672,32 +694,39 @@ async function main() {
 
   const sb = getSupabaseClient();
 
-  const soResult = await syncSalesOrders(sb);
-  const trResult = await syncStockTransfers(sb);
+  try {
+    const soResult = await syncSalesOrders(sb);
+    const trResult = await syncStockTransfers(sb);
 
-  // Detect orders that left active status (now COMPLETED/INVOICED in Cin7)
-  const completed = await detectCompleted(sb, soResult.ids, trResult.ids);
+    // Detect orders that left active status (now COMPLETED/INVOICED in Cin7)
+    const completed = await detectCompleted(sb, soResult.ids, trResult.ids);
 
-  const cleaned = await cleanupCompleted(sb);
+    const cleaned = await cleanupCompleted(sb);
 
-  const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-  log('info', '═══ Order Pipeline Sync Complete ═══', {
-    salesOrders: soResult.count,
-    transfers: trResult.count,
-    newlyCompleted: completed,
-    cleaned,
-    apiCalls: callCount,
-    durationSec: duration,
-  });
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    log('info', '═══ Order Pipeline Sync Complete ═══', {
+      salesOrders: soResult.count,
+      transfers: trResult.count,
+      newlyCompleted: completed,
+      cleaned,
+      apiCalls: callCount,
+      durationSec: duration,
+    });
 
-  return {
-    salesOrders: soResult.count,
-    transfers: trResult.count,
-    newlyCompleted: completed,
-    cleaned,
-    apiCalls: callCount,
-    durationSec: parseFloat(duration),
-  };
+    await writeSyncRun(sb, startTime, 'success', soResult.count + trResult.count, []);
+
+    return {
+      salesOrders: soResult.count,
+      transfers: trResult.count,
+      newlyCompleted: completed,
+      cleaned,
+      apiCalls: callCount,
+      durationSec: parseFloat(duration),
+    };
+  } catch (err) {
+    await writeSyncRun(sb, startTime, 'failed', 0, [String((err && err.message) || err)]);
+    throw err;   // preserve existing failure handling (CLI exit 1 / server catch)
+  }
 }
 
 // Export for use as a module (e.g. from server.js endpoint)
