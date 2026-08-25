@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css?v=20250709">
     <!-- Home page styles. Loaded between styles.css and the returns theme, the same
          place the inline <style> block sat, so the cascade is unchanged. -->
-    <link rel="stylesheet" href="home.css?v=20260826a">
+    <link rel="stylesheet" href="home.css?v=20260826b">
     <!-- Returns-style home theme (PREVIEW, reversible — delete this one line to revert) -->
     <link rel="stylesheet" href="home-returns-theme.css?v=1">
     <!-- Supabase CDN -->
@@ -238,7 +238,7 @@
                                      comes from the mirror, which waits on a webhook; a TR created a
                                      minute ago isn't in it yet. This is the way to print anyway. -->
                                 <div class="wh-tr-find">
-                                    <input id="whFindTr" class="ff-inp" placeholder="TR-49952" autocomplete="off"
+                                    <input id="whFindTr" class="ff-inp" placeholder="TR-0000" autocomplete="off"
                                            onkeydown="if(event.key==='Enter'){event.preventDefault();findTR();}" />
                                     <button type="button" class="ff-btn" id="whFindBtn" onclick="findTR()">Find TR</button>
                                     <span class="ff-msg" id="whFindMsg"></span>
@@ -671,6 +671,6 @@
     <script src="multi-label.js?v=20260710a"></script>
     <script src="app.js?v=20260302k"></script>
     <script src="assets/vendor/chart.umd.min.js?v=441"></script>
-    <script src="home.js?v=20260826a"></script>
+    <script src="home.js?v=20260826b"></script>
 </body>
 </html>

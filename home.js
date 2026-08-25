@@ -1323,7 +1323,7 @@
             const msg = document.getElementById('whFindMsg');
             const say = (t, cls) => { if (msg) { msg.textContent = t || ''; msg.className = 'ff-msg' + (cls ? ' ' + cls : ''); } };
             const num = _normTr(inp && inp.value);
-            if (!num) { say('Type a TR number — e.g. TR-49952', 'err'); if (inp) inp.focus(); return; }
+            if (!num) { say('Type a TR number — e.g. TR-0000', 'err'); if (inp) inp.focus(); return; }
             if (btn) { btn.disabled = true; btn.textContent = 'Finding…'; }
             say('Asking Cin7 for ' + num + '…');
             try {
