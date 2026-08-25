@@ -10,6 +10,13 @@
 (function () {
   const PRINT_URL = '/features/transfer-out/transfer_out_print.html';
   const KEY = 'transferOutPrint';
+  // Kit components are only shown for extrusion / linear. Those are the products that
+  // physically leave the shelf as loose parts — extrusion + diffuser + end caps + clips —
+  // while the transfer line names only the finished item. Everywhere else the Internal
+  // Note is a production instruction ("Module must be set to 6w"), which belongs on a
+  // build sheet, not on a transfer. Cin7 Category, mirrored in cin7_mirror.products.
+  const KIT_CATEGORIES = new Set(['strip light & extrusion', 'linear']);
+  const inKitCategory = cat => KIT_CATEGORIES.has(String(cat || '').trim().toLowerCase());
   const st = { sel: null, lines: [], toAddr: '' };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtD = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || ''); };
@@ -74,9 +81,11 @@
    .tost-kt.note{color:#8a6d1f;background:#fdf3d9}
    .tost-khd{font-size:11px;color:#4a5c78}
    .tost-khd b{color:#1e3a8a}
-   .tost-kname{font-size:12px;color:#26324a}
-   .tost-kname::before{content:'•';color:#9aa8bf;margin-right:7px;margin-left:10px}
-   .tost-kper{font-size:10px;color:#8493ab;margin-left:6px}
+   .tost-chips{white-space:normal;line-height:1.55;font-size:11.5px;padding:5px 8px}
+   .tost-lead{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:#5b6b86;margin-right:4px}
+   .tost-chip{white-space:nowrap}
+   .tost-chip b{font-size:13px;color:#12203a}
+   .tost-sep{color:#b9c4d6}
    .tost-knote{font-size:11px;color:#8a6d1f;font-style:italic}`;
 
   function ensureDom() {
@@ -133,14 +142,16 @@
       const skus = [...new Set(lines.map(l => l.sku).filter(Boolean))];
       const map = {};
       if (skus.length && sbc()) {
-        const { data } = await sbc().schema('cin7_mirror').from('products').select('sku,attribute1,stock_locator,name').in('sku', skus);
+        const { data } = await sbc().schema('cin7_mirror').from('products').select('sku,attribute1,stock_locator,name,category').in('sku', skus);
         (data || []).forEach(p => { map[p.sku] = p; });
       }
       st.lines = lines.map(l => { const p = map[l.sku] || {}; return { dc: p.attribute1 || '', code: l.sku, product: l.product_name || p.name || '', qty: l.qty, loc: p.stock_locator || '', _manual: false }; });
       st.toAddr = await lookupAddr(row.to_location);
       $('tostToAddr').textContent = st.toAddr || row.to_location || '—';
       sortLines(); render();
-      loadKits(skus);          // kit components land a moment later and re-render
+      // Only extrusion/linear lines get a note lookup — that also keeps the Cin7 call
+      // count down to the handful of SKUs that can actually carry a kit.
+      loadKits(skus.filter(sku => inKitCategory((map[sku] || {}).category)));
     } catch (e) { $('tostRows').innerHTML = `<tr><td colspan="6" class="tost-empty">Could not load lines: ${esc(e.message)}</td></tr>`; }
   }
 
@@ -184,22 +195,28 @@
     if (!parts.length && !plain.length) return '';
     const q = Number(l.qty) || 0;
     const tag = t => `<td class="code"><div class="cell"><span class="tost-kt${t === 'NOTE' ? ' note' : ''}">${t}</span></div></td>`;
+    // Free-text lines collapse into one row too — "***ATTENTION***:" + its sentence is
+    // one instruction, not two, and every saved row is a row the sheet doesn't spend.
+    const joinPlain = ls => ls.reduce((a, t) => a ? a + (/[:\-–]$/.test(a) ? ' ' : ' · ') + t : t, '');
     // A note with no parseable components is just an instruction ("Module must be set
     // to 6w") — it gets no KIT header and no multiplication, or the sheet would claim
     // totals for something that has no quantity at all.
     if (!parts.length) {
-      return plain.map((t, i) => `<tr class="kit"><td class="dc"></td>${i ? '<td class="code"></td>' : tag('NOTE')}
-        <td colspan="4"><div class="cell tost-knote">${esc(t)}</div></td></tr>`).join('');
+      return `<tr class="kit"><td class="dc"></td>${tag('NOTE')}
+        <td colspan="4"><div class="cell tost-knote">${esc(joinPlain(plain))}</div></td></tr>`;
     }
+    // One collapsed row, not one row per component: a 4-part kit is the common case and
+    // used to cost 5 sheet rows. The chips carry the TOTAL already multiplied; the lead
+    // says what those totals are for, so nobody has to do the arithmetic at the shelf.
+    // Note the real space between chips — without it the line cannot wrap and the last
+    // component gets clipped by the cell.
+    const chips = parts.map(p => `<span class="tost-chip">${esc(p.name)} <b>${fmtQ(q ? p.per * q : p.per)}</b></span>`)
+      .join(' <span class="tost-sep">·</span> ');
     const head = `<tr class="kit"><td class="dc"></td>${tag('KIT')}
-      <td colspan="4"><div class="cell tost-khd">Pick these with the item &mdash; ${q ? `totals are for <b>${esc(l.qty)}</b> unit${q === 1 ? '' : 's'}` : 'quantities are per unit'}</div></td></tr>`;
-    const partRows = parts.map(p => `<tr class="kit"><td class="dc"></td><td class="code"></td>
-      <td><div class="cell"><span class="tost-kname">${esc(p.name)}</span><span class="tost-kper">${fmtQ(p.per)} per unit</span></div></td>
-      <td class="qty"><div class="cell">${fmtQ(q ? p.per * q : p.per)}</div></td>
-      <td class="loc"></td><td class="act"></td></tr>`).join('');
-    const plainRows = plain.map(t => `<tr class="kit"><td class="dc"></td><td class="code"></td>
-      <td colspan="4"><div class="cell tost-knote">${esc(t)}</div></td></tr>`).join('');
-    return head + partRows + plainRows;
+      <td colspan="4"><div class="cell tost-chips"><span class="tost-lead">${q ? `for ${esc(l.qty)} unit${q === 1 ? '' : 's'}, pick` : 'per unit, pick'}</span> ${chips}</div></td></tr>`;
+    const plainRows = plain.length ? `<tr class="kit"><td class="dc"></td><td class="code"></td>
+      <td colspan="4"><div class="cell tost-knote">${esc(joinPlain(plain))}</div></td></tr>` : '';
+    return head + plainRows;
   }
 
   // Fired after the first render so a slow Cin7 lookup never holds the sheet back.
