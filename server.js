@@ -363,6 +363,20 @@ try {
   console.warn('⚠️  Could not register WMS routes:', e.message);
 }
 
+// ── Stock Planning (substitui o Excel Rapid-Inventory SKU) ──
+// Feature isolada e atrás de flag. API em /api/stock-planning/*; a tela é
+// montada em /planning. Fala direto com o Postgres porque o schema rapid_inv
+// não é exposto pelo PostgREST. Nada mais no site é tocado, e sem
+// STOCK_PLANNING_ENABLED=1 nem carrega.
+if (process.env.STOCK_PLANNING_ENABLED === '1') {
+  try {
+    require('./features/stock-planning/routes/stock-planning-routes').register(app);
+    app.use('/planning', express.static(path.join(__dirname, 'features/stock-planning/ui'), { index: 'planning.html' }));
+  } catch (e) {
+    console.warn('⚠️  Could not register Stock Planning routes:', e.message);
+  }
+}
+
 // ── Replenishment: Pending TR Lines (fetches line details from Cin7 API) ──
 (function registerPendingTRRoutes() {
   const https = require('https');

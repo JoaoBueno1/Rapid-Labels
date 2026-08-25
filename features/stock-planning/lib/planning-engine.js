@@ -29,6 +29,9 @@
  *     de projeção persistida.
  */
 
+const DAY = 86400000;
+const weeksBehind = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / (7 * DAY));
+
 const round = (n, p = 4) => {
   const f = Math.pow(10, p);
   return Math.round((n + Number.EPSILON) * f) / f;
@@ -206,7 +209,9 @@ function buildAlerts(sku, projection, opts = {}) {
     }
   }
 
-  if (todayWeek && rows.length && rows[0].weekEnding < todayWeek) {
+  // A semana de reporte é sempre a última FECHADA, então ficar uma semana
+  // atrás de hoje é o normal. Só avisa quando atrasou de verdade.
+  if (todayWeek && rows.length && weeksBehind(rows[0].weekEnding, todayWeek) > 1) {
     push('STALE_REPORTING_WEEK', 'MEDIUM',
       `Semana de reporte é ${rows[0].weekEnding}; hoje já é ${todayWeek}. Rolar o planejamento.`, {});
   }
