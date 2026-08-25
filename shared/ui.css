@@ -65,24 +65,23 @@
 }
 
 /* ── ação de linha: o padrão do "Allocate" ──────────────────────────── */
+/* Este é o Allocate, exatamente como era: sem borda, canto de 3px,
+   padding 0 5px, 10,5px semibold sobre #e5ecf5. Numa primeira versão eu
+   acrescentei borda, altura fixa e canto de 4px "para padronizar" — e com
+   isso descaracterizei justamente o botão que funcionava. O padrão é ELE,
+   não uma interpretação dele. */
 .ui-act{
-  display:inline-flex; align-items:center; gap:5px;
-  height:19px; padding:0 7px;
-  border:1px solid var(--ui-line); border-radius:4px;
-  background:#eef2f7; color:var(--ui-ink-2);
-  font-family:inherit; font-size:11px; font-weight:600; letter-spacing:.02em; line-height:1;
-  white-space:nowrap; cursor:pointer; vertical-align:1px;
-  transition:background .12s, border-color .12s, color .12s;
+  display:inline-block; padding:0 5px; border:0; border-radius:3px;
+  background:#e5ecf5; color:#3c4a5e;
+  font-family:inherit; font-size:10.5px; font-weight:600; line-height:17px;
+  letter-spacing:.02em; vertical-align:1px; white-space:nowrap; cursor:pointer;
+  transition:background .12s, color .12s;
 }
-.ui-act:hover{
-  background:var(--ui-accent-soft); border-color:var(--ui-accent); color:var(--ui-accent-d);
-}
-.ui-act:focus-visible{outline:2px solid var(--ui-accent); outline-offset:1px}
-.ui-act--warn{background:var(--ui-warn-soft); border-color:#e6cf8f; color:var(--ui-warn)}
-.ui-act--danger{background:var(--ui-danger-soft); border-color:#e8b4ae; color:var(--ui-danger)}
-.ui-act--ok{background:var(--ui-ok-soft); border-color:#a9d8c2; color:var(--ui-ok)}
-/* Só ícone: a seta que abre o painel, sem rótulo. */
-.ui-act--icon{padding:0 5px; font-size:12px}
+.ui-act:hover{ background:var(--ui-accent-soft); color:var(--ui-accent-d) }
+.ui-act:focus-visible{ outline:2px solid var(--ui-accent); outline-offset:1px }
+.ui-act--warn{ background:var(--ui-warn-soft); color:var(--ui-warn) }
+.ui-act--danger{ background:var(--ui-danger-soft); color:var(--ui-danger) }
+.ui-act--ok{ background:var(--ui-ok-soft); color:var(--ui-ok) }
 
 /* ── filtro que liga e desliga ──────────────────────────────────────── */
 .ui-chip, .sp-chip{
