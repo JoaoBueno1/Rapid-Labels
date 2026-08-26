@@ -1274,6 +1274,15 @@
             tile.classList.add(n > 0 ? sev : 'ok');
         }
 
+        // Transfers pulled in by Find TR live here, not in __transferData: that array is
+        // rebuilt from the mirror every 60s by the board refresh, which quietly threw the
+        // found transfer away a minute after it was found.
+        function _trLive() { return window.__liveTr || (window.__liveTr = []); }
+        function _trAll() {
+            const mirror = window.__transferData || [];
+            return _trLive().filter(r => !mirror.some(x => x.id === r.id)).concat(mirror);
+        }
+
         function renderInlineTransfers(wh) {
             const MAIN_WH = (wh && wh !== '__all__') ? wh : 'Main Warehouse';
             const all = window.__transferData || [];
@@ -1286,15 +1295,35 @@
             const meta = r => [r.reference, fmt(r.order_date)].filter(Boolean).join(' · ') || '&nbsp;';
             // Out (leaving Main) — ORDERED only = what still needs picking/sending.
             // IN TRANSIT already left; the full list (all statuses) stays in "all ›".
+            // Once the mirror catches up on a transfer that was found live, it stops being
+            // a pinned extra and just takes its place in the list.
+            if (window.__liveTr && window.__liveTr.length) {
+                window.__liveTr = window.__liveTr.filter(r => !all.some(x => x.id === r.id));
+            }
             const outEl = document.getElementById('whTrListOut');
             if (outEl) {
-                const out = all.filter(r => r.from_location === MAIN_WH && String(r.status || '').toUpperCase() === 'ORDERED')
-                    .sort((a, b) => String(b.order_date || '').localeCompare(a.order_date || '')).slice(0, 5);
+                // Rows found through Find TR are PINNED on top. They are asked for by name,
+                // they carry no date (Cin7's list endpoint has none for an ORDERED transfer)
+                // so a date sort buries them, and the list is capped — which is exactly how
+                // a transfer someone just searched for ended up invisible. They also sit
+                // outside the ORDERED filter: what was asked for gets shown, whatever state.
+                const live = _trLive();
+                const mirror = all.filter(r => r.from_location === MAIN_WH && String(r.status || '').toUpperCase() === 'ORDERED')
+                    .sort((a, b) => String(b.order_date || '').localeCompare(a.order_date || ''));
+                const out = live.concat(mirror).slice(0, 5 + live.length);
                 outEl.innerHTML = out.length ? out.map(r => {
                     const rj = JSON.stringify(r).replace(/'/g, '&#39;');
                     const ln = r.line_count != null ? `${r.line_count} line${r.line_count == 1 ? '' : 's'}` : '';
                     const live = r._live ? '<span class="live">live</span>' : '';
-                    return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print"><span class="tn">${r.number || '—'}${live}</span><span class="to">${r.to_location || '—'}<span class="m">${meta(r)}</span></span><span class="ln">${ln}</span></div>`;
+                    // A pinned live row can be out of another warehouse or already past
+                    // ORDERED. Say so on the row rather than letting it read as "to send".
+                    const st = String(r.status || '').toUpperCase();
+                    const extra = r._live ? [
+                        r.from_location && r.from_location !== MAIN_WH ? 'from ' + r.from_location : '',
+                        st && st !== 'ORDERED' ? r.status : '',
+                    ].filter(Boolean).join(' · ') : '';
+                    const rmeta = [extra, meta(r) === '&nbsp;' ? '' : meta(r)].filter(Boolean).join(' · ') || '&nbsp;';
+                    return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print"><span class="tn">${r.number || '—'}${live}</span><span class="to">${r.to_location || '—'}<span class="m">${rmeta}</span></span><span class="ln">${ln}</span></div>`;
                 }).join('') : '<div class="wh-tr-empty">Nothing to send.</div>';
             }
             // Incoming (arriving to Main) — informational
@@ -1336,11 +1365,12 @@
                 // list show it too — not just the sheet we are about to open.
                 // If the mirror already knows this TR its row is the richer one (line_count,
                 // reference, date), so keep it and let the live values fill only the gaps.
-                const data = window.__transferData || (window.__transferData = []);
-                const at = data.findIndex(x => x.id === hit.id);
-                const live = Object.fromEntries(Object.entries(hit).filter(([, v]) => v != null && v !== ''));
-                const row = { ...(at >= 0 ? data[at] : { line_count: null }), ...live, type: 'TR', _live: true };
-                if (at >= 0) data[at] = row; else data.unshift(row);
+                const mirror = (window.__transferData || []).find(x => x.id === hit.id) || { line_count: null };
+                const fresh = Object.fromEntries(Object.entries(hit).filter(([, v]) => v != null && v !== ''));
+                const row = { ...mirror, ...fresh, type: 'TR', _live: true };
+                const store = _trLive();
+                const at = store.findIndex(x => x.id === row.id);
+                if (at >= 0) store[at] = row; else store.unshift(row);
                 if (typeof renderInlineTransfers === 'function') renderInlineTransfers(window.__whFocus);
 
                 const focus = (window.__whFocus && window.__whFocus !== '__all__') ? window.__whFocus : 'Main Warehouse';
@@ -1435,7 +1465,7 @@
         }
         function renderTransfersTable() {
             const MAIN_WH = 'Main Warehouse';
-            const data = window.__transferData || [];
+            const data = _trAll();          // includes anything pulled in by Find TR
             const search = (document.getElementById('trSearch')?.value || '').toLowerCase();
 
             const CLOSED_TR = ['COMPLETED', 'VOIDED', 'CANCELLED', 'CLOSED', 'INVOICED'];
