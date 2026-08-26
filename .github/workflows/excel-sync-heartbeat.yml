@@ -1,23 +1,27 @@
 # ============================================================
-# Excel Sync — delivery heartbeat
+# Excel Sync — freshness heartbeat
 # ============================================================
-# Asks, from the cloud, whether the Windows PC that writes the branch workbooks
-# actually delivered this morning.
+# Asks, from the cloud, whether the numbers the branches will read this morning
+# were actually rebuilt — and whether the mirror underneath them is still
+# filling.
 #
-# Every other guard lives ON that PC — the header gate, the formula guard, the
-# staleness gate, the run log, the exit code. They share one blind spot: a
-# machine that is off, asleep, logged out, or whose scheduled task was disabled
-# runs nothing and therefore reports nothing. A dead machine and a quiet night
-# are indistinguishable from the inside.
+# It used to ask whether a Windows PC had delivered. That machine is retired:
+# the workbooks carry Power Query and pull for themselves. The failure mode
+# moved with the architecture, so this moved too. See tools/heartbeat.py.
 #
 # A FAILED RUN OF THIS JOB IS THE NOTIFICATION. GitHub emails the repo owner on
 # a workflow failure and pushes it through the mobile app. That is the only push
 # channel this estate has, it costs no new secret, and it lands somewhere a
 # person already looks.
 #
+# It only works while it is quiet when healthy. From 18/08 to 27/08 it failed
+# every weekday over four Hobart bindings from the retired push model, so on the
+# morning GitHub actually dropped a build slot, the alarm had been ringing for
+# nine days and meant nothing. Do not let it go noisy again.
+#
 # Deliberately its OWN file rather than a step in excel-sync.yml: a broken
-# dataset build must not mask a dead delivery machine, and the two have
-# different owners and different fixes.
+# dataset build must not mask a stale one, and a job that never starts cannot
+# report on itself. This has to run from somewhere else to see that.
 #
 # Required GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY
 # ============================================================
@@ -26,17 +30,30 @@ name: Excel Sync Heartbeat
 
 on:
   schedule:
-    # 22:00 UTC Sun–Thu = 08:00 Brisbane Mon–Fri, one hour after the 07:00
-    # delivery. The day shift mirrors excel-sync.yml and is deliberate: it
-    # catches a missed delivery the same morning rather than 23 hours later.
-    # Do not "fix" 0-4 to 1-5.
-    - cron: '0 22 * * 0-4'
+    # 21:10 UTC Sun–Thu = 07:10 Brisbane Mon–Fri, fifteen minutes after the
+    # first build of the day (20:55 UTC) and as the branches sit down.
+    #
+    # Fifteen minutes is the point of it. The overnight gap runs 17:55 to 06:55
+    # Brisbane, so at 07:10 a healthy dataset is ~15 minutes old and a skipped
+    # first slot is ~13 hours old. Nothing in between, which is what makes the
+    # threshold in heartbeat.py a clean line rather than a guess.
+    #
+    # It ran at 08:00 before, which was late for a reason that no longer holds:
+    # it was waiting on a 07:00 delivery from a machine that is now retired.
+    #
+    # The day shift mirrors excel-sync.yml and is deliberate. Do not "fix"
+    # 0-4 to 1-5 — 21:10 UTC Sunday is Monday morning in Brisbane.
+    - cron: '10 21 * * 0-4'
   workflow_dispatch:
     inputs:
-      max_minutes:
-        description: 'Business minutes a successful delivery may be stale'
+      max_build_hours:
+        description: 'Hours a dataset may go without a rebuild'
         required: false
-        default: '1620'
+        default: '4'
+      max_data_hours:
+        description: 'Hours the mirror data underneath may be stale'
+        required: false
+        default: '6'
 
 concurrency:
   group: excel-sync-heartbeat
@@ -58,9 +75,11 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Check the delivery machine reported in
+      - name: Check this morning's numbers are actually fresh
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          python tools/heartbeat.py --max-minutes "${{ github.event.inputs.max_minutes || '1620' }}"
+          python tools/heartbeat.py \
+            --max-build-hours "${{ github.event.inputs.max_build_hours || '4' }}" \
+            --max-data-hours "${{ github.event.inputs.max_data_hours || '6' }}"
