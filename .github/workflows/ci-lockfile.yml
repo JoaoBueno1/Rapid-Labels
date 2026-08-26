@@ -1,0 +1,82 @@
+# ============================================================
+# CI — package-lock must match package.json
+# ============================================================
+# Fifteen scheduled workflows begin with `npm ci`. That command does not
+# resolve dependencies, it installs the lockfile and refuses outright if the
+# lockfile disagrees with package.json. So a single commit that edits
+# package.json without regenerating the lock does not break one job — it stops
+# every Cin7 sync in the estate, hourly, until someone notices.
+#
+# It has happened twice. The second time:
+#
+#   21/08 13:58  f5208c4  adds @electric-sql/pglite to package.json only
+#                         → all 15 npm-ci workflows abort after ~14s
+#   24/08 11:32  8349f29  regenerates the lock — "unblocks all npm-ci syncs"
+#
+# Three days with the Cin7 mirror frozen. Nothing downstream reported a fault,
+# because nothing downstream was broken: excel-sync is Python, so it kept
+# building successfully on top of a mirror that had stopped filling. The only
+# signal was the volume of failure email, roughly 47 messages per workflow, in
+# an inbox that already carried failure email.
+#
+# WHY THIS IS A SEPARATE, TINY JOB
+# The crons already detect this. They detect it fifteen times an hour, three
+# days late, in the one channel that has to stay readable. This moves the
+# detection to the commit that causes it: one job, one failure, ~20 seconds,
+# before a single sync has run. Cheap enough to never think about, which is the
+# point — the previous fix was also cheap and still took three days to apply.
+#
+# Path-filtered on purpose. A commit that touches neither manifest cannot
+# desynchronise them, and this must not become another routine red tick.
+#
+# If this fails:  npm install --package-lock-only     then commit the lock.
+# ============================================================
+
+name: CI — lockfile
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-lockfile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # The exact command the sync workflows run. Reproducing it byte for byte
+      # is the whole value: a check that passes while `npm ci --production`
+      # fails in cin7-sync would be worse than no check.
+      - name: npm ci --production
+        run: npm ci --production
+
+      - name: What to do if that failed
+        if: failure()
+        run: |
+          echo "package-lock.json disagrees with package.json."
+          echo ""
+          echo "Every npm-ci workflow — all fifteen Cin7 syncs, the order"
+          echo "pipeline, pick anomalies, wms-reconcile — will abort on this"
+          echo "until the lock is regenerated. The Cin7 mirror stops filling"
+          echo "and the spreadsheets quietly serve whatever it last held."
+          echo ""
+          echo "  npm install --package-lock-only"
+          echo "  git commit package-lock.json"
