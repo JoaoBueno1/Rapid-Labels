@@ -646,7 +646,11 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
       const cached = cacheGet(key);
       if (cached) return res.json({ ...cached, source: 'cache' });
       const det = await cin7Req(`stockTransfer?TaskID=${encodeURIComponent(id)}`);
-      const rawLines = det.Lines || det.Line || [];
+      // An ORDERED transfer keeps its items under Order.Lines; only once it is dispatched
+      // do they appear under Lines. Reading Lines alone returned an empty transfer for
+      // every incoming TR that hadn't left yet — which is most of what "Coming In" shows.
+      const rawLines = (det.Lines && det.Lines.length) ? det.Lines
+        : ((det.Order && det.Order.Lines) || det.Line || []);
       const lines = rawLines.map((ln, i) => ({
         line_no: i, sku: ln.SKU || ln.ProductCode || '', product_name: ln.ProductName || ln.Name || '',
         quantity: num(ln.TransferQuantity != null ? ln.TransferQuantity : ln.Quantity),
@@ -657,6 +661,11 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
         header: {
           order_number: det.TaskID || id, location: det.FromLocation || null,
           ship_to: null, ship_status: det.Status || null, // from→to already shown from pipeline row
+          // Named fields for callers that open a transfer on its own (Coming In), where
+          // there is no pipeline row alongside to read the number and route from.
+          number: det.Number || null, from: det.FromLocation || null, to: det.ToLocation || null,
+          status: det.Status || null,
+          date: (det.OrderDate || det.CreatedDate || det.DepartureDate || '').split('T')[0] || null,
         },
         lines,
       };

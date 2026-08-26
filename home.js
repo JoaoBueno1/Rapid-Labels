@@ -468,7 +468,7 @@
             const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
             const on = !!card && fsEl === card;
             if (card) card.classList.toggle('pipeline-fs', on);
-            if (!on) { _restoreModal('ordersModalOverlay'); _restoreModal('trModalOverlay'); }
+            if (!on) { _restoreModal('ordersModalOverlay'); _restoreModal('trModalOverlay'); _restoreModal('trLinesOverlay'); }
             _paintChart(on);
         }
         // The chart draws on a canvas, so CSS cannot reach its axis labels, legend or
@@ -928,6 +928,7 @@
             _mountModalInFs('ordersModalOverlay');   // clickable on the wall when in fullscreen
             document.body.style.overflow = 'hidden';
             renderOrdersTable();
+            _loadStageTimes();   // fetch per-stage times, then re-render with them
         }
         // Show which flow stage the modal is scoped to (title chip)
         function _setOrdersModalScope() {
@@ -995,6 +996,38 @@
             _ordersStageFilter = 'all';  // manual type change clears the flow-tile scope
             _setOrdersModalScope();
             renderOrdersTable();
+        }
+
+        // Per-stage transition times (from cin7_mirror.order_stage_events). The order's CURRENT
+        // stage + when it entered it — shown AM/PM in the list.
+        const _CUR_DONE = ['COMPLETED', 'VOIDED', 'CLOSED', 'INVOICED'];
+        function _curStage(r) {
+            if (r.type !== 'SO' || _CUR_DONE.includes(r.status)) return null;
+            if (r.status === 'BACKORDERED') return 'backordered';
+            if (r.pack_status === 'PACKED') return 'packed';
+            if (r.pack_status === 'PACKING') return 'packing';
+            if (r.pick_status === 'PICKED') return 'picked';
+            if (r.pick_status === 'PICKING') return 'picking';
+            if (r.status === 'ORDERED') return 'ordered';
+            return null;
+        }
+        function _fmtStageTime(iso) {
+            if (!iso) return '';
+            const a = new Date(new Date(iso).getTime() + 10 * 3600000);   // AEST
+            let h = a.getUTCHours(); const ap = h < 12 ? 'am' : 'pm'; h = h % 12 || 12;
+            const t = `${h}:${String(a.getUTCMinutes()).padStart(2, '0')}${ap}`;
+            const day = a.toISOString().slice(0, 10);
+            const today = new Date(Date.now() + 10 * 3600000).toISOString().slice(0, 10);
+            return day === today ? t : `${day.slice(8, 10)}/${day.slice(5, 7)} ${t}`;
+        }
+        function _loadStageTimes() {
+            try {
+                const ids = [...new Set((window.__pipelineData || []).map(r => r.id).filter(Boolean))];
+                if (!ids.length || !window.supabase) return;
+                window.supabase.schema('cin7_mirror').from('order_stage_events').select('order_id,stage,at').in('order_id', ids)
+                    .then(({ data }) => { const m = {}; (data || []).forEach(e => { m[e.order_id + '|' + e.stage] = e.at; }); window.__stageAt = m; renderOrdersTable(); })
+                    .catch(() => {});
+            } catch (e) {}
         }
 
         function renderOrdersTable() {
@@ -1103,11 +1136,14 @@
                 const aged = !isCompleted && ageDays > 2;    // single neutral emphasis, no red
                 const dateCell = isCompleted ? fmtCompletedDate(r.completed_at)
                     : fmtDate(r.order_date) + (aged ? ` <span class="ord-age">· ${ageDays}d</span>` : '');
+                const cs = _curStage(r);
+                const stAt = (cs && window.__stageAt) ? window.__stageAt[r.id + '|' + cs] : null;
+                const stageCell = stAt ? `<div class="ord-stagetime">${cs} · ${_fmtStageTime(stAt)}</div>` : '';
                 return `<tr onclick="toggleOrderDetail('${r.id}', this)">
                     <td class="${numClass}"><span class="order-expand">›</span> ${numDisplay}</td>
                     <td class="ord-wh">${r.from_location || '—'}</td>
                     <td>${custOrLoc}</td>
-                    <td><span class="ord-status">${r.status || '—'}</span></td>
+                    <td><span class="ord-status">${r.status || '—'}</span>${stageCell}</td>
                     <td class="order-date">${dateCell}</td>
                 </tr>`;
             }).join('');
@@ -1206,7 +1242,7 @@
         }
 
         // Close modal with Escape key
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeOrdersModal(); closeTransfersModal(); } });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeOrdersModal(); closeTransfersModal(); closeTrLines(); } });
 
         // ══════════════════════════════════════════════════════
         // TRANSFERS MODAL LOGIC
@@ -1238,6 +1274,15 @@
             tile.classList.add(n > 0 ? sev : 'ok');
         }
 
+        // Transfers pulled in by Find TR live here, not in __transferData: that array is
+        // rebuilt from the mirror every 60s by the board refresh, which quietly threw the
+        // found transfer away a minute after it was found.
+        function _trLive() { return window.__liveTr || (window.__liveTr = []); }
+        function _trAll() {
+            const mirror = window.__transferData || [];
+            return _trLive().filter(r => !mirror.some(x => x.id === r.id)).concat(mirror);
+        }
+
         function renderInlineTransfers(wh) {
             const MAIN_WH = (wh && wh !== '__all__') ? wh : 'Main Warehouse';
             const all = window.__transferData || [];
@@ -1250,25 +1295,144 @@
             const meta = r => [r.reference, fmt(r.order_date)].filter(Boolean).join(' · ') || '&nbsp;';
             // Out (leaving Main) — ORDERED only = what still needs picking/sending.
             // IN TRANSIT already left; the full list (all statuses) stays in "all ›".
+            // Once the mirror catches up on a transfer that was found live, it stops being
+            // a pinned extra and just takes its place in the list.
+            if (window.__liveTr && window.__liveTr.length) {
+                window.__liveTr = window.__liveTr.filter(r => !all.some(x => x.id === r.id));
+            }
             const outEl = document.getElementById('whTrListOut');
             if (outEl) {
-                const out = all.filter(r => r.from_location === MAIN_WH && String(r.status || '').toUpperCase() === 'ORDERED')
-                    .sort((a, b) => String(b.order_date || '').localeCompare(a.order_date || '')).slice(0, 5);
+                // Rows found through Find TR are PINNED on top. They are asked for by name,
+                // they carry no date (Cin7's list endpoint has none for an ORDERED transfer)
+                // so a date sort buries them, and the list is capped — which is exactly how
+                // a transfer someone just searched for ended up invisible. They also sit
+                // outside the ORDERED filter: what was asked for gets shown, whatever state.
+                const live = _trLive();
+                const mirror = all.filter(r => r.from_location === MAIN_WH && String(r.status || '').toUpperCase() === 'ORDERED')
+                    .sort((a, b) => String(b.order_date || '').localeCompare(a.order_date || ''));
+                const out = live.concat(mirror).slice(0, 5 + live.length);
                 outEl.innerHTML = out.length ? out.map(r => {
                     const rj = JSON.stringify(r).replace(/'/g, '&#39;');
                     const ln = r.line_count != null ? `${r.line_count} line${r.line_count == 1 ? '' : 's'}` : '';
-                    return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print"><span class="tn">${r.number || '—'}</span><span class="to">${r.to_location || '—'}<span class="m">${meta(r)}</span></span><span class="ln">${ln}</span></div>`;
+                    const live = r._live ? '<span class="live">live</span>' : '';
+                    // A pinned live row can be out of another warehouse or already past
+                    // ORDERED. Say so on the row rather than letting it read as "to send".
+                    const st = String(r.status || '').toUpperCase();
+                    const extra = r._live ? [
+                        r.from_location && r.from_location !== MAIN_WH ? 'from ' + r.from_location : '',
+                        st && st !== 'ORDERED' ? r.status : '',
+                    ].filter(Boolean).join(' · ') : '';
+                    const rmeta = [extra, meta(r) === '&nbsp;' ? '' : meta(r)].filter(Boolean).join(' · ') || '&nbsp;';
+                    return `<div class="wh-tr-row" onclick='TOStaging.open(${rj})' title="Open pick sheet — edit & print"><span class="tn">${r.number || '—'}${live}</span><span class="to">${r.to_location || '—'}<span class="m">${rmeta}</span></span><span class="ln">${ln}</span></div>`;
                 }).join('') : '<div class="wh-tr-empty">Nothing to send.</div>';
             }
             // Incoming (arriving to Main) — informational
             const inEl = document.getElementById('whTrListIn');
             if (inEl) {
                 const inb = all.filter(r => r.to_location === MAIN_WH && openS(r.status)).sort(sortF).slice(0, 5);
-                inEl.innerHTML = inb.length ? inb.map(r =>
-                    `<div class="wh-tr-row info"><span class="tn" style="color:#0f766e">${r.number || '—'}</span><span class="to">${r.from_location || '—'}<span class="m">${meta(r)}</span></span>${badge(r.status)}</div>`
-                ).join('') : '<div class="wh-tr-empty">Nothing incoming.</div>';
+                inEl.innerHTML = inb.length ? inb.map(r => {
+                    const rj = JSON.stringify(r).replace(/'/g, '&#39;');
+                    return `<div class="wh-tr-row info" onclick='openTrLines(${rj})' title="See what is on the way"><span class="tn" style="color:#0f766e">${r.number || '—'}</span><span class="to">${r.from_location || '—'}<span class="m">${meta(r)}</span></span>${badge(r.status)}</div>`;
+                }).join('') : '<div class="wh-tr-empty">Nothing incoming.</div>';
             }
         }
+
+        // ── Find TR — one direct Cin7 lookup, no waiting on a webhook ──────────────
+        // The Out list above is fed by cin7_mirror.order_pipeline, which only fills once
+        // Cin7's webhook lands. A transfer created two minutes ago is simply not in it,
+        // and until now that meant waiting to print. This asks Cin7 for that one transfer,
+        // puts it in the list and opens the pick sheet. One call, one TR, nothing polled.
+        function _normTr(v) {
+            const digits = String(v || '').replace(/\D/g, '');
+            return digits ? 'TR-' + digits : '';
+        }
+        async function findTR() {
+            const inp = document.getElementById('whFindTr');
+            const btn = document.getElementById('whFindBtn');
+            const msg = document.getElementById('whFindMsg');
+            const say = (t, cls) => { if (msg) { msg.textContent = t || ''; msg.className = 'ff-msg' + (cls ? ' ' + cls : ''); } };
+            const num = _normTr(inp && inp.value);
+            if (!num) { say('Type a TR number — e.g. TR-0000', 'err'); if (inp) inp.focus(); return; }
+            if (btn) { btn.disabled = true; btn.textContent = 'Finding…'; }
+            say('Asking Cin7 for ' + num + '…');
+            try {
+                const j = await (await fetch('/api/transfer-out/search?q=' + encodeURIComponent(num))).json();
+                if (!j.success) throw new Error(j.error || 'lookup failed');
+                const hit = (j.results || []).find(t => String(t.number || '').toUpperCase() === num);
+                if (!hit) { say(num + ' not found in Cin7', 'err'); return; }
+
+                // Put it where the rest of the board looks, so the row and the "all ›"
+                // list show it too — not just the sheet we are about to open.
+                // If the mirror already knows this TR its row is the richer one (line_count,
+                // reference, date), so keep it and let the live values fill only the gaps.
+                const mirror = (window.__transferData || []).find(x => x.id === hit.id) || { line_count: null };
+                const fresh = Object.fromEntries(Object.entries(hit).filter(([, v]) => v != null && v !== ''));
+                const row = { ...mirror, ...fresh, type: 'TR', _live: true };
+                const store = _trLive();
+                const at = store.findIndex(x => x.id === row.id);
+                if (at >= 0) store[at] = row; else store.unshift(row);
+                if (typeof renderInlineTransfers === 'function') renderInlineTransfers(window.__whFocus);
+
+                const focus = (window.__whFocus && window.__whFocus !== '__all__') ? window.__whFocus : 'Main Warehouse';
+                say(hit.from_location === focus
+                    ? num + ' loaded — opening the pick sheet'
+                    : num + ' is out of ' + (hit.from_location || '?') + ', not ' + focus, hit.from_location === focus ? 'ok' : '');
+                if (inp) inp.value = '';
+                TOStaging.open(row);      // straight to the editable sheet, ready to print
+            } catch (e) {
+                say('Lookup failed: ' + e.message, 'err');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Find TR'; }
+            }
+        }
+
+        // ── Coming In — what is actually inside an incoming transfer ───────────────
+        // order_pipeline stores transfers header-only, so the items are fetched live from
+        // Cin7 when a row is opened (server-side cached), rather than mirrored for a panel
+        // that is read a few times a day.
+        async function openTrLines(r) {
+            const ov = document.getElementById('trLinesOverlay'); if (!ov) return;
+            const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+            const fmt = d => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+            set('trlNo', r.number || '—');
+            set('trlRoute', `${r.from_location || '—'}  →  ${r.to_location || '—'}${fmt(r.order_date) ? '  ·  ' + fmt(r.order_date) : ''}`);
+            set('trlBadge', String(r.status || '').replace('IN TRANSIT', 'In transit'));
+            set('trlSum', '');
+            const body = document.getElementById('trlBody');
+            if (body) body.innerHTML = '<div class="wh-tr-empty">Loading items from Cin7…</div>';
+            ov.classList.add('active');
+            _mountModalInFs('trLinesOverlay');
+            document.body.style.overflow = 'hidden';
+            try {
+                const j = await (await fetch('/api/transfer/' + encodeURIComponent(r.id))).json();
+                if (!j.success) throw new Error(j.error || 'detail failed');
+                const lines = j.lines || [];
+                if (!lines.length) {
+                    if (body) body.innerHTML = '<div class="wh-tr-empty">This transfer has no items yet.</div>';
+                    return;
+                }
+                const units = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
+                set('trlSum', '');
+                const sumEl = document.getElementById('trlSum');
+                if (sumEl) sumEl.innerHTML = `<b>${lines.length}</b> line${lines.length !== 1 ? 's' : ''} · <b>${units}</b> unit${units !== 1 ? 's' : ''} on the way`;
+                if (body) body.innerHTML = `<table class="trl-t">
+                    <thead><tr><th>Code</th><th>Product</th><th style="text-align:right">Qty</th></tr></thead>
+                    <tbody>${lines.map(l => `<tr>
+                        <td class="c-sku">${_esc(l.sku)}</td>
+                        <td>${_esc(l.product_name)}</td>
+                        <td class="c-qty">${_esc(l.quantity)}</td>
+                    </tr>`).join('')}</tbody></table>`;
+            } catch (e) {
+                if (body) body.innerHTML = `<div class="wh-tr-empty">Could not load items: ${_esc(e.message)}</div>`;
+            }
+        }
+        function closeTrLines() {
+            const ov = document.getElementById('trLinesOverlay'); if (!ov) return;
+            ov.classList.remove('active');
+            _restoreModal('trLinesOverlay');
+            document.body.style.overflow = '';
+        }
+        function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
         function openTransfersModal(direction) {
             if (direction === 'outbound' || direction === 'inbound') {
@@ -1301,7 +1465,7 @@
         }
         function renderTransfersTable() {
             const MAIN_WH = 'Main Warehouse';
-            const data = window.__transferData || [];
+            const data = _trAll();          // includes anything pulled in by Find TR
             const search = (document.getElementById('trSearch')?.value || '').toLowerCase();
 
             const CLOSED_TR = ['COMPLETED', 'VOIDED', 'CANCELLED', 'CLOSED', 'INVOICED'];
