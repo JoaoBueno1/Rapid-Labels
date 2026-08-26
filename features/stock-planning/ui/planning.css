@@ -484,3 +484,39 @@ tr.al-row:hover td{background:var(--card-2)}
 .lc-disc-mark{background:var(--xl-closed);color:var(--mut);border:1px solid var(--line-3)}
 .sup-to{color:var(--mut-3);font-size:11px;margin-left:5px}
 .sup-to b{color:var(--acc);font-weight:600;cursor:pointer}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Colunas fixas da grade semanal.
+   As 7 primeiras somam 560px; a grade em 26 semanas passa de 2.000px numa
+   área de ~1.570px. O único sticky era top:0, então ao rolar para a direita
+   o SKU saía da tela e sobravam números sem dono.
+   Escopado em .sp-supply de propósito: as grades de Projects e POs têm outra
+   contagem de colunas e uma regra genérica quebraria as duas.
+   ───────────────────────────────────────────────────────────────────────── */
+.sp-supply thead th:nth-child(-n+7),
+.sp-supply tr.sk td:nth-child(-n+7),
+.sp-supply tr.wrk td.lbl{position:sticky;z-index:2}
+.sp-supply thead th:nth-child(-n+7){z-index:5}
+
+.sp-supply thead th:nth-child(1),.sp-supply tr.sk td:nth-child(1),
+.sp-supply tr.wrk td.lbl{left:0}
+.sp-supply thead th:nth-child(2),.sp-supply tr.sk td:nth-child(2){left:190px}
+.sp-supply thead th:nth-child(3),.sp-supply tr.sk td:nth-child(3){left:260px}
+.sp-supply thead th:nth-child(4),.sp-supply tr.sk td:nth-child(4){left:322px}
+.sp-supply thead th:nth-child(5),.sp-supply tr.sk td:nth-child(5){left:374px}
+.sp-supply thead th:nth-child(6),.sp-supply tr.sk td:nth-child(6){left:434px}
+.sp-supply thead th:nth-child(7),.sp-supply tr.sk td:nth-child(7){left:508px}
+
+/* A borda marca onde o congelado termina e o rolável começa. */
+.sp-supply thead th:nth-child(7),
+.sp-supply tr.sk td:nth-child(7),
+.sp-supply tr.wrk td.lbl{box-shadow:1px 0 0 var(--line-3)}
+
+/* A célula que abriu o painel. Outline e não background: as células mais
+   clicadas já são pintadas por neg/low/rep, e o box-shadow está ocupado
+   pelas marcas de PO e de draw. */
+.sp-supply td.wk.is-open{position:relative;z-index:1;
+  outline:2px solid var(--acc);outline-offset:-2px}
+
+/* Alvo de expandir: 151px² no chevron contra 10.900px² na célula. */
+.sp-supply tr.sk td.em{cursor:pointer}

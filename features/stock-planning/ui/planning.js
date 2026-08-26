@@ -15,7 +15,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const S = {
   view: 'overview', ov: 'health',
   projects: { q:'', status:'ACTIVE', rep:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
-  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{} },
+  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { supplier:'' },
   buy:      { supplier:'', late:true },
@@ -777,7 +777,7 @@ function renderSupply() {
       <td class="n">${cellSku(r,'target_cover_weeks',r.target_cover_weeks)}</td>
       ${r.cells.map((c,i)=>open
         ? `<td class="wk ${i===0?'rep':''} faint"></td>`
-        : `<td class="wk ${i===0?'rep':''} ${c.neg?'neg':''} ${c.lowEdge?'low':''} ${c.i?'has-in':''} ${c.d?'has-dr':''}"
+        : `<td class="wk ${i===0?'rep':''} ${c.neg?'neg':''} ${c.lowEdge?'low':''} ${c.i?'has-in':''} ${c.d?'has-dr':''} ${isOpenCell(r.sku_key,c.w)?'is-open':''}"
              data-week="${c.w}" title="opening ${n0(c.o)} · in ${n0(c.i)} · sales ${n1(c.s)} · project ${n0(c.d)}${c.lowEdge?' — drops below target cover here':''}">${n0(c.c)}</td>`).join('')}
     </tr>`;
     if (!open) return `<tbody>${skuRow}</tbody>`;
@@ -786,7 +786,7 @@ function renderSupply() {
       ${r.cells.map((c,i)=>{
         const v = pick(c);
         const isClose = cls === 'r-close';
-        return `<td class="wk ${i===0?'rep':''} ${isClose&&c.neg?'neg':''} ${isClose&&c.lowEdge?'low':''}"
+        return `<td class="wk ${i===0?'rep':''} ${isClose&&c.neg?'neg':''} ${isClose&&c.lowEdge?'low':''} ${isClose&&isOpenCell(r.sku_key,c.w)?'is-open':''}"
           ${isClose?`data-week="${c.w}"`:''}>${v===0?'<span class="faint">0</span>':cls==='r-out'?n1(v):n0(v)}</td>`;
       }).join('')}</tr>`).join('');
     return `<tbody>${skuRow}${work}</tbody>`;
@@ -797,21 +797,56 @@ const cellSku = (r, f, html) =>
   `<span class="sp-cell" contenteditable="plaintext-only" spellcheck="false"
      data-sku="${esc(r.sku_key)}" data-field="${f}" data-kind="num">${html==null?'':html}</span>`;
 
+// Com 34 colunas, o painel abria mostrando um detalhe cuja célula de origem ninguém
+// identificava. A marca sobrevive ao re-render porque mora no estado, não no DOM.
+const isOpenCell = (sku, week) =>
+  !!S.supply.cell && S.supply.cell.sku === sku && S.supply.cell.week === week;
+
+// Expandir tudo era um atalho de leitura: enquanto ligado, o estado por linha ficava
+// ignorado e clicar num chevron não fazia nada. Materializa o "todos abertos" em estado
+// real antes de fechar um, para o clique voltar a responder.
+function toggleSku(k) {
+  if (S.supply.expandAll) {
+    S.supply.expandAll = false;
+    $('#spExpand').classList.remove('is-on');
+    (spData?.rows || []).forEach(r => { S.supply.open[r.sku_key] = true; });
+  }
+  S.supply.open[k] = !S.supply.open[k];
+  renderSupply();
+}
+
 $('#spSupplier').addEventListener('change', e => { S.supply.supplier = e.target.value; localStorage.setItem('sp.sup', e.target.value); loadSupply(); });
 $('#spSearch').addEventListener('input', debounce(e => { S.supply.q = e.target.value; loadSupply(); }));
 $('#spWeeks').addEventListener('change', e => { S.supply.weeks = +e.target.value; loadSupply(); });
 $('#spRisk').addEventListener('click', e => { S.supply.risk = !S.supply.risk; e.currentTarget.classList.toggle('is-on', S.supply.risk); loadSupply(); });
 $('#spLife').addEventListener('change', e => { S.supply.life = e.target.value; loadSupply(); });
-$('#spExpand').addEventListener('click', e => { S.supply.expandAll = !S.supply.expandAll; e.currentTarget.classList.toggle('is-on', S.supply.expandAll); renderSupply(); });
+$('#spExpand').addEventListener('click', e => {
+  S.supply.expandAll = !S.supply.expandAll;
+  // Desligar precisa fechar de verdade: sem isto, as linhas abertas uma a uma
+  // continuavam abertas e o botão parecia não fazer nada.
+  if (!S.supply.expandAll) S.supply.open = {};
+  e.currentTarget.classList.toggle('is-on', S.supply.expandAll);
+  renderSupply();
+});
 $('#spGrid').addEventListener('click', e => {
   const g = e.target.closest('[data-goto]');
   if (g) { S.supply.q = g.dataset.goto; $('#spSearch').value = g.dataset.goto; return loadSupply(); }
   const lf = e.target.closest('[data-life]');
   if (lf) return openLifecycle(lf.dataset.life);
   const t = e.target.closest('[data-tog]');
-  if (t) { const k = t.dataset.tog; S.supply.open[k] = !S.supply.open[k]; return renderSupply(); }
+  if (t) return toggleSku(t.dataset.tog);
   const td = e.target.closest('td.wk[data-week]');
-  if (td) { const tb = td.closest('tbody'); openWeek(tb.querySelector('tr.sk').dataset.sku, td.dataset.week); }
+  if (td) {
+    S.supply.cell = { sku: td.closest('tbody').querySelector('tr.sk').dataset.sku, week: td.dataset.week };
+    $('#spGrid').querySelectorAll('td.wk.is-open').forEach(x => x.classList.remove('is-open'));
+    td.classList.add('is-open');
+    return openWeek(S.supply.cell.sku, S.supply.cell.week);
+  }
+  // O alvo do chevron era 151 px². A célula do SKU é 72× maior. Fica na CÉLULA e não
+  // na linha: os links de sucessão e de ciclo de vida já saíram acima, e a linha inteira
+  // engoliria o drill-down das semanas e as duas células editáveis.
+  const em = e.target.closest('tr.sk td.em');
+  if (em && !String(window.getSelection())) return toggleSku(em.closest('tr.sk').dataset.sku);
 });
 
 async function openWeek(sku, week) {
