@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="planning.css?v=9">
+<link rel="stylesheet" href="planning.css?v=11">
   <link rel="stylesheet" href="/shared/rail.css?v=4">
   <link rel="stylesheet" href="/shared/ui.css?v=4">
   <script defer src="/shared/rail.js?v=7"></script>
@@ -83,6 +83,13 @@
       <option value="12">12 weeks</option>
       <option value="26" selected>26 weeks</option>
       <option value="52">52 weeks</option>
+    </select>
+    <select id="spBack" title="Mostra o realizado das semanas anteriores, à esquerda da semana de reporte">
+      <option value="0">No history</option>
+      <option value="4">4 wk back</option>
+      <option value="8">8 wk back</option>
+      <option value="13">13 wk back</option>
+      <option value="26">26 wk back</option>
     </select>
     <button class="sp-chip" id="spRisk">At risk only</button>
     <select id="spLife"><option value="">All lifecycle</option><option value="ACTIVE">Active only</option><option value="RUN_OUT">Run-out</option><option value="DISCONTINUED">Discontinued</option></select>
@@ -205,6 +212,6 @@
 </div>
 
 <div class="sp-toast" id="toast"></div>
-<script src="planning.js?v=9"></script>
+<script src="planning.js?v=13"></script>
 </body>
 </html>

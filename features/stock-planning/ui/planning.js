@@ -15,7 +15,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const S = {
   view: 'overview', ov: 'health',
   projects: { q:'', status:'ACTIVE', rep:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
-  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null },
+  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, back:+(localStorage.getItem('sp.back')||0) },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { supplier:'' },
   buy:      { supplier:'', late:true },
@@ -108,6 +108,7 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     $('#alSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#npoSupplier').innerHTML = '<option value="">—</option>' + opts;
     if (S.supply.supplier) $('#spSupplier').value = S.supply.supplier;
+    if (S.supply.back) $('#spBack').value = String(S.supply.back);
     const f = await api('/filters');
     $('#pjRep').innerHTML = '<option value="">All reps</option>' + f.reps.map(r => `<option>${esc(r)}</option>`).join('');
     loadOverview();
@@ -718,11 +719,35 @@ async function loadSupply() {
   if (s.life) qs.set('lifecycle', s.life);
   $('#spCount').textContent = 'calculating…';
   try {
-    spData = await api('/planning?' + qs);
-    $('#spCount').textContent = `${n0(spData.rows.length)} of ${n0(spData.total)} SKUs · ${spData.ms} ms`;
+    // O passado é uma consulta separada de propósito: ele é REALIZADO e a grade
+    // é PROJETADO. Misturar os dois no mesmo motor faria o realizado virar
+    // entrada de uma recursão que ele não deve alimentar.
+    const [proj, hist] = await Promise.all([
+      api('/planning?' + qs),
+      s.back ? api('/planning/history?' + qs + '&back=' + s.back).catch(() => null) : null,
+    ]);
+    spData = proj;
+    const mudou = (hist ? hist.weeks.length : 0) !== (spHist ? spHist.weeks.length : 0);
+    spHist = hist;
+    if (mudou) spAnchor = true;
+    $('#spCount').textContent = `${n0(spData.rows.length)} of ${n0(spData.total)} SKUs · ${spData.ms} ms`
+      + (hist ? ` · ${hist.weeks.length} wk back in ${hist.ms} ms` : '');
     renderSupply();
   } catch (e) { $('#spCount').textContent=''; toast(e.message, true); }
 }
+let spHist = null;
+let spAnchor = false;
+// Índice por SKU para a grade não varrer o array a cada linha.
+const histFor = (k) => {
+  if (!spHist) return null;
+  if (!spHist._idx) spHist._idx = spHist.rows.reduce((m, r) => (m[r.sku_key] = r.cells, m), {});
+  return spHist._idx[k] || null;
+};
+// A fronteira do que sabemos. Fora dela a célula diz "sem registro", não "0".
+const histKnown = (src, week) => {
+  const c = spHist && spHist.coverage && spHist.coverage[src];
+  return !!c && week >= c.first_week && week <= c.last_week;
+};
 const WRK = [
   ['r-open', 'Opening Inventory Level', c => c.o],
   ['r-in',   'Inventory In:',           c => c.i],
@@ -743,14 +768,23 @@ function markCrossings(cells) {
   });
 }
 
+// Qual número do realizado cada linha de trabalho mostra, e de qual fonte ele
+// vem — porque a cobertura de cada fonte é diferente e a célula precisa saber
+// se está fora dela. Opening e Closing ficam de fora: dependem de reconstruir
+// o estoque para trás, e isso é o back-test do backfill, não esta tela.
+const HPICK = { 'r-in':['recv','receipts'], 'r-out':['sold','sales'], 'r-proj':['proj','projects'] };
+
 function renderSupply() {
   const d = spData; if (!d) return;
   const W = d.weeks;
+  const HW = (spHist && spHist.weeks) || [];
   const head = `<thead><tr>
     <th style="width:190px">SKU</th><th class="n" style="width:70px">SOH</th>
     <th class="n" style="width:62px">Wk/Avg</th><th class="n" style="width:52px">Mths</th>
     <th class="n" style="width:60px">TBA</th><th class="n" style="width:74px">Incoming</th>
     <th class="n" style="width:52px">Target</th>
+    ${HW.map(w=>`<th class="wk pastw" title="Realizado — o que de fato aconteceu nesta semana">
+      ${dSh(w.week_ending)}<small>actual</small></th>`).join('')}
     ${W.map((w,i)=>`<th class="wk ${i===0?'rep':''} ${Number(w.factor)!==1?'cny':''}" title="${esc(w.factor_reason||'')}">
       ${dSh(w.week_ending)}<small>${i===0?'reporting':Number(w.factor)!==1?Math.round(w.factor*100)+'%':'&nbsp;'}</small></th>`).join('')}
   </tr></thead>`;
@@ -775,14 +809,34 @@ function renderSupply() {
       <td class="n mono"${m.undatedQty?' style="color:#9c5700;font-weight:600"':' class="n mono faint"'}>${m.undatedQty?n0(m.undatedQty):'—'}</td>
       <td class="n mono">${m.totalIncoming?n0(m.totalIncoming):''}</td>
       <td class="n">${cellSku(r,'target_cover_weeks',r.target_cover_weeks)}</td>
+      ${(() => { const H = histFor(r.sku_key);
+        // Na linha fechada o passado mostra a VENDA realizada: é o número que o
+        // planejador compara com o Wk/Avg que ele mesmo digitou ao lado.
+        return HW.map((w, i) => {
+          const h = H && H[i];
+          if (!histKnown('sales', w.week_ending))
+            return `<td class="wk pastw nodata" title="Sem registro de venda nesta semana — a série começa em ${esc((spHist.coverage.sales||{}).first_week||'?')}">·</td>`;
+          return `<td class="wk pastw" title="realizado · vendido ${n0(h?h.sold:0)} · recebido ${n0(h?h.recv:0)} · projeto ${n0(h?h.proj:0)}">${n0(h?h.sold:0)}</td>`;
+        }).join(''); })()}
       ${r.cells.map((c,i)=>open
         ? `<td class="wk ${i===0?'rep':''} faint"></td>`
         : `<td class="wk ${i===0?'rep':''} ${c.neg?'neg':''} ${c.lowEdge?'low':''} ${c.i?'has-in':''} ${c.d?'has-dr':''} ${isOpenCell(r.sku_key,c.w)?'is-open':''}"
              data-week="${c.w}" title="opening ${n0(c.o)} · in ${n0(c.i)} · sales ${n1(c.s)} · project ${n0(c.d)}${c.lowEdge?' — drops below target cover here':''}">${n0(c.c)}</td>`).join('')}
     </tr>`;
     if (!open) return `<tbody>${skuRow}</tbody>`;
+    const H = histFor(r.sku_key);
     const work = WRK.map(([cls,label,pick]) => `<tr class="wrk ${cls} ${cls==='r-close'?'close':''}">
       <td class="lbl" colspan="7">${label}</td>
+      ${HW.map((w,i)=>{
+        const pk = HPICK[cls];
+        // Opening e Closing não têm passado: exigem reconstruir o estoque para
+        // trás. Marcar como vazio é honesto; preencher seria inventar.
+        if (!pk) return `<td class="wk pastw nodata" title="O estoque do passado ainda não foi reconstruído">·</td>`;
+        if (!histKnown(pk[1], w.week_ending))
+          return `<td class="wk pastw nodata" title="Sem registro desta fonte nesta semana">·</td>`;
+        const v = H && H[i] ? H[i][pk[0]] : 0;
+        return `<td class="wk pastw">${v===0?'<span class="faint">0</span>':n0(v)}</td>`;
+      }).join('')}
       ${r.cells.map((c,i)=>{
         const v = pick(c);
         const isClose = cls === 'r-close';
@@ -792,7 +846,27 @@ function renderSupply() {
     return `<tbody>${skuRow}${work}</tbody>`;
   }).join('');
   $('#spGrid').innerHTML = head + bodies;
+
+  // O pedido era "ver o passado SEM perder o foco na semana atual". Com 26
+  // colunas de realizado à esquerda, a semana de reporte nasceria fora da tela.
+  // Ancorar só quando o histórico muda: depois disso a rolagem é do usuário.
+  if (spAnchor) {
+    spAnchor = false;
+    const rep = $('#spGrid').querySelector('th.wk.rep');
+    const box = $('#spGrid').closest('.sp-scroll');
+    if (rep && box) {
+      // offsetLeft mede contra o offsetParent, que aqui não é a caixa que rola —
+      // por isso o primeiro salto erra. Medir a posição real e corrigir acerta
+      // sem depender de qual ancestral está posicionado.
+      box.scrollLeft = Math.max(0, rep.offsetLeft - FROZEN_PX);
+      box.scrollLeft += rep.getBoundingClientRect().left
+                      - box.getBoundingClientRect().left - FROZEN_PX;
+    }
+  }
 }
+// As 7 colunas fixas: 190+70+62+52+60+74+52. A rolagem para nesta borda para a
+// semana de reporte encostar no congelado, e não sumir atrás dele.
+const FROZEN_PX = 560;
 const cellSku = (r, f, html) =>
   `<span class="sp-cell" contenteditable="plaintext-only" spellcheck="false"
      data-sku="${esc(r.sku_key)}" data-field="${f}" data-kind="num">${html==null?'':html}</span>`;
@@ -818,6 +892,9 @@ function toggleSku(k) {
 $('#spSupplier').addEventListener('change', e => { S.supply.supplier = e.target.value; localStorage.setItem('sp.sup', e.target.value); loadSupply(); });
 $('#spSearch').addEventListener('input', debounce(e => { S.supply.q = e.target.value; loadSupply(); }));
 $('#spWeeks').addEventListener('change', e => { S.supply.weeks = +e.target.value; loadSupply(); });
+$('#spBack').addEventListener('change', e => {
+  S.supply.back = +e.target.value; localStorage.setItem('sp.back', e.target.value); loadSupply();
+});
 $('#spRisk').addEventListener('click', e => { S.supply.risk = !S.supply.risk; e.currentTarget.classList.toggle('is-on', S.supply.risk); loadSupply(); });
 $('#spLife').addEventListener('change', e => { S.supply.life = e.target.value; loadSupply(); });
 $('#spExpand').addEventListener('click', e => {

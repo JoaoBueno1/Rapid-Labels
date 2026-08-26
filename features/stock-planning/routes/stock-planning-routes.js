@@ -321,6 +321,85 @@ function register(app) {
     });
   }));
 
+  /**
+   * O retrovisor. A grade só sabia olhar para frente; o planejador digita um
+   * Wk/Avg e não tinha como conferir contra o que de fato saiu.
+   *
+   * Devolve APENAS realizado — vendido, recebido e consumido por projeto. Não
+   * devolve estoque de fechamento do passado de propósito: isso depende de
+   * reconstruir a movimentação para trás, e sem medir o erro contra um snapshot
+   * real seria número inventado com cara de dado.
+   *
+   * As semanas vêm de generate_series e não do que a tabela tem, para que uma
+   * semana SEM dado apareça como coluna vazia e não desapareça — sumir faria
+   * fevereiro parecer colado em março.
+   */
+  app.get(`${R}/planning/history`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const state = await db.one(`SELECT * FROM rapid_inv.planning_state WHERE id=1`);
+    const back = asInt(req.query.back, 8, 1, 52);
+    const limit = asInt(req.query.limit, 150, 1, MAX_PAGE);
+    const offset = asInt(req.query.offset, 0, 0, 1e6);
+
+    // Os mesmos filtros de /planning, para o conjunto de SKUs bater linha a linha.
+    const where = ['1=1'], p = [];
+    if (req.query.supplier) { p.push(req.query.supplier); where.push(`supplier_code = $${p.length}`); }
+    if (req.query.q) { p.push(`%${req.query.q}%`); where.push(`sku ILIKE $${p.length}`); }
+    if (req.query.only === 'risk') where.push(`(soh_nonpositive OR mths_stock < 1)`);
+    if (req.query.lifecycle) { p.push(req.query.lifecycle); where.push(`lifecycle_status = $${p.length}`); }
+
+    const [weeks, skus, coverage] = await Promise.all([
+      db.query(
+        `SELECT gs::date::text AS week_ending
+           FROM generate_series($1::date - ($2::int * 7), $1::date - 7, interval '7 days') gs
+          ORDER BY 1`, [state.reporting_week, back]),
+      db.query(
+        `SELECT sku_key FROM rapid_inv.v_sp_planning_skus WHERE ${where.join(' AND ')}
+          ORDER BY (mths_stock IS NULL), mths_stock NULLS LAST, sku
+          LIMIT ${limit} OFFSET ${offset}`, p),
+      db.query(`SELECT * FROM rapid_inv.v_sp_history_coverage`),
+    ]);
+
+    const keys = skus.map((s) => s.sku_key);
+    const first = weeks.length ? weeks[0].week_ending : state.reporting_week;
+    const last = weeks.length ? weeks[weeks.length - 1].week_ending : state.reporting_week;
+
+    // Um SELECT para o conjunto inteiro, não um por linha.
+    const hist = keys.length ? await db.query(
+      `SELECT sku_key, week_ending::text AS week_ending, sold_qty, recv_qty, proj_qty,
+              has_sales, has_recv, has_proj
+         FROM rapid_inv.v_sp_history_week
+        WHERE sku_key = ANY($1) AND week_ending BETWEEN $2 AND $3`, [keys, first, last]) : [];
+
+    const idx = {};
+    for (const h of hist) (idx[h.sku_key] = idx[h.sku_key] || {})[h.week_ending] = h;
+
+    const rows = keys.map((k) => ({
+      sku_key: k,
+      cells: weeks.map((w) => {
+        const h = idx[k] && idx[k][w.week_ending];
+        return h
+          ? { w: w.week_ending, sold: Number(h.sold_qty), recv: Number(h.recv_qty),
+              proj: Number(h.proj_qty), hs: h.has_sales, hr: h.has_recv, hp: h.has_proj }
+          : { w: w.week_ending, sold: 0, recv: 0, proj: 0, hs: false, hr: false, hp: false };
+      }),
+    }));
+
+    // A fronteira do que sabemos. A tela pinta o que está fora dela como
+    // "sem registro", nunca como zero: num controle de estoque, "não vendeu"
+    // e "não sabemos" levam a decisões de compra opostas.
+    const cov = coverage.reduce((m, c) => {
+      m[c.source] = { first_week: c.first_week, last_week: c.last_week, weeks: c.weeks, skus: c.skus };
+      return m;
+    }, {});
+
+    res.json({
+      reporting_week: state.reporting_week,
+      weeks: weeks.map((w) => ({ week_ending: w.week_ending, label: shortLabel(w.week_ending) })),
+      rows, coverage: cov, ms: Date.now() - t0,
+    });
+  }));
+
   /** O drill-down: por que este número. Sem isto o planejador não confia na tela. */
   app.get(`${R}/planning/:sku/week/:week`, wrap(async (req, res) => {
     const key = req.params.sku.toUpperCase();

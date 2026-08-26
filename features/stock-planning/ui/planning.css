@@ -520,3 +520,23 @@ tr.al-row:hover td{background:var(--card-2)}
 
 /* Alvo de expandir: 151px² no chevron contra 10.900px² na célula. */
 .sp-supply tr.sk td.em{cursor:pointer}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   O passado realizado, à esquerda da semana de reporte.
+   Precisa ser lido como OUTRA COISA que a projeção: à direita é o que o motor
+   calcula, à esquerda é o que de fato aconteceu. Fundo assentado e uma régua
+   marcando onde o realizado termina e a projeção começa.
+   ───────────────────────────────────────────────────────────────────────── */
+.sp-supply th.wk.pastw{background:#eef0f2;color:var(--mut-2)}
+.sp-supply th.wk.pastw small{color:var(--mut);font-weight:600}
+.sp-supply tr.sk td.wk.pastw{background:#f4f6f8;color:var(--mut-2);font-weight:600}
+.sp-supply tr.wrk td.wk.pastw{background:#f7f8fa}
+
+/* A régua entre realizado e projetado. Sem ela as duas metades viram uma só. */
+.sp-supply th.wk.pastw:last-of-type,
+.sp-supply td.wk.pastw:last-of-type{box-shadow:inset -2px 0 0 var(--line-3)}
+
+/* Vazio não é zero. Um "0" de venda e um "não temos registro" levam a decisões
+   de compra opostas, então nunca podem ter a mesma aparência. */
+.sp-supply td.wk.pastw.nodata{color:var(--line-3);font-weight:400;background:
+  repeating-linear-gradient(-45deg,#f7f8fa,#f7f8fa 4px,#f1f3f5 4px,#f1f3f5 8px)}
