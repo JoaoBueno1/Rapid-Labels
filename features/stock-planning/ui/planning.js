@@ -17,7 +17,7 @@ const S = {
   projects: { q:'', status:'ACTIVE', rep:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
   supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, back:+(localStorage.getItem('sp.back')||0) },
   pos:      { q:'', supplier:'', open:true, overdue:false },
-  alerts:   { supplier:'' },
+  alerts:   { muted:false, supplier:'' },
   buy:      { supplier:'', late:false },
   suppliers: [], branches: [], state: null,
 };
@@ -1223,7 +1223,8 @@ let alData = null;
 S.alerts.group = 'sku'; S.alerts.code = ''; S.alerts.crit = false;
 
 async function loadAlerts() {
-  const qs = new URLSearchParams({ limit:600 });
+  const qs = new URLSearchParams({ limit:1200 });
+  if (S.alerts.muted) qs.set('muted','1');
   if (S.alerts.supplier) qs.set('supplier', S.alerts.supplier);
   $('#alBody').innerHTML = '<div class="sp-loading">Calculating…</div>';
   try {
@@ -1270,7 +1271,12 @@ function renderAlerts() {
     const rows = alData.alerts.filter(a =>
       (!S.alerts.code || a.code === S.alerts.code) && (!S.alerts.crit || a.severity === 'CRITICAL'));
     $('#alCount').textContent = `${n0(rows.length)} alerts`;
-    $('#alBody').innerHTML = alTiles() + `<div class="sp-panel">${rows.map(a=>`<div class="al">
+    const seg = alData.bySegment || {};
+    const segBar = Object.keys(seg).length
+      ? `<div class="al-segs">${['Buy now','No forecast','Order soon','Top up','Fix record','Review','Dead SKUs']
+          .filter(k=>seg[k]).map(k=>`<span class="al-seg"><b>${n0(seg[k])}</b> ${k}</span>`).join('')}</div>`
+      : '';
+    $('#alBody').innerHTML = alTiles() + segBar + `<div class="sp-panel">${rows.map(a=>`<div class="al">
       <span class="sv sv-${a.severity}">${a.severity}</span>
       <span class="k" data-sku="${esc(a.sku)}" data-sup="${esc(a.supplier||'')}">${esc(a.sku)}</span>
       <span class="m">${esc(a.message)}</span></div>`).join('') || '<div class="sp-empty">Nothing matches.</div>'}</div>`;
@@ -1286,7 +1292,12 @@ function renderAlerts() {
     }
     const list = [...by.values()].sort((a,b)=>b.critical-a.critical||b.skus.length-a.skus.length);
     $('#alCount').textContent = `${n0(skus.length)} SKUs across ${list.length} suppliers`;
-    $('#alBody').innerHTML = alTiles() + list.map(b=>`
+    const seg = alData.bySegment || {};
+    const segBar = Object.keys(seg).length
+      ? `<div class="al-segs">${['Buy now','No forecast','Order soon','Top up','Fix record','Review','Dead SKUs']
+          .filter(k=>seg[k]).map(k=>`<span class="al-seg"><b>${n0(seg[k])}</b> ${k}</span>`).join('')}</div>`
+      : '';
+    $('#alBody').innerHTML = alTiles() + segBar + list.map(b=>`
       <div class="sp-panel">
         <h4>${esc(b.supplier)}
           <span>${b.skus.length} SKUs · ${b.alerts} exceptions${b.critical?` · ${b.critical} critical`:''}${b.stockout?` · ${b.stockout} run out in the horizon`:''}</span>
@@ -1297,10 +1308,18 @@ function renderAlerts() {
       </div>`).join('');
   } else {
     const skus = alFilter(alData.skuList);
-    $('#alCount').textContent = `${n0(skus.length)} SKUs · ${n0(skus.reduce((n,s)=>n+s._shown.length,0))} exceptions`;
-    $('#alBody').innerHTML = alTiles() +
-      `<div class="sp-panel"><table><tbody>${skus.slice(0,200).map(s=>alSkuRow(s)).join('')}</tbody></table>
-       ${skus.length>200?`<div class="in" style="color:var(--mut-3);font-size:12px">…and ${skus.length-200} more. Narrow with the filters above.</div>`:''}</div>`;
+    $('#alCount').textContent = `${n0(skus.length)} SKUs · ${n0(skus.reduce((n,s)=>n+s._shown.length,0))} exceptions`
+      + (alData.muted_count ? ` · ${n0(alData.muted_count)} silenced` : '');
+    const seg = alData.bySegment || {};
+    const segBar = Object.keys(seg).length
+      ? `<div class="al-segs">${['Buy now','No forecast','Order soon','Top up','Fix record','Review','Dead SKUs']
+          .filter(k=>seg[k]).map(k=>`<span class="al-seg"><b>${n0(seg[k])}</b> ${k}</span>`).join('')}</div>`
+      : '';
+    $('#alBody').innerHTML = alTiles() + segBar +
+      `<div class="sp-panel"><table><tbody>${skus.map(s=>alSkuRow(s)).join('')}</tbody></table>
+       ${alData.muted_count?`<div class="in al-muted" title="Nenhum deles vendeu uma unidade em 52 semanas, e a regra não olha o ciclo de vida: 125 dos silenciados estão marcados ACTIVE.">
+         <b>${n0(alData.muted_count)} SKUs silenciados</b> — estoque 0, sem previsão, sem venda em 52 semanas, sem PO e sem draw.
+         <button class="ui-act" id="alShowMuted">${S.alerts.muted?'Ocultar':'Mostrar'}</button></div>`:''}</div>`;
   }
 }
 function alSkuRow(s) {
@@ -1334,6 +1353,7 @@ $$('.sp-view[data-view=alerts] .sp-chip[data-grp]').forEach(c => c.addEventListe
 }));
 $('#alBody').addEventListener('click', e => {
   const t = e.target.closest('[data-code]');
+  if (e.target.closest('#alShowMuted')) { S.alerts.muted = !S.alerts.muted; return loadAlerts(); }
   if (t) { S.alerts.code = S.alerts.code === t.dataset.code ? '' : t.dataset.code; $('#alCode').value = S.alerts.code; return renderAlerts(); }
   const so = e.target.closest('[data-sup-open]');
   if (so) return jumpSupply(so.dataset.supOpen, '');

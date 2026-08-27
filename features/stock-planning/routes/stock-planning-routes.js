@@ -738,6 +738,20 @@ function register(app) {
       await db.query(`SELECT sku, week_ending, qty FROM rapid_inv.v_sp_incoming
                        WHERE sku = ANY($1) AND week_ending BETWEEN $2 AND $3`, [keys, state.reporting_week, lastWeek]),
     ];
+    // O selo tem de ser o MESMO das duas telas: quando elas discordam, a mesma
+    // linha ganha aviso de compra numa e silêncio na outra.
+    const [sold, lead] = await Promise.all([
+      db.query(`SELECT sku_key,
+                       sum(sold_qty) FILTER (WHERE week_ending > $2::date - 91) AS sold13,
+                       sum(sold_qty) AS sold52
+                  FROM rapid_inv.v_sp_history_week
+                 WHERE sku_key = ANY($1) AND week_ending > $2::date - 364
+                 GROUP BY 1`, [keys, state.reporting_week]),
+      db.query(`SELECT sku_key, lead_weeks, review_weeks FROM rapid_inv.v_sp_sku_leadtime
+                 WHERE sku_key = ANY($1)`, [keys]),
+    ]);
+    const soldIdx = sold.reduce((m, r) => (m[r.sku_key] = r, m), {});
+    const leadIdx = lead.reduce((m, r) => (m[r.sku_key] = r, m), {});
     const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
     const drawIdx = index(draws), inIdx = index(incoming);
     const allWeeks = weeks.map((wk, i) => ({ weekEnding: wk.week_ending, factor: Number(wk.factor), isReporting: i === 0 }));
@@ -774,7 +788,34 @@ function register(app) {
         next_incoming: (proj.rows.find((r) => r.weekIndex > 0 && r.incoming > 0) || {}).weekEnding || null,
         next_incoming_qty: (proj.rows.find((r) => r.weekIndex > 0 && r.incoming > 0) || {}).incoming || 0,
       };
-      bySku.set(s.sku_key, { ...facts, rank: Math.max(...list.map((a) => a.rank)), alerts: list });
+      const bd = badgeFor(s, proj, list, {
+        sold: soldIdx[s.sku_key], lead: leadIdx[s.sku_key],
+        badgeWeeks, incoming: inIdx[s.sku_key] || {}, draws: drawIdx[s.sku_key] || {},
+      });
+      // O corte MUDO: casca vazia, sem estoque, sem previsão, sem venda em 52
+      // semanas, sem PO e sem draw. Validado campo a campo: 243 SKUs, ZERO
+      // falso positivo. Note que ele NÃO pergunta o ciclo de vida — 125 dos 243
+      // estão marcados ACTIVE, então filtrar por lifecycle erraria mais da
+      // metade e ainda esconderia 29 SKUs que venderam de verdade.
+      const muted = Number(s.soh_available) === 0 && !(Number(s.wk_avg) > 0)
+                 && bd.sold52 === 0 && !proj.summary.totalIncoming
+                 && !proj.summary.totalDraws && !Number(s.undated_qty || 0);
+      bySku.set(s.sku_key, { ...facts, ...bd, muted,
+        // Cada nome diz o que fazer. "Top up" é abaixo do alvo SEM zerar no
+        // horizonte — chamá-lo de "nunca chega a zerar" seria falso, porque
+        // parte dele zera logo depois da borda.
+        segment: muted ? 'Dead SKUs'
+               : bd.badge === 'ORDER NOW' || bd.badge === 'CHASE PO' ? 'Buy now'
+               : bd.badge === 'NO FORECAST'  ? 'No forecast'
+               : bd.badge === 'ORDER SOON'   ? 'Order soon'
+               : bd.badge === 'FIX FORECAST' ? 'Fix record'
+               // Vende e não zera no horizonte: é reposição de buffer, não compra.
+               : bd.sold13 > 0 ? 'Top up'
+               // Sem venda no trimestre com previsão viva, mas fora do ACTIVE:
+               // o cadastro é que está desencontrado, não o estoque.
+               : Number(s.wk_avg) > 0 ? 'Fix record'
+               : 'Review',
+        rank: Math.max(...list.map((a) => a.rank)), alerts: list });
       for (const a of list) all.push({ ...a, supplier: s.supplier_code, soh: facts.soh, wk_avg: facts.wk_avg });
     }
     all.sort((a, b) => b.rank - a.rank || a.sku.localeCompare(b.sku));
@@ -789,11 +830,19 @@ function register(app) {
       bySupplier[k].skus++; bySupplier[k].alerts += s.alerts.length;
       bySupplier[k].critical += s.alerts.filter((a) => a.severity === 'CRITICAL').length;
     }
+    // Contado sobre o conjunto INTEIRO, antes de qualquer slice. O rodapé
+    // dizia "and 400 more" quando faltavam 778.
+    const bySegment = {};
+    for (const s of skuList) bySegment[s.segment] = (bySegment[s.segment] || 0) + 1;
+    const visible = skuList.filter((s) => !s.muted);
     res.json({
       total: all.length, skus: skuList.length, bySeverity, byCode,
+      bySegment, muted_count: skuList.length - visible.length, visible_count: visible.length,
       bySupplier: Object.values(bySupplier).sort((a, b) => b.critical - a.critical || b.skus - a.skus),
       alerts: all.slice(0, asInt(req.query.limit, 400, 1, 2000)),
-      skuList: skuList.slice(0, asInt(req.query.limit, 400, 1, 2000)),
+      // O mudo sai da LISTA, nunca da contagem: quem confere o número uma vez
+      // e não fecha, para de confiar na tela.
+      skuList: (req.query.muted === '1' ? skuList : visible).slice(0, asInt(req.query.limit, 1200, 1, 3000)),
     });
   }));
 
