@@ -65,8 +65,8 @@
       { t: 'Stock Planning', href: '/planning', ic: 'plan', match: ['/planning', '/planning/', '/features/stock-planning/ui/planning.html'] },
       { t: 'Container Check', href: '/features/container-check/container-check.html', ic: 'inbox' },
       { t: 'Gateway', href: '/gateway-main.html', ic: 'fact', dot: 'railDotGateway' },
-      { t: 'Branch Replenishment', href: '/features/replenishment/replenishment.html', ic: 'truck',
-        match: ['/features/replenishment/replenishment.html', '/features/replenishment/replenishment-branch.html'] },
+      { t: 'Branch Replenishment', href: '/features/replenishment/ui/replenishment.html', ic: 'truck',
+        match: ['/features/replenishment/ui/replenishment.html', '/features/replenishment/replenishment.html', '/features/replenishment/replenishment-branch.html'] },
     ]},
     { group: 'Labels & Barcodes', items: [
       { t: 'Search & Print', modal: 'openSearchModal', ic: 'tag' },

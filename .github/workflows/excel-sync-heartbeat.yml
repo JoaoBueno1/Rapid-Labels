@@ -1,23 +1,27 @@
 # ============================================================
-# Excel Sync — delivery heartbeat
+# Excel Sync — freshness heartbeat
 # ============================================================
-# Asks, from the cloud, whether the Windows PC that writes the branch workbooks
-# actually delivered this morning.
+# Asks, from the cloud, whether the numbers the branches will read this morning
+# were actually rebuilt — and whether the mirror underneath them is still
+# filling.
 #
-# Every other guard lives ON that PC — the header gate, the formula guard, the
-# staleness gate, the run log, the exit code. They share one blind spot: a
-# machine that is off, asleep, logged out, or whose scheduled task was disabled
-# runs nothing and therefore reports nothing. A dead machine and a quiet night
-# are indistinguishable from the inside.
+# It used to ask whether a Windows PC had delivered. That machine is retired:
+# the workbooks carry Power Query and pull for themselves. The failure mode
+# moved with the architecture, so this moved too. See tools/heartbeat.py.
 #
 # A FAILED RUN OF THIS JOB IS THE NOTIFICATION. GitHub emails the repo owner on
 # a workflow failure and pushes it through the mobile app. That is the only push
 # channel this estate has, it costs no new secret, and it lands somewhere a
 # person already looks.
 #
+# It only works while it is quiet when healthy. From 18/08 to 27/08 it failed
+# every weekday over four Hobart bindings from the retired push model, so on the
+# morning GitHub actually dropped a build slot, the alarm had been ringing for
+# nine days and meant nothing. Do not let it go noisy again.
+#
 # Deliberately its OWN file rather than a step in excel-sync.yml: a broken
-# dataset build must not mask a dead delivery machine, and the two have
-# different owners and different fixes.
+# dataset build must not mask a stale one, and a job that never starts cannot
+# report on itself. This has to run from somewhere else to see that.
 #
 # Required GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY
 # ============================================================
@@ -26,17 +30,43 @@ name: Excel Sync Heartbeat
 
 on:
   schedule:
-    # 22:00 UTC Sun–Thu = 08:00 Brisbane Mon–Fri, one hour after the 07:00
-    # delivery. The day shift mirrors excel-sync.yml and is deliberate: it
-    # catches a missed delivery the same morning rather than 23 hours later.
-    # Do not "fix" 0-4 to 1-5.
-    - cron: '0 22 * * 0-4'
+    # 23:10 UTC Sun–Thu = 09:10 Brisbane Mon–Fri.
+    #
+    # It ran at 07:10 for less than a day, on the assumption that the 06:55
+    # build lands fifteen minutes earlier. Measured over 40 scheduled runs,
+    # that assumption is false: GitHub fires these late every single time —
+    # median 14 minutes, best 5, worst 59. First build of the day landed 07:01,
+    # 07:04, 07:03 and then 07:48 on 27/08.
+    #
+    # At 07:10 on a day like 27/08 the morning build has not happened yet, so
+    # the newest dataset is the previous evening's, thirteen hours old, and the
+    # check fires. It would be telling the truth and still be wrong to send:
+    # the build arrives half an hour later on its own, and an alarm that
+    # resolves itself is how the previous one came to be ignored.
+    #
+    # This job is delayed by the same scheduler, so "N minutes after the build"
+    # is not something a cron can express here. 09:10 works because by then two
+    # or three hourly builds have had their chance — even on the worst day
+    # observed, the newest was 16 minutes old.
+    #
+    # What it gives up: a build that is merely late is no longer reported. That
+    # is deliberate. What it still catches is what actually hurt — a build
+    # pipeline that has stopped, and a mirror that has stopped filling beneath
+    # one that hasn't (21–24/08, three days).
+    #
+    # The day shift mirrors excel-sync.yml and is deliberate. Do not "fix"
+    # 0-4 to 1-5 — 23:10 UTC Sunday is Monday morning in Brisbane.
+    - cron: '10 23 * * 0-4'
   workflow_dispatch:
     inputs:
-      max_minutes:
-        description: 'Business minutes a successful delivery may be stale'
+      max_build_hours:
+        description: 'Hours a dataset may go without a rebuild'
         required: false
-        default: '1620'
+        default: '6'
+      max_data_hours:
+        description: 'Hours the mirror data underneath may be stale'
+        required: false
+        default: '6'
 
 concurrency:
   group: excel-sync-heartbeat
@@ -58,9 +88,11 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Check the delivery machine reported in
+      - name: Check this morning's numbers are actually fresh
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          python tools/heartbeat.py --max-minutes "${{ github.event.inputs.max_minutes || '1620' }}"
+          python tools/heartbeat.py \
+            --max-build-hours "${{ github.event.inputs.max_build_hours || '6' }}" \
+            --max-data-hours "${{ github.event.inputs.max_data_hours || '6' }}"

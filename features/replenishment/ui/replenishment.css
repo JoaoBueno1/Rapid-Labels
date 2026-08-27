@@ -1,0 +1,139 @@
+/* Branch Replenishment — module-specific bits only.
+   Tokens + the .sp-* shell/grid/tile/modal/side styles come from the linked
+   /features/stock-planning/ui/planning.css, so the two modules match exactly. */
+
+.rp-gear { margin-left: 4px; white-space: nowrap; }
+.sp-view-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* landing */
+.rp-h { font-weight: 600; color: var(--ink-2); }
+.rp-title { font-weight: 700; margin-right: 4px; }
+.rp-note, .rp-sub { color: var(--mut-2); font-weight: 400; font-size: 12px; }
+.rp-sub { font-size: 11px; }
+.sp-tiles { padding: 14px 2px; }
+.sp-tile { cursor: pointer; transition: box-shadow .15s, transform .15s; }
+.sp-tile:hover { box-shadow: 0 4px 14px rgba(20,28,41,.10); transform: translateY(-1px); }
+.rp-tile-sub { font-size: 11.5px; color: var(--mut-2); margin-top: 4px; }
+.rp-tile-var { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--acc-d); background: var(--acc-soft); border-radius: 4px; padding: 1px 6px; margin-top: 6px; }
+
+/* segmented sub-tabs (Weekly | Daily | History) */
+.rp-seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
+.rp-seg button { border: 0; background: #fff; padding: 6px 13px; font: 600 12.5px var(--sans); color: var(--mut); cursor: pointer; }
+.rp-seg button + button { border-left: 1px solid var(--line-2); }
+.rp-seg button.on { background: var(--acc); color: #fff; }
+
+/* ── grid: full-width, fixed layout — everything fits, no side scroll ── */
+/* auto (not hidden): desktop never scrolls sideways; very narrow windows scroll
+   rather than silently clipping the Comment/SYD columns. */
+.rp-scroll { overflow-x: auto; }
+.rp-grid { table-layout: fixed; width: 100%; font-size: 13px; }
+.rp-grid td { height: 31px; padding: 0 9px; border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-grid th { position: sticky; top: 0; z-index: 3; height: 31px; padding: 0 9px; background: var(--head);
+  font: 700 11px var(--sans); text-transform: uppercase; letter-spacing: .02em; color: var(--mut); white-space: nowrap; user-select: none; overflow: hidden; text-overflow: ellipsis; }
+/* alignment — numbers centered, text left */
+.rp-grid td.num, .rp-grid th.num { text-align: center; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.rp-grid td.txt, .rp-grid th.txt { text-align: left; }
+.rp-grid td.code { font-family: var(--mono); font-size: 12px; }
+/* zebra on the plain cells only (keep the amber Order zone, red no-main + blank rows intact) */
+.rp-grid tbody tr:nth-child(even):not(.rp-nomain):not(.rp-blank) td:not(.g-ord) { background: var(--zebra); }
+/* colour-coded column groups */
+.rp-grid th.g-stk { background: #d7e3f4; color: #29486f; }
+.rp-grid th.g-ord { background: #fce8a8; color: #7a5b00; }
+.rp-grid th.g-ref { background: #eceff4; }
+.rp-grid td.g-ord { background: #fffbe9; }
+.rp-grid .gsep { border-left: 2px solid var(--line-3); }
+/* sort affordance */
+.rp-grid th.srt { cursor: pointer; }
+.rp-grid th.srt:hover { color: var(--ink); }
+.rp-grid th .ar { opacity: .3; font-size: 9px; margin-left: 3px; }
+.rp-grid th.srt.on .ar { opacity: 1; color: var(--acc-d); }
+
+/* row states */
+.rp-grid tbody tr.rp-nomain td { background: color-mix(in srgb, var(--xl-bad) 42%, #fff); }
+.rp-grid tbody tr.rp-nomain td.g-ord { background: color-mix(in srgb, var(--xl-bad) 24%, #fffbe9); }
+.rp-grid tbody tr.rp-line { cursor: pointer; }
+.rp-grid tbody tr.rp-line:hover td { background: color-mix(in srgb, var(--acc-soft) 55%, #fff); }
+.rp-grid tbody tr.rp-nomain:hover td { background: color-mix(in srgb, var(--xl-bad) 34%, #fff); }
+.rp-grid tbody tr.rp-open td { box-shadow: inset 0 0 0 1px var(--acc); }
+
+/* inline marks — small, calm, not a whole-row wash */
+.rp-mk { display: inline-block; font: 700 9px/14px var(--sans); text-transform: uppercase; letter-spacing: .03em; border-radius: 3px; padding: 0 4px; margin-left: 5px; vertical-align: 1px; }
+.rp-mk.low  { background: var(--xl-warn); color: var(--xl-warn-ink); }
+.rp-mk.over { background: #e6e9ef; color: var(--mut); }
+.rp-mk.it   { background: #dbeafe; color: #1e40af; }
+.rp-neg { color: var(--xl-bad-ink); font-weight: 700; }
+
+/* editable cells */
+.rp-in { width: 100%; box-sizing: border-box; border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 6px; font: 13px var(--mono); text-align: center; background: #fff; color: var(--ink); }
+.rp-in:focus { outline: 2px solid var(--acc); outline-offset: 0; border-color: var(--acc); }
+.rp-in.txt { text-align: left; font: 12px var(--sans); }
+.rp-in.big { font-weight: 700; }
+.rp-lock { display: block; text-align: center; color: var(--mut-3); font: 12px var(--mono); }
+.rp-grid td.g-ord.locked { background: #eef1f5; }
+
+/* blank rows — Excel-style rows waiting to be filled */
+.rp-blank td { background: #fcfdff; }
+.rp-blank td.g-ord { background: #fffdf3; }
+.rp-acq { width: 100%; box-sizing: border-box; border: 1px dashed var(--line-2); border-radius: 5px; padding: 4px 8px; font: 12px var(--sans); background: #fff; color: var(--ink); }
+.rp-acq:focus { outline: none; border: 1px solid var(--acc); box-shadow: 0 0 0 2px var(--acc-soft); }
+.rp-acq::placeholder { color: var(--mut-3); }
+
+/* autocomplete dropdown (product by 5DC / code / name) */
+.rp-ac { position: fixed; z-index: 3200; background: #fff; border: 1px solid var(--line-3); border-radius: 8px;
+  box-shadow: 0 8px 26px rgba(20,28,41,.16); max-height: 340px; overflow: auto; min-width: 460px; display: none; }
+.rp-ac.on { display: block; }
+.rp-ac div { padding: 7px 11px; cursor: pointer; display: flex; gap: 9px; align-items: baseline; border-bottom: 1px solid var(--line); }
+.rp-ac div:last-child { border-bottom: 0; }
+.rp-ac div:hover, .rp-ac div.sel { background: var(--acc-soft); }
+.rp-ac .sku { font: 600 12.5px var(--mono); color: var(--ink); white-space: nowrap; }
+.rp-ac .dc { font: 600 11px var(--mono); color: var(--acc-d); background: var(--acc-soft); border-radius: 3px; padding: 0 4px; white-space: nowrap; }
+.rp-ac .nm { font-size: 12px; color: var(--mut); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-ac .st { font: 11px var(--mono); color: var(--mut-3); white-space: nowrap; }
+.rp-ac .none { padding: 12px; color: var(--mut-3); font-size: 12px; text-align: center; }
+
+/* stage bar (timeline) */
+.rp-stage { display: flex; align-items: center; gap: 10px; padding: 0 0 10px; flex-wrap: wrap; }
+.rp-steps { display: flex; align-items: center; gap: 4px; }
+.rp-step { font: 600 11px var(--sans); color: var(--mut-3); padding: 3px 9px; border-radius: 20px; background: var(--card-2); border: 1px solid var(--line); white-space: nowrap; }
+.rp-step.done { color: var(--acc-d); background: var(--acc-soft); border-color: var(--acc); }
+.rp-step.now { color: #fff; background: var(--acc); border-color: var(--acc); }
+.rp-step-arrow { color: var(--line-3); font-size: 11px; }
+.rp-stage .sp-gap { flex: 1; }
+
+/* right side panel content.
+   Overlay stack lives on one scale so blocking layers always outrank the drawer:
+   header 40 · side 3000 · autocomplete 3200 · modals 3300 · toast 3400. */
+.sp-side { z-index: 3000; }
+.sp-modal { z-index: 3300; }
+.sp-toast { z-index: 3400; }
+.rp-side-code { font: 700 13px var(--mono); color: var(--ink); }
+.rp-side-name { font-size: 12.5px; color: var(--mut); margin-top: 2px; }
+.rp-kv { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.rp-kv:last-child { border-bottom: 0; }
+.rp-kv b { font-family: var(--mono); color: var(--ink); font-weight: 600; }
+.rp-bins { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.rp-bin { font: 600 11px var(--mono); background: var(--card-2); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 6px; color: var(--ink-2); }
+.rp-eta { display: inline-block; font: 600 11px var(--sans); background: var(--xl-incoming); color: #2c5a2c; border-radius: 4px; padding: 1px 7px; }
+.rp-side-here { background: var(--acc-soft); }
+.rp-side-txt { width: 100%; box-sizing: border-box; min-height: 68px; border: 1px solid var(--line-2); border-radius: 7px; padding: 8px 10px; font: 12.5px var(--sans); resize: vertical; }
+
+/* column chooser */
+.rp-cols-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.rp-cols-list label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+
+/* history */
+.rp-history { flex: 1; min-height: 0; overflow: auto; }
+.rp-hist-empty { padding: 40px; text-align: center; color: var(--mut-3); }
+.rp-hist-card { background: #fff; border: 1px solid var(--line-2); border-radius: 9px; padding: 13px 16px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(20,28,41,.04); cursor: pointer; display: flex; align-items: center; gap: 14px; }
+.rp-hist-card:hover { border-color: var(--acc); }
+.rp-hist-card .when { font: 600 13px var(--sans); color: var(--ink); }
+.rp-hist-card .meta { font-size: 12px; color: var(--mut-2); }
+.rp-hist-card .tot { margin-left: auto; font: 700 18px var(--sans); color: var(--acc-d); }
+.rp-hist-card .badge { font: 700 9.5px var(--sans); text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 4px; background: var(--card-2); color: var(--mut); border: 1px solid var(--line-2); }
+
+/* settings modal sections */
+.rp-set { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-top: 12px; background: var(--card-2); }
+.rp-set-h { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); margin-bottom: 9px; }
+.rp-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin-top: 8px; cursor: pointer; }
+.rp-mini-scroll { max-height: 230px; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }
+.sp-box { max-width: 760px; }
