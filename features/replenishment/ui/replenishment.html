@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=2">
+<link rel="stylesheet" href="replenishment.css?v=3">
 <script defer src="/shared/rail.js?v=7"></script>
 </head>
 <body>
@@ -50,31 +50,33 @@
     <div class="sp-bar">
       <button class="sp-btn is-ghost" id="btnBack" title="Back to branches">‹</button>
       <b id="gridTitle" class="rp-title">Branch</b>
-      <span class="rp-seg" id="modeSeg">
-        <button data-mode="weekly" class="on">Weekly replenishment</button>
-        <button data-mode="daily">Daily / urgent</button>
+      <span class="rp-seg" id="viewSeg">
+        <button data-v="weekly" class="on">Weekly</button>
+        <button data-v="daily">Daily / urgent</button>
+        <button data-v="history">History</button>
       </span>
       <span class="sp-gap"></span>
-      <input type="search" id="gridSearch" placeholder="Filter…" style="max-width:220px;display:none">
-      <button class="sp-chip" id="chipFilters" style="display:none">Filters</button>
-      <button class="sp-btn" id="btnAddLine" style="display:none">＋ Add line</button>
+      <input type="search" id="gridSearch" placeholder="Find on sheet…" style="max-width:190px">
+      <button class="sp-btn is-primary" id="btnLoadSuggest">Load suggested</button>
+      <button class="sp-btn is-ghost" id="btnCols" title="Choose columns" style="font-size:13px">Columns</button>
       <span class="sp-count" id="gridCount"></span>
-      <button class="sp-btn is-ghost" id="btnReset" title="Start this plan over" style="display:none;font-size:13px">Start over</button>
+      <button class="sp-btn is-ghost" id="btnReset" title="Start this plan over" style="font-size:13px">Start over</button>
     </div>
 
     <!-- stage / timeline -->
-    <div class="rp-stage" id="rpStage" style="display:none"></div>
+    <div class="rp-stage" id="rpStage"></div>
 
-    <!-- the gate: choose suggestions vs manual, before any line exists -->
-    <div class="rp-gate" id="rpGate" style="display:none"></div>
+    <!-- the working grid (weekly / daily) -->
+    <div class="sp-scroll rp-scroll" id="rpScroll"><table class="sp-grid rp-grid" id="rpGrid"></table></div>
 
-    <!-- the working grid -->
-    <div class="sp-scroll" id="rpScroll" style="display:none"><table class="sp-grid rp-grid" id="rpGrid"></table></div>
+    <!-- history (approved snapshots, locked) -->
+    <div class="rp-history" id="rpHistory" style="display:none"></div>
 
-    <div class="sp-foot" id="rpFoot" style="display:none">
-      <span><i class="k" style="background:#fce8a8"></i><b>Branch Ask</b> — the white input you fill</span><i></i>
-      <span><i class="k" style="background:#eef1f5;border:1px solid var(--line-2)"></i><b>Inv Qty</b> — locked until <b>Ready to check</b></span><i></i>
-      <span><i class="k" style="background:color-mix(in srgb,var(--xl-bad) 42%,#fff)"></i>no Main stock — can't send</span><i></i>
+    <div class="sp-foot" id="rpFoot">
+      <span><i class="k" style="background:#fce8a8"></i><b>Branch Ask</b> — the input you fill</span><i></i>
+      <span><i class="k" style="background:#eef1f5;border:1px solid var(--line-2)"></i><b>Inv Qty</b> — locks until <b>Ready to check</b></span><i></i>
+      <span><i class="k" style="background:color-mix(in srgb,var(--xl-bad) 42%,#fff)"></i>no Main stock (won't block — may be on the way)</span><i></i>
+      <span>Click a row for the full breakdown →</span><i></i>
       <span id="gridScope"></span>
     </div>
   </div>
@@ -95,6 +97,37 @@
 </section>
 
 </main>
+
+<!-- ══ right detail panel (per product, opens at any stage) ═══════════ -->
+<aside class="sp-side" id="side">
+  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose">&times;</button></header>
+  <div class="sp-side-body" id="sideBody"></div>
+</aside>
+
+<!-- ══ load-suggested confirm modal ══════════════════════════════════ -->
+<div class="sp-modal" id="mdLoad">
+  <div class="sp-box" style="max-width:460px">
+    <header><h3>Load engine suggestions</h3><button class="sp-btn is-ghost" data-close-load>&times;</button></header>
+    <div class="sp-box-body">
+      <p class="sp-hint" id="loadMsg"></p>
+      <p class="sp-hint">These are the SKUs under the coverage threshold, each with the engine's send
+        quantity. They fill empty rows only — anything you've already typed is kept.</p>
+    </div>
+    <footer>
+      <button class="sp-btn" data-close-load>Cancel</button>
+      <button class="sp-btn is-primary" id="loadConfirm">Load</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ══ column chooser modal ══════════════════════════════════════════ -->
+<div class="sp-modal" id="mdCols">
+  <div class="sp-box" style="max-width:420px">
+    <header><h3>Columns</h3><button class="sp-btn is-ghost" data-close-cols>&times;</button></header>
+    <div class="sp-box-body"><div id="colsList" class="rp-cols-list"></div></div>
+    <footer><span class="sp-gap"></span><button class="sp-btn is-primary" data-close-cols>Done</button></footer>
+  </div>
+</div>
 
 <!-- ══ settings modal ════════════════════════════════════════════════ -->
 <div class="sp-modal" id="mdSettings">
@@ -173,6 +206,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=2"></script>
+<script src="replenishment-app.js?v=3"></script>
 </body>
 </html>

@@ -11,13 +11,18 @@ Backend (engine, Cin7 write, print, data) already exists — this is UI + orches
    together. Approval + analysis still happen, but the **branch does NOT do "ready to check"**
    (these are special/just-sold orders coming from the branch).
 
-## The gate (weekly) — decided
-Opening a branch never pre-fills lines. It **always asks first**:
-- **Load engine suggestions** (primary) — shows the rules that will apply (read-only, from
-  Settings), then loads N pre-filled lines. Low user choice by design — the engine owns the rules.
-- **Add lines manually** — blank sheet; add lines with product **autocomplete by 5DC or code/name**.
+## Opening a branch (revised P3) — no pre-open menu
+Clicking a branch drops **straight into the sheet** with Excel-style **empty rows to fill** (no
+"Add line" button; type a product into any blank row via **autocomplete by 5DC / Rapid Code / name**).
+A **Load suggested (N)** button (N shown live) opens a small **confirm modal** — suggested only, no
+"all" — that **merges** the engine picks into empty rows and **never overwrites what you typed**
+(write-protection). The engine owns the rules; they're changed only in Settings (no rules banner on
+the sheet). A **Columns** chooser toggles which columns show; everything fits with no side scroll.
 
-Decision (add-line vs ready form): **suggestions = ready pre-filled form**; **manual/daily = Add line**.
+**Right panel** (click any row, any stage): the product across every branch (avg · SOH · in-transit),
+Main+Gateway SOH + **bins**, **on-the-way (Main) + ETA** (`next_delivery_date`), and a comment box.
+
+**History sub-tab** (per branch): approved snapshots, frozen at the approved values.
 
 ## Columns (weekly) — clarity like the Excel
 Grouped + colour-coded headers. **Numbers centered, text left.** No full-row colour by cover
