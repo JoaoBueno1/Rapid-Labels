@@ -1054,7 +1054,9 @@ function renderBuy() {
     <p class="sp-hint" style="max-width:70ch">
       The rule, in one sentence: <b>if the PO goes out today it lands in week lead + review;
       buy enough that the worst point between now and there plus the cover target sits at the target</b> —
-      rounded up to a full carton, and never under the MOQ.
+      rounded up to a full carton${d.rows.some(r=>r.moq_applied)
+        ? ', and never under the MOQ'
+        : '. <b>No supplier MOQ is on file</b>, so nothing here is being lifted to a minimum'}.
       A lead time marked <b>*</b> is a supplier default, not measured.</p>`;
   $('#byyBody').onclick = e => {
     const su = e.target.closest('[data-sup]:not([data-sku])');
