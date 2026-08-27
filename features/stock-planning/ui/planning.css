@@ -559,3 +559,8 @@ tr.al-row:hover td{background:var(--card-2)}
 .al-muted{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   font-size:12px;color:var(--mut-2);padding:9px 14px}
 .al-muted b{color:var(--ink)}
+
+/* A venda medida ao lado do Wk/Avg digitado, quando os dois discordam. O
+   digitado continua sendo o editável; este é leitura. */
+.sp-supply .meas{margin-left:4px;font:600 10px var(--mono);color:var(--xl-warn-ink)}
+.sp-supply .meas::before{content:'→ '}

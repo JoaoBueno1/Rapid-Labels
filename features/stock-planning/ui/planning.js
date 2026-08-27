@@ -808,7 +808,12 @@ function renderSupply() {
     const skuRow = `<tr class="sk ${lc}" data-sku="${esc(r.sku_key)}">
       <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${badgeMark(r)}${sup}</td>
       <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}</td>
-      <td class="n${r.badge_drift?' drift':''}"${r.badge_drift?` title="${esc(r.badge_why||'')}"`:''}>${cellSku(r,'wk_avg',n1(r.wk_avg))}</td>
+      <td class="n${r.badge_drift?' drift':''}"${r.badge_drift?` title="${esc(r.badge_why||'')}"`:''}
+        >${cellSku(r,'wk_avg',n1(r.wk_avg))}${r.badge_drift
+          // O digitado fica editável; a venda medida entra ao lado, fantasma.
+          // Sem isto, 50 linhas de NO FORECAST abrem a tela mostrando zero em
+          // tudo — e zero é exatamente o que o planejador ignora.
+          ? `<span class="meas" title="venda medida nas últimas 13 semanas">${n1(r.badge_rate)}</span>` : ''}</td>
       <td class="n mono"${m.mthsStock!=null&&m.mthsStock<1?' style="color:#9c0006;font-weight:700"':''}>${m.mthsStock==null?'—':n1(m.mthsStock)}</td>
       <td class="n mono"${m.undatedQty?' style="color:#9c5700;font-weight:600"':' class="n mono faint"'}>${m.undatedQty?n0(m.undatedQty):'—'}</td>
       <td class="n mono">${m.totalIncoming?n0(m.totalIncoming):''}</td>
