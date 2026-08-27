@@ -69,9 +69,19 @@ def check_datasets(sb, max_build_h, max_data_h):
     """The real guard: every dataset rebuilt recently, over recent data.
 
     Thresholds are wall-clock rather than business minutes because this only
-    runs on weekday mornings. At 07:10 Brisbane a healthy build is ~15 minutes
-    old and a skipped 06:55 slot is ~13 hours old — the overnight gap. Any
-    threshold between those separates them; the defaults sit clear of both.
+    runs on weekday mornings, and they are measured rather than reasoned.
+
+    Across the runs since the hourly schedule began on 24/08, the newest build
+    at 09:10 Brisbane was 0.1h, 0.1h, 0.1h and 0.3h old — the 0.3h being 27/08,
+    when GitHub fired the morning slot 54 minutes late. The overnight gap a
+    genuinely dead pipeline produces is ~13h and climbing. Six hours sits an
+    order of magnitude above the healthy case and well under the failed one, so
+    it neither cries wolf over a late build nor misses a stopped one.
+
+    Four hours was the first attempt. It is enough today, but the backtest put
+    the worst historical window at 4.1h — from August days when this ran once
+    daily rather than hourly — and a threshold that holds only while nobody
+    loosens the cron is a trap laid for whoever loosens it.
     """
     rows = sb.rpc('excel_datasets', {}) or []
     problems = []
@@ -160,8 +170,8 @@ def check_push_bindings(sb, max_minutes):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument('--max-build-hours', type=float, default=4.0,
-                    help='hours a dataset may go without a rebuild (default 4)')
+    ap.add_argument('--max-build-hours', type=float, default=6.0,
+                    help='hours a dataset may go without a rebuild (default 6)')
     ap.add_argument('--max-data-hours', type=float, default=6.0,
                     help='hours the underlying mirror may be stale (default 6)')
     ap.add_argument('--max-minutes', type=int, default=1620,
