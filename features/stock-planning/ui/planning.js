@@ -15,7 +15,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const S = {
   view: 'overview', ov: 'health',
   projects: { q:'', status:'ACTIVE', rep:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
-  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, back:+(localStorage.getItem('sp.back')||0) },
+  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { muted:false, supplier:'' },
   buy:      { supplier:'', late:false },
@@ -109,6 +109,7 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     $('#npoSupplier').innerHTML = '<option value="">—</option>' + opts;
     if (S.supply.supplier) $('#spSupplier').value = S.supply.supplier;
     if (S.supply.back) $('#spBack').value = String(S.supply.back);
+    $('#spSort').classList.toggle('is-on', S.supply.sort === 'risk');
     const f = await api('/filters');
     $('#pjRep').innerHTML = '<option value="">All reps</option>' + f.reps.map(r => `<option>${esc(r)}</option>`).join('');
     loadOverview();
@@ -713,7 +714,10 @@ async function loadSupply() {
       Same slice as the 22 supplier tabs — and it is what keeps this fast.</div></td></tr></tbody>`;
     $('#spCount').textContent=''; return;
   }
-  const qs = new URLSearchParams({ supplier:s.supplier, weeks:s.weeks, limit:300 });
+  // 600 cobre o maior fornecedor inteiro. Com 300, 36 das 57 linhas vermelhas
+  // do CGD ficavam fora da tela — o selo existia e ninguém via.
+  const qs = new URLSearchParams({ supplier:s.supplier, weeks:s.weeks, limit:600 });
+  if (s.sort === 'risk') qs.set('sort','risk');
   if (s.q) qs.set('q', s.q);
   if (s.risk) qs.set('only','risk');
   if (s.life) qs.set('lifecycle', s.life);
@@ -908,6 +912,12 @@ $('#spSearch').addEventListener('input', debounce(e => { S.supply.q = e.target.v
 $('#spWeeks').addEventListener('change', e => { S.supply.weeks = +e.target.value; loadSupply(); });
 $('#spBack').addEventListener('change', e => {
   S.supply.back = +e.target.value; localStorage.setItem('sp.back', e.target.value); loadSupply();
+});
+$('#spSort').addEventListener('click', e => {
+  S.supply.sort = S.supply.sort === 'risk' ? '' : 'risk';
+  localStorage.setItem('sp.sort', S.supply.sort);
+  e.currentTarget.classList.toggle('is-on', S.supply.sort === 'risk');
+  loadSupply();
 });
 $('#spRisk').addEventListener('click', e => { S.supply.risk = !S.supply.risk; e.currentTarget.classList.toggle('is-on', S.supply.risk); loadSupply(); });
 $('#spLife').addEventListener('change', e => { S.supply.life = e.target.value; loadSupply(); });

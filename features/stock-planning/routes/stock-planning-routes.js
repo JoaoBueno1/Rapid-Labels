@@ -432,6 +432,15 @@ function register(app) {
       };
     });
 
+    // Ordenar por risco só é possível AQUI: o selo nasce em Node, depois da
+    // cascata, então nenhum ORDER BY do SQL alcança. Sem isso, a mediana de
+    // posição das linhas vermelhas era 211 de 300 — o selo existia e ninguém via.
+    if (req.query.sort === 'risk') {
+      const RANK = { 'ORDER NOW': 5, 'CHASE PO': 4, 'NO FORECAST': 3, 'ORDER SOON': 2, 'FIX FORECAST': 1 };
+      rows.sort((a, b) => (RANK[b.badge] || 0) - (RANK[a.badge] || 0)
+        || (a.badge_wts ?? 999) - (b.badge_wts ?? 999)
+        || a.sku.localeCompare(b.sku));
+    }
     res.json({
       reporting_week: state.reporting_week,
       weeks: weeks.slice(0, horizon + 1).map((w) => ({ ...w, label: shortLabel(w.week_ending) })),
