@@ -14,7 +14,8 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 
-const WITH_TR = process.argv.includes('--with-tr');
+const WITH_TR  = process.argv.includes('--with-tr');
+const WITH_ASM = process.argv.includes('--with-asm');   // 7.831 chamadas / 5,4 h — fora do núcleo
 const SHOW = process.argv.includes('--show');
 
 // Faixas de página medidas em 2026-08-26 contra a API (Limit=500).
@@ -25,6 +26,13 @@ const PAGES = {
   asm_detail: { from: 38, to: 53, note: 'finishedGoodsList Total 26.315, corte no índice ~18.700 (oldest-first)' },
   tr_detail:  { from: 1,  to: 67, note: 'stockTransferList Total 50.089, newest-first, corte 2025-08 no índice ~33.100' },
 };
+
+// O último mês FECHADO. Nunca semeia o mês corrente — ver o comentário no add().
+function lastClosedMonth() {
+  const n = new Date();
+  const y = n.getUTCFullYear(); const m = n.getUTCMonth();   // 0-based = mês anterior em 1-based
+  return m === 0 ? `${y - 1}-12` : `${y}-${String(m).padStart(2, '0')}`;
+}
 
 function months(fromYm, toYm) {
   const out = [];
@@ -51,7 +59,13 @@ function bands(job, size = 8) {
 
 const PLAN = [];
 let seq = 0;
-const add = (job, keys, target) => keys.forEach((k) => PLAN.push({ job, chunk_key: k, seq: ++seq, target_count: target }));
+// target é o TOTAL do job; cada chunk leva a sua fatia. Gravar o total em cada
+// chunk fazia a view de progresso somar N× o alvo — um job 2/2 concluído
+// reportava 50%, e um de 13 chunks nunca passava de 7,7%.
+const add = (job, keys, total) => keys.forEach((k, i) => PLAN.push({
+  job, chunk_key: k, seq: ++seq,
+  target_count: Math.floor(total / keys.length) + (i < total % keys.length ? 1 : 0),
+}));
 
 // ── ORDEM. seq menor roda primeiro. É o grafo de dependência, materializado. ──
 // 1) COMPRAS — 10 páginas, ~4.953 chamadas. Melhor retorno por chamada do repo:
@@ -60,11 +74,17 @@ add('po_detail', bands('po_detail'), 4943);
 // 2) VENDAS — o buraco principal. Do mais recente para o mais antigo: se o fim
 //    de semana acabar no meio, o que ficou de fora é o passado distante, não a
 //    janela que o Stock Planning usa toda semana.
-add('sales_detail', months('2025-08', '2026-08').reverse(), 1300);
+// O mês CORRENTE fica de fora: ele enche sozinho enquanto o dreno roda
+// (pedido novo + cin7-sales-sync reescrevendo cin7_updated a cada 2 h), então
+// isComplete nunca é satisfeito, o chunk nunca fecha e — por ter o menor seq
+// entre as vendas — trava a fila inteira. O mês corrente é trabalho do cron.
+add('sales_detail', months('2025-08', lastClosedMonth()).reverse(), 62432);
 // 3) AJUSTES — 3.482 chamadas. Sem eles nenhuma reconstrução de saldo fecha.
-add('adj_detail', bands('adj_detail'), 3482);
-// 4) MONTAGENS — 7.615. Traz assembly_consume E a receita (BOM), de graça.
-add('asm_detail', bands('asm_detail'), 7615);
+add('adj_detail', bands('adj_detail'), 3732);
+// 4) MONTAGENS — 7.831 chamadas / 5,4 h. FORA do núcleo por decisão de escopo:
+//    o núcleo sem ela é 49,4 h numa janela de 58 h (17% de folga); com ela são
+//    54,8 h (5,8%). O BOM já tem fallback ao vivo em wms-engine.js:315-325.
+if (WITH_ASM) add('asm_detail', bands('asm_detail'), 7831);
 // 5) LINHAS DE TRANSFERÊNCIA — 33.100 chamadas / 23 h. NÃO cabe no fim de
 //    semana e é o dado de menor valor. Vira dreno de fundo (--with-tr).
 if (WITH_TR) add('tr_detail', bands('tr_detail'), 33100);

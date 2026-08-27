@@ -80,6 +80,9 @@ const COVERAGE_UNTIL = '2026-08-26T00:00:00Z';
 //   callsPerFullPass     total congelado para 2025-08-01 → 2026-08-26
 //   backfillSince        data a partir da qual faz sentido backfillar; null =
 //                        não backfillável (dado só existe no "agora")
+//   jobKey               o `job` correspondente no executor de chunks
+//                        (core/cin7/plan.js + handlers/index.js); null = não é
+//                        dirigido pelo driver
 //   consumers            quem lê. arquivo:linha ou view. Sem isto, não entra.
 //   notes                a verdade operacional: armadilha, defeito, conta.
 
@@ -223,6 +226,7 @@ const RESOURCES = [
     callsPerRow: 1,
     callsPerFullPass: 16900,
     backfillSince: COVERAGE_SINCE,
+    jobKey: 'sales_detail',
     consumers: [
       'features/stock-planning/db/006_overview_views.sql:198-213 (v_sp_actual_weekly)',
       'features/stock-planning/db/010_wkavg_drift.sql:13-37',
@@ -836,6 +840,7 @@ const RESOURCES = [
     callsPerRow: 1,
     callsPerFullPass: 33100,
     backfillSince: COVERAGE_SINCE,
+    jobKey: 'tr_detail',
     consumers: [
       'features/logistics/open-orders-notes.js:19-34 (hoje AO VIVO, cache de 10 min)',
       'features/transfer-out/transfer-out-engine.js:38 (hoje AO VIVO)',
@@ -949,6 +954,7 @@ const RESOURCES = [
     callsPerRow: 1,
     callsPerFullPass: 3490,
     backfillSince: COVERAGE_SINCE,
+    jobKey: 'adj_detail',
     consumers: [
       'features/pick-anomalies/pa-movements.js:60-62 (chip stock_adjustment)',
       'cyclic-count.js (fechamento de contagem cíclica contra o ledger)',
@@ -990,6 +996,7 @@ const RESOURCES = [
     callsPerRow: 1,
     callsPerFullPass: 7631,
     backfillSince: COVERAGE_SINCE,
+    jobKey: 'asm_detail',
     consumers: [
       'features/pick-anomalies/pa-movements.js:60-62 (chip assembly_consume)',
       'features/pick-anomalies/pick-anomalies-engine.js (analyzeAssemblyRealtime)',
@@ -1032,6 +1039,7 @@ const RESOURCES = [
     callsPerRow: 1.5,
     callsPerFullPass: 750,
     backfillSince: null,
+    jobKey: 'asm_detail',
     consumers: [
       'features/wms/lib/wms-engine.js:315-325 (getRecipe — hoje AO VIVO, sem cache)',
       'features/logistics/open-orders-notes.js:53-81 (hoje AO VIVO, cache de 1h)',
@@ -1073,6 +1081,7 @@ const RESOURCES = [
     callsPerRow: 0,
     callsPerFullPass: 10,
     backfillSince: COVERAGE_SINCE,
+    jobKey: 'po_detail',
     consumers: [
       'features/stock-planning/db/003_views.sql:176-193 (v_sp_incoming — hoje 100% Excel)',
       'features/stock-planning/db/002_planning.sql:179 (rapid_inv.po_lines.cin7_po_id, reservado e NULL)',
@@ -1117,6 +1126,7 @@ const RESOURCES = [
     callsPerRow: 1,
     callsPerFullPass: 4943,
     backfillSince: COVERAGE_SINCE,
+    jobKey: 'po_detail',
     consumers: [
       'features/stock-planning/db/006_overview_views.sql:8-11 (is_received=false em 1.466 linhas)',
       'features/stock-planning/db/009_leadtime_and_buying.sql:84-98 (v_sp_sku_leadtime)',
@@ -1538,6 +1548,11 @@ function monthsBetween(fromISO, toISO) {
  *
  * Devolve o detalhamento por recurso, não só o número — quem for executar
  * precisa saber em que ordem gastar as chamadas.
+ *
+ * O derivado fica ~1,4% ABAIXO de `callsPerFullPass` e está certo: o congelado
+ * usa 13 meses redondos, e 2025-08-01 → 2026-08-26 são 12,8. Os dois números
+ * aparecem lado a lado no resultado (`calls` e `frozenFullPass`) de propósito —
+ * divergência maior que isso significa que alguém mexeu numa estimativa.
  *
  * @param {string} sinceISO   início da janela (default COVERAGE_SINCE)
  * @param {object} [opts]     { until, callsPerMin } — until default COVERAGE_UNTIL,

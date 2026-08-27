@@ -62,6 +62,7 @@ function adjustmentMovements(det) {
     const delta = (now.get(k) || 0) - (old.get(k) || 0);
     if (!delta) continue;                          // ajuste que só troca de bin some — defeito conhecido
     const [sku, loc] = k.split('|');
+    if (!sku || sku === 'undefined') continue;   // sem esta guarda o ledger ganha um SKU fantasma
     out.push({
       cin7_task_id: det.TaskID, reference_number: det.TaskNumber || det.Number,
       movement_type: 'stock_adjustment', sku, quantity: delta,
@@ -108,7 +109,10 @@ async function writeMovements(q, taskId, rows) {
     ph.push(`(${cols.map((_, j) => `$${i * cols.length + j + 1}`).join(',')})`);
     vals.push(r.cin7_task_id, r.reference_number || null, r.movement_type, r.sku, r.quantity,
       r.from_location || null, r.from_bin || null, r.to_location || null, r.to_bin || null,
-      r.occurred_at, r.occurred_at,               // detected_at = data do negócio, igual ao poller
+      // detected_at é NOT NULL (movement-schema.sql:23). Task sem data de
+      // negócio (DRAFT/IN PROGRESS não têm CompletionDate) gravava nulo e a
+      // linha era rejeitada em silêncio pelo catch lá embaixo.
+      r.occurred_at, r.occurred_at || new Date().toISOString(),
       'backfill', JSON.stringify(r.raw_data || {}));
   });
   await q(`INSERT INTO cin7_mirror.stock_movements (${cols.join(',')}) VALUES ${ph.join(',')}`, vals);

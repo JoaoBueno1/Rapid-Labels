@@ -93,7 +93,9 @@ BEGIN
               OR (c.status = 'running' AND c.lease_until < now())
             )
         AND c.attempts < 6            -- 6 tentativas e vira 'blocked' (ver abaixo)
-      ORDER BY c.seq, c.chunk_key
+      -- Desempate por last_run_at: sem ele o claim devolve SEMPRE o mesmo
+      -- chunk (ORDER BY seq LIMIT 1) e um chunk que nunca fecha trava a fila.
+      ORDER BY c.seq, c.last_run_at ASC NULLS FIRST, c.chunk_key
       FOR UPDATE SKIP LOCKED
       LIMIT 1
    )
@@ -146,18 +148,30 @@ WITH m AS (
          count(*) FILTER (WHERE so.detail_synced_at IS NOT NULL)   AS detailed,
          count(*) FILTER (WHERE so.detail_synced_at IS NOT NULL
                             AND so.cin7_updated > so.detail_synced_at) AS stale,
-         count(DISTINCT sl.order_number)                           AS with_lines
+         -- EXISTS, nunca JOIN: sale_lines tem N linhas por pedido (média 2,6),
+         -- e um LEFT JOIN faz count(*) contar pares pedido×linha. Um mês com
+         -- 94,3% real reportava 99,00% — e o chunk fechava como concluído.
+         count(*) FILTER (WHERE EXISTS (
+             SELECT 1 FROM cin7_mirror.sale_lines sl
+              WHERE sl.order_number = so.order_number))            AS with_lines,
+         -- O buraco que nenhum teste enxergava: detalhado e SEM linha. Já são
+         -- 1.248 pedidos, todos nos meses alimentados pelo webhook.
+         count(*) FILTER (WHERE so.detail_synced_at IS NOT NULL
+                            AND NOT EXISTS (
+             SELECT 1 FROM cin7_mirror.sale_lines sl
+              WHERE sl.order_number = so.order_number))            AS detailed_no_lines
     FROM cin7_mirror.sales_orders so
-    LEFT JOIN cin7_mirror.sale_lines sl ON sl.order_number = so.order_number
    WHERE so.order_date >= DATE '2025-08-01'
      AND coalesce(so.status,'') NOT IN ('VOIDED','CANCELLED')
    GROUP BY 1
 )
-SELECT ym, orders, detailed, stale, with_lines,
+SELECT ym, orders, detailed, stale, with_lines, detailed_no_lines,
        round(100.0 * detailed / nullif(orders,0), 1)   AS pct_detailed,
        round(100.0 * with_lines / nullif(orders,0), 1) AS pct_with_lines,
-       CASE WHEN 100.0 * detailed / nullif(orders,0) >= 99 AND stale = 0 THEN 'OK'
-            WHEN 100.0 * detailed / nullif(orders,0) >= 90 THEN 'WARN'
+       -- 'detalhado' sem linha não conta como coberto. O veredicto olha
+       -- pct_with_lines, não pct_detailed: é a linha que o consumidor lê.
+       CASE WHEN 100.0 * with_lines / nullif(orders,0) >= 99 THEN 'OK'
+            WHEN 100.0 * with_lines / nullif(orders,0) >= 90 THEN 'WARN'
             ELSE 'FAIL' END                            AS verdict
 FROM m ORDER BY ym;
 

@@ -64,6 +64,11 @@ const OPT = {
 if (!OPT.maxCalls) OPT.maxCalls = Math.max(1, Math.floor(OPT.budgetMin * OPT.ratePerMin));
 if (!OPT.leaseMin) OPT.leaseMin = OPT.budgetMin + 8;
 const THROTTLE_MS = Math.ceil(60000 / OPT.ratePerMin);
+// O handler de vendas roda backfill-sales.js num SUBPROCESSO e lia
+// process.env.BACKFILL_RATE, que o drain.sh nunca exportava: --rate não freava
+// 79% do trabalho. Propagar aqui faz um botão só governar os dois caminhos.
+process.env.BACKFILL_RATE = String(OPT.ratePerMin);
+process.env.BACKFILL_BUDGET_MIN = String(OPT.budgetMin);
 
 const OWNER = process.env.BACKFILL_OWNER
   || `${process.env.GITHUB_RUN_ID ? 'gha' : require('os').hostname()}:${process.pid}`;
@@ -237,8 +242,15 @@ async function finish(chunk, status, cursor, doneCount, calls, error, ms, note) 
             lease_owner = NULL,
             lease_until = NULL,
             finished_at = CASE WHEN $3 = 'done' THEN now() ELSE NULL END,
-            -- um turno que PROGREDIU não gasta tentativa: só falha gasta.
-            attempts    = CASE WHEN $3 IN ('done','pending') THEN GREATEST(attempts - 1, 0)
+            -- O claim incrementa attempts a cada turno (001:82). Um mês de
+            -- ~6.000 chamadas precisa de ~21 turnos, então devolver a tentativa
+            -- é obrigatório — senão o chunk bloqueia no 6º turno. Mas devolver
+            -- SEMPRE (o comportamento original) faz um chunk travado ficar em
+            -- attempts=0 para sempre e nunca sair da fila.
+            -- A distinção é o PROGRESSO, não o status: turno que produziu
+            -- devolve a tentativa; turno que produziu zero gasta.
+            attempts    = CASE WHEN $3 = 'done'                 THEN 0
+                               WHEN $3 = 'pending' AND $5 > 0   THEN GREATEST(attempts - 1, 0)
                                ELSE attempts END
       WHERE job = $1 AND chunk_key = $2`,
     [chunk.job, chunk.chunk_key, status, JSON.stringify(cursor || {}),

@@ -63,7 +63,9 @@ module.exports = async function salesDetail({ chunk, cin7, q, dryRun, outOfBudge
 
   // O CAP vira o orçamento de chamadas: 1 pedido = 1 chamada `sale?ID=`.
   const cap = Math.max(1, cin7.remaining);
-  const budgetMs = 30 * 60 * 1000;                  // teto duro do subprocesso
+  // Respeita o --budget-min do driver. Era fixo em 30 min, então --budget-min=12
+  // na verdade permitia um turno de 30 — contra o contrato escrito no topo.
+  const budgetMs = Math.max(1, parseInt(process.env.BACKFILL_BUDGET_MIN || '12', 10)) * 60 * 1000;
   const { code } = await runScript({
     DETAIL_MONTH: ym,
     DETAIL_MONTH_BACK: '0',
@@ -84,10 +86,15 @@ module.exports = async function salesDetail({ chunk, cin7, q, dryRun, outOfBudge
   };
 };
 
-const isComplete = (c) => c.orders > 0 && Number(c.pct_detailed) >= 99 && Number(c.stale) === 0;
+// Lê pct_with_lines, não pct_detailed: 'detalhado' sem linha não é cobertura
+// (1.248 pedidos já estão nesse estado). E exigir stale === 0 num mês que o
+// cron ainda toca é exigir o impossível — 0,5% de stale é ruído, não buraco.
+const isComplete = (c) => c.orders > 0
+  && Number(c.pct_with_lines) >= 99
+  && Number(c.stale) <= Math.max(5, c.orders * 0.005);
 
 async function coverage(q, ym) {
   const [row] = await q(
     'SELECT * FROM public.v_cin7_sales_detail_coverage WHERE ym = $1', [ym]);
-  return row || { ym, orders: 0, detailed: 0, stale: 0, pct_detailed: 0, with_lines: 0 };
+  return row || { ym, orders: 0, detailed: 0, stale: 0, pct_detailed: 0, pct_with_lines: 0, with_lines: 0, detailed_no_lines: 0 };
 }

@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- cin7_mirror.purchase_orders / purchase_lines — o espelho que não existe.
+-- 002a — DDL APENAS. cin7_mirror.purchase_orders / purchase_lines + occurred_at.
 --
 -- É a lacuna que o próprio repo já registrou como prioridade 1
 -- (docs/STOCK_PLANNING_03_CIN7_AUTOMATION.md:24). Hoje on-order vive só como
@@ -11,7 +11,10 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS cin7_mirror.purchase_orders (
   po_id          UUID PRIMARY KEY,          -- purchaseList.ID
-  po_number      TEXT UNIQUE,
+  po_number      TEXT,                      -- SEM UNIQUE: VOID recriado e split
+                                            -- de compra avançada repetem o número
+                                            -- com po_id distinto, e o upsert
+                                            -- conflita em po_id, não aqui.
   supplier       TEXT,
   supplier_id    UUID,
   status         TEXT,                      -- DRAFT|ORDERING|ORDERED|RECEIVING|COMPLETED|VOID
@@ -48,11 +51,10 @@ CREATE INDEX IF NOT EXISTS idx_pl_skukey ON cin7_mirror.purchase_lines (upper(bt
 ALTER TABLE cin7_mirror.stock_movements
   ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_sm_occurred ON cin7_mirror.stock_movements (occurred_at);
--- Backfill da coluna nas linhas que já existem, a partir da data do negócio
--- que o webhook enterrou em raw_data (movement-processor.js:370).
-UPDATE cin7_mirror.stock_movements
-   SET occurred_at = COALESCE((raw_data->>'ship_date')::timestamptz, detected_at)
- WHERE occurred_at IS NULL;
+-- O UPDATE que preenche occurred_at nas 66.145 linhas existentes vive em
+-- 002b_occurred_at_backfill.sql, de propósito: o SQL Editor do Supabase roda o
+-- script inteiro em UMA transação, e um cast que estoure abortaria os
+-- CREATE TABLE acima junto — descoberto com o dreno já rodando.
 
 ALTER TABLE cin7_mirror.purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cin7_mirror.purchase_lines  ENABLE ROW LEVEL SECURITY;
