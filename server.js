@@ -292,14 +292,33 @@ app.post('/api/pipeline-sync', async (req, res) => {
   }
 });
 
-// Auto-sync pipeline every hour (backup for GH Actions cron)
-const PIPELINE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-setTimeout(() => {
-  _runPipelineSync('scheduled-initial').catch(() => {});
-  setInterval(() => {
-    _runPipelineSync('scheduled').catch(() => {});
-  }, PIPELINE_INTERVAL_MS);
-}, 30_000); // Wait 30s after server start before first sync
+// Auto-sync pipeline every hour (backup for GH Actions cron) — LOCAL ONLY.
+//
+// Mesmo guarda do app.listen lá embaixo, e pelo mesmo motivo: na Vercel isto
+// não é um agendador, é um agendador POR INSTÂNCIA QUENTE. Medido em
+// cin7_mirror.sync_runs (25–27/08/2026): 59, 33 e 35 execuções/dia contra as
+// 24 que o cron `35 * * * *` agenda, e as assinaturas mm:ss mais frequentes
+// foram 27:49 (15×) e 27:50 (10×) — nenhuma no minuto 35. Cron não deriva um
+// segundo por vez; setInterval deriva. Eram pelo menos duas instâncias com
+// relógios próprios.
+//
+// E não era ocioso: _runPipelineSync → detectCompleted (order-pipeline-sync.js:
+// 547-600) marca COMPLETED todo SO/TR ausente da própria busca. A trava
+// `pipelineSyncRunning` é por instância e o `concurrency:` do GitHub Actions
+// não alcança a Vercel — cada execução extra era uma chance de fechar pedido
+// vivo, além de gastar cota do Cin7 em horário que ninguém agendou.
+//
+// O cron do GitHub Actions (order-pipeline-sync.yml) continua sendo o
+// agendador de produção. Este bloco serve só ao `npm start` local.
+if (!process.env.VERCEL) {
+  const PIPELINE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  setTimeout(() => {
+    _runPipelineSync('scheduled-initial').catch(() => {});
+    setInterval(() => {
+      _runPipelineSync('scheduled').catch(() => {});
+    }, PIPELINE_INTERVAL_MS);
+  }, 30_000); // Wait 30s after server start before first sync
+}
 
 // ── Gateway Inventory routes (lots · FIFO · transfers · reconciliation) ──
 try {
@@ -376,6 +395,10 @@ try {
 if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   try {
     require('./features/analytics/routes/analytics-routes').register(app);
+    // Branch Replenishment: a única rota deste repo que ESCREVE no Cin7 fora do
+    // WMS. Cria com Status ORDERED — a ordem existe, o estoque não se move.
+    require('./features/replenishment/routes/replenishment-routes')
+      .register(app, require('./features/stock-planning/lib/sp-db'));
     app.use('/analytics', express.static(path.join(__dirname, 'features/analytics/ui'), { index: 'analytics.html' }));
   } catch (e) {
     console.warn('⚠️  Could not register Analytics routes:', e.message);
