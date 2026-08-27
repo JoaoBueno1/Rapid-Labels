@@ -40,6 +40,93 @@ const wrap = (fn) => async (req, res) => {
   }
 };
 
+/**
+ * O selo de status da linha.
+ *
+ * A tentação é renderizar a severidade que já viaja no payload. Medido, isso
+ * daria CRITICAL em 145 de 300 linhas: 48% da grade em vermelho, e vermelho que
+ * aparece em metade das linhas não ordena mais nada. Pior, dos 51 SKUs com
+ * SOH<=0 e Wk/Avg>0 do CGD, 50 nunca venderam uma unidade — o vermelho de hoje
+ * aponta, na quase totalidade da massa, para demanda que nunca existiu.
+ *
+ * A régua também não pode ser `soh + project_orders + incoming_no_lead`:
+ * `projectOrders` NUNCA entra na cascata do motor (planning-engine.js:55-108),
+ * então somá-lo a uma posição derivada das células conta a mesma obrigação duas
+ * vezes — 109.021 unidades, e 120 de 201 "críticos" sem ruptura alguma.
+ *
+ * O instrumento certo é a cascata que a tela já desenha. Ela é sensível ao
+ * tempo (um PO que chega na semana 15 não vira prateleira hoje) e não duplica
+ * nada. Onde a taxa manual diverge da venda medida, roda-se a MESMA cascata com
+ * a taxa realizada — sem fórmula nova, sem outro instrumento.
+ */
+function badgeFor(s, proj, alerts, ctx) {
+  const wkAvg = Number(s.wk_avg) || 0;
+  const sold13 = Number(ctx.sold && ctx.sold.sold13) || 0;
+  const sold52 = Number(ctx.sold && ctx.sold.sold52) || 0;
+  const lw = ctx.lead ? Number(ctx.lead.lead_weeks) : null;
+  const rw = ctx.lead ? Number(ctx.lead.review_weeks) : null;
+  // Sem lead medido não há janela de pedido: cai no horizonte compartilhado.
+  const thr = lw == null ? HORIZON_WEEKS : Math.ceil(lw + (rw || 0));
+
+  // Venda realizada manda. O Wk/Avg só é piso para item VIVO: em RUN_OUT e
+  // DISCONTINUED, preservar o número digitado ressuscitava 11 falsos críticos.
+  const rate = sold13 > 0
+    ? (s.lifecycle_status === 'ACTIVE' ? Math.max(wkAvg, sold13 / 13) : sold13 / 13)
+    : wkAvg;
+
+  // A cascata-sombra: só roda quando a taxa diverge do que a grade desenhou.
+  // Sempre reprojeta na régua do selo. Reaproveitar proj.summary faria o selo
+  // herdar o dropdown da tela: sete selos mudavam entre 12 e 26 semanas.
+  const horizon = Math.max(HORIZON_WEEKS, thr);
+  const wts = projectSku({
+        weeks: ctx.badgeWeeks,
+        soh: Number(s.soh_available), wkAvg: rate,
+        incoming: ctx.incoming, draws: ctx.draws,
+        undatedQty: Number(s.undated_qty || 0),
+        targetCoverWeeks: s.target_cover_weeks || 7,
+        projectOrders: Number(s.project_orders || 0),
+      }).summary.weeksToStockout;
+
+  // /buy-recommendation exige ACTIVE + wk_avg>0. Fora disso a Buy nunca
+  // dimensiona o pedido: a ação é corrigir o cadastro, não emitir ordem.
+  const semRota = !(s.lifecycle_status === 'ACTIVE' && wkAvg > 0);
+  const inbound = Number(s.soh_on_order) > 0
+               || alerts.some((a) => a.code === 'PO_AFTER_STOCKOUT');
+
+  let badge = null;
+  if (sold13 > 0 && wts != null && wts <= thr) {
+    badge = semRota ? 'NO FORECAST' : inbound ? 'CHASE PO' : 'ORDER NOW';
+  } else if (sold13 > 0 && wts != null && wts <= horizon) {
+    badge = 'ORDER SOON';
+  } else if (sold13 === 0 && wkAvg > 0 && s.lifecycle_status === 'ACTIVE') {
+    // Só para item VIVO. Em RUN_OUT e DISCONTINUED, não vender é o comportamento
+    // esperado — não erro de cadastro. Sem esta guarda o selo aparecia em 88 de
+    // 300 linhas do CGD, quase todas o mesmo bloco de run-out com o Wk/Avg 42 de
+    // enchimento, e dominava a tela mais que os dois casos urgentes do topo.
+    badge = 'FIX FORECAST';
+  }
+  // Quando a taxa medida diverge da digitada, a cascata-sombra vê ruptura onde
+  // a grade não vê — 115 linhas medidas, e em TODAS o selo está certo e a grade
+  // é que está cega (86 com Wk/Avg zerado vendendo de verdade, 29 vendendo
+  // várias vezes o digitado). Contradição sem explicação destrói a confiança na
+  // tela; por isso a linha carrega o motivo e a UI aponta para a célula que
+  // causa a divergência, que é onde está o conserto.
+  const drift = sold13 > 0 && (wkAvg === 0 || rate >= wkAvg * 1.5);
+  const why = !badge ? null
+    : wkAvg === 0 && sold13 > 0
+      ? `Wk/Avg está em branco e este SKU vendeu ${Math.round(sold13)} un em 13 semanas (${(sold13 / 13).toFixed(1)}/sem). A projeção acima usa o Wk/Avg, por isso não mostra ruptura.`
+    : drift
+      ? `Wk/Avg digitado é ${wkAvg}; a venda medida é ${(sold13 / 13).toFixed(1)}/sem. O selo usa a medida, a projeção acima usa a digitada.`
+      : null;
+
+  // SKU mudo (sem venda e sem previsão) fica sem selo de propósito: carimbar
+  // "sem demanda" nele marcaria 30,7% da grade e erraria justamente nos que o
+  // selo existe para achar.
+  return { badge, badge_why: why, badge_drift: drift, sold13, sold52,
+           badge_rate: rate, badge_wts: wts, lead_weeks: lw };
+}
+
+
 function register(app) {
   const R = '/api/stock-planning';
 
@@ -263,7 +350,10 @@ function register(app) {
 
     const weeks = await db.query(
       `SELECT week_ending, factor, factor_reason, is_reporting FROM rapid_inv.v_sp_weeks
-        WHERE week_ending >= $1 ORDER BY week_ending LIMIT $2`, [state.reporting_week, horizon + 1]);
+        WHERE week_ending >= $1 ORDER BY week_ending LIMIT $2`,
+      // Busca o maior entre o horizonte pedido e o do selo: o selo NÃO pode
+      // mudar porque o usuário trocou o dropdown de 26 para 12 semanas.
+      [state.reporting_week, Math.max(horizon, HORIZON_WEEKS) + 1]);
 
     const where = ['1=1'], p = [];
     if (req.query.supplier) { p.push(req.query.supplier); where.push(`supplier_code = $${p.length}`); }
@@ -281,16 +371,32 @@ function register(app) {
     // Dois SELECTs para o conjunto inteiro. Nada de uma consulta por linha.
     const keys = skus.map((s) => s.sku_key);
     const lastWeek = weeks.length ? weeks[weeks.length - 1].week_ending : state.reporting_week;
-    const [draws, incoming] = keys.length ? await Promise.all([
+    const [draws, incoming, sold, lead] = keys.length ? await Promise.all([
       db.query(`SELECT sku, week_ending, qty FROM rapid_inv.v_sp_draw_demand
                  WHERE sku = ANY($1) AND week_ending BETWEEN $2 AND $3`, [keys, state.reporting_week, lastWeek]),
       db.query(`SELECT sku, week_ending, qty FROM rapid_inv.v_sp_incoming
                  WHERE sku = ANY($1) AND week_ending BETWEEN $2 AND $3`, [keys, state.reporting_week, lastWeek]),
-    ]) : [[], []];
+      // Venda REALIZADA. O selo não pode confiar só no Wk/Avg, que é entrada
+      // manual do planejador: 27 SKUs sem uma venda em 52 semanas recebiam
+      // sugestão de compra por causa de um número digitado numa célula.
+      db.query(`SELECT sku_key,
+                       sum(sold_qty) FILTER (WHERE week_ending > $2::date - 91) AS sold13,
+                       sum(sold_qty) AS sold52
+                  FROM rapid_inv.v_sp_history_week
+                 WHERE sku_key = ANY($1) AND week_ending > $2::date - 364
+                 GROUP BY 1`, [keys, state.reporting_week]),
+      db.query(`SELECT sku_key, lead_weeks, review_weeks FROM rapid_inv.v_sp_sku_leadtime
+                 WHERE sku_key = ANY($1)`, [keys]),
+    ]) : [[], [], [], []];
     const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
     const drawIdx = index(draws), inIdx = index(incoming);
+    const soldIdx = sold.reduce((m, r) => (m[r.sku_key] = r, m), {});
+    const leadIdx = lead.reduce((m, r) => (m[r.sku_key] = r, m), {});
 
-    const engineWeeks = weeks.map((wk, i) => ({ weekEnding: wk.week_ending, factor: Number(wk.factor), isReporting: i === 0 }));
+    const allWeeks = weeks.map((wk, i) => ({ weekEnding: wk.week_ending, factor: Number(wk.factor), isReporting: i === 0 }));
+    // A grade desenha o que o usuário pediu; o selo julga sempre na mesma régua.
+    const engineWeeks = allWeeks.slice(0, horizon + 1);
+    const badgeWeeks = allWeeks.slice(0, HORIZON_WEEKS + 1);
     const today = weekEnding(new Date());
 
     const rows = skus.map((s) => {
@@ -304,6 +410,7 @@ function register(app) {
         targetCoverWeeks: s.target_cover_weeks || 7,
         projectOrders: Number(s.project_orders || 0),
       });
+      const alerts = buildAlerts(s.sku, proj, { todayWeek: today });
       return {
         sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code,
         wk_avg: s.wk_avg, target_cover_weeks: s.target_cover_weeks,
@@ -317,13 +424,17 @@ function register(app) {
           d: r.projectDraws, c: r.closing, neg: r.belowZero, low: r.belowTarget,
         })),
         summary: proj.summary,
-        alerts: buildAlerts(s.sku, proj, { todayWeek: today }),
+        alerts,
+        ...badgeFor(s, proj, alerts, {
+          sold: soldIdx[s.sku_key], lead: leadIdx[s.sku_key],
+          badgeWeeks, incoming: inIdx[s.sku_key] || {}, draws: drawIdx[s.sku_key] || {},
+        }),
       };
     });
 
     res.json({
       reporting_week: state.reporting_week,
-      weeks: weeks.map((w) => ({ ...w, label: shortLabel(w.week_ending) })),
+      weeks: weeks.slice(0, horizon + 1).map((w) => ({ ...w, label: shortLabel(w.week_ending) })),
       total, limit, offset, rows, ms: Date.now() - t0,
     });
   }));
@@ -629,7 +740,10 @@ function register(app) {
     ];
     const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
     const drawIdx = index(draws), inIdx = index(incoming);
-    const engineWeeks = weeks.map((wk, i) => ({ weekEnding: wk.week_ending, factor: Number(wk.factor), isReporting: i === 0 }));
+    const allWeeks = weeks.map((wk, i) => ({ weekEnding: wk.week_ending, factor: Number(wk.factor), isReporting: i === 0 }));
+    // A grade desenha o que o usuário pediu; o selo julga sempre na mesma régua.
+    const engineWeeks = allWeeks.slice(0, horizon + 1);
+    const badgeWeeks = allWeeks.slice(0, HORIZON_WEEKS + 1);
     const today = weekEnding(new Date());
 
     // Cada SKU alertado volta com os NÚMEROS que geraram o alerta. Sem isso a

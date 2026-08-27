@@ -802,9 +802,9 @@ function renderSupply() {
     const sup = r.superseded_by
         ? `<span class="sup-to">→ <b data-goto="${esc(r.superseded_by)}">${esc(r.superseded_by)}</b></span>` : '';
     const skuRow = `<tr class="sk ${lc}" data-sku="${esc(r.sku_key)}">
-      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${sup}</td>
+      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${badgeMark(r)}${sup}</td>
       <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}</td>
-      <td class="n">${cellSku(r,'wk_avg',n1(r.wk_avg))}</td>
+      <td class="n${r.badge_drift?' drift':''}"${r.badge_drift?` title="${esc(r.badge_why||'')}"`:''}>${cellSku(r,'wk_avg',n1(r.wk_avg))}</td>
       <td class="n mono"${m.mthsStock!=null&&m.mthsStock<1?' style="color:#9c0006;font-weight:700"':''}>${m.mthsStock==null?'—':n1(m.mthsStock)}</td>
       <td class="n mono"${m.undatedQty?' style="color:#9c5700;font-weight:600"':' class="n mono faint"'}>${m.undatedQty?n0(m.undatedQty):'—'}</td>
       <td class="n mono">${m.totalIncoming?n0(m.totalIncoming):''}</td>
@@ -867,6 +867,20 @@ function renderSupply() {
 // As 7 colunas fixas: 190+70+62+52+60+74+52. A rolagem para nesta borda para a
 // semana de reporte encostar no congelado, e não sumir atrás dele.
 const FROZEN_PX = 560;
+// Três tons, todos já existentes. --warn está fora: o selo RUN-OUT já ocupa
+// laranja na MESMA célula, e 17 das linhas teriam dois chips laranja colados.
+const BADGE = {
+  'ORDER NOW':    ['danger',  'Vende, zera dentro da janela de pedido, e nada em trânsito.'],
+  'CHASE PO':     ['danger',  'Vende e zera dentro da janela — mas o pedido já saiu. É cobrar prazo, não comprar.'],
+  'NO FORECAST':  ['danger',  'Vende e zera dentro da janela, e a lista de compra não enxerga este SKU.'],
+  'ORDER SOON':   ['info',    'Zera dentro do horizonte, ainda dá tempo de planejar.'],
+  'FIX FORECAST': ['neutral', 'Tem previsão viva e não vendeu nada no trimestre: o cadastro contradiz a venda.'],
+};
+const badgeMark = (r) => {
+  const b = BADGE[r.badge]; if (!b) return '';
+  const why = r.badge_why ? ' ' + r.badge_why : '';
+  return `<span class="ui-tag ui-tag--${b[0]} bdg" title="${esc(b[1] + why)}">${esc(r.badge)}</span>`;
+};
 const cellSku = (r, f, html) =>
   `<span class="sp-cell" contenteditable="plaintext-only" spellcheck="false"
      data-sku="${esc(r.sku_key)}" data-field="${f}" data-kind="num">${html==null?'':html}</span>`;

@@ -540,3 +540,12 @@ tr.al-row:hover td{background:var(--card-2)}
    de compra opostas, então nunca podem ter a mesma aparência. */
 .sp-supply td.wk.pastw.nodata{color:var(--line-3);font-weight:400;background:
   repeating-linear-gradient(-45deg,#f7f8fa,#f7f8fa 4px,#f1f3f5 4px,#f1f3f5 8px)}
+
+/* O selo de status. Compacto porque divide uma célula de 190px com o SKU, a
+   marca de ciclo de vida e a seta de sucessão — em 48 linhas os quatro
+   coexistem. */
+.sp-supply .bdg{margin-left:5px;font-size:9.5px;letter-spacing:.03em;vertical-align:1px}
+
+/* Quando o selo discorda da projeção, a causa é o Wk/Avg digitado. Marcar a
+   própria célula leva o olho ao conserto em vez de deixar a contradição solta. */
+.sp-supply tr.sk td.n.drift{box-shadow:inset 0 0 0 1px var(--xl-warn-ink)}
