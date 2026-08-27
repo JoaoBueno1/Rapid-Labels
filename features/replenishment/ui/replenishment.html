@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=1">
+<link rel="stylesheet" href="replenishment.css?v=2">
 <script defer src="/shared/rail.js?v=7"></script>
 </head>
 <body>
@@ -45,23 +45,36 @@
     <div class="sp-tiles" id="branchTiles"><div class="sp-loading">Loading branches…</div></div>
   </div>
 
-  <!-- branch grid (hidden until a branch is picked) -->
+  <!-- branch workspace (hidden until a branch is picked) -->
   <div class="sp-view-inner" id="branchGrid" style="display:none">
     <div class="sp-bar">
-      <button class="sp-btn is-ghost" id="btnBack">‹ Branches</button>
+      <button class="sp-btn is-ghost" id="btnBack" title="Back to branches">‹</button>
       <b id="gridTitle" class="rp-title">Branch</b>
-      <input type="search" id="gridSearch" placeholder="Filter SKU / Rapid Code / Product…" style="max-width:260px">
-      <button class="sp-chip is-on" id="chipSuggested">Suggested only</button>
-      <button class="sp-chip" id="chipYellow">Over 6-week cover</button>
+      <span class="rp-seg" id="modeSeg">
+        <button data-mode="weekly" class="on">Weekly replenishment</button>
+        <button data-mode="daily">Daily / urgent</button>
+      </span>
       <span class="sp-gap"></span>
+      <input type="search" id="gridSearch" placeholder="Filter…" style="max-width:220px;display:none">
+      <button class="sp-chip" id="chipFilters" style="display:none">Filters</button>
+      <button class="sp-btn" id="btnAddLine" style="display:none">＋ Add line</button>
       <span class="sp-count" id="gridCount"></span>
-      <button class="sp-btn" id="btnSuggest" title="Add the engine's coverage suggestions">Suggestions</button>
+      <button class="sp-btn is-ghost" id="btnReset" title="Start this plan over" style="display:none;font-size:13px">Start over</button>
     </div>
-    <div class="sp-scroll"><table class="sp-grid rp-grid" id="rpGrid"></table></div>
-    <div class="sp-foot">
-      <span><i class="k" style="background:var(--xl-warn)"></i>over 6-week cover (over-order)</span><i></i>
-      <span><i class="k" style="background:var(--xl-bad)"></i>oversold / negative available</span><i></i>
-      <span><b>QTY</b> is the white input · coverage = (SOH+QTY)/avg</span><i></i>
+
+    <!-- stage / timeline -->
+    <div class="rp-stage" id="rpStage" style="display:none"></div>
+
+    <!-- the gate: choose suggestions vs manual, before any line exists -->
+    <div class="rp-gate" id="rpGate" style="display:none"></div>
+
+    <!-- the working grid -->
+    <div class="sp-scroll" id="rpScroll" style="display:none"><table class="sp-grid rp-grid" id="rpGrid"></table></div>
+
+    <div class="sp-foot" id="rpFoot" style="display:none">
+      <span><i class="k" style="background:#fce8a8"></i><b>Branch Ask</b> — the white input you fill</span><i></i>
+      <span><i class="k" style="background:#eef1f5;border:1px solid var(--line-2)"></i><b>Inv Qty</b> — locked until <b>Ready to check</b></span><i></i>
+      <span><i class="k" style="background:color-mix(in srgb,var(--xl-bad) 42%,#fff)"></i>no Main stock — can't send</span><i></i>
       <span id="gridScope"></span>
     </div>
   </div>
@@ -153,11 +166,13 @@
   </div>
 </div>
 
+<!-- autocomplete dropdown (floats over the page) -->
+<div class="rp-ac" id="rpAc"></div>
 <div class="sp-toast" id="toast"></div>
 
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=1"></script>
+<script src="replenishment-app.js?v=2"></script>
 </body>
 </html>
