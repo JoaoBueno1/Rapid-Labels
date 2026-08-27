@@ -30,26 +30,39 @@ name: Excel Sync Heartbeat
 
 on:
   schedule:
-    # 21:10 UTC Sun–Thu = 07:10 Brisbane Mon–Fri, fifteen minutes after the
-    # first build of the day (20:55 UTC) and as the branches sit down.
+    # 23:10 UTC Sun–Thu = 09:10 Brisbane Mon–Fri.
     #
-    # Fifteen minutes is the point of it. The overnight gap runs 17:55 to 06:55
-    # Brisbane, so at 07:10 a healthy dataset is ~15 minutes old and a skipped
-    # first slot is ~13 hours old. Nothing in between, which is what makes the
-    # threshold in heartbeat.py a clean line rather than a guess.
+    # It ran at 07:10 for less than a day, on the assumption that the 06:55
+    # build lands fifteen minutes earlier. Measured over 40 scheduled runs,
+    # that assumption is false: GitHub fires these late every single time —
+    # median 14 minutes, best 5, worst 59. First build of the day landed 07:01,
+    # 07:04, 07:03 and then 07:48 on 27/08.
     #
-    # It ran at 08:00 before, which was late for a reason that no longer holds:
-    # it was waiting on a 07:00 delivery from a machine that is now retired.
+    # At 07:10 on a day like 27/08 the morning build has not happened yet, so
+    # the newest dataset is the previous evening's, thirteen hours old, and the
+    # check fires. It would be telling the truth and still be wrong to send:
+    # the build arrives half an hour later on its own, and an alarm that
+    # resolves itself is how the previous one came to be ignored.
+    #
+    # This job is delayed by the same scheduler, so "N minutes after the build"
+    # is not something a cron can express here. 09:10 works because by then two
+    # or three hourly builds have had their chance — even on the worst day
+    # observed, the newest was 16 minutes old.
+    #
+    # What it gives up: a build that is merely late is no longer reported. That
+    # is deliberate. What it still catches is what actually hurt — a build
+    # pipeline that has stopped, and a mirror that has stopped filling beneath
+    # one that hasn't (21–24/08, three days).
     #
     # The day shift mirrors excel-sync.yml and is deliberate. Do not "fix"
-    # 0-4 to 1-5 — 21:10 UTC Sunday is Monday morning in Brisbane.
-    - cron: '10 21 * * 0-4'
+    # 0-4 to 1-5 — 23:10 UTC Sunday is Monday morning in Brisbane.
+    - cron: '10 23 * * 0-4'
   workflow_dispatch:
     inputs:
       max_build_hours:
         description: 'Hours a dataset may go without a rebuild'
         required: false
-        default: '4'
+        default: '6'
       max_data_hours:
         description: 'Hours the mirror data underneath may be stale'
         required: false
@@ -81,5 +94,5 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           python tools/heartbeat.py \
-            --max-build-hours "${{ github.event.inputs.max_build_hours || '4' }}" \
+            --max-build-hours "${{ github.event.inputs.max_build_hours || '6' }}" \
             --max-data-hours "${{ github.event.inputs.max_data_hours || '6' }}"
