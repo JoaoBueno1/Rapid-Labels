@@ -1,0 +1,33 @@
+/* Branch Replenishment — module-specific bits only.
+   Tokens + all .sp-* shell/grid/tile/modal styles come from the linked
+   /features/stock-planning/ui/planning.css, so the two modules match exactly. */
+
+.rp-gear { margin-left: 4px; white-space: nowrap; }
+.sp-view-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.rp-h { font-weight: 600; color: var(--ink-2); }
+.rp-title { font-weight: 700; margin-right: 6px; }
+.rp-note, .rp-sub { color: var(--mut-2); font-weight: 400; font-size: 12px; }
+.rp-sub { font-size: 11px; }
+
+/* branch landing tiles reuse .sp-tiles/.sp-tile; add a body + click affordance */
+.sp-tiles { padding: 14px 2px; }
+.sp-tile { cursor: pointer; transition: box-shadow .15s, transform .15s; }
+.sp-tile:hover { box-shadow: 0 4px 14px rgba(20,28,41,.10); transform: translateY(-1px); }
+.rp-tile-sub { font-size: 11.5px; color: var(--mut-2); margin-top: 4px; }
+.rp-tile-var { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--acc-d); background: var(--acc-soft); border-radius: 4px; padding: 1px 6px; margin-top: 6px; }
+
+/* grid row states (reuse xl tokens) */
+.rp-grid tbody tr.rp-yellow td { background: color-mix(in srgb, var(--xl-warn) 45%, #fff); }
+.rp-grid tbody tr.rp-neg td { background: color-mix(in srgb, var(--xl-bad) 45%, #fff); }
+.rp-grid td.rp-qty { background: #fffef4; font-weight: 700; }
+.rp-grid td.rp-tag { text-transform: uppercase; font-size: 10px; font-weight: 700; letter-spacing: .03em; }
+.rp-tier { display:inline-block; width:16px; text-align:center; border-radius:3px; font-size:10px; font-weight:800; }
+.rp-tier.A { background:#e8f0ff; color:#1e40af; } .rp-tier.B { background:#eef6ea; color:#3d6b1e; } .rp-tier.C { background:#f2f4f7; color:#5b6b86; }
+
+/* settings modal sections */
+.rp-set { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-top: 12px; background: var(--card-2); }
+.rp-set-h { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); margin-bottom: 9px; }
+.rp-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin-top: 8px; cursor: pointer; }
+.rp-mini-scroll { max-height: 230px; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }
+.sp-box { max-width: 760px; }

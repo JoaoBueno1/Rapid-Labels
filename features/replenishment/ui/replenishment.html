@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Branch Replenishment — Rapid LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Reuse the Stock Planning design system verbatim so the two modules read as one app. -->
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
+<link rel="stylesheet" href="/shared/rail.css?v=4">
+<link rel="stylesheet" href="/shared/ui.css?v=4">
+<link rel="stylesheet" href="replenishment.css?v=1">
+<script defer src="/shared/rail.js?v=7"></script>
+</head>
+<body>
+
+<header class="sp-header">
+  <div class="sp-header-inner">
+    <span class="sp-brand"><span class="sp-logo">R</span> Branch Replenishment</span>
+    <nav class="sp-tabs" id="tabs">
+      <button class="sp-tab is-on" data-view="branches">Branches</button>
+      <button class="sp-tab" data-view="averages">Averages</button>
+    </nav>
+    <div class="sp-status" id="status">
+      <span class="sp-dot" id="statusDot"></span><span id="statusText">Loading…</span>
+    </div>
+    <button class="sp-btn is-ghost rp-gear" id="btnSettings" title="Engine settings">⚙ Settings</button>
+  </div>
+</header>
+
+<main class="sp-main">
+
+<!-- ══ BRANCHES ══════════════════════════════════════════════════════ -->
+<section class="sp-view is-on" data-view="branches">
+
+  <!-- landing: one tile per branch -->
+  <div class="sp-view-inner" id="branchLanding">
+    <div class="sp-bar">
+      <span class="rp-h">Pick a branch to plan its transfer</span>
+      <span class="sp-gap"></span>
+      <span class="sp-count" id="landingNote"></span>
+    </div>
+    <div class="sp-tiles" id="branchTiles"><div class="sp-loading">Loading branches…</div></div>
+  </div>
+
+  <!-- branch grid (hidden until a branch is picked) -->
+  <div class="sp-view-inner" id="branchGrid" style="display:none">
+    <div class="sp-bar">
+      <button class="sp-btn is-ghost" id="btnBack">‹ Branches</button>
+      <b id="gridTitle" class="rp-title">Branch</b>
+      <input type="search" id="gridSearch" placeholder="Filter SKU / Rapid Code / Product…" style="max-width:260px">
+      <button class="sp-chip is-on" id="chipSuggested">Suggested only</button>
+      <button class="sp-chip" id="chipYellow">Over 6-week cover</button>
+      <span class="sp-gap"></span>
+      <span class="sp-count" id="gridCount"></span>
+      <button class="sp-btn" id="btnSuggest" title="Add the engine's coverage suggestions">Suggestions</button>
+    </div>
+    <div class="sp-scroll"><table class="sp-grid rp-grid" id="rpGrid"></table></div>
+    <div class="sp-foot">
+      <span><i class="k" style="background:var(--xl-warn)"></i>over 6-week cover (over-order)</span><i></i>
+      <span><i class="k" style="background:var(--xl-bad)"></i>oversold / negative available</span><i></i>
+      <span><b>QTY</b> is the white input · coverage = (SOH+QTY)/avg</span><i></i>
+      <span id="gridScope"></span>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══ AVERAGES (consultative, read-only) ════════════════════════════ -->
+<section class="sp-view" data-view="averages">
+  <div class="sp-bar">
+    <input type="search" id="avSearch" placeholder="Filter SKU / Rapid Code…" style="max-width:260px">
+    <select id="avBranch"><option value="">All branches</option></select>
+    <button class="sp-chip is-on" id="avNonZero">Non-zero only</button>
+    <span class="sp-gap"></span>
+    <span class="sp-count" id="avCount"></span>
+    <span class="rp-note">Read-only — the averages the engine uses. Updated by the office import.</span>
+  </div>
+  <div class="sp-scroll"><table class="sp-grid rp-grid" id="avGrid"></table></div>
+</section>
+
+</main>
+
+<!-- ══ settings modal ════════════════════════════════════════════════ -->
+<div class="sp-modal" id="mdSettings">
+  <div class="sp-box">
+    <header><h3>Replenishment engine — settings</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
+    <div class="sp-box-body">
+      <p class="sp-hint">These are the knobs that make the suggestions behave like the Excel. They apply to
+        every branch and are saved on this browser. Nothing here writes to Cin7.</p>
+
+      <div class="rp-set">
+        <div class="rp-set-h">Coverage target</div>
+        <div class="sp-row3">
+          <label class="sp-field"><span>Cover window (weeks)</span><input id="setWeeks" type="number" min="1" max="52" step="1"></label>
+          <label class="sp-field"><span>= in days</span><input id="setDays" disabled></label>
+          <label class="sp-field"><span>Suggest when cover under</span><input id="setCutDays" type="number" min="1" max="120" step="1"><small class="rp-sub">days (Excel says 21, engine used 25)</small></label>
+        </div>
+        <label class="rp-check"><input type="checkbox" id="setAbc"> Use ABC tiers (A=10 · B=8 · C=6 weeks) instead of a single window</label>
+      </div>
+
+      <div class="rp-set">
+        <div class="rp-set-h">Which average to use</div>
+        <div class="sp-row2">
+          <label class="sp-field"><span>Average source</span>
+            <select id="setAvgSource">
+              <option value="rep_then_branch">Sales-rep avg, fall back to branch (current)</option>
+              <option value="branch">Branch (warehouse) avg only</option>
+              <option value="rep">Sales-rep avg only</option>
+              <option value="both_max">Both — take the higher</option>
+              <option value="both_sum">Both — sum them</option>
+              <option value="both_avg">Both — average them</option>
+            </select>
+          </label>
+          <label class="sp-field"><span>Period</span>
+            <select id="setPeriod">
+              <option value="stored">As stored (office import)</option>
+              <option value="3m" disabled>3-month avg (needs backfill)</option>
+              <option value="6m" disabled>6-month avg (needs backfill)</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="rp-set">
+        <div class="rp-set-h">Whole units — no broken numbers</div>
+        <div class="sp-row2">
+          <label class="sp-field"><span>Rounding of the average</span>
+            <select id="setAvgRound">
+              <option value="pure">Keep pure (e.g. 19.17)</option>
+              <option value="nearest">Round to nearest unit</option>
+              <option value="up">Round up</option>
+              <option value="down">Round down</option>
+            </select>
+          </label>
+          <label class="rp-check" style="align-self:end"><input type="checkbox" id="setCartons"> Round suggested QTY up to full cartons</label>
+        </div>
+      </div>
+
+      <div class="rp-set">
+        <div class="rp-set-h">Averages in use <small class="rp-sub">consultative — the numbers below feed every suggestion</small></div>
+        <div class="rp-mini-scroll"><table class="sp-grid rp-grid" id="setAvgTable"></table></div>
+      </div>
+    </div>
+    <footer>
+      <button class="sp-btn" id="setReset">Reset to defaults</button>
+      <span class="sp-gap"></span>
+      <button class="sp-btn" data-close>Close</button>
+      <button class="sp-btn is-primary" id="setApply">Apply</button>
+    </footer>
+  </div>
+</div>
+
+<div class="sp-toast" id="toast"></div>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="/supabase-config.js"></script>
+<script src="/features/replenishment/replenishment-config.js"></script>
+<script src="replenishment-app.js?v=1"></script>
+</body>
+</html>
