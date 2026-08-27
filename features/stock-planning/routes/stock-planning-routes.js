@@ -15,6 +15,13 @@ const { weekEnding, shortLabel, toISODate } = require('../lib/week');
 
 const MAX_PAGE = 500;
 
+// O horizonte de planejamento, em semanas. UMA fonte para /planning, /alerts e
+// /buy-recommendation: quando eles discordam, a mesma linha ganha aviso de
+// compra numa tela e "não falta no horizonte" na outra, e o planejador para de
+// confiar nas duas. 28 cobre o SKU mais lento medido (lead 16,6 + review 1 +
+// cover 8 = 25,6) com folga de duas semanas.
+const HORIZON_WEEKS = 28;
+
 /** Quem está editando. Ainda não há login; o nome vai para o audit_log. */
 const actorOf = (req) =>
   (req.get('x-sp-user') || req.query.as || req.body?._as || 'anon').toString().slice(0, 120);
@@ -605,7 +612,7 @@ function register(app) {
   // ── Alertas ─────────────────────────────────────────────────────────
   app.get(`${R}/alerts`, wrap(async (req, res) => {
     const state = await db.one(`SELECT * FROM rapid_inv.planning_state WHERE id=1`);
-    const horizon = asInt(req.query.weeks, 26, 4, 156);
+    const horizon = asInt(req.query.weeks, HORIZON_WEEKS, 4, 156);
     const weeks = await db.query(
       `SELECT week_ending, factor FROM rapid_inv.v_sp_weeks WHERE week_ending >= $1
         ORDER BY week_ending LIMIT $2`, [state.reporting_week, horizon + 1]);
@@ -889,11 +896,17 @@ function register(app) {
        WHERE ${where.join(' AND ')}`, p);
     if (!skus.length) return res.json({ rows: [], total: 0, ms: Date.now() - t0 });
 
-    // O horizonte tem de cobrir o SKU mais lento: nada de cortar em 26 semanas
-    // e depois dizer que ele nunca falta.
-    const maxWeeks = Math.min(104, Math.ceil(Math.max(
-      ...skus.map((s) => Number(s.lead_weeks) + Number(s.review_weeks) + Number(s.target_cover_weeks || 0))
-    )) + 2);
+    // O horizonte agora é DECISÃO, não resíduo. Antes ele saía deste max() sobre
+    // todos os candidatos, o que dava 28 — e quem fixava esse 28 era um SKU só.
+    // Se a mediana de lead daquele fornecedor andasse duas semanas, dentro do
+    // desvio dela, 74 SKUs mudariam de segmento sem que nada tivesse mudado
+    // neles. Pior: a grade e os alertas usavam 26, e o descasamento produzia 45
+    // linhas com aviso de compra ao lado de "not in horizon" em verde.
+    const maxWeeks = HORIZON_WEEKS;
+    // Quantos SKUs o horizonte NÃO cobre. Vai no payload em vez de alargar a
+    // janela em silêncio: aqui, esticar a janela move linhas entre segmentos.
+    const uncovered = skus.filter((s) =>
+      Number(s.lead_weeks) + Number(s.review_weeks) + Number(s.target_cover_weeks || 0) > maxWeeks).length;
     const weeks = await db.query(
       `SELECT week_ending, factor FROM rapid_inv.v_sp_weeks WHERE week_ending >= $1
         ORDER BY week_ending LIMIT $2`, [state.reporting_week, maxWeeks + 1]);
@@ -941,12 +954,19 @@ function register(app) {
       // Quando pedir: a semana em que o saldo cruza o alvo, menos o lead time.
       const cross = proj.rows.findIndex((r, i) => i > 0 && r.closing < target);
       const orderByWeek = cross > 0 ? proj.rows[Math.max(0, cross - arrival)].weekEnding : proj.rows[0].weekEnding;
-      const late = cross > 0 && cross - arrival <= 0;
+      // `<= 0` acusava também quem tem de pedir exatamente esta semana: seis
+      // linhas em dia marcadas como atrasadas. O certo é `< 0`.
+      const late = cross > 0 && cross - arrival < 0;
+      // Só para o title. NÃO vira coluna nem critério de ordenação: 42% das
+      // linhas imprimiriam o mesmo "15", porque o número descreve o lead do
+      // fornecedor e não o SKU.
+      const weeksLate = late ? arrival - cross : 0;
 
       rows.push({
         sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code,
         soh: Number(s.soh_available), on_order: Number(s.soh_on_order),
         wk_avg: Number(s.wk_avg), target_cover_weeks: s.target_cover_weeks, target_qty: target,
+        weeks_late: weeksLate,
         lead_weeks: lead, lead_source: s.lead_source, sd_weeks: s.sd_weeks == null ? null : Number(s.sd_weeks),
         arrival_week_index: arrival, cover_until_index: coverUntil,
         low_point: low.closing, low_week: low.weekEnding,
@@ -970,7 +990,7 @@ function register(app) {
       if (r.already_late) bySupplier[k].late++;
     }
     res.json({
-      reporting_week: state.reporting_week, horizon_weeks: maxWeeks,
+      reporting_week: state.reporting_week, horizon_weeks: maxWeeks, uncovered_skus: uncovered,
       total: rows.length,
       total_units: rows.reduce((n, r) => n + r.suggested, 0),
       total_value_aud: rows.reduce((n, r) => n + (r.value_aud || 0), 0),

@@ -18,7 +18,7 @@ const S = {
   supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, back:+(localStorage.getItem('sp.back')||0) },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { supplier:'' },
-  buy:      { supplier:'', late:true },
+  buy:      { supplier:'', late:false },
   suppliers: [], branches: [], state: null,
 };
 
@@ -1048,7 +1048,11 @@ function renderBuy() {
         <td class="n" title="${r.carton_qty} per carton${r.moq_applied?' · MOQ applied':''}">${n0(r.cartons)}${r.moq_applied?' ᴹ':''}</td>
         <td class="n em">${n0(r.suggested)}</td>
         <td class="n">${r.value_aud?aud(r.value_aud):''}</td>
-        <td class="n"${r.already_late?' style="color:#9c0006;font-weight:600"':''}>${r.already_late?'overdue':d10(r.order_by_week)}</td>
+        <td class="n"${r.already_late?' style="color:#9c0006;font-weight:600"':''}
+            title="${r.already_late
+              ? `A data de pedir cai antes do início da projeção, então ela não é recuperável desta tela. Com o lead de ${n1(r.lead_weeks)} semanas, deveria ter saído há cerca de ${r.weeks_late} semana(s).`
+              : 'Semana em que o pedido precisa sair para chegar antes do saldo cruzar o alvo.'}"
+          >${r.already_late?'was due':d10(r.order_by_week)}</td>
       </tr>`).join('') || '<tr><td colspan="11"><div class="sp-empty">Nothing to order with these filters.</div></td></tr>'}</tbody></table>
     </div>
     <p class="sp-hint" style="max-width:70ch">
