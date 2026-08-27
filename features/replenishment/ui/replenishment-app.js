@@ -2,7 +2,7 @@
  *
  * Opens straight into the sheet (no pre-open menu). Weekly sub-tab = Excel-style rows you fill,
  * with a "Load suggested (N)" that merges the engine's coverage picks into the empty rows (never
- * overwrites what you typed). Daily = urgent items + reason, ≤12, no branch ready-to-check.
+ * overwrites what you typed). Daily = items asked up to 12pm + reason, ≤12, skips the manager check.
  * History = approved snapshots, locked at the approved values. A right panel (click any row) shows
  * the product across every branch, Main/Gateway bins, and what's on the way + ETA.
  * Reuses window.ReplenishmentConfig; reads live cin7_mirror. Place-order (Cin7 write) NOT built. */
@@ -28,12 +28,17 @@
   const STAGES = { weekly: ['draft', 'submitted', 'ready_to_check', 'approved'], daily: ['draft', 'submitted', 'approved'] };
   const STAGE_LABEL = { draft: 'Draft', submitted: 'Submitted', ready_to_check: 'Ready to check', approved: 'Approved' };
   const stageIdx = () => STAGES[S.mode].indexOf(S.stage);
+  // Quem escreve o quê, e quando. Antes o Inv Qty só abria em ready_to_check e
+  // no diário nunca — então dar Submit não mudava nada na tela, que era a
+  // reclamação. São dois checks: o time de estoque no submitted, o gerente no
+  // ready_to_check. O diário pula o segundo, mas mantém o primeiro.
   const askEditable = () => S.stage === 'draft';
-  const invEditable = () => S.mode === 'weekly' && S.stage === 'ready_to_check';
+  const invEditable = () => S.stage === 'submitted' || S.stage === 'ready_to_check';
+  const invCommentEditable = () => invEditable();
 
   // ── state ────────────────────────────────────────────────────────────
   const S = {
-    avg: [], avgBy: {}, ranks: null, stock: {}, inT: {}, prod: {}, prodList: [], loaded: false,
+    avg: [], avgBy: {}, ranks: null, stock: {}, inT: {}, prod: {}, prodList: [], pallet: {}, loaded: false,
     branch: null, view: 'weekly', mode: 'weekly', stage: 'draft', lines: [],
     sort: { key: null, dir: 1 }, search: '', vis: { weekly: null, daily: null }, sideSku: null,
   };
@@ -62,10 +67,15 @@
 
   async function loadBase() {
     setStatus('loading', 'Loading live stock & averages…');
-    const [avg, stock, prod] = await Promise.all([
+    const [avg, stock, prod, pallet] = await Promise.all([
       fetchAll('branch_avg_monthly_sales', '*'),
       fetchAll('stock_snapshot', 'sku,location_name,available,in_transit', { schema: 'cin7_mirror' }),
-      fetchAll('products', 'sku,attribute1,name,stock_locator,carton_quantity', { schema: 'cin7_mirror' }),
+      fetchAll('products', 'sku,attribute1,name,stock_locator,carton_quantity,status', { schema: 'cin7_mirror' }),
+      // Pallet casa pelo 5DC, não pelo Rapid Code — medido: 1 match por sku
+      // contra 2.385 por attribute1. Faz sentido físico: o mesmo produto tem
+      // vários códigos. pallet_capacity_rules cobre 1.900 SKUs contra 1.030 do
+      // restock_setup, e as duas concordam em 948 dos 980 em comum.
+      fetchAll('pallet_capacity_rules', 'sku,qty_pallet'),
     ]);
     S.avg = avg;
     S.avgBy = {}; avg.forEach(r => { if (r.product) S.avgBy[String(r.product).toUpperCase()] = r; });
@@ -77,6 +87,11 @@
       const k = String(r.sku).toUpperCase();
       (buckets[b] || (buckets[b] = {})); buckets[b][k] = (buckets[b][k] || 0) + (Number(r.available) || 0);
       (inT[b] || (inT[b] = {})); inT[b][k] = (inT[b][k] || 0) + (Number(r.in_transit) || 0);
+    }
+    S.pallet = {};
+    for (const r of pallet) {
+      const k = String(r.sku || '').trim().toUpperCase(); const v = Number(r.qty_pallet) || 0;
+      if (k && v > 0) S.pallet[k] = v;
     }
     S.stock = buckets; S.inT = inT; S.ranks = RC.computeAbcRanks(avg); S.loaded = true;
     setStatus('fresh', `Live · ${n0(stock.length)} stock rows · ${n0(avg.length)} SKUs with averages`);
@@ -112,6 +127,7 @@
     const gw = Number((S.stock.GATEWAY && S.stock.GATEWAY[k]) || 0);
     const mainGw = mainOnly + gw;
     const syd = Number((S.stock.SYD && S.stock.SYD[k]) || 0);
+    const pallet = Number(S.pallet[String(p.attribute1 || '').trim().toUpperCase()] || 0);
     const tier = (S.ranks && (S.ranks.get(k) || S.ranks.get(code))) || 'C';
     const weeks = SET.abc ? RC.targetWeeksForTier(tier) : SET.weeks;
     const target = RC.computeBranchTarget(avg, weeks);
@@ -123,9 +139,12 @@
     const coverWeeks = avg > 0 ? (avail + inTransit) / (avg / RC.WEEKS_IN_MONTH) : 999;
     return {
       code: p.sku || code, dc: p.attribute1 || '', name: p.name || '', ctn: p.carton_quantity || 0,
+      pallet, deprecated: p.status === 'Deprecated',
       loc: p.stock_locator || '', avg, soh: avail, inTransit, mainGw, mainOnly, gw, canSend, syd,
       tier, target, weeks, mainAvg, sug, coverWeeks,
-      ask: sug, invQty: null, reason: '', comment: '',
+      // invComment e flag nascem aqui para o rascunho salvo já ter o formato
+      // novo — senão a linha antiga volta do localStorage sem eles.
+      ask: sug, invQty: null, reason: '', comment: '', invComment: '', flag: false,
     };
   }
 
@@ -189,6 +208,14 @@
   }
   function enterGrid() {
     $('rpScroll').style.display = ''; $('rpHistory').style.display = 'none'; $('rpStage').style.display = ''; $('rpFoot').style.display = '';
+    // O diário tem regra própria e ela precisa estar na tela, não no treinamento.
+    const note = $('rpDailyNote');
+    if (note) {
+      note.style.display = S.mode === 'daily' ? '' : 'none';
+      note.innerHTML = 'Pedidos feitos até <b>12:00</b> de hoje. Não inclui a transferência semanal — '
+        + 'essa vai na aba Weekly. Máximo de ' + DAILY_MAX + ' itens, e cada um precisa de motivo. '
+        + 'O diário não passa pelo check do gerente.';
+    }
     setControls(); renderStage(); renderGrid();
   }
   function setControls() {
@@ -216,9 +243,9 @@
       action = `<span class="rp-step done">✓ Approved &amp; snapshotted — ready to place (Cin7 write held)</span>
                 <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ reopen</button>`;
     }
-    const hint = S.stage === 'draft' && S.mode === 'weekly' ? 'Branch fills Branch Ask'
-      : S.stage === 'ready_to_check' ? 'Inventory team fills Inv Qty'
-      : S.stage === 'submitted' && S.mode === 'weekly' ? 'Waiting for inventory team' : '';
+    const hint = S.stage === 'draft' ? 'A filial preenche o Branch Ask'
+      : S.stage === 'submitted' ? 'O time de estoque confere e ajusta o Inv Qty'
+      : S.stage === 'ready_to_check' ? 'O gerente confere — comentários seguem abertos' : '';
     $('rpStage').innerHTML = `<div class="rp-steps">${pills}</div><span class="sp-gap"></span><span class="rp-sub">${hint}</span> ${action}`;
     const a = $('btnAdvance'); if (a) a.addEventListener('click', advanceStage);
     const b = $('btnBackStage'); if (b) b.addEventListener('click', backStage);
@@ -226,7 +253,13 @@
   function advanceStage() {
     const steps = STAGES[S.mode], i = stageIdx(); if (i >= steps.length - 1) return;
     S.stage = steps[i + 1];
-    if (S.stage === 'ready_to_check') S.lines.forEach(l => { if (l.invQty == null) l.invQty = clampInt(l.ask); });
+    // No Submit o Inv Qty nasce igual ao pedido da filial: o check vira
+    // confirmar ou corrigir, não redigitar 40 linhas.
+    if (S.stage === 'submitted') {
+      let seeded = 0;
+      S.lines.forEach(l => { if (l.invQty == null) { l.invQty = clampInt(l.ask); seeded++; } });
+      if (seeded) saveDraft();
+    }
     if (S.stage === 'approved') snapshotToHistory();
     saveDraft(); enterGrid(); toast(`Stage → ${STAGE_LABEL[S.stage]}`);
   }
@@ -247,25 +280,41 @@
     const c = [
       { key: 'dc', label: '5DC', w: 70, align: 'txt', group: 'id', sortable: true, def: true },
       { key: 'code', label: 'Rapid Code', w: 130, align: 'code', group: 'id', sortable: true, def: true, always: true },
-      { key: 'name', label: 'Product', w: 0, align: 'txt', group: 'id', sortable: true, def: true },
-      { key: 'ctn', label: 'Ctn', w: 48, align: 'num', group: 'id', sortable: true, def: false },
+      // Produto encolheu: ele empurrava as colunas de decisão para fora da tela.
+      { key: 'name', label: 'Product', w: 210, align: 'txt', group: 'id', sortable: true, def: true },
       { key: 'loc', label: 'Location', w: 100, align: 'txt', group: 'id', sortable: true, def: false },
+      // Ctn e Pallet vêm ANTES do pedido: são a unidade em que ele é feito.
+      { key: 'ctn', label: 'Ctn Qty', w: 62, align: 'num', group: 'pack', sortable: true, def: true },
+      { key: 'pallet', label: 'Pallet Qty', w: 72, align: 'num', group: 'pack', sortable: true, def: true },
       { key: 'ask', label: 'Branch Ask', w: 92, align: 'num', group: 'ord', sortable: true, def: true, always: true },
-      { key: 'invQty', label: 'Inv Qty', w: 84, align: 'num', group: 'ord', sortable: true, def: true },
+      // Inv Qty não existe no rascunho: ali ela ficava travada, ocupando espaço
+      // e sugerindo que alguém deveria preenchê-la.
+      { key: 'invQty', label: 'Inv Qty', w: 84, align: 'num', group: 'ord', sortable: true, def: true, stages: ['submitted', 'ready_to_check', 'approved'] },
       { key: 'avg', label: 'Mthly Avg', w: 80, align: 'num', group: 'stk', sortable: true, def: true },
       { key: 'soh', label: 'SOH', w: 64, align: 'num', group: 'stk', sortable: true, def: true },
-      { key: 'inTransit', label: 'In Transit', w: 82, align: 'num', group: 'stk', sortable: true, def: true },
-      { key: 'cover', label: 'Cover', w: 70, align: 'num', group: 'stk', sortable: true, def: true },
+      // In Transit deixa de ser coluna: vira marca cinza no SOH, com o TR no
+      // painel. Ela custava 82px para dizer, quase sempre, "·".
+      { key: 'cover', label: 'Cover', w: 108, align: 'num', group: 'stk', sortable: true, def: true },
       { key: 'main', label: 'Main', w: 84, align: 'num', group: 'stk', sortable: true, def: true },
     ];
     if (S.branch && VARIANT[S.branch.code]) c.push({ key: 'syd', label: 'SYD Stock', w: 82, align: 'num', group: 'stk', sortable: true, def: true });
-    c.push({ key: 'comment', label: 'Comments', w: 200, align: 'txt', group: 'ref', sortable: false, def: true });
+    // Sem isto o usuário digitava errado e não tinha como desfazer: só apagar
+    // o número, deixando uma linha morta na planilha que o check ia ter que
+    // interpretar.
+    c.push({ key: 'act', label: '', w: 54, align: 'num', group: 'ref', sortable: false, def: true, always: true });
+    c.push({ key: 'comment', label: 'Comments', w: 180, align: 'txt', group: 'ref', sortable: false, def: true });
+    c.push({ key: 'invComment', label: 'Inv Comments', w: 180, align: 'txt', group: 'ref', sortable: false, def: true,
+             stages: ['submitted', 'ready_to_check', 'approved'] });
     return c;
   }
   function defVis(mode) { return new Set(catalog(mode).filter(c => c.def).map(c => c.key)); }
   function loadVis(mode) { try { const s = JSON.parse(localStorage.getItem('rp.cols.' + mode) || 'null'); if (Array.isArray(s) && s.length) return new Set(s); } catch (_) {} return defVis(mode); }
   function saveVis(mode) { try { localStorage.setItem('rp.cols.' + mode, JSON.stringify([...S.vis[mode]])); } catch (_) {} }
-  function visibleCols() { const set = S.vis[S.mode] || defVis(S.mode); return catalog(S.mode).filter(c => set.has(c.key) || c.always); }
+  function visibleCols() {
+    const set = S.vis[S.mode] || defVis(S.mode);
+    // Uma coluna que só faz sentido depois do rascunho não aparece antes dele.
+    return catalog(S.mode).filter(c => (set.has(c.key) || c.always) && (!c.stages || c.stages.includes(S.stage)));
+  }
 
   // ── grid ─────────────────────────────────────────────────────────────
   function visibleLines() {
@@ -287,20 +336,22 @@
       case 'reason': return l.reason || ''; case 'comment': return l.comment || ''; default: return '';
     }
   }
+  // As duas colunas que o usuário caça o tempo todo ganham cor própria.
+  const IDCLS = { main: ' c-main', avg: ' c-avg' };
   function renderGrid() {
     const C = visibleCols(), rows = visibleLines();
-    const gcls = g => g === 'stk' ? 'g-stk' : g === 'ord' ? 'g-ord' : g === 'ref' ? 'g-ref' : '';
+    const gcls = g => g === 'stk' ? 'g-stk' : g === 'ord' ? 'g-ord' : g === 'ref' ? 'g-ref' : g === 'pack' ? 'g-pack' : '';
     let prevG = null;
     const head = '<thead><tr>' + C.map(c => {
       const sep = (c.group !== prevG && prevG !== null) ? ' gsep' : ''; prevG = c.group;
       const a = c.align === 'num' ? 'num' : 'txt';
       const arrow = c.sortable ? `<span class="ar">${S.sort.key === c.key ? (S.sort.dir > 0 ? '▲' : '▼') : '▲'}</span>` : '';
-      return `<th class="${a} ${gcls(c.group)}${sep}${c.sortable ? ' srt' + (S.sort.key === c.key ? ' on' : '') : ''}" data-k="${c.key}"${c.w ? ` style="width:${c.w}px"` : ''}>${esc(c.label)}${arrow}</th>`;
+      return `<th class="${a} ${gcls(c.group)}${IDCLS[c.key] || ''}${sep}${c.sortable ? ' srt' + (S.sort.key === c.key ? ' on' : '') : ''}" data-k="${c.key}"${c.w ? ` style="width:${c.w}px"` : ''}>${esc(c.label)}${arrow}</th>`;
     }).join('') + '</tr></thead>';
     let body = rows.map(l => {
       const nomain = l.mainGw <= 0;
       const open = S.sideSku && String(l.code).toUpperCase() === S.sideSku ? ' rp-open' : '';
-      return `<tr class="rp-line${nomain ? ' rp-nomain' : ''}${open}" data-code="${esc(l.code)}">` + C.map(c => cell(l, c)).join('') + '</tr>';
+      return `<tr class="rp-line${nomain ? ' rp-nomain' : ''}${l.flag ? ' rp-flagged' : ''}${open}" data-code="${esc(l.code)}">` + C.map(c => cell(l, c)).join('') + '</tr>';
     }).join('');
     // Excel-style empty rows to fill (draft only, not while searching)
     if (S.stage === 'draft' && !S.search) {
@@ -317,7 +368,7 @@
     wireGrid();
   }
   function cell(l, c) {
-    const g = c.group, gc = g === 'ord' ? ' g-ord' : '';
+    const g = c.group, gc = (g === 'ord' ? ' g-ord' : g === 'pack' ? ' g-pack' : '') + (IDCLS[c.key] || '');
     const base = c.align === 'num' ? 'num' : c.align === 'code' ? 'code txt' : 'txt';
     const wrap = (inner, extra, title) => `<td class="${base}${gc}${extra || ''}"${title ? ` title="${esc(title)}"` : ''}>${inner}</td>`;
     switch (c.key) {
@@ -327,23 +378,57 @@
       case 'ctn': return wrap(l.ctn ? n0(l.ctn) : '<span class="rp-sub">—</span>');
       case 'loc': return wrap(esc(l.loc) || '<span class="rp-sub">—</span>', '', l.loc);
       case 'avg': return wrap(l.avg ? n1(l.avg) : '<span class="rp-sub">—</span>');
-      case 'soh': return wrap(l.soh < 0 ? `<span class="rp-neg">${n0(l.soh)}</span>` : n0(l.soh));
+      case 'soh': {
+        // In Transit era uma coluna de 82px que quase sempre dizia "·". Vira
+        // marca aqui, e o painel mostra o TR — que é o que o usuário quer ver.
+        const t = l.inTransit ? `<span class="rp-transit" title="${n0(l.inTransit)} em trânsito para esta filial — abra a linha para ver o TR">▸${n0(l.inTransit)}</span>` : '';
+        return wrap((l.soh < 0 ? `<span class="rp-neg">${n0(l.soh)}</span>` : n0(l.soh)) + t);
+      }
+      case 'pallet': return wrap(l.pallet ? n0(l.pallet) : '<span class="rp-sub">—</span>', '', l.pallet ? `${n0(l.pallet)} por pallet` : 'Sem pallet cadastrado para este 5DC');
       case 'inTransit': return wrap(l.inTransit ? n0(l.inTransit) : '<span class="rp-sub">·</span>');
       case 'cover': {
-        const w = l.coverWeeks, mk = !l.avg ? '' : (w * 7 < 7 ? '<span class="rp-mk low">low</span>' : w > 12 ? '<span class="rp-mk over">over</span>' : '');
-        return wrap(`${l.avg ? n1(w >= 999 ? 0 : w) + 'w' : '<span class="rp-sub">n/a</span>'}${mk}`, '', l.avg ? `${Math.round(w * 7)} days of cover` : '');
+        const w = l.coverWeeks;
+        const mk = !l.avg ? '' : (w * 7 < 7 ? '<span class="rp-mk low">low</span>' : w > 12 ? '<span class="rp-mk over">over</span>' : '');
+        // Para onde o pedido leva a cobertura. É a pergunta que o usuário faz
+        // ao digitar a quantidade, e ele respondia de cabeça.
+        const q = finalQty(l);
+        const after = (l.avg > 0 && q > 0)
+          ? (l.soh + l.inTransit + q) / (l.avg / RC.WEEKS_IN_MONTH) : null;
+        const arrow = after == null ? ''
+          : `<span class="rp-after" title="Com ${n0(q)} unidades, a cobertura vai de ${n1(w >= 999 ? 0 : w)} para ${n1(after)} semanas">›${n1(after)}w</span>`;
+        return wrap(`${l.avg ? n1(w >= 999 ? 0 : w) + 'w' : '<span class="rp-sub">n/a</span>'}${mk}${arrow}`,
+          '', l.avg ? `${Math.round(w * 7)} dias de cobertura hoje` : '');
       }
       case 'main': return wrap(n0(l.mainGw), '', `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
       case 'ask':
         return wrap(askEditable() ? `<input class="rp-in big" data-k="ask" value="${clampInt(l.ask) || ''}" inputmode="numeric">` : `<span class="rp-lock">${n0(clampInt(l.ask))}</span>`);
       case 'invQty': {
         if (invEditable()) return `<td class="num g-ord"><input class="rp-in big" data-k="invQty" value="${l.invQty == null ? '' : clampInt(l.invQty)}" inputmode="numeric"></td>`;
-        const val = l.invQty == null ? '<span class="rp-sub" title="Unlocks when warehouse marks Ready to check">locked</span>' : `<span class="rp-lock">${n0(clampInt(l.invQty))}</span>`;
+        const val = l.invQty == null ? '<span class="rp-sub" title="Abre quando a filial dá Submit e o estoque começa o check">—</span>' : `<span class="rp-lock">${n0(clampInt(l.invQty))}</span>`;
         return `<td class="num g-ord locked">${val}</td>`;
       }
       case 'syd': return wrap(n0(l.syd));
+      case 'act': {
+        const bits = [];
+        // O alerta é para quem faz o check final: diz "olhe esta com atenção".
+        // Vale em qualquer estágio menos o aprovado, que é imutável.
+        if (S.stage !== 'approved')
+          bits.push(`<button class="rp-act rp-flag${l.flag ? ' on' : ''}" data-act="flag" title="${l.flag ? 'Tirar o alerta' : 'Marcar para conferência extra no check'}">!</button>`);
+        if (askEditable())
+          bits.push(`<button class="rp-act rp-del" data-act="del" title="Remover esta linha">×</button>`);
+        return `<td class="num rp-acts">${bits.join('')}</td>`;
+      }
       case 'reason': return `<td class="txt${gc}">${askEditable() ? `<input class="rp-in txt" data-k="reason" value="${esc(l.reason)}" placeholder="why — e.g. just sold, special order…">` : esc(l.reason) || '<span class="rp-sub">—</span>'}</td>`;
-      case 'comment': return `<td class="txt">${S.stage !== 'approved' ? `<input class="rp-in txt" data-k="comment" value="${esc(l.comment)}" placeholder="note…">` : esc(l.comment) || '<span class="rp-sub">—</span>'}</td>`;
+      case 'comment':
+        // O comentário da filial é dela, e trava quando ela entrega. Depois
+        // disso quem fala é o Inv Comments.
+        return `<td class="txt">${askEditable()
+          ? `<input class="rp-in txt" data-k="comment" value="${esc(l.comment)}" placeholder="nota da filial…">`
+          : (esc(l.comment) || '<span class="rp-sub">—</span>')}</td>`;
+      case 'invComment':
+        return `<td class="txt">${invEditable()
+          ? `<input class="rp-in txt" data-k="invComment" value="${esc(l.invComment || '')}" placeholder="resposta do estoque…">`
+          : (esc(l.invComment) || '<span class="rp-sub">—</span>')}</td>`;
       default: return wrap('—');
     }
   }
@@ -358,6 +443,18 @@
       inp.addEventListener('change', saveDraft);
       inp.addEventListener('click', e => e.stopPropagation());
     });
+    tb.querySelectorAll('button.rp-act').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      const l = lineByRow(b.closest('tr')); if (!l) return;
+      if (b.dataset.act === 'del') {
+        const i = S.lines.indexOf(l); if (i < 0) return;
+        S.lines.splice(i, 1); toast(`${l.code} removido`);
+      } else {
+        l.flag = !l.flag;
+      }
+      // renderStage também: apagar a última linha tem de desabilitar o avanço.
+      saveDraft(); renderGrid(); renderStage();
+    }));
     tb.querySelectorAll('tr.rp-line').forEach(tr => tr.addEventListener('click', e => {
       if (e.target.closest('input,button,a,textarea')) return; const l = lineByRow(tr); if (l) openSide(l);
     }));
@@ -382,7 +479,10 @@
   function doLoad() {
     const toAdd = $('mdLoad')._toAdd || [];
     toAdd.forEach(r => S.lines.push(Object.assign({}, r)));   // ask already = sug
-    $('mdLoad').classList.remove('is-on'); saveDraft(); renderGrid();
+    // renderStage() junto, e não é detalhe: o botão de avançar nasce disabled
+    // quando a planilha está vazia, e sem este redesenho a filial carregava as
+    // sugestões e ficava sem conseguir dar Submit até recarregar a página.
+    $('mdLoad').classList.remove('is-on'); saveDraft(); renderGrid(); renderStage();
     toast(`Loaded ${toAdd.length} suggested — kept your ${S.lines.length - toAdd.length}`);
   }
 
@@ -402,18 +502,30 @@
   function acSearch(q) {
     q = (q || '').trim().toLowerCase(); if (q.length < 2) return acHide();
     const starts = [], contains = [];
+    let hidDep = 0, hidNoMain = 0;
     for (const p of S.prodList) {
-      const sku = String(p.sku || '').toLowerCase(), dc = String(p.attribute1 || '').toLowerCase(), nm = String(p.name || '').toLowerCase();
+      // Deprecated não entra: 2.744 de 11.259 no catálogo, e a filial não deve
+      // pedir o que a empresa já aposentou.
+      if (p.status === 'Deprecated') { hidDep++; continue; }
+      // Nem o que Main+Gateway não tem: pedir o que ninguém pode mandar só
+      // gera uma linha que morre no check. São 5.909 dos 8.515 ativos.
+      const kk = String(p.sku || '').toUpperCase();
+      if (((S.stock.MAIN && S.stock.MAIN[kk]) || 0) + ((S.stock.GATEWAY && S.stock.GATEWAY[kk]) || 0) <= 0) { hidNoMain++; continue; }
+      const sku = kk.toLowerCase(), dc = String(p.attribute1 || '').toLowerCase(), nm = String(p.name || '').toLowerCase();
       if (sku.startsWith(q) || dc.startsWith(q)) starts.push(p);
       else if (sku.includes(q) || dc.includes(q) || nm.includes(q)) contains.push(p);
       if (starts.length >= 25) break;
     }
+    acState.hidden = { dep: hidDep, noMain: hidNoMain };
     const items = starts.concat(contains).slice(0, 25); acState.items = items; acState.sel = items.length ? 0 : -1;
     const ac = $('rpAc');
     ac.innerHTML = items.length ? items.map((p, i) => {
       const k = String(p.sku).toUpperCase(), main = (S.stock.MAIN && S.stock.MAIN[k] || 0) + (S.stock.GATEWAY && S.stock.GATEWAY[k] || 0);
       return `<div data-sku="${esc(p.sku)}" class="${i === acState.sel ? 'sel' : ''}"><span class="sku">${esc(p.sku)}</span>${p.attribute1 ? `<span class="dc">${esc(p.attribute1)}</span>` : ''}<span class="nm">${esc(p.name || '')}</span><span class="st">Main ${n0(main)}</span></div>`;
     }).join('') : '<div class="none">No product matches</div>';
+    // Esconder em silêncio faria o usuário procurar um código que existe e
+    // concluir que o sistema está quebrado.
+    ac.innerHTML += `<div class="acfoot">Hidden: deprecated products, and anything Main + Gateway cannot send today.</div>`;
     ac.querySelectorAll('[data-sku]').forEach(d => d.addEventListener('mousedown', e => { e.preventDefault(); acPick(d.dataset.sku); }));
     positionAc(); ac.classList.add('on');
   }

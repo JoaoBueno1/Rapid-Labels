@@ -137,3 +137,51 @@
 .rp-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin-top: 8px; cursor: pointer; }
 .rp-mini-scroll { max-height: 230px; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }
 .sp-box { max-width: 760px; }
+
+/* O rodapé do autocomplete. Esconder em silêncio faria o usuário procurar um
+   código que existe, não achar, e concluir que a tela está quebrada. */
+#rpAc .acfoot{padding:6px 10px;border-top:1px solid var(--line-3);
+  font:400 10.5px/1.4 var(--sans);color:var(--mut-3);background:var(--row)}
+
+/* ── ações da linha: remover e marcar alerta ── */
+.rp-acts{white-space:nowrap;padding:0 4px!important}
+.rp-act{border:1px solid var(--line-3);background:var(--surface);color:var(--mut-2);
+  width:19px;height:19px;line-height:1;border-radius:4px;cursor:pointer;
+  font:700 12px/1 var(--sans);padding:0;margin:0 1px;vertical-align:middle}
+.rp-act:hover{border-color:var(--mut-3);color:var(--ink)}
+.rp-del:hover{border-color:var(--xl-bad-ink);color:var(--xl-bad-ink);background:var(--xl-bad)}
+.rp-flag.on{background:var(--xl-held);border-color:var(--xl-warn-ink);color:var(--xl-warn-ink)}
+/* A linha marcada precisa saltar na grade inteira, não só na célula. */
+tr.rp-flagged td{box-shadow:inset 0 -2px 0 var(--xl-warn-ink)}
+
+/* ── in transit deixou de ser coluna e virou marca no SOH ── */
+.rp-transit{margin-left:5px;font:600 10px var(--mono);color:var(--mut-3);
+  background:var(--row);border:1px solid var(--line-3);border-radius:3px;padding:0 3px}
+
+/* ── para onde o pedido leva a cobertura ── */
+.rp-after{margin-left:5px;font:600 10px var(--mono);color:var(--mut-3)}
+
+/* O aviso do diário. A regra dele é diferente da semanal e isso tem de estar na
+   tela, não no treinamento de quem entrou ontem. */
+.rp-note{margin:0 0 10px;padding:8px 12px;border-radius:7px;
+  background:var(--xl-held);border:1px solid var(--xl-warn-ink);
+  font:400 12px/1.45 var(--sans);color:var(--xl-warn-ink)}
+.rp-note b{font-weight:700}
+
+/* ── grade nas colunas ──
+   Numa planilha de 14 colunas o olho perde a linha entre uma coluna e outra.
+   Hairline, não borda cheia: marca sem pesar. */
+#rpGrid td, #rpGrid th{border-right:1px solid var(--line)}
+#rpGrid td:last-child, #rpGrid th:last-child{border-right:0}
+
+/* ── colunas com identidade ──
+   O usuário procura duas coisas o tempo todo: "quanto tem no Main" e "quanto
+   esta filial vende". Elas precisam ser achadas sem ler o cabeçalho. */
+/* Tons próprios e discretos. Os tokens --xl-* do Excel são realces PONTUAIS de
+   célula; numa coluna inteira o --xl-opening vira amarelo puro e domina a tela.
+   Aqui o objetivo é achar a coluna de relance, não gritar. */
+#rpGrid td.c-main, #rpGrid th.c-main{background:#eef3fa}
+#rpGrid td.c-avg,  #rpGrid th.c-avg{background:#fbf7ec}
+#rpGrid th.c-main, #rpGrid th.c-avg{font-weight:700}
+/* O grupo de embalagem (Ctn/Pallet) é a unidade do pedido — fica junto dele. */
+#rpGrid td.g-pack, #rpGrid th.g-pack{background:var(--row)}

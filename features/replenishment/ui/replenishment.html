@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=3">
+<link rel="stylesheet" href="replenishment.css?v=5">
 <script defer src="/shared/rail.js?v=7"></script>
 </head>
 <body>
@@ -52,7 +52,7 @@
       <b id="gridTitle" class="rp-title">Branch</b>
       <span class="rp-seg" id="viewSeg">
         <button data-v="weekly" class="on">Weekly</button>
-        <button data-v="daily">Daily / urgent</button>
+        <button data-v="daily">Daily</button>
         <button data-v="history">History</button>
       </span>
       <span class="sp-gap"></span>
@@ -64,7 +64,8 @@
     </div>
 
     <!-- stage / timeline -->
-    <div class="rp-stage" id="rpStage"></div>
+    <div class="rp-note" id="rpDailyNote" style="display:none"></div>
+      <div class="rp-stage" id="rpStage"></div>
 
     <!-- the working grid (weekly / daily) -->
     <div class="sp-scroll rp-scroll" id="rpScroll"><table class="sp-grid rp-grid" id="rpGrid"></table></div>
@@ -206,6 +207,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=3"></script>
+<script src="replenishment-app.js?v=7"></script>
 </body>
 </html>
