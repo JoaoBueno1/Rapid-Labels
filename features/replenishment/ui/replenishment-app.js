@@ -240,7 +240,7 @@
       action = `<button class="sp-btn is-primary" id="btnAdvance" ${S.lines.length ? '' : 'disabled'}>${label} ›</button>`;
       if (cur > 0) action += ` <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ back</button>`;
     } else {
-      action = `<span class="rp-step done">✓ Approved &amp; snapshotted — ready to place (Cin7 write held)</span>
+      action = `<span class="rp-step done">✓ ${S.lastTr ? 'Colocado no Cin7 — ' + esc(S.lastTr) : 'Aprovado'}</span>
                 <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ reopen</button>`;
     }
     const hint = S.stage === 'draft' ? 'A filial preenche o Branch Ask'
@@ -260,7 +260,7 @@
       S.lines.forEach(l => { if (l.invQty == null) { l.invQty = clampInt(l.ask); seeded++; } });
       if (seeded) saveDraft();
     }
-    if (S.stage === 'approved') snapshotToHistory();
+    if (S.stage === 'approved') { saveDraft(); enterGrid(); return placeOrder(); }
     saveDraft(); enterGrid(); toast(`Stage → ${STAGE_LABEL[S.stage]}`);
   }
   function backStage() { const steps = STAGES[S.mode], i = stageIdx(); if (i > 0) { S.stage = steps[i - 1]; saveDraft(); enterGrid(); } }
@@ -607,6 +607,48 @@
   }
   function closeSide() { S.sideSku = null; $('side').classList.remove('is-on'); document.querySelectorAll('#rpGrid tr.rp-open').forEach(t => t.classList.remove('rp-open')); }
 
+
+  // ── colocar o pedido no Cin7 ────────────────────────────────────────────
+  // A idempotência de verdade está no servidor (op_key UNIQUE derivada do
+  // conteúdo do plano). Este `placing` é só cortesia: impede o segundo clique
+  // de sair, mas nunca é a garantia — o usuário pode recarregar e clicar de novo.
+  let placing = false;
+  async function placeOrder() {
+    if (placing) return;
+    const lines = S.lines.map(l => ({ sku: l.code, qty: finalQty(l) })).filter(x => x.qty > 0);
+    if (!lines.length) { toast('Nenhuma linha com quantidade', true); return; }
+    placing = true;
+    const btn = $('btnAdvance'); if (btn) { btn.disabled = true; btn.textContent = 'Enviando ao Cin7…'; }
+    try {
+      const r = await fetch('/api/replenishment/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-sp-user': (localStorage.getItem('rp.user') || 'branch') },
+        body: JSON.stringify({
+          branch_code: S.branch.code, branch_name: S.branch.name, mode: S.mode,
+          week_ending: weekEndingISO(), lines,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      S.lastTr = d.number;
+      toast(d.already ? `Já estava colocado: ${d.number}` : `${d.number} criado no Cin7 · ${d.order_lines} linhas`);
+      renderStage();
+    } catch (e) {
+      // Voltar o estágio: aprovado sem TR seria mentira na tela.
+      S.stage = STAGES[S.mode][STAGES[S.mode].length - 2];
+      saveDraft(); enterGrid();
+      toast(`Não deu para colocar: ${e.message}`, true);
+    } finally {
+      placing = false;
+    }
+  }
+  // A semana que termina no domingo, no formato que o servidor guarda.
+  function weekEndingISO() {
+    const d = new Date(); const dow = d.getDay();          // 0=domingo
+    d.setDate(d.getDate() + (dow === 0 ? 0 : 7 - dow));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   // ── history (approved snapshots) ─────────────────────────────────────
   function histKey() { return `rp.history.${S.branch.code}`; }
   function loadHist() { try { return JSON.parse(localStorage.getItem(histKey()) || '[]'); } catch (_) { return []; } }
@@ -619,24 +661,106 @@
     };
     list.unshift(snap); try { localStorage.setItem(histKey(), JSON.stringify(list.slice(0, 60))); } catch (_) {}
   }
-  function showHistory() {
+  // ── History ─────────────────────────────────────────────────────────────
+  // Lê do BANCO, não do localStorage. O snapshot foi congelado no momento do
+  // envio: recalcular a partir do estoque de hoje daria outro número e o
+  // histórico deixaria de ser histórico. Cada cartão abre e fecha sozinho —
+  // uma lista de 40 linhas aberta esconde os outros envios.
+  async function showHistory() {
     $('rpScroll').style.display = 'none'; $('rpStage').style.display = 'none'; $('rpFoot').style.display = 'none';
     $('rpHistory').style.display = ''; setControls();
-    const list = loadHist();
-    if (!list.length) { $('rpHistory').innerHTML = `<div class="rp-hist-empty">No approved snapshots yet for ${esc(S.branch.name)}.<br><span class="rp-sub">When a plan is Approved it's frozen here at those exact values.</span></div>`; return; }
-    $('rpHistory').innerHTML = list.map((s, i) => `<div class="rp-hist-card" data-i="${i}">
-      <span class="badge">${esc(s.mode)}</span>
-      <div><div class="when">${esc(new Date(s.approvedAt).toLocaleString('en-AU'))}</div><div class="meta">${esc(s.week)} · ${s.lines.length} lines</div></div>
-      <span class="tot">${n0(s.total)}<span class="rp-sub" style="font-weight:400"> units</span></span></div>`).join('');
-    $('rpHistory').querySelectorAll('.rp-hist-card').forEach(c => c.addEventListener('click', () => openSnapshot(list[+c.dataset.i])));
+    $('rpHistory').innerHTML = '<div class="rp-hist-empty">Carregando…</div>';
+    let rows = [];
+    try {
+      const r = await fetch(`/api/replenishment/orders?branch=${encodeURIComponent(S.branch.code)}`);
+      rows = (await r.json()).rows || [];
+    } catch (e) {
+      $('rpHistory').innerHTML = `<div class="rp-hist-empty">Não deu para ler o histórico.<br><span class="rp-sub">${esc(e.message)}</span></div>`;
+      return;
+    }
+    if (!rows.length) {
+      $('rpHistory').innerHTML = `<div class="rp-hist-empty">Nenhum pedido colocado ainda para ${esc(S.branch.name)}.<br>
+        <span class="rp-sub">Quando um plano é aprovado, o TR gerado fica registrado aqui, congelado nos valores do envio.</span></div>`;
+      return;
+    }
+    histRows = rows;
+    $('rpHistory').innerHTML = rows.map((o, i) => histCard(o, i)).join('');
+    wireHistory();
   }
-  function openSnapshot(s) {
-    const rows = s.lines.map(l => `<tr><td class="txt">${esc(l.dc || '')}</td><td class="code txt">${esc(l.code)}</td><td class="txt">${esc(l.name || '')}</td><td class="num"><b>${n0(l.final)}</b></td><td class="num">${l.invQty == null ? '·' : n0(l.invQty)}</td><td class="num">${n0(l.soh)}</td><td class="num">${l.avg ? n1(l.avg) : '·'}</td><td class="txt">${esc(l.comment || '')}</td></tr>`).join('');
-    $('rpHistory').innerHTML = `<div class="sp-bar"><button class="sp-btn is-ghost" id="histBack">‹ Snapshots</button>
-      <b class="rp-title">${esc(new Date(s.approvedAt).toLocaleString('en-AU'))}</b><span class="badge" style="margin-left:6px">${esc(s.mode)} · ${esc(s.week)}</span>
-      <span class="sp-gap"></span><span class="sp-count">${s.lines.length} lines · ${n0(s.total)} units · locked</span></div>
-      <div class="sp-scroll"><table class="sp-grid rp-grid"><thead><tr><th class="txt" style="width:70px">5DC</th><th class="txt" style="width:130px">Rapid Code</th><th class="txt">Product</th><th class="num" style="width:80px">Qty</th><th class="num" style="width:84px">Inv Qty</th><th class="num" style="width:64px">SOH</th><th class="num" style="width:80px">Avg</th><th class="txt" style="width:220px">Comments</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-    $('histBack').addEventListener('click', showHistory);
+  let histRows = [], histOpen = new Set();
+
+  function histCard(o, i) {
+    const when = o.ordered_at || o.created_at;
+    const bad = o.status === 'FAILED';
+    const open = histOpen.has(i);
+    return `<div class="rp-h2 ${bad ? 'is-bad' : ''}" data-i="${i}">
+      <div class="rp-h2-head">
+        <button class="rp-h2-tog" data-tog="${i}" title="${open ? 'Fechar' : 'Abrir as linhas'}">${open ? '▾' : '▸'}</button>
+        <span class="rp-h2-tr">${esc(o.cin7_number || '—')}</span>
+        <span class="badge ${o.mode === 'daily' ? 'is-daily' : 'is-weekly'}">${o.mode === 'daily' ? 'Daily' : 'Weekly'}</span>
+        <span class="rp-h2-when">${esc(fmtWhen(when))}</span>
+        <span class="rp-h2-meta">${o.line_count} linha${o.line_count === 1 ? '' : 's'} · ${n0(o.total_units)} un</span>
+        <span class="rp-h2-route">${esc(o.from_location || '')} › ${esc(o.to_location || o.branch_name || '')}</span>
+        <span class="sp-gap"></span>
+        <span class="rp-h2-st ${bad ? 'bad' : ''}">${esc(o.status)}</span>
+        ${o.cin7_number ? `<button class="ui-act" data-print="${i}">Print</button>` : ''}
+      </div>
+      ${bad && o.error ? `<div class="rp-h2-err">${esc(o.error)}</div>` : ''}
+      ${open ? histLines(o) : ''}
+    </div>`;
+  }
+  function histLines(o) {
+    const lines = Array.isArray(o.lines) ? o.lines : [];
+    return `<div class="rp-h2-body"><table class="sp-grid rp-grid">
+      <thead><tr><th class="txt" style="width:160px">Rapid Code</th><th class="num" style="width:90px">Qty</th></tr></thead>
+      <tbody>${lines.map(l => `<tr><td class="code txt">${esc(l.sku)}</td><td class="num"><b>${n0(l.qty)}</b></td></tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+  function fmtWhen(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+      + ' ' + d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+  }
+  function wireHistory() {
+    $('rpHistory').querySelectorAll('[data-tog]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      const i = +b.dataset.tog;
+      if (histOpen.has(i)) histOpen.delete(i); else histOpen.add(i);
+      $('rpHistory').innerHTML = histRows.map((o, k) => histCard(o, k)).join('');
+      wireHistory();
+    }));
+    $('rpHistory').querySelectorAll('[data-print]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation(); printOrder(histRows[+b.dataset.print]);
+    }));
+  }
+
+  // Reimprimir. Janela própria e não a página: imprimir a tela levaria o menu,
+  // os filtros e o resto junto.
+  function printOrder(o) {
+    const lines = Array.isArray(o.lines) ? o.lines : [];
+    const w = window.open('', '_blank', 'width=820,height=900');
+    if (!w) { toast('O navegador bloqueou a janela de impressão', true); return; }
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(o.cin7_number || 'Transfer')}</title>
+      <style>
+        body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#1b2230;margin:26px}
+        h1{font-size:19px;margin:0 0 3px} .sub{color:#5b6472;font-size:12px;margin-bottom:16px}
+        table{border-collapse:collapse;width:100%;font-size:12.5px}
+        th{background:#f1f3f6;text-align:left;padding:6px 9px;border-bottom:1px solid #cfd6df;font-size:11px;
+           text-transform:uppercase;letter-spacing:.05em;color:#5b6472}
+        td{padding:5px 9px;border-bottom:1px solid #e6eaef}
+        td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+        tfoot td{font-weight:700;border-top:2px solid #cfd6df;border-bottom:0}
+        @media print{body{margin:12mm}}
+      </style>
+      <h1>${esc(o.cin7_number || '—')} · ${esc(o.from_location || '')} › ${esc(o.to_location || o.branch_name || '')}</h1>
+      <div class="sub">${o.mode === 'daily' ? 'Daily' : 'Weekly'} · ${esc(fmtWhen(o.ordered_at || o.created_at))}
+        · ${o.line_count} linhas · ${n0(o.total_units)} unidades · ${esc(o.status)}${o.created_by ? ' · ' + esc(o.created_by) : ''}</div>
+      <table><thead><tr><th>Rapid Code</th><th class="n">Qty</th></tr></thead><tbody>
+      ${lines.map(l => `<tr><td>${esc(l.sku)}</td><td class="n">${n0(l.qty)}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td>Total</td><td class="n">${n0(o.total_units)}</td></tr></tfoot></table>`);
+    w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 260);
   }
 
   // ── draft persistence ────────────────────────────────────────────────
