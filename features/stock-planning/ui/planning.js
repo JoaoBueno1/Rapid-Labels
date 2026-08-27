@@ -1037,6 +1037,12 @@ function renderBuy() {
       ${tile(n0(d.total_units),'Units',`across ${n0(d.total)} SKUs`)}
       ${tile(n0(d.late),'Already past the order date','with the measured lead time, these should have gone out weeks ago','bad')}
       ${tile(n0(d.bySupplier.length),'Suppliers','group the order by supplier to fill a container')}
+      ${d.skipped && d.skipped.length
+        ? tile(aud(d.skipped_value), 'Held back',
+            `${n0(d.skipped.filter(x=>x.why==='never_sold').length)} never sold in 52 weeks · `
+            + `${n0(d.skipped.filter(x=>x.why==='suspect_draw').length)} with a draw the engine flagged as a typo`,
+            'warn')
+        : ''}
     </div>
     <div class="sp-panel">
       <h4>By supplier <span>a purchase order per supplier — and the start of a container</span></h4>
@@ -1069,6 +1075,14 @@ function renderBuy() {
           >${r.already_late?'was due':d10(r.order_by_week)}</td>
       </tr>`).join('') || '<tr><td colspan="11"><div class="sp-empty">Nothing to order with these filters.</div></td></tr>'}</tbody></table>
     </div>
+    ${d.skipped && d.skipped.length ? `<div class="sp-panel">
+      <h4>Held back <span>calculated, then blocked — a suggestion is only as good as the number under it</span></h4>
+      <table><thead><tr><th>SKU</th><th>Why</th><th class="n">Qty it would have asked</th><th class="n">Value</th></tr></thead>
+      <tbody>${d.skipped.map(x=>`<tr><td class="mono">${esc(x.sku)}</td>
+        <td>${x.why==='never_sold'?'No sale in 52 weeks — the forecast is typed, the demand is not there'
+                                  :'Draw far above the average — the engine flagged it as a likely typo'}</td>
+        <td class="n mono">${n0(x.qty)}</td><td class="n mono">${x.value?aud(x.value):'—'}</td></tr>`).join('')}
+      </tbody></table></div>` : ''}
     <p class="sp-hint" style="max-width:70ch">
       The rule, in one sentence: <b>if the PO goes out today it lands in week lead + review;
       buy enough that the worst point between now and there plus the cover target sits at the target</b> —

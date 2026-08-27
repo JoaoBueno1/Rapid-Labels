@@ -1051,12 +1051,30 @@ function register(app) {
     const where = ['s.lifecycle_status = \'ACTIVE\'', 's.wk_avg > 0'], p = [];
     if (req.query.supplier) { p.push(req.query.supplier); where.push(`s.supplier_code = $${p.length}`); }
     const skus = await db.query(`
+      -- A venda REALIZADA entra na regra de compra: sem ela, a única coisa entre
+      -- um SKU morto e um pedido de A$21.863 era alguém ter digitado 42 numa
+      -- célula de Wk/Avg.
+      --
+      -- MATERIALIZED de propósito. Como LATERAL por linha, esta agregação rodava
+      -- a v_sp_history_week (um FULL OUTER JOIN de três views) uma vez por SKU e
+      -- a rota ia de 0,45 s para 15,7 s. É a mesma armadilha que já levou uma
+      -- view deste módulo de 18,6 s para 276 ms.
+      WITH hist AS MATERIALIZED (
+        SELECT sku_key,
+               sum(sold_qty) FILTER (WHERE week_ending > $${p.length + 1}::date - 91) AS sold13,
+               sum(sold_qty) AS sold52
+          FROM rapid_inv.v_sp_history_week
+         WHERE week_ending > $${p.length + 1}::date - 364
+         GROUP BY 1
+      )
       SELECT s.*, lt.lead_weeks, lt.lead_source, lt.sd_weeks, lt.review_weeks,
-             lt.moq_units, lt.carton_qty, v.unit_cost_aud
+             lt.moq_units, lt.carton_qty, v.unit_cost_aud,
+             COALESCE(h.sold13, 0) AS sold13, COALESCE(h.sold52, 0) AS sold52
         FROM rapid_inv.v_sp_planning_skus s
         JOIN rapid_inv.v_sp_sku_leadtime lt ON lt.sku_key = s.sku_key
         LEFT JOIN rapid_inv.v_sp_sku_cost v ON v.sku_key = s.sku_key
-       WHERE ${where.join(' AND ')}`, p);
+        LEFT JOIN hist h ON h.sku_key = s.sku_key
+       WHERE ${where.join(' AND ')}`, [...p, state.reporting_week]);
     if (!skus.length) return res.json({ rows: [], total: 0, ms: Date.now() - t0 });
 
     // O horizonte agora é DECISÃO, não resíduo. Antes ele saía deste max() sobre
@@ -1065,6 +1083,8 @@ function register(app) {
     // desvio dela, 74 SKUs mudariam de segmento sem que nada tivesse mudado
     // neles. Pior: a grade e os alertas usavam 26, e o descasamento produzia 45
     // linhas com aviso de compra ao lado de "not in horizon" em verde.
+    const skipped = [];
+    const todayWk = weekEnding(new Date());
     const maxWeeks = HORIZON_WEEKS;
     // Quantos SKUs o horizonte NÃO cobre. Vai no payload em vez de alargar a
     // janela em silêncio: aqui, esticar a janela move linhas entre segmentos.
@@ -1125,8 +1145,25 @@ function register(app) {
       // fornecedor e não o SKU.
       const weeksLate = late ? arrival - cross : 0;
 
+      // REGRA 0 — nada de comprar o que não vende. Medido: 27 SKUs sem uma
+      // única venda em 52 semanas recebiam sugestão, A$46.602, sendo A$21.863
+      // num só (R1076-BK-15W-CW-24: Wk/Avg 42 digitado, zero venda em toda a
+      // série). Eles saem da lista de compra e viram problema de cadastro.
+      const neverSold = Number(s.sold52) === 0;
+      // GATE do erro de digitação. O motor já detecta draw absurdo (LARGE_DRAW),
+      // mas a regra de compra vencia esse detector em 15 linhas, A$74.268 —
+      // R2352-WW-V2 tem Wk/Avg 0,25, vendeu 6 unidades em 52 semanas, carrega
+      // 208 de draw (832× a média) e o motor pedia 199. Aqui o detector vence:
+      // o pedido é calculado sobre um número que ninguém conferiu.
+      const suspectDraw = buildAlerts(s.sku, proj, { todayWeek: todayWk })
+        .some((a) => a.code === 'LARGE_DRAW');
+
+      const val = Math.round(suggested * Number(s.unit_cost_aud || 0));
+      if (neverSold)    { skipped.push({ sku: s.sku, why: 'never_sold',   qty: suggested, value: val }); continue; }
+      if (suspectDraw)  { skipped.push({ sku: s.sku, why: 'suspect_draw', qty: suggested, value: val }); continue; }
       rows.push({
         sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code,
+        sold13: Number(s.sold13), sold52: Number(s.sold52),
         soh: Number(s.soh_available), on_order: Number(s.soh_on_order),
         wk_avg: Number(s.wk_avg), target_cover_weeks: s.target_cover_weeks, target_qty: target,
         weeks_late: weeksLate,
@@ -1154,6 +1191,10 @@ function register(app) {
     }
     res.json({
       reporting_week: state.reporting_week, horizon_weeks: maxWeeks, uncovered_skus: uncovered,
+      // Barrar em silêncio é o mesmo pecado do truncamento: o total tem de
+      // aparecer, com o motivo e o dinheiro que ele representa.
+      skipped: skipped.sort((a, b) => b.value - a.value),
+      skipped_value: skipped.reduce((n, x) => n + x.value, 0),
       total: rows.length,
       total_units: rows.reduce((n, r) => n + r.suggested, 0),
       total_value_aud: rows.reduce((n, r) => n + (r.value_aud || 0), 0),
