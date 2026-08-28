@@ -132,11 +132,12 @@
       fetchAll('branch_avg_monthly_sales', '*'),
       fetchAll('stock_snapshot', 'sku,location_name,available,in_transit', { schema: 'cin7_mirror' }),
       fetchAll('products', 'sku,attribute1,name,stock_locator,carton_quantity,status', { schema: 'cin7_mirror' }),
-      // Pallet casa pelo 5DC, não pelo Rapid Code — medido: 1 match por sku
-      // contra 2.385 por attribute1. Faz sentido físico: o mesmo produto tem
-      // vários códigos. pallet_capacity_rules cobre 1.900 SKUs contra 1.030 do
-      // restock_setup, e as duas concordam em 948 dos 980 em comum.
-      fetchAll('pallet_capacity_rules', 'sku,qty_pallet'),
+      // ATENÇÃO: nesta tabela a coluna chamada `sku` guarda o 5DC e a chamada
+      // `product` guarda o SKU real — os nomes estão trocados. Juntar pela
+      // coluna `sku` casa mais (2.276 ativos contra 1.772) e está errado: um
+      // 5DC cobre o produto base E a variante -CartonNN, e a quantidade por
+      // pallet de uma caixa de 26 não é a de uma unidade.
+      fetchAll('pallet_capacity_rules', 'product,qty_pallet'),
     ]);
     S.avg = avg;
     S.avgBy = {}; avg.forEach(r => { if (r.product) S.avgBy[String(r.product).toUpperCase()] = r; });
@@ -151,7 +152,7 @@
     }
     S.pallet = {};
     for (const r of pallet) {
-      const k = String(r.sku || '').trim().toUpperCase(); const v = Number(r.qty_pallet) || 0;
+      const k = String(r.product || '').trim().toUpperCase(); const v = Number(r.qty_pallet) || 0;
       if (k && v > 0) S.pallet[k] = v;
     }
     S.stock = buckets; S.inT = inT; S.ranks = RC.computeAbcRanks(avg); S.loaded = true;
@@ -199,7 +200,7 @@
     const gw = Number((S.stock.GATEWAY && S.stock.GATEWAY[k]) || 0);
     const mainGw = mainOnly + gw;
     const syd = Number((S.stock.SYD && S.stock.SYD[k]) || 0);
-    const pallet = Number(S.pallet[String(p.attribute1 || '').trim().toUpperCase()] || 0);
+    const pallet = Number(S.pallet[k] || 0);   // por SKU, não por 5DC
     const ra = S.repAvg[k] || null;
     const tier = (S.ranks && (S.ranks.get(k) || S.ranks.get(code))) || 'C';
     const weeks = SET.abc ? RC.targetWeeksForTier(tier) : SET.weeks;

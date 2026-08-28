@@ -17,17 +17,28 @@
 -- arredondamento, é a planilha e o ERP contando histórias diferentes.
 -- ============================================================================
 
-CREATE OR REPLACE VIEW rapid_inv.v_master_stock AS
+-- DROP antes do CREATE: o CREATE OR REPLACE não reordena nem renomeia coluna,
+-- e esta view ganhou campos no meio. Nada depende dela ainda, então recriar é
+-- seguro — se um dia depender, a alternativa é acrescentar no fim.
+DROP VIEW IF EXISTS rapid_inv.v_master_stock;
+CREATE VIEW rapid_inv.v_master_stock AS
 WITH soh AS (
   SELECT upper(btrim(sku)) AS k,
          sum(available)                                   AS total,
          sum(available) FILTER (WHERE location_name = 'Main Warehouse') AS main,
          count(DISTINCT location_name)                    AS locations
     FROM cin7_mirror.stock_snapshot GROUP BY 1),
-pal AS (SELECT upper(btrim(sku)) AS dc, max(qty_pallet)::numeric AS qty
+-- ATENÇÃO À NOMENCLATURA: nestas duas tabelas a coluna chamada `sku` guarda o
+-- 5DC e a chamada `product` guarda o SKU real. Juntar pela coluna `sku` casa
+-- mais linhas (2.276 ativos contra 1.772) e está ERRADO: um 5DC cobre o produto
+-- base e a variante -CartonNN, e a quantidade por pallet de uma caixa de 26 não
+-- é a mesma de uma unidade. O join correto é por `product`.
+pal AS (SELECT upper(btrim(product)) AS k, max(qty_pallet)::numeric AS qty
           FROM public.pallet_capacity_rules WHERE coalesce(qty_pallet,0) > 0 GROUP BY 1),
-rst AS (SELECT upper(btrim(sku)) AS dc, max(qty_per_pallet)::numeric AS qty
-          FROM public.restock_setup WHERE coalesce(qty_per_pallet,0) > 0 GROUP BY 1)
+rst AS (SELECT upper(btrim(product)) AS k, max(qty_per_pallet)::numeric AS qty,
+               max(pickface_location) AS pickface, max(pickface_qty)::numeric AS pickface_qty,
+               max(qty_per_ctn)::numeric AS ctn
+          FROM public.restock_setup GROUP BY 1)
 SELECT
   c.k                                        AS sku_key,
   c.sku, c.attribute1 AS dc, c.name, c.status, c.category, c.brand, c.uom, c.barcode,
@@ -45,8 +56,14 @@ SELECT
   -- Só o arquivo tem: volume, CBM e frete rateado não existem no ERP.
   f.cbm, f.each_volume, f.ctn_volume, f.freight_each, f.cost_usd, f.cost_aud,
   f.supplier AS file_supplier,
-  -- Só o Re-Stock tem: pallet. Duas fontes que discordam em 32 de 980.
+  -- Só o Re-Stock tem: pallet, pickface e a caixa operacional.
+  -- pallet_capacity_rules cobre mais (1.772 ativos) mas está PARADA desde
+  -- 06/03/2026; restock_setup cobre menos e foi atualizada em 24/08. A tela
+  -- mostra as duas e diz qual é qual — escolher em silêncio esconderia que a
+  -- de maior cobertura é a mais velha.
   pal.qty AS pallet_rules, rst.qty AS pallet_restock,
+  rst.pickface AS restock_pickface, rst.pickface_qty AS restock_pickface_qty,
+  rst.ctn AS restock_carton,
   -- ── de onde a linha existe ──
   (f.sku_key IS NOT NULL) AS in_file,
   f.source_sheets,
@@ -66,7 +83,7 @@ SELECT
 FROM (SELECT upper(btrim(sku)) AS k, * FROM cin7_mirror.products) c
 LEFT JOIN rapid_inv.product_file f ON f.sku_key = c.k
 LEFT JOIN soh s  ON s.k  = c.k
-LEFT JOIN pal    ON pal.dc = upper(btrim(coalesce(c.attribute1, '')))
-LEFT JOIN rst    ON rst.dc = upper(btrim(coalesce(c.attribute1, '')));
+LEFT JOIN pal    ON pal.k = c.k
+LEFT JOIN rst    ON rst.k = c.k;
 
 GRANT SELECT ON rapid_inv.v_master_stock TO anon, authenticated, service_role;
