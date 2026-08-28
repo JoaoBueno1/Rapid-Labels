@@ -32,11 +32,21 @@
   // ABC desligado por padrao: os degraus 10/8/6 vieram de quando a media era
 // uma coluna importada. Com 13 meses de historico e janela escolhivel, a
 // cobertura pura e mais honesta — quem quiser os degraus liga no Settings.
-  const DEMAND_LABEL = {"both": "branch + reps", "branch": "branch shipments", "rep": "branch reps", "branch_then_rep": "branch, then reps", "rep_then_branch": "reps, then branch"};
+  const DEMAND_LABEL = { branch: 'branch shipments', rep: 'branch reps', branch_then_rep: 'branch, then reps' };
+
+  /* Migração dos modos que saíram.
+     'both' nunca foi regra de sugestão — o motor caía em 'branch' com ele, e
+     por isso o mapeamento é exato, não uma escolha minha.
+     'rep_then_branch' vira 'rep': medido, os dois diferem em 202 de 6.861
+     pares filial-SKU, 3%. Quem tinha aquele modo perde a diferença em 3% das
+     linhas, e ganha um seletor com três opções em vez de cinco. */
+  const DEMAND_MIGRA = { both: 'branch', rep_then_branch: 'rep' };
   const DEFAULTS = { weeks: 6, cutDays: 25, abc: false, avgSource: 'branch', period: 'stored', avgRound: 'pure', cartons: false,
-    // demand: como ler a demanda da filial. 'both' mostra as duas leituras
-    // lado a lado no Cover; as outras dão UM número por célula.
-    demand: 'both', salesMonths: 6 };
+    // demand: qual das duas médias vira quantidade sugerida. Não decide mais o
+    // que a planilha MOSTRA — as duas estão sempre lá, cada uma na sua coluna.
+    // O padrão é o fallback porque em 1.891 de 6.861 pares filial-SKU só o rep
+    // vendeu: com 'branch' puro, o motor não sugeriria nada para eles.
+    demand: 'branch_then_rep', salesMonths: 6 };
   let SET = loadSet();
   function loadSet() {
     let raw = {};
@@ -44,9 +54,12 @@
     // Migra quem já tinha os dois seletores antigos: avgBasis e repMonths
     // viraram demand e salesMonths, e guardar os dois nomes convidaria a
     // divergirem em silêncio.
-    if (raw.avgBasis && !raw.demand) raw.demand = raw.avgBasis === 'rep' ? 'rep' : raw.avgBasis === 'max' ? 'both' : 'branch';
+    if (raw.avgBasis && !raw.demand) raw.demand = raw.avgBasis === 'rep' ? 'rep' : 'branch';
     if (raw.repMonths && !raw.salesMonths) raw.salesMonths = raw.repMonths;
     delete raw.avgBasis; delete raw.repMonths;
+    // E os dois modos que saíram do seletor. Sem isto, quem tem 'both' salvo
+    // fica com um <select> que não casa com nenhuma opção e volta em branco.
+    if (DEMAND_MIGRA[raw.demand]) raw.demand = DEMAND_MIGRA[raw.demand];
     return Object.assign({}, DEFAULTS, raw);
   }
   function saveSet() { try { localStorage.setItem('rp.set', JSON.stringify(SET)); } catch (_) {} }
@@ -397,22 +410,47 @@
   function catalog(mode) {
     const c = [
       { key: 'dc', label: '5DC', w: 70, align: 'txt', group: 'id', sortable: true, def: true },
-      { key: 'code', label: 'Rapid Code', w: 130, align: 'code', group: 'id', sortable: true, def: true, always: true },
-      // Produto encolheu: ele empurrava as colunas de decisão para fora da tela.
-      { key: 'name', label: 'Product', w: 210, align: 'txt', group: 'id', sortable: true, def: true },
+      // Medido: 12 de 120 códigos passavam de 130px e eram cortados, o pior
+      // faltando 31px. R3250-300-BK-CW_R10503 é código de verdade, e código
+      // cortado obriga a abrir o painel para ler o que já está na tela.
+      { key: 'code', label: 'Rapid Code', w: 168, align: 'code', group: 'id', sortable: true, def: true, always: true },
+      /* Produto era 210px numa linha e cortava em 105 de 120 linhas — ao pior
+         faltavam 510px. Agora são 300px em duas linhas.
+         Medido no catálogo: o nome tem mediana de 58 caracteres, p90 de 101 e
+         máximo de 255. 300px em duas linhas comportam ~100, ou seja 90% deles
+         inteiros. Os 10% mais longos ainda reticenciam — largura nenhuma
+         resolve 255 caracteres — e para esses continua valendo o title e o
+         painel da linha. */
+      { key: 'name', label: 'Product', w: 300, align: 'txt', group: 'id', sortable: true, def: true },
       { key: 'loc', label: 'Location', w: 100, align: 'txt', group: 'id', sortable: true, def: false },
       // Ctn e Pallet vêm ANTES do pedido: são a unidade em que ele é feito.
-      { key: 'ctn', label: 'Ctn Qty', w: 62, align: 'num', group: 'pack', sortable: true, def: true },
-      { key: 'pallet', label: 'Pallet Qty', w: 72, align: 'num', group: 'pack', sortable: true, def: true },
-      { key: 'ask', label: 'Branch Ask', w: 92, align: 'num', group: 'ord', sortable: true, def: true, always: true },
+      // Medido no cabeçalho, não no chute: Ctn Qty pedia 74px e tinha 59,
+      // Pallet Qty pedia 95 e tinha 71. Um cabeçalho cortado é a mesma queixa
+      // das células, só uma linha acima — e pior, porque ele nomeia a coluna.
+      { key: 'ctn', label: 'Ctn Qty', w: 80, align: 'num', group: 'pack', sortable: true, def: true },
+      { key: 'pallet', label: 'Pallet Qty', w: 100, align: 'num', group: 'pack', sortable: true, def: true },
+      { key: 'ask', label: 'Branch Ask', w: 100, align: 'num', group: 'ord', sortable: true, def: true, always: true },
       // Inv Qty não existe no rascunho: ali ela ficava travada, ocupando espaço
       // e sugerindo que alguém deveria preenchê-la.
       { key: 'invQty', label: 'Inv Qty', w: 84, align: 'num', group: 'ord', sortable: true, def: true, stages: ['submitted', 'ready_to_check', 'approved'] },
-      { key: 'avg', label: 'Mthly Avg', w: 80, align: 'num', group: 'stk', sortable: true, def: true },
+      /* DUAS colunas de média, lado a lado e sempre visíveis.
+         Era uma coluna só com a segunda leitura espremida como fantasma, e
+         qual das duas aparecia dependia de um seletor no Settings. Isso pedia
+         que o usuário configurasse antes de ver — e a comparação entre as
+         duas é justamente o que ele precisa ver para decidir.
+         Com as duas na tela, o seletor deixa de ser sobre o que MOSTRAR e
+         passa a ser só sobre o que a SUGESTÃO usa. */
+      // 92px cortava o próprio cabeçalho ("BRANCH AV…") — que é a mesma
+      // queixa que originou esta rodada, agora na linha de cima.
+      { key: 'avgBranch', label: 'Branch Avg', w: 110, align: 'num', group: 'stk', sortable: true, def: true },
+      { key: 'avgRep', label: 'Rep Avg', w: 96, align: 'num', group: 'stk', sortable: true, def: true },
       { key: 'soh', label: 'SOH', w: 64, align: 'num', group: 'stk', sortable: true, def: true },
       // In Transit deixa de ser coluna: vira marca cinza no SOH, com o TR no
       // painel. Ela custava 82px para dizer, quase sempre, "·".
-      { key: 'cover', label: 'Cover', w: 168, align: 'num', group: 'stk', sortable: true, def: true },
+      // 168px comportava as duas leituras lado a lado no limite, e por isso
+      // elas cortavam. Empilhadas, o que a coluna precisa é do valor + a
+      // projeção + o selo numa linha só — 184px dá folga para o "99+w".
+      { key: 'cover', label: 'Cover', w: 184, align: 'num', group: 'stk', sortable: true, def: true },
       { key: 'main', label: 'Main', w: 84, align: 'num', group: 'stk', sortable: true, def: true },
     ];
     if (S.branch && VARIANT[S.branch.code]) c.push({ key: 'syd', label: 'SYD Stock', w: 82, align: 'num', group: 'stk', sortable: true, def: true });
@@ -450,6 +488,7 @@
     switch (k) {
       case 'dc': return l.dc || ''; case 'code': return l.code || ''; case 'name': return l.name || '';
       case 'ctn': return l.ctn || 0; case 'loc': return l.loc || ''; case 'avg': return l.avg || 0;
+      case 'avgBranch': return l.storedAvg || 0; case 'avgRep': return l.repAvg || 0;
       case 'soh': return l.soh || 0; case 'inTransit': return l.inTransit || 0; case 'cover': return l.coverWeeks;
       case 'main': return l.mainGw || 0; case 'ask': return clampInt(l.ask);
       case 'invQty': return l.invQty == null ? -1 : clampInt(l.invQty); case 'syd': return l.syd || 0;
@@ -459,6 +498,9 @@
   // As duas colunas que o usuário caça o tempo todo ganham cor própria.
   const IDCLS = { main: ' c-main', avg: ' c-avg' };
   function renderGrid() {
+    coverLegend();
+    // A coluna Cover mostra sempre as duas leituras agora, então a linha tem
+    // altura constante e não há mais um "modo de uma leitura só".
     // Guarda de digitação. renderGrid() reescreve a tabela inteira; se alguém
     // está com o cursor num campo, o valor a meio digitar e a posição do cursor
     // desaparecem. Com várias pessoas na tela ao vivo isto acontece o tempo
@@ -511,21 +553,40 @@
     const wrap = (inner, extra, title) => `<td class="${base}${gc}${extra || ''}"${title ? ` title="${esc(title)}"` : ''}>${inner}</td>`;
     switch (c.key) {
       case 'dc': return wrap(esc(l.dc) || '<span class="rp-sub">—</span>');
-      case 'code': return wrap(esc(l.code));
-      case 'name': return wrap(esc(l.name), '', l.name);
+      // O texto que pode quebrar vai num <div> DENTRO da célula, nunca na
+      // própria célula: -webkit-box num <td> faz o navegador contar a altura
+      // do texto inteiro desdobrado para dimensionar a linha, e a linha ia a
+      // 72px por causa de um nome de 421px de altura que estava clampado a 30.
+      // Medido: tirando o -webkit-box do <td>, a mesma linha cai para 37px.
+      case 'code': return wrap(`<div class="rp-clamp">${esc(l.code)}</div>`);
+      // rp-name é o que autoriza a quebra em duas linhas. Sem a classe o nome
+      // volta a cortar, porque a regra geral da grade é nowrap.
+      case 'name': return wrap(`<div class="rp-clamp">${esc(l.name)}</div>`, ' rp-name', l.name);
       case 'ctn': return wrap(l.ctn ? n0(l.ctn) : '<span class="rp-sub">—</span>');
       case 'loc': return wrap(esc(l.loc) || '<span class="rp-sub">—</span>', '', l.loc);
-      case 'avg': {
-        // As duas réguas na mesma célula: a que o motor usa em cima, e a do
-        // rep embaixo quando ela discorda. Coluna separada custaria 80px numa
-        // tabela que já rola, e o número só interessa quando diverge.
+      /* As duas médias, cada uma na sua coluna.
+         A que o motor está usando para sugerir ganha um ponto — sem ele, duas
+         colunas iguais deixam o usuário sem saber qual virou quantidade. */
+      case 'avgBranch': {
+        const b = l.storedAvg != null ? l.storedAvg : 0;
+        const usa = usaBranch(l);
+        return wrap(
+          (b > 0 ? n1(b) : '<span class="rp-sub">—</span>')
+          + (usa ? '<i class="rp-drv" title="This is the average the suggestion is using">●</i>' : ''),
+          ' rp-avgb',
+          b > 0 ? `${n1(b)} a month shipped out of this branch's own depot.`
+                : "Nothing shipped out of this branch's own depot in the window.");
+      }
+      case 'avgRep': {
         const r = l.repAvg;
-        const gap = r != null && l.avg > 0 ? (r - l.avg) / l.avg : null;
-        const show = r != null && (l.avg <= 0 ? r > 0 : Math.abs(gap) >= 0.15);
-        const mark = show
-          ? `<span class="rp-repavg ${r > l.avg ? 'up' : 'dn'}" title="Sold by this branch's reps: ${n1(r)}/month, wherever it shipped from. ${l.repCount || 0} of the branch's ${(S.repAvgInfo && S.repAvgInfo.count) || 0} reps touched this SKU. The number above is only what shipped out of this branch.">${r > l.avg ? '▲' : '▼'}${n1(r)}</span>`
-          : '';
-        return wrap((l.avg ? n1(l.avg) : '<span class="rp-sub">—</span>') + mark);
+        const usa = !usaBranch(l);
+        const quantos = `${l.repCount || 0} of the branch's ${(S.repAvgInfo && S.repAvgInfo.count) || 0} reps sold it.`;
+        return wrap(
+          (r > 0 ? n1(r) : '<span class="rp-sub">—</span>')
+          + (usa && r > 0 ? '<i class="rp-drv" title="This is the average the suggestion is using">●</i>' : ''),
+          ' rp-avgr',
+          r > 0 ? `${n1(r)} a month sold by this branch's reps, wherever it shipped from. ${quantos}`
+                : 'No rep of this branch sold it in the window.');
       }
       case 'soh': {
         // In Transit era uma coluna de 82px que quase sempre dizia "·". Vira
@@ -536,13 +597,22 @@
       case 'pallet': return wrap(l.pallet ? n0(l.pallet) : '<span class="rp-sub">—</span>', '', l.pallet ? `${n0(l.pallet)} per pallet` : 'No pallet quantity on file for this 5DC');
       case 'inTransit': return wrap(l.inTransit ? n0(l.inTransit) : '<span class="rp-sub">·</span>');
       case 'cover': {
-        // DUAS linhas, não três. Cada uma é uma leitura completa da mesma
-        // situação: "onde estou" e "onde chego com esta quantidade", pela
-        // média da filial em cima e pela do rep embaixo.
-        //
-        // Os quatro números têm o MESMO tamanho de propósito. Projeção menor
-        // que o valor atual leria como nota de rodapé, e ela é justamente o
-        // que o usuário está decidindo enquanto digita.
+        /* Duas leituras EMPILHADAS, não lado a lado.
+         *
+         * Estavam lado a lado, separadas por uma barrinha, e não cabiam: em
+         * 7 de 120 linhas medidas o conteúdo passava dos 168px e o
+         * `overflow:hidden` comia a segunda leitura — o número simplesmente
+         * sumia, e sumia justo no modo que mostra as duas. Pior que isso,
+         * lado a lado ninguém sabia qual metade era qual.
+         *
+         * Empilhadas, cada uma ganha a linha inteira, os números alinham em
+         * coluna e a etiqueta colorida diz de quem é a leitura. A cor está
+         * explicada no rodapé — cor sem legenda é enfeite.
+         *
+         * Os quatro números têm o MESMO tamanho de propósito. Projeção menor
+         * que o valor atual leria como nota de rodapé, e ela é justamente o
+         * que o usuário está decidindo enquanto digita.
+         */
         const q = finalQty(l);
         const wk = (base) => base > 0 ? (l.soh + l.inTransit) / (base / RC.WEEKS_IN_MONTH) : null;
         const after = (base) => (base > 0 && q > 0)
@@ -558,18 +628,27 @@
         const rNow = l.repAvg > 0 ? wk(l.repAvg) : null, rTo = after(l.repAvg);
 
         const mk = bNow == null ? '' : (bNow * 7 < 7 ? '<i class="rp-mk low">low</i>' : bNow > 12 ? '<i class="rp-mk over">over</i>' : '');
-        // UMA linha com as duas leituras. Duas linhas legíveis não cabem em
-        // 18px — e a altura da linha ganha, porque numa tela de 480 SKUs cada
-        // pixel a mais é uma linha a menos visível.
-        const pair = (tag, now, to, tip) => `<span class="rp-cv" title="${esc(tip)}">
-            <i class="t">${tag}</i><b>${num(now)}</b>${to == null ? '' : `<u>›${num(to)}</u>`}</span>`;
-        const b1 = pair('B', bNow, bTo, `Branch shipments: ${n1(bBase || 0)}/month.`
-          + (bTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(bTo)} weeks.`));
-        const b2 = (SET.demand === 'both') && l.repAvg > 0
-          ? pair('R', rNow, rTo, `This branch's reps sold ${n1(l.repAvg)}/month, wherever it shipped from.`
-              + (rTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(rTo)} weeks.`))
-          : '';
-        return `<td class="num rp-cover">${b1}${b2}${mk}</td>`;
+
+        const linha = (cls, tag, now, to, tip, extra) => `<span class="rp-cv ${cls}" title="${esc(tip)}"
+            ><i class="t">${tag}</i><b>${num(now)}</b><u>${to == null ? '' : `›${num(to)}`}</u><s>${extra || ''}</s></span>`;
+
+        // O selo low/over vai DENTRO da primeira leitura. Solto depois das duas
+        // ele virava uma terceira caixa de linha e levava a célula a 68px — o
+        // dobro do que a linha reserva.
+        const b1 = linha('is-br', 'B', bNow, bTo, `Branch shipments: ${n1(bBase || 0)} a month.`
+          + (bTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(bTo)} weeks.`), mk);
+
+        /* As duas leituras SEMPRE, e não só num modo. A segunda aparece mesmo
+           quando não há venda por rep: sem ela a linha muda de altura conforme
+           o SKU e a coluna deixa de alinhar, e "nenhum rep vendeu isto" é uma
+           resposta, não um vazio. */
+        const b2 = l.repAvg > 0
+            ? linha('is-rep', 'R', rNow, rTo, `This branch's reps sold ${n1(l.repAvg)} a month, wherever it shipped from.`
+                + (rTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(rTo)} weeks.`), '')
+            : linha('is-rep is-none', 'R', null, null, 'No rep of this branch sold this product in the window.', '')
+                .replace('<span class="rp-sub">n/a</span>', '—');
+
+        return `<td class="num rp-cover${b2 ? ' is-two' : ''}">${b1}${b2}</td>`;
       }
       case 'main': return wrap(n0(l.mainGw), '', `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
       case 'ask':
@@ -638,9 +717,41 @@
     }));
     const ac = tb.querySelector('.rp-acq'); tb.querySelectorAll('.rp-acq').forEach(a => attachAutocomplete(a)); if (ac && S.autoFocusAdd) { ac.focus(); S.autoFocusAdd = false; }
   }
+  /* Qual das duas médias o motor está usando NESTA linha.
+     Precisa ser por linha e não por modo: em 'branch, fall back to reps' a
+     resposta muda de SKU para SKU, e é exatamente nos 31% em que uma das duas
+     está zerada que o usuário quer saber qual virou quantidade. */
+  function usaBranch(l) {
+    const b = l.storedAvg != null ? l.storedAvg : 0;
+    const r = l.repAvg || 0;
+    if (SET.demand === 'rep') return false;
+    if (SET.demand === 'branch') return true;
+    if (SET.demand === 'branch_then_rep') return b > 0 || r <= 0;
+    if (SET.demand === 'rep_then_branch') return !(r > 0);
+    return true;
+  }
+
   // Repinta SÓ a célula do cover da linha digitada. Um renderGrid() a cada
   // tecla custaria ~250 ms em 480 linhas e ainda brigaria com o cursor — a
   // seta precisa acompanhar a digitação sem redesenhar a tabela.
+  /* A legenda do cover.
+     Duas cores sem legenda são enfeite: quem chega na tela não tem como saber
+     que azul é a filial e âmbar é o rep. Ela só aparece no modo que mostra as
+     duas — legenda de uma coisa que não está na tela é ruído. */
+  function coverLegend() {
+    const el = $('rpCoverKey'); if (!el) return;
+    el.style.display = '';
+    el.innerHTML = `<span class="rp-cvkey is-br"><i class="t">B</i></span>`
+      + `<b>Branch</b><span>what shipped out of this branch's own depot</span>`
+      + `<i class="sep"></i>`
+      + `<span class="rp-cvkey is-rep"><i class="t">R</i></span>`
+      + `<b>Reps</b><span>what this branch's reps sold, wherever it shipped from</span>`
+      + `<i class="sep"></i>`
+      + `<span class="rp-key-to">›&nbsp;4.2w</span><span>where cover lands with the quantity you type</span>`
+      + `<i class="sep"></i>`
+      + `<span class="rp-drv">●</span><span>the average the suggestion is using — set it in Settings</span>`;
+  }
+
   function repaintCover(tr, l) {
     if (!tr) return;
     const C = visibleCols(); const i = C.findIndex(c => c.key === 'cover');

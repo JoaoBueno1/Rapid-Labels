@@ -266,13 +266,55 @@ tr.rp-decided td{background:var(--acc-soft,#eef7fc)}
    quantidade digitada, e não um estado do estoque.
    line-height 1.15 em 10,5px = 12px por linha; duas linhas cabem nos 26px da
    linha da grade sem esticá-la. */
-td.rp-cover{white-space:nowrap;text-align:left;padding-left:8px!important}
-.rp-cv{display:inline-block;font:600 10.5px/15px var(--mono)}
-.rp-cv + .rp-cv{margin-left:7px;padding-left:7px;border-left:1px solid var(--line-3)}
-.rp-cv .t{display:inline-block;width:9px;font-style:normal;font-weight:700;
-  font-size:8.5px;color:var(--mut-3);text-align:left}
-.rp-cv b{font-weight:600;color:var(--ink)}
-.rp-cv u{text-decoration:none;color:var(--acc);margin-left:3px}
+/* ── Cover: as duas leituras EMPILHADAS ──────────────────────────────
+   Lado a lado elas não cabiam (medido: em 7 de 120 linhas o conteúdo passava
+   dos 168px e o overflow comia a segunda) e ninguém sabia qual metade era
+   qual. Empilhadas, cada uma tem a linha inteira e os números alinham em
+   coluna — é a coluna que faz a leitura, não a ordem de leitura. */
+td.rp-cover{white-space:nowrap;text-align:left;padding-left:8px!important;
+  line-height:16px;font-size:0}
+/* Uma leitura = uma linha da célula. Grid de quatro colunas para os números
+   alinharem verticalmente entre as duas leituras: é o alinhamento que deixa
+   comparar B e R de relance, não a ordem em que estão escritos. */
+.rp-cv{display:grid;grid-template-columns:17px 46px 56px 1fr;align-items:center;
+  font:600 11px/16px var(--mono);height:16px}
+.rp-cv s{text-decoration:none}
+/* A etiqueta precisa ser lida como COR, não como letra minúscula: a 8,5px
+   num quadrado de 11px a cor não se distingue de um artefato de renderização.
+   14x13 com peso 700 já lê à distância de trabalho. */
+.rp-cv .t{display:inline-block;width:14px;height:13px;border-radius:3px;
+  font:700 9px/13px var(--sans);font-style:normal;text-align:center;
+  margin-right:3px}
+.rp-cv b{font-weight:600;color:var(--ink);text-align:right}
+.rp-cv u{text-decoration:none;color:var(--acc);padding-left:5px;text-align:right}
+
+/* As duas cores. Azul é a filial — o que de fato saiu do depósito dela.
+   Âmbar é o rep — a demanda que existe mas embarcou do Main, e que a conta
+   por local não enxerga. Em Brisbane isso é 48% das linhas.
+
+   O âmbar é o tom suave (#FEF3C7 do design system) e não o amarelo puro do
+   Excel: a etiqueta se repete em TODA linha, e amarelo cheio em 156 linhas
+   grita mais alto que os selos low/over, que são o alerta de verdade. */
+.rp-cv.is-br  .t{background:#dbeafe;color:#1e40af}
+.rp-cv.is-rep .t{background:#fef3c7;color:#92400e}
+.rp-cv.is-none b,.rp-cv.is-none u{color:var(--mut-2)}
+.rp-cv.is-none .t{opacity:.5}
+
+/* A legenda. Cor sem legenda é enfeite. */
+.rp-coverkey{display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+  padding:5px 12px;border-top:1px solid var(--line);
+  font:400 11px/17px var(--sans);color:var(--mut)}
+.rp-coverkey b{color:var(--ink-2);font-weight:700}
+.rp-coverkey span{color:var(--mut)}
+/* A amostra da etiqueta na legenda, com a mesma cor da tabela — legenda que
+   não usa a cor que explica não explica nada. */
+.rp-cvkey .t{display:inline-block;min-width:14px;padding:0 3px;border-radius:3px;
+  font:700 8.5px/14px var(--sans);font-style:normal;text-align:center}
+.rp-cvkey.is-br  .t{background:#dbeafe;color:#1e40af}
+.rp-cvkey.is-rep .t{background:#fef3c7;color:#92400e}
+.rp-coverkey .sep{display:inline-block;width:1px;height:11px;
+  background:var(--line-2);margin:0 7px}
+.rp-key-to{color:var(--acc);font-weight:700;font-family:var(--mono)}
 td.rp-cover .rp-mk{font-style:normal;margin-left:3px}
 
 /* ── Altura da linha: 18px, como a planilha ──
@@ -284,7 +326,19 @@ td.rp-cover .rp-mk{font-style:normal;margin-left:3px}
    input ocupa 100% da largura dela. */
 #rpGrid .rp-in{padding:0 5px;height:16px;line-height:14px;font-size:12px;border-radius:4px}
 #rpGrid .rp-in.txt{font-size:11.5px}
-#rpGrid tr.rp-line td{height:18px;line-height:15px;padding-top:0;padding-bottom:0;vertical-align:middle}
+/* A altura da linha.
+   Ela estava em 18px, apertada para caber mais SKU na tela. Custou caro: o
+   Product cortava em 105 de 120 linhas (ao pior faltavam 510px), o Rapid Code
+   em 12, e nada tinha espaço para quebrar. Com 34px o nome cabe em duas
+   linhas, o código inteiro aparece, e as duas leituras de cover empilham. */
+/* UMA altura, sempre.
+   A primeira versão encolhia a linha para 26px quando havia uma leitura só de
+   cover. Ganhava 11px e devolvia o problema que motivou tudo isto: com uma
+   linha de nome, o Product volta a cortar — e ele cortava em 105 de 120.
+   Altura constante também evita a tela pular de tamanho ao trocar a régua. */
+#rpGrid tr.rp-line td{height:36px;line-height:16px;padding-top:2px;padding-bottom:2px;
+  vertical-align:middle}
+
 /* O Cover é a única célula com duas linhas; ela define o piso e não o teto. */
 
 #rpGrid .rp-act{width:17px;height:17px;font-size:11px}
@@ -295,6 +349,30 @@ td.rp-cover .rp-mk{font-style:normal;margin-left:3px}
 /* Texto não quebra: numa grade densa uma descrição longa vira duas linhas e
    estica a linha inteira, e o usuário não lê o nome completo de qualquer jeito
    — ele lê o código. O nome inteiro fica no title e no painel lateral. */
+/* Nome e código deixam de cortar: quebram em duas linhas dentro da altura
+   que a linha já tem.
+
+   O clamp fica num <div> INTERNO e não no <td>. Com -webkit-box no próprio
+   td, o navegador dimensiona a linha da tabela pelo texto inteiro desdobrado
+   — um nome de 421px de altura clampado a 30 levava a linha a 72px. Medido:
+   trocando só isso, a mesma linha cai para 37px. */
+#rpGrid tr.rp-line td.txt.rp-name, #rpGrid tr.rp-line td.code{
+  white-space:normal;overflow:hidden}
+#rpGrid tr.rp-line .rp-clamp{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;line-height:15px;word-break:break-word;max-height:30px}
+
 #rpGrid tr.rp-line td.txt, #rpGrid tr.rp-line td.code{
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
 #rpGrid tr.rp-line td.em{white-space:nowrap;overflow:hidden}
+
+/* As duas colunas de média. A cor do cabeçalho é a MESMA das etiquetas do
+   Cover, senão são dois sistemas de cor para a mesma distinção. */
+.rp-grid th[data-k="avgBranch"]{box-shadow:inset 0 -2px 0 #1e40af}
+.rp-grid th[data-k="avgRep"]{box-shadow:inset 0 -2px 0 #92400e}
+td.rp-avgb,td.rp-avgr{position:relative}
+/* O ponto marca qual das duas o motor está usando. Discreto de propósito: é
+   contexto para quem procura, não alerta. */
+.rp-drv{font-style:normal;font-size:8px;color:var(--acc);margin-left:4px;
+  vertical-align:2px}
+.rp-coverkey .rp-drv{margin-left:0;margin-right:3px}

@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=36">
+<link rel="stylesheet" href="replenishment.css?v=43">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -72,6 +72,11 @@
 
     <!-- history (approved snapshots, locked) -->
     <div class="rp-history" id="rpHistory" style="display:none"></div>
+
+    <!-- A legenda do Cover fica numa linha própria e ACIMA do resto: ela
+         explica como ler uma coluna, e uma explicação de leitura misturada
+         com legenda de cor de fundo se perde. -->
+    <div class="rp-coverkey" id="rpCoverKey" style="display:none"></div>
 
     <div class="sp-foot" id="rpFoot">
       <span><i class="k" style="background:#fce8a8"></i><b>Branch Ask</b> — the input you fill</span><i></i>
@@ -170,19 +175,26 @@
             <small>Every number on the sheet is read over this window — the average, the cover, and the suggestion.
               Sales swing about 2&times; across the year, so this alone moves the average by up to 47%.</small>
           </label>
-          <label class="sp-field"><span>Demand rule</span>
+          <!-- Eram cinco opções, e duas delas só decidiam o que MOSTRAR.
+               Agora a planilha mostra as duas médias sempre, lado a lado, e
+               este seletor faz uma coisa só: escolhe qual delas vira a
+               quantidade sugerida. -->
+          <label class="sp-field"><span>Which average the suggestion uses</span>
             <select id="setDemand">
-              <option value="both">Show both — branch and reps</option>
-              <option value="branch">Branch shipments only</option>
-              <option value="rep">Branch reps only</option>
               <option value="branch_then_rep">Branch, fall back to reps</option>
-              <option value="rep_then_branch">Reps, fall back to branch</option>
+              <option value="branch">Branch shipments</option>
+              <option value="rep">This branch's reps</option>
             </select>
-            <small><b>Branch</b> is what shipped out of this branch. <b>Reps</b> is what the branch's sales reps sold,
-              wherever it shipped from — when a branch runs out, the order goes from Main and the sale leaves its count.
-              Measured over 6 months: Brisbane +175%, Sydney +80%, Sunshine +50%; Cairns, Coffs and Hobart barely move,
-              because Main is too far to cover for them. <b>Show both</b> puts the two side by side in the Cover column;
-              the others give one number per cell.</small>
+            <small>Both averages are always on the sheet, in their own columns — this only picks the one that
+              becomes a suggested quantity. <b>Branch</b> is what shipped out of this branch's own depot.
+              <b>Reps</b> is what the branch's sales reps sold, wherever it shipped from: when a branch runs out,
+              the order goes from Main and the sale leaves the branch's count. Measured over 6 months:
+              Brisbane +175%, Sydney +80%, Sunshine +50%; Cairns, Coffs and Hobart barely move, because Main is
+              too far to cover for them.<br>
+              The fall-back matters: in 1,891 of 6,861 branch-SKU pairs only the reps sold it, so
+              <b>branch only</b> would suggest nothing for those. The reverse case is just 202 pairs, which is why
+              "reps, fall back to branch" is gone — it differed from <b>reps</b> in 3% of rows and cost a fourth
+              option to read.</small>
           </label>
         </div>
         <label class="rp-check"><input type="checkbox" id="setCartons"> Round suggested QTY up to full cartons</label>
@@ -223,6 +235,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=40"></script>
+<script src="replenishment-app.js?v=50"></script>
 </body>
 </html>
