@@ -46,6 +46,12 @@
   const VARIANT = { MEL: true, HBA: true };
   const DAILY_MAX = 12;
 
+  // SKU de embalagem: 652 dos 8.515 ativos terminam em -Carton<N>. A filial não
+  // pede caixa, pede unidade — e pedido impresso com esses produtos não é usado.
+  // Esconder é suficiente: eles continuam existindo no Cin7, só não são
+  // oferecidos nem sugeridos aqui.
+  const isPackSku = sku => /carton|(-|\s)(ctn|pk)\d*$/i.test(String(sku || ''));
+
   const locBucket = name => {
     const n = String(name || '').toLowerCase();
     if (n.startsWith('main')) return 'MAIN'; if (n.startsWith('gateway')) return 'GATEWAY';
@@ -148,11 +154,14 @@
     };
   }
 
+  // O mesmo corte vale para as sugestões: sem isto o SKU de caixa entra pela
+  // porta dos fundos, no "Load suggested".
   function suggestionUniverse() {
     const out = [];
     for (const r of S.avg) {
       const c0 = String(r.product || '').trim(); if (!c0) continue;
       const p = S.prod[c0.toUpperCase()] || {}; if (RC.isExcludedProduct(c0, p.name)) continue;
+      if (isPackSku(c0) || p.status === 'Deprecated') continue;
       const row = buildRow(c0); if (!row || row.avg <= 0) continue;
       const coverDays = Math.round(row.coverWeeks * 7);
       row.isSuggested = (row.canSend > 0 && row.sug > 0 && coverDays < SET.cutDays);
@@ -211,10 +220,10 @@
     // O diário tem regra própria e ela precisa estar na tela, não no treinamento.
     const note = $('rpDailyNote');
     if (note) {
-      note.style.display = S.mode === 'daily' ? '' : 'none';
-      note.innerHTML = 'Pedidos feitos até <b>12:00</b> de hoje. Não inclui a transferência semanal — '
-        + 'essa vai na aba Weekly. Máximo de ' + DAILY_MAX + ' itens, e cada um precisa de motivo. '
-        + 'O diário não passa pelo check do gerente.';
+      note.style.display = (S.view === 'daily') ? '' : 'none';
+      note.innerHTML = 'Asked before <b>12:00</b> today. Does not include the weekly transfer — '
+        + 'that goes on the Weekly tab. Up to ' + DAILY_MAX + ' items, each with a reason. '
+        + 'Daily skips the manager check.';
     }
     setControls(); renderStage(); renderGrid();
   }
@@ -240,18 +249,24 @@
       action = `<button class="sp-btn is-primary" id="btnAdvance" ${S.lines.length ? '' : 'disabled'}>${label} ›</button>`;
       if (cur > 0) action += ` <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ back</button>`;
     } else {
-      action = `<span class="rp-step done">✓ ${S.lastTr ? 'Colocado no Cin7 — ' + esc(S.lastTr) : 'Aprovado'}</span>
+      action = `<span class="rp-step done">✓ ${S.lastTr ? 'Placed in Cin7 — ' + esc(S.lastTr) : 'Approved'}</span>
                 <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ reopen</button>`;
     }
-    const hint = S.stage === 'draft' ? 'A filial preenche o Branch Ask'
-      : S.stage === 'submitted' ? 'O time de estoque confere e ajusta o Inv Qty'
-      : S.stage === 'ready_to_check' ? 'O gerente confere — comentários seguem abertos' : '';
+    const hint = S.stage === 'draft' ? 'Branch fills Branch Ask'
+      : S.stage === 'submitted' ? 'Inventory team checks and adjusts Inv Qty'
+      : S.stage === 'ready_to_check' ? 'Manager checks — comments stay open' : '';
     $('rpStage').innerHTML = `<div class="rp-steps">${pills}</div><span class="sp-gap"></span><span class="rp-sub">${hint}</span> ${action}`;
     const a = $('btnAdvance'); if (a) a.addEventListener('click', advanceStage);
     const b = $('btnBackStage'); if (b) b.addEventListener('click', backStage);
   }
   function advanceStage() {
     const steps = STAGES[S.mode], i = stageIdx(); if (i >= steps.length - 1) return;
+    // O diário exige motivo por linha. A regra estava escrita na tela e nunca
+    // era verificada: dava para submeter 12 itens urgentes sem uma palavra.
+    if (S.mode === 'daily' && S.stage === 'draft') {
+      const sem = S.lines.filter(l => finalQty(l) > 0 && !String(l.comment || '').trim());
+      if (sem.length) return toast(`${sem.length} line${sem.length === 1 ? '' : 's'} still need a reason`, true);
+    }
     S.stage = steps[i + 1];
     // No Submit o Inv Qty nasce igual ao pedido da filial: o check vira
     // confirmar ou corrigir, não redigitar 40 linhas.
@@ -266,17 +281,16 @@
   function backStage() { const steps = STAGES[S.mode], i = stageIdx(); if (i > 0) { S.stage = steps[i - 1]; saveDraft(); enterGrid(); } }
 
   // ── columns ──────────────────────────────────────────────────────────
+  // UMA tabela só. O Daily tinha um catálogo próprio com 8 colunas contra as 14
+  // do Weekly, e o resultado era que o mesmo produto mostrava informação
+  // diferente dependendo da aba — sem Ctn, sem Pallet, sem Cover, sem Avg.
+  // A diferença entre os dois fluxos é de PROCESSO (o diário pula o check do
+  // gerente), não de tabela.
+  //
+  // O motivo do pedido vai no Comments, que é onde a filial já digita. Uma
+  // coluna Reason separada obrigava a escolher entre dois campos de texto para
+  // a mesma frase.
   function catalog(mode) {
-    if (mode === 'daily') return [
-      { key: 'dc', label: '5DC', w: 70, align: 'txt', group: 'id', sortable: true, def: true },
-      { key: 'code', label: 'Rapid Code', w: 130, align: 'code', group: 'id', sortable: true, def: true, always: true },
-      { key: 'name', label: 'Product', w: 0, align: 'txt', group: 'id', sortable: true, def: true },
-      { key: 'ask', label: 'Qty', w: 80, align: 'num', group: 'ord', sortable: true, def: true, always: true },
-      { key: 'reason', label: 'Reason', w: 230, align: 'txt', group: 'ord', sortable: false, def: true },
-      { key: 'soh', label: 'SOH', w: 66, align: 'num', group: 'stk', sortable: true, def: true },
-      { key: 'main', label: 'Main', w: 84, align: 'num', group: 'stk', sortable: true, def: true },
-      { key: 'comment', label: 'Comments', w: 180, align: 'txt', group: 'ref', sortable: false, def: true },
-    ];
     const c = [
       { key: 'dc', label: '5DC', w: 70, align: 'txt', group: 'id', sortable: true, def: true },
       { key: 'code', label: 'Rapid Code', w: 130, align: 'code', group: 'id', sortable: true, def: true, always: true },
@@ -302,7 +316,8 @@
     // o número, deixando uma linha morta na planilha que o check ia ter que
     // interpretar.
     c.push({ key: 'act', label: '', w: 54, align: 'num', group: 'ref', sortable: false, def: true, always: true });
-    c.push({ key: 'comment', label: 'Comments', w: 180, align: 'txt', group: 'ref', sortable: false, def: true });
+    c.push({ key: 'comment', label: mode === 'daily' ? 'Reason' : 'Comments',
+             w: 180, align: 'txt', group: 'ref', sortable: false, def: true });
     c.push({ key: 'invComment', label: 'Inv Comments', w: 180, align: 'txt', group: 'ref', sortable: false, def: true,
              stages: ['submitted', 'ready_to_check', 'approved'] });
     return c;
@@ -339,6 +354,16 @@
   // As duas colunas que o usuário caça o tempo todo ganham cor própria.
   const IDCLS = { main: ' c-main', avg: ' c-avg' };
   function renderGrid() {
+    // Guarda de digitação. renderGrid() reescreve a tabela inteira; se alguém
+    // está com o cursor num campo, o valor a meio digitar e a posição do cursor
+    // desaparecem. Com várias pessoas na tela ao vivo isto acontece o tempo
+    // todo — um contador que atualiza, um colega que salva. Guarda quem estava
+    // focado e devolve o foco no fim.
+    const act = document.activeElement;
+    const keep = (act && act.classList && act.classList.contains('rp-in'))
+      ? { code: (act.closest('tr') || {}).getAttribute && act.closest('tr').getAttribute('data-code'),
+          k: act.dataset.k, start: act.selectionStart, end: act.selectionEnd }
+      : null;
     const C = visibleCols(), rows = visibleLines();
     const gcls = g => g === 'stk' ? 'g-stk' : g === 'ord' ? 'g-ord' : g === 'ref' ? 'g-ref' : g === 'pack' ? 'g-pack' : '';
     let prevG = null;
@@ -363,8 +388,16 @@
     }
     if (!rows.length && S.stage !== 'draft') body = `<tr><td colspan="${C.length}" class="sp-empty">No lines.</td></tr>`;
     $('rpGrid').innerHTML = head + '<tbody>' + body + '</tbody>';
+    if (keep && keep.code) {
+      const back = $('rpGrid').querySelector(`tr[data-code="${CSS.escape(keep.code)}"] input[data-k="${keep.k}"]`);
+      if (back) {
+        back.focus();
+        try { back.setSelectionRange(keep.start, keep.end); } catch (_) { /* number inputs recusam */ }
+      }
+    }
     const total = rows.reduce((s, l) => s + finalQty(l), 0);
-    $('gridCount').textContent = `${rows.length} line${rows.length === 1 ? '' : 's'} · ${n0(total)} units`;
+    // Contador vazio some: "0 lines · 0 units" ocupa espaço para não dizer nada.
+    $('gridCount').textContent = rows.length ? `${rows.length} line${rows.length === 1 ? '' : 's'} · ${n0(total)} units` : '';
     wireGrid();
   }
   function cell(l, c) {
@@ -381,10 +414,10 @@
       case 'soh': {
         // In Transit era uma coluna de 82px que quase sempre dizia "·". Vira
         // marca aqui, e o painel mostra o TR — que é o que o usuário quer ver.
-        const t = l.inTransit ? `<span class="rp-transit" title="${n0(l.inTransit)} em trânsito para esta filial — abra a linha para ver o TR">▸${n0(l.inTransit)}</span>` : '';
+        const t = l.inTransit ? `<span class="rp-transit" title="${n0(l.inTransit)} on the way to this branch — open the row to see the TR">▸${n0(l.inTransit)}</span>` : '';
         return wrap((l.soh < 0 ? `<span class="rp-neg">${n0(l.soh)}</span>` : n0(l.soh)) + t);
       }
-      case 'pallet': return wrap(l.pallet ? n0(l.pallet) : '<span class="rp-sub">—</span>', '', l.pallet ? `${n0(l.pallet)} por pallet` : 'Sem pallet cadastrado para este 5DC');
+      case 'pallet': return wrap(l.pallet ? n0(l.pallet) : '<span class="rp-sub">—</span>', '', l.pallet ? `${n0(l.pallet)} per pallet` : 'No pallet quantity on file for this 5DC');
       case 'inTransit': return wrap(l.inTransit ? n0(l.inTransit) : '<span class="rp-sub">·</span>');
       case 'cover': {
         const w = l.coverWeeks;
@@ -395,16 +428,16 @@
         const after = (l.avg > 0 && q > 0)
           ? (l.soh + l.inTransit + q) / (l.avg / RC.WEEKS_IN_MONTH) : null;
         const arrow = after == null ? ''
-          : `<span class="rp-after" title="Com ${n0(q)} unidades, a cobertura vai de ${n1(w >= 999 ? 0 : w)} para ${n1(after)} semanas">›${n1(after)}w</span>`;
+          : `<span class="rp-after" title="With ${n0(q)} units, cover goes from ${n1(w >= 999 ? 0 : w)} to ${n1(after)} weeks">›${n1(after)}w</span>`;
         return wrap(`${l.avg ? n1(w >= 999 ? 0 : w) + 'w' : '<span class="rp-sub">n/a</span>'}${mk}${arrow}`,
-          '', l.avg ? `${Math.round(w * 7)} dias de cobertura hoje` : '');
+          '', l.avg ? `${Math.round(w * 7)} days of cover today` : '');
       }
       case 'main': return wrap(n0(l.mainGw), '', `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
       case 'ask':
         return wrap(askEditable() ? `<input class="rp-in big" data-k="ask" value="${clampInt(l.ask) || ''}" inputmode="numeric">` : `<span class="rp-lock">${n0(clampInt(l.ask))}</span>`);
       case 'invQty': {
         if (invEditable()) return `<td class="num g-ord"><input class="rp-in big" data-k="invQty" value="${l.invQty == null ? '' : clampInt(l.invQty)}" inputmode="numeric"></td>`;
-        const val = l.invQty == null ? '<span class="rp-sub" title="Abre quando a filial dá Submit e o estoque começa o check">—</span>' : `<span class="rp-lock">${n0(clampInt(l.invQty))}</span>`;
+        const val = l.invQty == null ? '<span class="rp-sub" title="Unlocks when the branch submits and the inventory check starts">—</span>' : `<span class="rp-lock">${n0(clampInt(l.invQty))}</span>`;
         return `<td class="num g-ord locked">${val}</td>`;
       }
       case 'syd': return wrap(n0(l.syd));
@@ -413,21 +446,21 @@
         // O alerta é para quem faz o check final: diz "olhe esta com atenção".
         // Vale em qualquer estágio menos o aprovado, que é imutável.
         if (S.stage !== 'approved')
-          bits.push(`<button class="rp-act rp-flag${l.flag ? ' on' : ''}" data-act="flag" title="${l.flag ? 'Tirar o alerta' : 'Marcar para conferência extra no check'}">!</button>`);
+          bits.push(`<button class="rp-act rp-flag${l.flag ? ' on' : ''}" data-act="flag" title="${l.flag ? 'Clear the flag' : 'Flag for an extra check'}">!</button>`);
         if (askEditable())
-          bits.push(`<button class="rp-act rp-del" data-act="del" title="Remover esta linha">×</button>`);
+          bits.push(`<button class="rp-act rp-del" data-act="del" title="Remove this line">×</button>`);
         return `<td class="num rp-acts">${bits.join('')}</td>`;
       }
-      case 'reason': return `<td class="txt${gc}">${askEditable() ? `<input class="rp-in txt" data-k="reason" value="${esc(l.reason)}" placeholder="why — e.g. just sold, special order…">` : esc(l.reason) || '<span class="rp-sub">—</span>'}</td>`;
       case 'comment':
         // O comentário da filial é dela, e trava quando ela entrega. Depois
         // disso quem fala é o Inv Comments.
         return `<td class="txt">${askEditable()
-          ? `<input class="rp-in txt" data-k="comment" value="${esc(l.comment)}" placeholder="nota da filial…">`
+          ? `<input class="rp-in txt" data-k="comment" value="${esc(l.comment)}"
+               placeholder="${S.mode === 'daily' ? 'why is this urgent…' : 'branch note…'}">`
           : (esc(l.comment) || '<span class="rp-sub">—</span>')}</td>`;
       case 'invComment':
         return `<td class="txt">${invEditable()
-          ? `<input class="rp-in txt" data-k="invComment" value="${esc(l.invComment || '')}" placeholder="resposta do estoque…">`
+          ? `<input class="rp-in txt" data-k="invComment" value="${esc(l.invComment || '')}" placeholder="inventory reply…">`
           : (esc(l.invComment) || '<span class="rp-sub">—</span>')}</td>`;
       default: return wrap('—');
     }
@@ -448,7 +481,7 @@
       const l = lineByRow(b.closest('tr')); if (!l) return;
       if (b.dataset.act === 'del') {
         const i = S.lines.indexOf(l); if (i < 0) return;
-        S.lines.splice(i, 1); toast(`${l.code} removido`);
+        S.lines.splice(i, 1); toast(`${l.code} removed`);
       } else {
         l.flag = !l.flag;
       }
@@ -460,8 +493,10 @@
     }));
     const ac = tb.querySelector('.rp-acq'); tb.querySelectorAll('.rp-acq').forEach(a => attachAutocomplete(a)); if (ac && S.autoFocusAdd) { ac.focus(); S.autoFocusAdd = false; }
   }
+  window.__rg = renderGrid;   // gancho de teste: forçar um re-render
   function lineByRow(tr) { if (!tr) return null; const code = tr.getAttribute('data-code'); return code ? S.lines.find(l => l.code === code) : null; }
-  function updateCount() { const rows = visibleLines(); const total = rows.reduce((s, l) => s + finalQty(l), 0); $('gridCount').textContent = `${rows.length} line${rows.length === 1 ? '' : 's'} · ${n0(total)} units`; }
+  function updateCount() { const rows = visibleLines(); const total = rows.reduce((s, l) => s + finalQty(l), 0);
+    $('gridCount').textContent = rows.length ? `${rows.length} line${rows.length === 1 ? '' : 's'} · ${n0(total)} units` : ''; }
 
   // ── load suggested (merge, write-protected) ──────────────────────────
   function openLoadModal() {
@@ -502,11 +537,12 @@
   function acSearch(q) {
     q = (q || '').trim().toLowerCase(); if (q.length < 2) return acHide();
     const starts = [], contains = [];
-    let hidDep = 0, hidNoMain = 0;
+    let hidDep = 0, hidNoMain = 0, hidPack = 0;
     for (const p of S.prodList) {
       // Deprecated não entra: 2.744 de 11.259 no catálogo, e a filial não deve
       // pedir o que a empresa já aposentou.
       if (p.status === 'Deprecated') { hidDep++; continue; }
+      if (isPackSku(p.sku)) { hidPack++; continue; }
       // Nem o que Main+Gateway não tem: pedir o que ninguém pode mandar só
       // gera uma linha que morre no check. São 5.909 dos 8.515 ativos.
       const kk = String(p.sku || '').toUpperCase();
@@ -516,7 +552,7 @@
       else if (sku.includes(q) || dc.includes(q) || nm.includes(q)) contains.push(p);
       if (starts.length >= 25) break;
     }
-    acState.hidden = { dep: hidDep, noMain: hidNoMain };
+    acState.hidden = { dep: hidDep, noMain: hidNoMain, pack: hidPack };
     const items = starts.concat(contains).slice(0, 25); acState.items = items; acState.sel = items.length ? 0 : -1;
     const ac = $('rpAc');
     ac.innerHTML = items.length ? items.map((p, i) => {
@@ -525,7 +561,7 @@
     }).join('') : '<div class="none">No product matches</div>';
     // Esconder em silêncio faria o usuário procurar um código que existe e
     // concluir que o sistema está quebrado.
-    ac.innerHTML += `<div class="acfoot">Hidden: deprecated products, and anything Main + Gateway cannot send today.</div>`;
+    ac.innerHTML += `<div class="acfoot">Hidden: deprecated products, carton SKUs, and anything Main + Gateway cannot send today.</div>`;
     ac.querySelectorAll('[data-sku]').forEach(d => d.addEventListener('mousedown', e => { e.preventDefault(); acPick(d.dataset.sku); }));
     positionAc(); ac.classList.add('on');
   }
@@ -616,9 +652,9 @@
   async function placeOrder() {
     if (placing) return;
     const lines = S.lines.map(l => ({ sku: l.code, qty: finalQty(l) })).filter(x => x.qty > 0);
-    if (!lines.length) { toast('Nenhuma linha com quantidade', true); return; }
+    if (!lines.length) { toast('No line has a quantity', true); return; }
     placing = true;
-    const btn = $('btnAdvance'); if (btn) { btn.disabled = true; btn.textContent = 'Enviando ao Cin7…'; }
+    const btn = $('btnAdvance'); if (btn) { btn.disabled = true; btn.textContent = 'Sending to Cin7…'; }
     try {
       const r = await fetch('/api/replenishment/place', {
         method: 'POST',
@@ -631,13 +667,13 @@
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
       S.lastTr = d.number;
-      toast(d.already ? `Já estava colocado: ${d.number}` : `${d.number} criado no Cin7 · ${d.order_lines} linhas`);
+      toast(d.already ? `Already placed: ${d.number}` : `${d.number} created in Cin7 · ${d.order_lines} lines`);
       renderStage();
     } catch (e) {
       // Voltar o estágio: aprovado sem TR seria mentira na tela.
       S.stage = STAGES[S.mode][STAGES[S.mode].length - 2];
       saveDraft(); enterGrid();
-      toast(`Não deu para colocar: ${e.message}`, true);
+      toast(`Could not place it: ${e.message}`, true);
     } finally {
       placing = false;
     }
@@ -667,20 +703,27 @@
   // histórico deixaria de ser histórico. Cada cartão abre e fecha sozinho —
   // uma lista de 40 linhas aberta esconde os outros envios.
   async function showHistory() {
+    // O aviso é regra do Daily; no History ele não descreve nada do que está
+    // na tela. Escondido aqui e não só no render da grade, senão ele sobrevive
+    // à troca de aba.
     $('rpScroll').style.display = 'none'; $('rpStage').style.display = 'none'; $('rpFoot').style.display = 'none';
+    const dn = $('rpDailyNote'); if (dn) dn.style.display = 'none';
     $('rpHistory').style.display = ''; setControls();
-    $('rpHistory').innerHTML = '<div class="rp-hist-empty">Carregando…</div>';
+    $('rpHistory').innerHTML = '<div class="rp-hist-empty">Loading…</div>';
     let rows = [];
     try {
       const r = await fetch(`/api/replenishment/orders?branch=${encodeURIComponent(S.branch.code)}`);
-      rows = (await r.json()).rows || [];
+      // Só o que de fato virou pedido. Uma tentativa que falhou não é
+      // histórico — é ruído de operação, e mostrar erro cru para a filial não
+      // ajuda ninguém a decidir nada.
+      rows = ((await r.json()).rows || []).filter(o => o.status !== 'FAILED' && o.cin7_number);
     } catch (e) {
-      $('rpHistory').innerHTML = `<div class="rp-hist-empty">Não deu para ler o histórico.<br><span class="rp-sub">${esc(e.message)}</span></div>`;
+      $('rpHistory').innerHTML = `<div class="rp-hist-empty">Could not load the history.<br><span class="rp-sub">${esc(e.message)}</span></div>`;
       return;
     }
     if (!rows.length) {
-      $('rpHistory').innerHTML = `<div class="rp-hist-empty">Nenhum pedido colocado ainda para ${esc(S.branch.name)}.<br>
-        <span class="rp-sub">Quando um plano é aprovado, o TR gerado fica registrado aqui, congelado nos valores do envio.</span></div>`;
+      $('rpHistory').innerHTML = `<div class="rp-hist-empty">No order placed yet for ${esc(S.branch.name)}.<br>
+        <span class="rp-sub">When a plan is approved the TR is recorded here, frozen at the values that were sent.</span></div>`;
       return;
     }
     histRows = rows;
@@ -691,21 +734,20 @@
 
   function histCard(o, i) {
     const when = o.ordered_at || o.created_at;
-    const bad = o.status === 'FAILED';
+    const bad = false;
     const open = histOpen.has(i);
     return `<div class="rp-h2 ${bad ? 'is-bad' : ''}" data-i="${i}">
       <div class="rp-h2-head">
-        <button class="rp-h2-tog" data-tog="${i}" title="${open ? 'Fechar' : 'Abrir as linhas'}">${open ? '▾' : '▸'}</button>
+        <button class="rp-h2-tog" data-tog="${i}" title="${open ? 'Collapse' : 'Expand the lines'}">${open ? '▾' : '▸'}</button>
         <span class="rp-h2-tr">${esc(o.cin7_number || '—')}</span>
         <span class="badge ${o.mode === 'daily' ? 'is-daily' : 'is-weekly'}">${o.mode === 'daily' ? 'Daily' : 'Weekly'}</span>
         <span class="rp-h2-when">${esc(fmtWhen(when))}</span>
-        <span class="rp-h2-meta">${o.line_count} linha${o.line_count === 1 ? '' : 's'} · ${n0(o.total_units)} un</span>
+        <span class="rp-h2-meta">${o.line_count} line${o.line_count === 1 ? '' : 's'} · ${n0(o.total_units)} units</span>
         <span class="rp-h2-route">${esc(o.from_location || '')} › ${esc(o.to_location || o.branch_name || '')}</span>
         <span class="sp-gap"></span>
         <span class="rp-h2-st ${bad ? 'bad' : ''}">${esc(o.status)}</span>
         ${o.cin7_number ? `<button class="ui-act" data-print="${i}">Print</button>` : ''}
       </div>
-      ${bad && o.error ? `<div class="rp-h2-err">${esc(o.error)}</div>` : ''}
       ${open ? histLines(o) : ''}
     </div>`;
   }
@@ -740,7 +782,7 @@
   function printOrder(o) {
     const lines = Array.isArray(o.lines) ? o.lines : [];
     const w = window.open('', '_blank', 'width=820,height=900');
-    if (!w) { toast('O navegador bloqueou a janela de impressão', true); return; }
+    if (!w) { toast('The browser blocked the print window', true); return; }
     w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(o.cin7_number || 'Transfer')}</title>
       <style>
         body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#1b2230;margin:26px}
@@ -755,7 +797,7 @@
       </style>
       <h1>${esc(o.cin7_number || '—')} · ${esc(o.from_location || '')} › ${esc(o.to_location || o.branch_name || '')}</h1>
       <div class="sub">${o.mode === 'daily' ? 'Daily' : 'Weekly'} · ${esc(fmtWhen(o.ordered_at || o.created_at))}
-        · ${o.line_count} linhas · ${n0(o.total_units)} unidades · ${esc(o.status)}${o.created_by ? ' · ' + esc(o.created_by) : ''}</div>
+        · ${o.line_count} lines · ${n0(o.total_units)} units · ${esc(o.status)}${o.created_by ? ' · ' + esc(o.created_by) : ''}</div>
       <table><thead><tr><th>Rapid Code</th><th class="n">Qty</th></tr></thead><tbody>
       ${lines.map(l => `<tr><td>${esc(l.sku)}</td><td class="n">${n0(l.qty)}</td></tr>`).join('')}
       </tbody><tfoot><tr><td>Total</td><td class="n">${n0(o.total_units)}</td></tr></tfoot></table>`);
