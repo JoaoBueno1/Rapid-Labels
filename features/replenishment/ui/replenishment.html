@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=18">
+<link rel="stylesheet" href="replenishment.css?v=21">
 <script defer src="/shared/rail.js?v=7"></script>
 </head>
 <body>
@@ -53,8 +53,7 @@
       <span class="rp-seg" id="viewSeg">
         <button data-v="weekly" class="on">Weekly</button>
         <button data-v="daily">Daily</button>
-        <button data-v="averages">Averages</button>
-          <button data-v="history">History</button>
+        <button data-v="history">History</button>
       </span>
       <span class="sp-gap"></span>
       <input type="search" id="gridSearch" placeholder="Find on sheet…" style="max-width:190px">
@@ -66,7 +65,6 @@
 
     <!-- stage / timeline -->
     <div class="rp-note" id="rpDailyNote" style="display:none"></div>
-      <div id="rpAvg" style="display:none"></div>
       <div class="rp-stage" id="rpStage"></div>
 
     <!-- the working grid (weekly / daily) -->
@@ -88,15 +86,18 @@
 
 <!-- ══ AVERAGES (consultative, read-only) ════════════════════════════ -->
 <section class="sp-view" data-view="averages">
-  <div class="sp-bar">
-    <input type="search" id="avSearch" placeholder="Filter SKU / Rapid Code…" style="max-width:260px">
-    <select id="avBranch"><option value="">All branches</option></select>
-    <button class="sp-chip is-on" id="avNonZero">Non-zero only</button>
-    <span class="sp-gap"></span>
-    <span class="sp-count" id="avCount"></span>
-    <span class="rp-note">Read-only — the averages the engine uses. Updated by the office import.</span>
+  <div class="sp-view-inner">
+    <div class="sp-bar">
+      <span class="rp-seg" id="avSeg">
+        <button data-a="stored" class="on">Engine averages</button>
+        <button data-a="measured">Measured from sales</button>
+        <button data-a="reps">Sales rep → branch</button>
+      </span>
+      <span class="sp-gap"></span>
+      <span class="sp-count" id="avCount"></span>
+    </div>
+    <div id="avBody"></div>
   </div>
-  <div class="sp-scroll"><table class="sp-grid rp-grid" id="avGrid"></table></div>
 </section>
 
 </main>
@@ -220,6 +221,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=20"></script>
+<script src="replenishment-app.js?v=23"></script>
 </body>
 </html>

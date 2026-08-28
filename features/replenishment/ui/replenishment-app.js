@@ -15,6 +15,9 @@
   const n0 = v => (v == null || isNaN(v)) ? '—' : Math.round(v).toLocaleString('en-AU');
   const n1 = v => (v == null || isNaN(v)) ? '—' : (Math.round(v * 10) / 10).toLocaleString('en-AU', { minimumFractionDigits: 1 });
   const toast = (m, bad) => { const t = $('toast'); t.textContent = m; t.className = 'sp-toast is-on' + (bad ? ' bad' : ''); setTimeout(() => t.className = 'sp-toast', 2600); };
+  // Local: o stock-planning tem a sua, e importar de lá acoplaria dois
+  // módulos por causa de três linhas.
+  const debounce = (fn, ms = 180) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
   const clampInt = v => { const n = Math.round(Number(v)); return isFinite(n) && n > 0 ? n : 0; };
   const BLANK_ROWS = 10;
 
@@ -250,7 +253,6 @@
     document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
     closeSide();
     if (v === 'history') { showHistory(); return; }
-    if (v === 'averages') { showAverages(); return; }
     S.mode = v; S.stage = 'draft'; S.lines = [];
     const d = loadDraft();
     if (d && d.lines && d.lines.length) restoreDraft(d);
@@ -261,7 +263,6 @@
   }
   function enterGrid() {
     $('rpScroll').style.display = ''; $('rpHistory').style.display = 'none'; $('rpStage').style.display = ''; $('rpFoot').style.display = '';
-    if ($('rpAvg')) $('rpAvg').style.display = 'none';
     // O diário tem regra própria e ela precisa estar na tela, não no treinamento.
     const note = $('rpDailyNote');
     if (note) {
@@ -754,94 +755,7 @@
     list.unshift(snap); try { localStorage.setItem(histKey(), JSON.stringify(list.slice(0, 60))); } catch (_) {}
   }
 
-  // ── Averages ────────────────────────────────────────────────────────────
-  // Existe para o planejador CONFERIR o número que vira compra, sem sair da
-  // tela e sem pedir para alguém rodar uma consulta.
-  //
-  // Fonte: cin7_mirror.v_sales_demand_line — 13 meses contíguos com sales_rep
-  // e location em 100% das linhas. A rota antiga (sale_lines + sales_orders)
-  // NÃO serve: o location existe em 27,5% dos pedidos e o viés é cronológico,
-  // então uma "média de 6 meses" por ali seria "os últimos 2 meses" disfarçada.
-  let avgState = { months: 6, tab: 'sku' };
-  async function showAverages() {
-    $('rpScroll').style.display = 'none'; $('rpStage').style.display = 'none';
-    $('rpFoot').style.display = 'none'; $('rpHistory').style.display = 'none';
-    const dn = $('rpDailyNote'); if (dn) dn.style.display = 'none';
-    $('rpAvg').style.display = ''; setControls();
-    $('rpAvg').innerHTML = '<div class="rp-hist-empty">Loading…</div>';
-    try {
-      const qs = new URLSearchParams({ months: avgState.months });
-      if (avgState.tab === 'sku' && S.branch) qs.set('location', S.branch.name);
-      const [a, reps] = await Promise.all([
-        fetch(`/api/replenishment/averages?${qs}`).then(r => r.json()),
-        fetch(`/api/replenishment/reps`).then(r => r.json()),
-      ]);
-      renderAvgView(a, reps);
-    } catch (e) {
-      $('rpAvg').innerHTML = `<div class="rp-hist-empty">Could not load averages.<br><span class="rp-sub">${esc(e.message)}</span></div>`;
-    }
-  }
-  // renderAvgView e não renderAverages: o módulo JÁ tinha uma renderAverages
-  // (a tabela consultiva do Settings, linha ~922). Declaração de função
-  // posterior sobrescreve a anterior, então a minha nunca era chamada — a
-  // tela ficava em "Loading…" sem erro nenhum, que é o pior tipo de falha.
-  function renderAvgView(a, reps) {
-    const sp = a.span || {};
-    // O aviso vem ANTES do número, não depois: um número lido sem o contexto
-    // já virou decisão antes de o rodapé ser lido.
-    const warn = `<div class="rp-note rp-note-info">
-      History runs <b>${esc(String(sp.first_day || '').slice(0, 10))}</b> to <b>${esc(String(sp.last_day || '').slice(0, 10))}</b>
-      — ${sp.months} months, the most this data goes back.
-      ${sp.partial_month ? '<b>The current month is still running</b>, so counting it as a full month pulls the average down.' : ''}
-      Sales swing about 2× across the year, so the window you pick changes the average by up to 47%.</div>`;
-
-    const win = [3, 6, 12].map(m => `<button class="sp-chip${avgState.months === m ? ' is-on' : ''}" data-mon="${m}">${m} months</button>`).join('');
-    const tabs = [['sku', 'By SKU'], ['rep', 'Sales rep → branch']]
-      .map(([k, l]) => `<button class="sp-chip${avgState.tab === k ? ' is-on' : ''}" data-atab="${k}">${l}</button>`).join('');
-
-    const body = avgState.tab === 'sku' ? avgSkuTable(a) : avgRepTable(reps);
-    $('rpAvg').innerHTML = `<div class="sp-bar">${tabs}<span class="rp-sep"></span>${win}
-      <span class="sp-gap"></span><span class="sp-count">${esc(avgState.tab === 'sku' ? (a.location || 'all branches') : (reps.rows || []).length + ' reps')}</span></div>
-      ${warn}${body}`;
-    $('rpAvg').querySelectorAll('[data-mon]').forEach(b => b.addEventListener('click', () => { avgState.months = +b.dataset.mon; showAverages(); }));
-    $('rpAvg').querySelectorAll('[data-atab]').forEach(b => b.addEventListener('click', () => { avgState.tab = b.dataset.atab; showAverages(); }));
-    $('rpAvg').querySelectorAll('select.rp-assign').forEach(sel => sel.addEventListener('change', async () => {
-      const rep = sel.dataset.rep;
-      sel.disabled = true;
-      try {
-        const r = await fetch(`/api/replenishment/reps/${encodeURIComponent(rep)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'x-sp-user': (localStorage.getItem('rp.user') || 'planner') },
-          body: JSON.stringify({ branch_code: sel.value || null,
-            inferred: { branch: sel.dataset.inf, pct: Number(sel.dataset.pct), orders: Number(sel.dataset.ord) } }),
-        });
-        if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
-        sel.closest('tr').classList.add('rp-decided');
-        toast(`${rep} → ${sel.options[sel.selectedIndex].text}`);
-      } catch (e) {
-        toast(`Could not save: ${e.message}`, true);
-        showAverages();   // recarrega para a tela não mentir sobre o que ficou salvo
-      } finally { sel.disabled = false; }
-    }));
-  }
-  function avgSkuTable(a) {
-    const rows = (a.rows || []).slice(0, 400);
-    if (!rows.length) return '<div class="rp-hist-empty">No sales in this window for this branch.</div>';
-    return `<div class="sp-scroll"><table class="sp-grid rp-grid">
-      <thead><tr><th class="txt" style="width:180px">Rapid Code</th><th class="txt">Product</th>
-        <th class="num" style="width:110px">Avg / month</th><th class="num" style="width:96px">Units</th>
-        <th class="num" style="width:86px">Orders</th>
-        <th class="num" style="width:130px">Months with sales</th></tr></thead>
-      <tbody>${rows.map(r => `<tr>
-        <td class="code txt">${esc(r.sku)}</td><td class="txt">${esc(r.name || '')}</td>
-        <td class="num"><b>${n1(r.avg_month)}</b></td><td class="num">${n0(r.qty)}</td>
-        <td class="num">${n0(r.orders)}</td>
-        <td class="num ${r.months_with_sales < avgState.months / 2 ? 'rp-thin' : ''}"
-            title="${r.months_with_sales} of the ${avgState.months} months in the window had a sale">
-          ${r.months_with_sales} / ${avgState.months}</td></tr>`).join('')}</tbody></table></div>`;
-  }
-  function avgRepTable(reps) {
-    const rows = reps.rows || [];
+  function avRepTable(rows) {
     const LBL = { high: 'solid', medium: 'fair', low: 'split', inactive: 'inactive', not_a_person: 'not a person' };
     // NULL é resposta válida e precisa estar na lista: "não é rep de filial"
     // cobre o pessoal do Main, a razão social e o canal de API.
@@ -874,6 +788,30 @@
       </tr>`).join('')}</tbody></table></div>`;
   }
 
+  // Gravar a alocação. Um rep por vez, direto no change — não há botão de
+  // salvar de propósito: é uma decisão por linha, e um formulário com 40
+  // seletores e um Save no fim convida a perder tudo num refresh.
+  function avRepWire() {
+    $('avBody').querySelectorAll('select.rp-assign').forEach(sel => sel.addEventListener('change', async () => {
+      const rep = sel.dataset.rep;
+      sel.disabled = true;
+      try {
+        const r = await fetch(`/api/replenishment/reps/${encodeURIComponent(rep)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-sp-user': (localStorage.getItem('rp.user') || 'planner') },
+          body: JSON.stringify({ branch_code: sel.value || null,
+            inferred: { branch: sel.dataset.inf, pct: Number(sel.dataset.pct), orders: Number(sel.dataset.ord) } }),
+        });
+        if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
+        sel.closest('tr').classList.add('rp-decided');
+        toast(`${rep} → ${sel.options[sel.selectedIndex].text}`);
+      } catch (e) {
+        toast(`Could not save: ${e.message}`, true);
+        renderAverages();   // recarrega para a tela não mentir sobre o que ficou salvo
+      } finally { sel.disabled = false; }
+    }));
+  }
+
   // ── History ─────────────────────────────────────────────────────────────
   // Lê do BANCO, não do localStorage. O snapshot foi congelado no momento do
   // envio: recalcular a partir do estoque de hoje daria outro número e o
@@ -885,7 +823,6 @@
     // à troca de aba.
     $('rpScroll').style.display = 'none'; $('rpStage').style.display = 'none'; $('rpFoot').style.display = 'none';
     const dn = $('rpDailyNote'); if (dn) dn.style.display = 'none';
-    if ($('rpAvg')) $('rpAvg').style.display = 'none';
     $('rpHistory').style.display = ''; setControls();
     $('rpHistory').innerHTML = '<div class="rp-hist-empty">Loading…</div>';
     let rows = [];
@@ -1004,16 +941,112 @@
   function weekLabel() { const d = new Date(), j = new Date(d.getFullYear(), 0, 1); const wk = Math.ceil((((d - j) / 86400000) + j.getDay() + 1) / 7); return `${d.getFullYear()}-W${String(wk).padStart(2, '0')}`; }
 
   // ── averages tab (consultative) ──────────────────────────────────────
+  // ── Averages (aba do topo) ──────────────────────────────────────────────
+  // Aqui é consulta: filtrar, comparar, entender de onde vem o número. A tela
+  // de dentro da filial é para OPERAR, e por isso não tem nada disto.
+  //
+  // Três modos, porque são três perguntas diferentes:
+  //   stored   — o que o motor usa hoje (as colunas pré-calculadas)
+  //   measured — o que a venda diz, na janela que você escolher
+  //   reps     — quem atende qual filial, que é o que corrige a régua
+  const AV = { tab: 'stored', months: 6, branch: '', q: '', nonZero: true };
+
   function renderAverages() {
-    const q = ($('avSearch').value || '').toLowerCase(), bf = $('avBranch').value, nz = $('avNonZero').classList.contains('is-on');
-    const C = [['code', 'Rapid Code', 128], ['name', 'Product', 240]].concat(BRANCHES.map(b => [b.code, b.name, 90]));
-    let rows = S.avg.slice(); if (q) rows = rows.filter(r => String(r.product || '').toLowerCase().includes(q));
-    rows = rows.map(r => { const p = S.prod[String(r.product || '').toUpperCase()] || {}; const vals = {}; BRANCHES.forEach(b => { vals[b.code] = pickAvg(r, b); }); return { code: r.product, name: p.name || '', vals }; });
-    if (nz) rows = rows.filter(r => BRANCHES.some(b => r.vals[b.code] > 0)); if (bf) rows = rows.filter(r => r.vals[bf] > 0);
-    rows = rows.slice(0, 600);
-    const head = '<thead><tr>' + C.map(c => `<th class="${c[0] === 'code' || c[0] === 'name' ? 'txt' : 'num'}" style="width:${c[2]}px">${c[1]}</th>`).join('') + '</tr></thead>';
-    const body = rows.map(r => '<tr><td class="code txt">' + esc(r.code) + '</td><td class="txt">' + esc(String(r.name).slice(0, 44)) + '</td>' + BRANCHES.map(b => `<td class="num">${r.vals[b.code] > 0 ? n1(r.vals[b.code]) : '<span style="color:#c3ccda">·</span>'}</td>`).join('') + '</tr>').join('');
-    $('avGrid').innerHTML = head + '<tbody>' + body + '</tbody>'; $('avCount').textContent = `${rows.length} shown`;
+    const seg = $('avSeg');
+    if (seg) seg.querySelectorAll('[data-a]').forEach(b => b.classList.toggle('on', b.dataset.a === AV.tab));
+    if (AV.tab === 'stored') return avStored();
+    if (AV.tab === 'measured') return avMeasured();
+    return avReps();
+  }
+  // Uma barra de filtro só, montada conforme o modo — três barras diferentes
+  // ensinariam três lugares para procurar a mesma coisa.
+  function avBar(opts) {
+    const br = `<select id="avBranch"><option value="">All branches</option>` +
+      BRANCHES.map(b => `<option value="${esc(b.code)}"${AV.branch === b.code ? ' selected' : ''}>${esc(b.name)}</option>`).join('') + '</select>';
+    const win = [3, 6, 12].map(m => `<button class="sp-chip${AV.months === m ? ' is-on' : ''}" data-avm="${m}">${m}m</button>`).join('');
+    return `<div class="sp-bar rp-avbar">
+      ${opts.search ? `<input type="search" id="avSearch" placeholder="Filter SKU or product…" style="max-width:250px" value="${esc(AV.q)}">` : ''}
+      ${opts.branch ? br : ''}
+      ${opts.window ? `<span class="rp-sep"></span>${win}` : ''}
+      ${opts.nonZero ? `<button class="sp-chip${AV.nonZero ? ' is-on' : ''}" id="avNonZero">Non-zero only</button>` : ''}
+      <span class="sp-gap"></span><span class="sp-count" id="avNote"></span></div>`;
+  }
+  function avWire() {
+    const q = $('avSearch'); if (q) q.addEventListener('input', debounce(() => { AV.q = q.value; renderAverages(); }));
+    const b = $('avBranch'); if (b) b.addEventListener('change', () => { AV.branch = b.value; renderAverages(); });
+    const nz = $('avNonZero'); if (nz) nz.addEventListener('click', () => { AV.nonZero = !AV.nonZero; renderAverages(); });
+    $('avBody').querySelectorAll('[data-avm]').forEach(x => x.addEventListener('click', () => { AV.months = +x.dataset.avm; renderAverages(); }));
+  }
+
+  /** O que o motor usa hoje. */
+  function avStored() {
+    let rows = S.avg.slice();
+    if (AV.q) rows = rows.filter(r => String(r.product || '').toLowerCase().includes(AV.q.toLowerCase()));
+    rows = rows.map(r => { const p = S.prod[String(r.product || '').toUpperCase()] || {};
+      const vals = {}; BRANCHES.forEach(b => { vals[b.code] = pickAvg(r, b); });
+      return { code: r.product, name: p.name || '', vals }; });
+    if (AV.nonZero) rows = rows.filter(r => BRANCHES.some(b => r.vals[b.code] > 0));
+    if (AV.branch) rows = rows.filter(r => r.vals[AV.branch] > 0);
+    const total = rows.length; rows = rows.slice(0, 600);
+    $('avBody').innerHTML = avBar({ search: true, branch: true, nonZero: true }) +
+      `<div class="rp-note rp-note-info">These are the stored columns the engine reads. They are a snapshot from an
+       office import — the window they cover is not recorded anywhere, so this screen will not claim one.
+       Use <b>Measured from sales</b> to see what the sales actually say for a window you choose.</div>
+       <div class="sp-scroll"><table class="sp-grid rp-grid">
+       <thead><tr><th class="txt" style="width:150px">Rapid Code</th><th class="txt">Product</th>` +
+       BRANCHES.map(b => `<th class="num" style="width:90px">${esc(b.name)}</th>`).join('') + `</tr></thead><tbody>` +
+       rows.map(r => `<tr><td class="code txt">${esc(r.code)}</td><td class="txt">${esc(String(r.name).slice(0, 46))}</td>` +
+         BRANCHES.map(b => `<td class="num">${r.vals[b.code] > 0 ? n1(r.vals[b.code]) : '<span class="rp-sub">·</span>'}</td>`).join('') + '</tr>').join('') +
+       '</tbody></table></div>';
+    $('avCount').textContent = `${n0(total)} SKUs${total > 600 ? ' · showing 600' : ''}`;
+    avWire();
+  }
+
+  /** O que a venda diz, na janela escolhida. */
+  async function avMeasured() {
+    $('avBody').innerHTML = avBar({ search: true, branch: true, window: true }) + '<div class="rp-hist-empty">Loading…</div>';
+    avWire();
+    const bn = (BRANCHES.find(b => b.code === AV.branch) || {}).name || '';
+    const qs = new URLSearchParams({ months: AV.months }); if (bn) qs.set('location', bn);
+    let d;
+    try { d = await fetch(`/api/replenishment/averages?${qs}`).then(r => r.json()); }
+    catch (e) { $('avBody').innerHTML = avBar({ search: true, branch: true, window: true }) +
+      `<div class="rp-hist-empty">Could not load.<br><span class="rp-sub">${esc(e.message)}</span></div>`; avWire(); return; }
+    let rows = d.rows || [];
+    if (AV.q) { const q = AV.q.toLowerCase(); rows = rows.filter(r => (r.sku + ' ' + (r.name || '')).toLowerCase().includes(q)); }
+    const total = rows.length; rows = rows.slice(0, 600);
+    const sp = d.span || {};
+    $('avBody').innerHTML = avBar({ search: true, branch: true, window: true }) +
+      `<div class="rp-note rp-note-info">History runs <b>${esc(String(sp.first_day || '').slice(0, 10))}</b> to
+       <b>${esc(String(sp.last_day || '').slice(0, 10))}</b> — ${sp.months} months, all there is.
+       ${sp.partial_month ? '<b>This month is still running</b>, so counting it whole drags the average down.' : ''}
+       Sales swing about 2× across the year, so the window changes the average by up to 47%.</div>
+       <div class="sp-scroll"><table class="sp-grid rp-grid">
+       <thead><tr><th class="txt" style="width:150px">Rapid Code</th><th class="txt">Product</th>
+       <th class="num" style="width:110px">Avg / month</th><th class="num" style="width:90px">Units</th>
+       <th class="num" style="width:80px">Orders</th><th class="num" style="width:120px">Months w/ sales</th></tr></thead><tbody>` +
+       rows.map(r => `<tr><td class="code txt">${esc(r.sku)}</td><td class="txt">${esc(String(r.name || '').slice(0, 46))}</td>
+         <td class="num"><b>${n1(r.avg_month)}</b></td><td class="num">${n0(r.qty)}</td><td class="num">${n0(r.orders)}</td>
+         <td class="num ${r.months_with_sales < AV.months / 2 ? 'rp-thin' : ''}"
+             title="${r.months_with_sales} of the ${AV.months} months in the window had a sale">${r.months_with_sales} / ${AV.months}</td></tr>`).join('') +
+       '</tbody></table></div>';
+    $('avCount').textContent = `${n0(total)} SKUs · ${AV.months}m${bn ? ' · ' + esc(bn) : ' · all branches'}`;
+    avWire();
+  }
+
+  /** Quem atende qual filial. */
+  async function avReps() {
+    $('avBody').innerHTML = avBar({ search: true }) + '<div class="rp-hist-empty">Loading…</div>';
+    avWire();
+    let d;
+    try { d = await fetch('/api/replenishment/reps').then(r => r.json()); }
+    catch (e) { $('avBody').innerHTML = avBar({ search: true }) +
+      `<div class="rp-hist-empty">Could not load.<br><span class="rp-sub">${esc(e.message)}</span></div>`; avWire(); return; }
+    let rows = d.rows || [];
+    if (AV.q) { const q = AV.q.toLowerCase(); rows = rows.filter(r => r.rep.toLowerCase().includes(q)); }
+    $('avBody').innerHTML = avBar({ search: true }) + avRepTable(rows);
+    $('avCount').textContent = `${rows.length} reps · ${rows.filter(r => r.decided).length} assigned`;
+    avWire(); avRepWire();
   }
 
   // ── settings ─────────────────────────────────────────────────────────
@@ -1063,7 +1096,7 @@
     document.querySelectorAll('.sp-tab').forEach(b => b.classList.toggle('is-on', b.dataset.view === v));
     document.querySelectorAll('.sp-view').forEach(s => s.classList.toggle('is-on', s.dataset.view === v));
     if (v === 'branches') closeSide();
-    if (v === 'averages') { $('avBranch').innerHTML = '<option value="">All branches</option>' + BRANCHES.map(b => `<option value="${b.code}">${b.name}</option>`).join(''); renderAverages(); closeSide(); }
+    if (v === 'averages') { renderAverages(); closeSide(); }
   }
   function wire() {
     document.querySelectorAll('.sp-tab').forEach(b => b.addEventListener('click', () => showTop(b.dataset.view)));
@@ -1081,8 +1114,7 @@
     document.querySelectorAll('[data-close-load]').forEach(b => b.addEventListener('click', () => $('mdLoad').classList.remove('is-on')));
     document.querySelectorAll('[data-close-cols]').forEach(b => b.addEventListener('click', () => $('mdCols').classList.remove('is-on')));
     $('gridSearch').addEventListener('input', e => { S.search = e.target.value; renderGrid(); });
-    ['avSearch', 'avBranch'].forEach(id => $(id).addEventListener('input', renderAverages));
-    $('avNonZero').addEventListener('click', function () { this.classList.toggle('is-on'); renderAverages(); });
+    document.querySelectorAll('#avSeg [data-a]').forEach(b => b.addEventListener('click', () => { AV.tab = b.dataset.a; renderAverages(); }));
     document.addEventListener('keydown', e => { if (e.key === 'Escape') { ['mdSettings', 'mdLoad', 'mdCols'].forEach(m => $(m).classList.remove('is-on')); closeSide(); } });
     window.addEventListener('scroll', () => { if ($('rpAc').classList.contains('on')) positionAc(); }, true);
   }
