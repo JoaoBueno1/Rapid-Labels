@@ -15,7 +15,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const S = {
   view: 'overview', ov: 'health',
   projects: { q:'', status:'ACTIVE', rep:'', branch:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
-  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), line:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
+  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), line:'', scope:(localStorage.getItem('sp.scope')||''), weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { muted:false, supplier:'' },
   buy:      { supplier:'', late:false },
@@ -768,6 +768,7 @@ async function loadSupply() {
   if (s.supplier) qs.set('supplier', s.supplier);
   if (s.view) qs.set('view', s.view);
   if (s.line) qs.set('line', s.line);
+  if (s.scope) qs.set('scope', s.scope);
   if (s.sort === 'risk') qs.set('sort','risk');
   if (s.q) qs.set('q', s.q);
   if (s.risk) qs.set('only','risk');
@@ -800,6 +801,15 @@ async function loadSupply() {
       + (S.supply.view && S.supply.view !== 'bom' ? ` · ${VIEW_WHY[S.supply.view]}` : '')
       + ` · ${spData.ms} ms`
       + (hist ? ` · ${hist.weeks.length} wk back in ${hist.ms} ms` : '');
+    // O seletor vem da rota: as filiais e as redes são definidas lá, e
+    // duplicar a lista aqui garantiria que uma das duas ficasse velha.
+    const sel = $('#spScope');
+    if (spData.scopes && sel.options.length <= 1) {
+      sel.innerHTML = '<option value="">Planning file (buy)</option>'
+        + spData.scopes.map(x => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join('');
+      sel.value = S.supply.scope || '';
+    }
+    scopeNote(spData.scope);
     renderSupply();
   } catch (e) { $('#spCount').textContent=''; toast(e.message, true); }
 }
@@ -862,6 +872,23 @@ const VIEW_WHY = {
   project: 'project demand is committed against these',
 };
 
+/* O aviso do escopo. Ele existe por um fato medido e não por prudência: não
+   há UMA alocação de PO por filial gravada — 0 de 1.466 linhas em aberto. O
+   contêiner chega no Main e é distribuído depois. Então dentro de um escopo de
+   filial a coluna Incoming continua sendo a do Main, e sem dizer isso o
+   planejador contaria como se a carga já fosse dele. */
+function scopeNote(sc) {
+  const el = $('#spScopeNote');
+  if (!sc) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<b>${esc(sc.label)}</b> — stock and demand are this scope's`
+    + ` (${sc.codes.join(' + ')}), measured over the last ${sc.months} months`
+    + ` and counting a sale when the location <em>or</em> the rep belongs here.`
+    + (sc.incoming_is_main
+      ? ` <span class="sp-note-warn">Incoming is still the Main Warehouse's: no purchase order is allocated to a branch yet, so what is on the water is not this scope's until someone splits it.</span>`
+      : '');
+}
+
 const WRK = [
   ['r-open', 'Opening Inventory Level', c => c.o],
   ['r-in',   'Inventory In:',           c => c.i],
@@ -893,8 +920,8 @@ function renderSupply() {
   const W = d.weeks;
   const HW = (spHist && spHist.weeks) || [];
   const head = `<thead><tr>
-    <th style="width:190px">SKU</th><th class="n" style="width:70px">SOH</th>
-    <th class="n" style="width:62px">Wk/Avg</th><th class="n" style="width:52px">Mths</th>
+    <th style="width:190px">SKU</th><th class="n" style="width:${spData.scope?116:70}px">SOH</th>
+    <th class="n" style="width:${spData.scope?104:62}px">Wk/Avg</th><th class="n" style="width:52px">Mths</th>
     <th class="n" style="width:60px">TBA</th><th class="n" style="width:74px">Incoming</th>
     <th class="n" style="width:52px">Target</th>
     ${HW.map(w=>`<th class="wk pastw" title="Realizado — o que de fato aconteceu nesta semana">
@@ -917,9 +944,14 @@ function renderSupply() {
         ? `<span class="sup-to">→ <b data-goto="${esc(r.superseded_by)}">${esc(r.superseded_by)}</b></span>` : '';
     const skuRow = `<tr class="sk ${lc}" data-sku="${esc(r.sku_key)}">
       <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${badgeMark(r)}${bomMark(r)}${sup}${r.line?`<span class="sp-line" title="Product line">${esc(r.line)}</span>`:''}</td>
-      <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}</td>
+      <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}${
+        r.file_soh!=null&&r.file_soh!==r.soh
+          ? `<span class="meas" title="the whole company holds ${n0(r.file_soh)}">${n0(r.file_soh)}</span>` : ''}</td>
       <td class="n${r.badge_drift?' drift':''}"${r.badge_drift?` title="${esc(r.badge_why||'')}"`:''}
-        >${cellSku(r,'wk_avg',n1(r.wk_avg))}${r.badge_drift
+        >${r.scope_wk!=null ? n1(r.scope_wk) : cellSku(r,'wk_avg',n1(r.wk_avg))}${
+          r.scope_wk!=null && r.file_wk!=null
+            ? `<span class="meas" title="the planning file says ${n1(r.file_wk)} a week for the whole company${
+                r.scope_by_rep ? ` · ${r.scope_by_rep} of ${r.scope_by_loc+r.scope_by_rep} sale lines here came in through a rep, shipped from Main` : ''}">${n1(r.file_wk)}</span>` : ''}${r.scope_wk==null && r.badge_drift
           // O digitado fica editável; a venda medida entra ao lado, fantasma.
           // Sem isto, 50 linhas de NO FORECAST abrem a tela mostrando zero em
           // tudo — e zero é exatamente o que o planejador ignora.
@@ -1037,6 +1069,9 @@ $('#spSort').addEventListener('click', e => {
 $('#spRisk').addEventListener('click', e => { S.supply.risk = !S.supply.risk; e.currentTarget.classList.toggle('is-on', S.supply.risk); loadSupply(); });
 $('#spLife').addEventListener('change', e => { S.supply.life = e.target.value; loadSupply(); });
 $('#spLine').addEventListener('change', e => { S.supply.line = e.target.value; loadSupply(); });
+$('#spScope').addEventListener('change', e => {
+  S.supply.scope = e.target.value; localStorage.setItem('sp.scope', e.target.value); loadSupply();
+});
 $('#spView').addEventListener('change', e => {
   S.supply.view = e.target.value; localStorage.setItem('sp.view', e.target.value);
   // Entrar no modo BOM abre a expansão sozinho: o motivo de entrar nele é ver

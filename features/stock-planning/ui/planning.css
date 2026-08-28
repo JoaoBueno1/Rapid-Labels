@@ -598,3 +598,19 @@ tr.al-row:hover td{background:var(--card-2)}
 /* A linha de produto fica discreta: é contexto, não alerta. */
 .sp-line{margin-left:8px;font:500 9.5px/15px var(--sans);color:var(--mut-2);
   border:1px solid var(--line-3);border-radius:3px;padding:0 4px}
+
+/* O aviso do escopo. Fica entre a barra e a grade porque é condição de leitura
+   da grade inteira — num rodapé ninguém lê antes de decidir. */
+.sp-note{margin:0 0 6px;padding:5px 9px;border-radius:4px;
+  background:var(--xl-info,#e7effa);border:1px solid var(--line-3);
+  font:400 11px/16px var(--sans);color:var(--ink-2)}
+.sp-note b{color:var(--xl-info-ink,#1f4e79)}
+.sp-note em{font-style:normal;font-weight:700}
+.sp-note-warn{color:var(--xl-warn-ink);font-weight:500}
+
+/* Número não quebra. A célula de SOH no escopo carrega dois valores — o da
+   filial e o da empresa — e a 70px ela envolvia em duas linhas, levando a
+   grade de 18px para 27px. O pedido era explícito: mostrar o segundo valor
+   sem aumentar o espaço da linha. */
+.sp-supply td.n{white-space:nowrap}
+.sp-supply .meas{white-space:nowrap}

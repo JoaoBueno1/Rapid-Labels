@@ -376,6 +376,66 @@ function register(app) {
     res.json(row);
   }));
 
+  /* ── ESCOPO DA PREVISÃO ──────────────────────────────────────────────
+     Para quem esta projeção está sendo feita. O padrão ('') é o de sempre: a
+     média digitada no arquivo de planejamento e o estoque somado — a régua de
+     compra. Os outros trocam DUAS coisas ao mesmo tempo, e trocar só uma seria
+     pior que não trocar nenhuma: a demanda daquele conjunto e o estoque dele.
+
+     'Sydney network' são as filiais que o eixo de Sydney atende. Coffs sai à
+     parte porque fica no meio do caminho para Brisbane e a resposta muda:
+     medido em 6 meses, a rede de Sydney vende 124.689 e com Coffs vai a
+     159.792 — 28% a mais decidindo sobre o mesmo estoque. */
+  const SCOPES = {
+    MAIN:          { label: 'Main Warehouse',        codes: ['MAIN'] },
+    SYD:           { label: 'Sydney',                codes: ['SYD'] },
+    BNE:           { label: 'Brisbane',              codes: ['BNE'] },
+    MEL:           { label: 'Melbourne',             codes: ['MEL'] },
+    CNS:           { label: 'Cairns',                codes: ['CNS'] },
+    CFS:           { label: 'Coffs Harbour',         codes: ['CFS'] },
+    HBA:           { label: 'Hobart',                codes: ['HBA'] },
+    SCS:           { label: 'Sunshine Coast',        codes: ['SCS'] },
+    'SYD-NET':     { label: 'Sydney network',        codes: ['SYD', 'MEL', 'HBA'] },
+    'SYD-NET-CFS': { label: 'Sydney network + Coffs', codes: ['SYD', 'MEL', 'HBA', 'CFS'] },
+    NETWORK:       { label: 'Every branch',          codes: ['SYD', 'BNE', 'MEL', 'CNS', 'CFS', 'HBA', 'SCS'] },
+  };
+
+  /** Demanda e estoque de um conjunto de filiais, para os SKUs pedidos. */
+  async function scopeFacts(codes, keys, months) {
+    const win = `order_date >= (date_trunc('month',
+                   (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
+                 - ($3::int - 1) * interval '1 month')`;
+    const [dem, stk] = await Promise.all([
+      // A linha conta se o LOCAL é da filial OU o REP é dela. É união de
+      // linhas, não soma de dois totais: somar contaria duas vezes toda venda
+      // em que o rep da filial vendeu do próprio depósito.
+      db.query(`SELECT sku_key, sum(qty_signed)::numeric qty,
+                       count(*) FILTER (WHERE location_branch = ANY($2))::int by_loc,
+                       -- IS DISTINCT FROM ANY nao existe: ANY e comparador,
+                       -- nao conjunto. O certo e <> ALL, e o coalesce importa
+                       -- porque location_branch e NULL em toda venda de
+                       -- "Project Warehouse" -- sem ele a linha sumia dos dois
+                       -- lados da conta.
+                       count(*) FILTER (WHERE coalesce(location_branch, '') <> ALL($2)
+                                          AND rep_branch = ANY($2))::int by_rep
+                  FROM rapid_inv.v_sp_demand_scope
+                 WHERE sku_key = ANY($1) AND ${win}
+                   AND (location_branch = ANY($2) OR rep_branch = ANY($2))
+                 GROUP BY 1`, [keys, codes, months]),
+      db.query(`SELECT upper(btrim(s.sku)) k, sum(s.available)::numeric qty
+                  FROM cin7_mirror.stock_snapshot s
+                  JOIN rapid_inv.warehouses w ON w.cin7_location_name = s.location_name
+                 WHERE upper(btrim(s.sku)) = ANY($1) AND w.code = ANY($2)
+                 GROUP BY 1`, [keys, codes]),
+    ]);
+    const weeksInWindow = (months * 52) / 12;
+    return {
+      demand: dem.reduce((m, r) => (m[r.sku_key] = {
+        wk: Number(r.qty) / weeksInWindow, by_loc: r.by_loc, by_rep: r.by_rep }, m), {}),
+      stock: stk.reduce((m, r) => (m[r.k] = Number(r.qty), m), {}),
+    };
+  }
+
   // ── Planejamento semanal ────────────────────────────────────────────
   app.get(`${R}/planning`, wrap(async (req, res) => {
     const t0 = Date.now();
@@ -449,6 +509,13 @@ function register(app) {
     ]) : [[], [], [], []];
     const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
     const drawIdx = index(draws), inIdx = index(incoming);
+
+    // O escopo, quando pedido. Fora dele nada muda: a régua padrão continua
+    // sendo a média digitada e o estoque somado.
+    const scopeKey = String(req.query.scope || '').toUpperCase();
+    const scope = SCOPES[scopeKey] || null;
+    const scopeMonths = asInt(req.query.scope_months, 6, 1, 13);
+    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, scopeMonths) : null;
     const soldIdx = sold.reduce((m, r) => (m[r.sku_key] = r, m), {});
     const leadIdx = lead.reduce((m, r) => (m[r.sku_key] = r, m), {});
 
@@ -459,10 +526,15 @@ function register(app) {
     const today = weekEnding(new Date());
 
     const rows = skus.map((s) => {
+      // Dentro de um escopo a régua é a venda MEDIDA daquele conjunto, não a
+      // média digitada — que é do arquivo inteiro e não sabe de filial.
+      const sd = sf ? sf.demand[s.sku_key] : null;
+      const sqty = sf ? (sf.stock[s.sku_key] || 0) : null;
       const proj = projectSku({
         weeks: engineWeeks,
-        soh: Number(s.soh_available),
-        wkAvg: s.wk_avg == null ? null : Number(s.wk_avg),
+        soh: sf ? sqty : Number(s.soh_available),
+        wkAvg: sf ? (sd ? sd.wk : 0)
+                  : (s.wk_avg == null ? null : Number(s.wk_avg)),
         incoming: inIdx[s.sku_key] || {},
         draws: drawIdx[s.sku_key] || {},
         undatedQty: Number(s.undated_qty || 0),
@@ -475,7 +547,17 @@ function register(app) {
         wk_avg: s.wk_avg, target_cover_weeks: s.target_cover_weeks,
         lifecycle_status: s.lifecycle_status, superseded_by: s.superseded_by,
         lifecycle_note: s.lifecycle_note, cin7_status: s.cin7_status, wk_avg_input: s.wk_avg_input,
-        soh: Number(s.soh_available), on_order: Number(s.soh_on_order),
+        soh: sf ? sqty : Number(s.soh_available), on_order: Number(s.soh_on_order),
+        // O que o escopo trocou, dito por linha — para a tela poder mostrar o
+        // número do arquivo ao lado e o planejador ver a diferença.
+        ...(sf ? {
+          scope_wk: sd ? Math.round(sd.wk * 100) / 100 : 0,
+          scope_soh: sqty,
+          scope_by_loc: sd ? sd.by_loc : 0,
+          scope_by_rep: sd ? sd.by_rep : 0,
+          file_wk: s.wk_avg == null ? null : Number(s.wk_avg),
+          file_soh: Number(s.soh_available),
+        } : {}),
         project_orders: Number(s.project_orders), main_soh: Number(s.main_soh),
         gateway_soh: Number(s.gateway_soh), comments: s.comments,
         cells: proj.rows.map((r) => ({
@@ -538,6 +620,15 @@ function register(app) {
 
     res.json({
       bom_universe: bomAll,
+      scope: scope ? {
+        key: scopeKey, label: scope.label, codes: scope.codes, months: scopeMonths,
+        // O PO chega no Main e é distribuído depois — não há uma única alocação
+        // de PO por filial gravada (medido: 0 de 1.466 linhas em aberto). Então
+        // no escopo de filial a coluna Incoming é do Main, e dizer isso é o que
+        // impede o planejador de contar como se já fosse dele.
+        incoming_is_main: scopeKey !== 'MAIN' && scopeKey !== 'NETWORK',
+      } : null,
+      scopes: Object.entries(SCOPES).map(([k, v]) => ({ key: k, label: v.label })),
       reporting_week: state.reporting_week,
       weeks: weeks.slice(0, horizon + 1).map((w) => ({ ...w, label: shortLabel(w.week_ending) })),
       total, limit, offset, rows, ms: Date.now() - t0,
@@ -624,6 +715,15 @@ function register(app) {
 
     res.json({
       bom_universe: bomAll,
+      scope: scope ? {
+        key: scopeKey, label: scope.label, codes: scope.codes, months: scopeMonths,
+        // O PO chega no Main e é distribuído depois — não há uma única alocação
+        // de PO por filial gravada (medido: 0 de 1.466 linhas em aberto). Então
+        // no escopo de filial a coluna Incoming é do Main, e dizer isso é o que
+        // impede o planejador de contar como se já fosse dele.
+        incoming_is_main: scopeKey !== 'MAIN' && scopeKey !== 'NETWORK',
+      } : null,
+      scopes: Object.entries(SCOPES).map(([k, v]) => ({ key: k, label: v.label })),
       reporting_week: state.reporting_week,
       weeks: weeks.map((w) => ({ week_ending: w.week_ending, label: shortLabel(w.week_ending) })),
       rows, coverage: cov, ms: Date.now() - t0,
@@ -932,6 +1032,13 @@ function register(app) {
     const leadIdx = lead.reduce((m, r) => (m[r.sku_key] = r, m), {});
     const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
     const drawIdx = index(draws), inIdx = index(incoming);
+
+    // O escopo, quando pedido. Fora dele nada muda: a régua padrão continua
+    // sendo a média digitada e o estoque somado.
+    const scopeKey = String(req.query.scope || '').toUpperCase();
+    const scope = SCOPES[scopeKey] || null;
+    const scopeMonths = asInt(req.query.scope_months, 6, 1, 13);
+    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, scopeMonths) : null;
     const allWeeks = weeks.map((wk, i) => ({ weekEnding: wk.week_ending, factor: Number(wk.factor), isReporting: i === 0 }));
     // A grade desenha o que o usuário pediu; o selo julga sempre na mesma régua.
     const engineWeeks = allWeeks.slice(0, horizon + 1);
@@ -1093,6 +1200,13 @@ function register(app) {
     ]);
     const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
     const drawIdx = index(draws), inIdx = index(incoming);
+
+    // O escopo, quando pedido. Fora dele nada muda: a régua padrão continua
+    // sendo a média digitada e o estoque somado.
+    const scopeKey = String(req.query.scope || '').toUpperCase();
+    const scope = SCOPES[scopeKey] || null;
+    const scopeMonths = asInt(req.query.scope_months, 6, 1, 13);
+    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, scopeMonths) : null;
     const engineWeeks = weeks.map((w, i) => ({ weekEnding: w.week_ending, factor: Number(w.factor), isReporting: i === 0 }));
 
     const buckets = new Map();
@@ -1281,6 +1395,13 @@ function register(app) {
     ]);
     const index = (rows) => rows.reduce((m, r) => { (m[r.sku] = m[r.sku] || {})[r.week_ending] = Number(r.qty); return m; }, {});
     const drawIdx = index(draws), inIdx = index(incoming);
+
+    // O escopo, quando pedido. Fora dele nada muda: a régua padrão continua
+    // sendo a média digitada e o estoque somado.
+    const scopeKey = String(req.query.scope || '').toUpperCase();
+    const scope = SCOPES[scopeKey] || null;
+    const scopeMonths = asInt(req.query.scope_months, 6, 1, 13);
+    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, scopeMonths) : null;
     const engineWeeks = weeks.map((w, i) => ({ weekEnding: w.week_ending, factor: Number(w.factor), isReporting: i === 0 }));
 
     const rows = [];
@@ -1342,7 +1463,17 @@ function register(app) {
       rows.push({
         sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code,
         sold13: Number(s.sold13), sold52: Number(s.sold52),
-        soh: Number(s.soh_available), on_order: Number(s.soh_on_order),
+        soh: sf ? sqty : Number(s.soh_available), on_order: Number(s.soh_on_order),
+        // O que o escopo trocou, dito por linha — para a tela poder mostrar o
+        // número do arquivo ao lado e o planejador ver a diferença.
+        ...(sf ? {
+          scope_wk: sd ? Math.round(sd.wk * 100) / 100 : 0,
+          scope_soh: sqty,
+          scope_by_loc: sd ? sd.by_loc : 0,
+          scope_by_rep: sd ? sd.by_rep : 0,
+          file_wk: s.wk_avg == null ? null : Number(s.wk_avg),
+          file_soh: Number(s.soh_available),
+        } : {}),
         wk_avg: Number(s.wk_avg), target_cover_weeks: s.target_cover_weeks, target_qty: target,
         weeks_late: weeksLate,
         lead_weeks: lead, lead_source: s.lead_source, sd_weeks: s.sd_weeks == null ? null : Number(s.sd_weeks),
@@ -1375,6 +1506,15 @@ function register(app) {
 
     res.json({
       bom_universe: bomAll,
+      scope: scope ? {
+        key: scopeKey, label: scope.label, codes: scope.codes, months: scopeMonths,
+        // O PO chega no Main e é distribuído depois — não há uma única alocação
+        // de PO por filial gravada (medido: 0 de 1.466 linhas em aberto). Então
+        // no escopo de filial a coluna Incoming é do Main, e dizer isso é o que
+        // impede o planejador de contar como se já fosse dele.
+        incoming_is_main: scopeKey !== 'MAIN' && scopeKey !== 'NETWORK',
+      } : null,
+      scopes: Object.entries(SCOPES).map(([k, v]) => ({ key: k, label: v.label })),
       reporting_week: state.reporting_week, horizon_weeks: maxWeeks, uncovered_skus: uncovered,
       // Barrar em silêncio é o mesmo pecado do truncamento: o total tem de
       // aparecer, com o motivo e o dinheiro que ele representa.
