@@ -14,7 +14,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 const S = {
   view: 'overview', ov: 'health',
-  projects: { q:'', status:'ACTIVE', rep:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
+  projects: { q:'', status:'ACTIVE', rep:'', branch:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
   supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { muted:false, supplier:'' },
@@ -130,6 +130,11 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     $('#spSort').classList.toggle('is-on', S.supply.sort === 'risk');
     const f = await api('/filters');
     $('#pjRep').innerHTML = '<option value="">All reps</option>' + f.reps.map(r => `<option>${esc(r)}</option>`).join('');
+    // A contagem no rótulo: um filtro de filial sem número obriga a testar uma
+    // por uma para descobrir onde há trabalho.
+    $('#pjBranch').innerHTML = '<option value="">All branches</option>'
+      + (f.branches || []).map(b => `<option value="${esc(b.branch_code)}">${esc(b.name || b.branch_code)} (${n0(b.n)})</option>`).join('')
+      + '<option value="__none">No branch yet</option>';
     // Abre onde o link do menu pediu. Sem isto /planning#projects caía no
     // Overview e o item marcado no menu apontava para outra tela.
     const want = location.hash.replace('#', '');
@@ -462,6 +467,7 @@ async function loadProjects() {
   const qs = new URLSearchParams({ status:p.status, limit:p.limit, offset:p.offset, sort:'order_date', dir:'desc' });
   if (p.q) qs.set('q', p.q);
   if (p.rep) qs.set('rep', p.rep);
+  if (p.branch) qs.set('branch', p.branch);
   if (p.only) qs.set('only', p.only);
   $('#pjCount').textContent = 'loading…';
   try {
@@ -471,7 +477,8 @@ async function loadProjects() {
     for (const r of d.rows) {
       const k = r.project_id || r.sales_order;
       if (!by.has(k)) by.set(k, { key:k, id:r.project_id, so:r.sales_order, cu:r.customer, rf:r.reference,
-                                  rp:r.rep, dt:r.order_date, wh:r.warehouse_note, lines:[] });
+                                  rp:r.rep, dt:r.order_date, wh:r.warehouse_note,
+                                  br:r.branch_code, brs:r.branch_source, lines:[] });
       by.get(k).lines.push(r);
     }
     pjOrders = [...by.values()];
@@ -479,6 +486,20 @@ async function loadProjects() {
     renderProjects();
   } catch (e) { $('#pjCount').textContent=''; toast(e.message, true); }
 }
+
+/* A filial e de onde ela veio, na mesma marca.
+   "order" e fato: o pedido de venda diz. "rep" e inferencia pelo mapa
+   rep->filial — 1.468 dos 1.667 vem por ai, e apaga-las na mesma cor do fato
+   seria transformar palpite em dado. Contorno tracejado marca o inferido. */
+const branchChip = (o) => {
+  if (!o.br) return o.brs === 'ambiguous'
+    ? `<span class="sep"></span><span class="pj-br is-amb" title="The rep's first name belongs to more than one person, in different branches — it cannot be decided from the name alone">branch?</span>`
+    : '';
+  const inferido = o.brs === 'rep';
+  return `<span class="sep"></span><span class="pj-br${inferido ? ' is-inf' : ''}" title="${
+    inferido ? `Inferred from the rep ${esc(o.rp || '')} — the sales order does not say which branch`
+             : 'From the sales order itself'}">${esc(o.br)}${inferido ? '?' : ''}</span>`;
+};
 
 function renderProjects() {
   const showFlt = $('#pjFilters').classList.contains('is-on');
@@ -510,6 +531,7 @@ function renderProjects() {
         <span class="cu">${esc(o.cu||'')}</span>
         ${o.rf?`<span class="sep"></span><span class="rf" title="${esc(o.rf)}">${esc(o.rf)}</span>`:''}
         ${o.rp?`<span class="sep"></span><span class="rp">${esc(o.rp)}</span>`:''}
+        ${branchChip(o)}
         <span class="sep"></span><span class="dt">${d10(o.dt)}</span>
         <span class="rt">
           <span class="mt">${lines.length} lines · ${n0(qty)} ordered · ${n0(pick)} to pick</span>
@@ -531,6 +553,7 @@ function renderProjects() {
 $('#pjSearch').addEventListener('input', debounce(e => { S.projects.q = e.target.value; loadProjects(); }));
 $('#pjStatus').addEventListener('change', e => { S.projects.status = e.target.value; loadProjects(); });
 $('#pjRep').addEventListener('change', e => { S.projects.rep = e.target.value; loadProjects(); });
+$('#pjBranch').addEventListener('change', e => { S.projects.branch = e.target.value; S.projects.offset = 0; loadProjects(); });
 $('#pjFilters').addEventListener('click', e => { e.currentTarget.classList.toggle('is-on'); renderProjects(); });
 $$('.sp-view[data-view=projects] .sp-chip').forEach(c => c.addEventListener('click', () => {
   const on = S.projects.only === c.dataset.only;

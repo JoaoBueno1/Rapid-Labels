@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="planning.css?v=13">
+<link rel="stylesheet" href="planning.css?v=14">
   <link rel="stylesheet" href="/shared/rail.css?v=4">
   <link rel="stylesheet" href="/shared/ui.css?v=4">
   <script defer src="/shared/rail.js?v=9"></script>
@@ -56,6 +56,7 @@
       <option value="CANCELLED">Cancelled</option>
     </select>
     <select id="pjRep"><option value="">All reps</option></select>
+    <select id="pjBranch" title="A filial do projeto"><option value="">All branches</option></select>
     <button class="sp-chip" data-only="outstanding">Outstanding</button>
     <button class="sp-chip" data-only="tba">No pick date</button>
     <button class="sp-chip" data-only="held">Held</button>
@@ -217,6 +218,6 @@
 </div>
 
 <div class="sp-toast" id="toast"></div>
-<script src="planning.js?v=25"></script>
+<script src="planning.js?v=26"></script>
 </body>
 </html>

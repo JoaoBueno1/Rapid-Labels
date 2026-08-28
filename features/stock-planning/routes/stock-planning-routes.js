@@ -178,6 +178,14 @@ function register(app) {
     if (req.query.only === 'outstanding') where.push(`qty_to_pick > 0`);
     if (req.query.only === 'over_planned') where.push(`over_planned`);
     if (req.query.only === 'held') where.push(`qty_held > 0`);
+    // A filial do projeto não é coluna: sai de v_sp_project_branch, que a
+    // deriva do pedido quando existe e do rep quando não. O IN por subconsulta
+    // evita juntar a view e multiplicar a linha.
+    if (req.query.branch) add(
+      `project_id IN (SELECT project_id FROM rapid_inv.v_sp_project_branch WHERE branch_code = ?)`,
+      req.query.branch.toUpperCase());
+    if (req.query.branch === '__none')
+      where.push(`project_id IN (SELECT project_id FROM rapid_inv.v_sp_project_branch WHERE branch_code IS NULL)`);
 
     const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const sortable = { order_date: 'order_date', sales_order: 'sales_order', customer: 'customer',
@@ -196,7 +204,19 @@ function register(app) {
                           FROM rapid_inv.project_draws WHERE line_id = ANY($1) ORDER BY line_id, seq`, [ids])
       : [];
     const byLine = draws.reduce((m, d) => { (m[d.line_id] = m[d.line_id] || []).push(d); return m; }, {});
-    res.json({ total, limit, offset, rows: rows.map((r) => ({ ...r, draws: byLine[r.id] || [] })) });
+    // A filial e — igualmente importante — DE ONDE ela veio. 1.468 das 1.667
+    // são inferidas do rep, e mostrar isso como se fosse o pedido seria vender
+    // palpite como dado.
+    const pids = [...new Set(rows.map((r) => r.project_id).filter(Boolean))];
+    const br = pids.length ? await db.query(
+      `SELECT project_id, branch_code, branch_source FROM rapid_inv.v_sp_project_branch
+        WHERE project_id = ANY($1)`, [pids]) : [];
+    const brIdx = br.reduce((m, b) => (m[b.project_id] = b, m), {});
+    res.json({ total, limit, offset, rows: rows.map((r) => ({
+      ...r, draws: byLine[r.id] || [],
+      branch_code: (brIdx[r.project_id] || {}).branch_code || null,
+      branch_source: (brIdx[r.project_id] || {}).branch_source || null,
+    })) });
   }));
 
   app.get(`${R}/filters`, wrap(async (req, res) => {
@@ -205,7 +225,14 @@ function register(app) {
       db.query(`SELECT customer, count(*)::int n FROM rapid_inv.projects
                  WHERE customer IS NOT NULL AND status='ACTIVE' GROUP BY 1 ORDER BY 2 DESC LIMIT 200`),
     ]);
-    res.json({ reps: reps.map((r) => r.rep), customers: customers.map((c) => c.customer) });
+    const branches = await db.query(
+      `SELECT b.branch_code, w.name, count(*)::int n
+         FROM rapid_inv.v_sp_project_branch b
+         JOIN rapid_inv.projects p ON p.id = b.project_id AND p.status = 'ACTIVE'
+         LEFT JOIN rapid_inv.warehouses w ON w.code = b.branch_code
+        WHERE b.branch_code IS NOT NULL
+        GROUP BY 1, 2 ORDER BY 3 DESC`);
+    res.json({ reps: reps.map((r) => r.rep), customers: customers.map((c) => c.customer), branches });
   }));
 
   // ── Edição inline ───────────────────────────────────────────────────

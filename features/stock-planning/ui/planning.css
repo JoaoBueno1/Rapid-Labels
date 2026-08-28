@@ -586,3 +586,12 @@ tr.al-row:hover td{background:var(--card-2)}
 .bom-build{margin-left:8px;font:600 10px/16px var(--sans);color:var(--mut-2)}
 .bom-build.tight{color:var(--xl-warn-ink);font-weight:700}
 .bom-soh.is-neg b{color:#9c0006}
+
+/* A filial do projeto. Sólido = veio do pedido. Tracejado com "?" = inferido
+   do rep, que é a maioria (1.468 de 1.667) — a diferença tem que estar
+   visível ou a tela passa inferência por fato. */
+.pj-br{display:inline-block;padding:0 5px;border-radius:3px;
+  font:700 9.5px/15px var(--sans);border:1px solid var(--xl-info-ink,#1f4e79);
+  background:var(--xl-info,#e7effa);color:var(--xl-info-ink,#1f4e79)}
+.pj-br.is-inf{border-style:dashed;background:transparent;color:var(--mut)}
+.pj-br.is-amb{border-color:var(--xl-warn-ink);color:var(--xl-warn-ink);background:transparent;border-style:dashed}
