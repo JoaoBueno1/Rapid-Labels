@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=35">
+<link rel="stylesheet" href="replenishment.css?v=36">
 <script defer src="/shared/rail.js?v=7"></script>
 </head>
 <body>
@@ -149,41 +149,43 @@
           <label class="sp-field"><span>= in days</span><input id="setDays" disabled></label>
           <label class="sp-field"><span>Suggest when cover under</span><input id="setCutDays" type="number" min="1" max="120" step="1"><small class="rp-sub">days (Excel says 21, engine used 25)</small></label>
         </div>
-        <label class="rp-check"><input type="checkbox" id="setAbc"> Use ABC tiers (A=10 · B=8 · C=6 weeks) instead of a single window</label>
+        <label class="rp-check"><input type="checkbox" id="setAbc"> Use ABC tiers instead of one window for every SKU</label>
+        <small class="rp-set-note">ABC ranks each SKU by how much it sells: <b>A</b> the fast movers, <b>B</b> the middle,
+          <b>C</b> the slow tail. Ticking this asks for more cover on the fast ones and less on the slow ones —
+          <b>A = 10 weeks · B = 8 · C = 6</b> — instead of the single window above.
+          It comes <b>off</b> by default: those steps were set when the average was one imported column, and with a
+          sales window you can choose the plain cover is easier to explain. Turn it on if you want the fast movers
+          carried deeper than the tail.</small>
       </div>
 
       <div class="rp-set">
-        <div class="rp-set-h">Which average to use</div>
+        <div class="rp-set-h">Demand</div>
         <div class="sp-row2">
-          <label class="sp-field"><span>Demand ruler</span>
-            <select id="setAvgBasis">
-              <option value="location">Shipped from this branch (stored)</option>
-              <option value="rep">Sold by this branch's reps</option>
-              <option value="max">Whichever is higher</option>
+          <label class="sp-field"><span>Sales window</span>
+            <select id="setSalesMonths">
+              <option value="3">Last 3 months</option>
+              <option value="6">Last 6 months</option>
+              <option value="12">Last 12 months</option>
             </select>
-            <small>When a branch runs out, the order ships from Main and the sale leaves its count. Measured over 6 months: Brisbane +175%, Sydney +80%, Sunshine +50% — Cairns, Coffs and Hobart barely move, because Main is too far to cover for them.</small>
+            <small>Every number on the sheet is read over this window — the average, the cover, and the suggestion.
+              Sales swing about 2&times; across the year, so this alone moves the average by up to 47%.</small>
           </label>
-          <label class="sp-field"><span>Rep window</span>
-            <select id="setRepMonths"><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option></select>
-          </label>
-          <label class="sp-field"><span>Average source</span>
-            <select id="setAvgSource">
-              <option value="rep_then_branch">Sales-rep avg, fall back to branch (current)</option>
-              <option value="branch">Branch (warehouse) avg only</option>
-              <option value="rep">Sales-rep avg only</option>
-              <option value="both_max">Both — take the higher</option>
-              <option value="both_sum">Both — sum them</option>
-              <option value="both_avg">Both — average them</option>
+          <label class="sp-field"><span>Demand rule</span>
+            <select id="setDemand">
+              <option value="both">Show both — branch and reps</option>
+              <option value="branch">Branch shipments only</option>
+              <option value="rep">Branch reps only</option>
+              <option value="branch_then_rep">Branch, fall back to reps</option>
+              <option value="rep_then_branch">Reps, fall back to branch</option>
             </select>
-          </label>
-          <label class="sp-field"><span>Period</span>
-            <select id="setPeriod">
-              <option value="stored">As stored (office import)</option>
-              <option value="3m" disabled>3-month avg (needs backfill)</option>
-              <option value="6m" disabled>6-month avg (needs backfill)</option>
-            </select>
+            <small><b>Branch</b> is what shipped out of this branch. <b>Reps</b> is what the branch's sales reps sold,
+              wherever it shipped from — when a branch runs out, the order goes from Main and the sale leaves its count.
+              Measured over 6 months: Brisbane +175%, Sydney +80%, Sunshine +50%; Cairns, Coffs and Hobart barely move,
+              because Main is too far to cover for them. <b>Show both</b> puts the two side by side in the Cover column;
+              the others give one number per cell.</small>
           </label>
         </div>
+        <label class="rp-check"><input type="checkbox" id="setCartons"> Round suggested QTY up to full cartons</label>
       </div>
 
       <div class="rp-set">
@@ -197,7 +199,6 @@
               <option value="down">Round down</option>
             </select>
           </label>
-          <label class="rp-check" style="align-self:end"><input type="checkbox" id="setCartons"> Round suggested QTY up to full cartons</label>
         </div>
       </div>
 
@@ -222,6 +223,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=34"></script>
+<script src="replenishment-app.js?v=38"></script>
 </body>
 </html>

@@ -32,10 +32,23 @@
   // ABC desligado por padrao: os degraus 10/8/6 vieram de quando a media era
 // uma coluna importada. Com 13 meses de historico e janela escolhivel, a
 // cobertura pura e mais honesta — quem quiser os degraus liga no Settings.
-  const DEFAULTS = { weeks: 6, cutDays: 25, abc: false, avgSource: 'rep_then_branch', period: 'stored', avgRound: 'pure', cartons: false,
-    avgBasis: 'location', repMonths: 6 };
+  const DEMAND_LABEL = {"both": "branch + reps", "branch": "branch shipments", "rep": "branch reps", "branch_then_rep": "branch, then reps", "rep_then_branch": "reps, then branch"};
+  const DEFAULTS = { weeks: 6, cutDays: 25, abc: false, avgSource: 'branch', period: 'stored', avgRound: 'pure', cartons: false,
+    // demand: como ler a demanda da filial. 'both' mostra as duas leituras
+    // lado a lado no Cover; as outras dão UM número por célula.
+    demand: 'both', salesMonths: 6 };
   let SET = loadSet();
-  function loadSet() { try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('rp.set') || '{}')); } catch (_) { return Object.assign({}, DEFAULTS); } }
+  function loadSet() {
+    let raw = {};
+    try { raw = JSON.parse(localStorage.getItem('rp.set') || '{}'); } catch (_) {}
+    // Migra quem já tinha os dois seletores antigos: avgBasis e repMonths
+    // viraram demand e salesMonths, e guardar os dois nomes convidaria a
+    // divergirem em silêncio.
+    if (raw.avgBasis && !raw.demand) raw.demand = raw.avgBasis === 'rep' ? 'rep' : raw.avgBasis === 'max' ? 'both' : 'branch';
+    if (raw.repMonths && !raw.salesMonths) raw.salesMonths = raw.repMonths;
+    delete raw.avgBasis; delete raw.repMonths;
+    return Object.assign({}, DEFAULTS, raw);
+  }
   function saveSet() { try { localStorage.setItem('rp.set', JSON.stringify(SET)); } catch (_) {} }
 
   // ── stage model ──────────────────────────────────────────────────────
@@ -94,12 +107,23 @@
     S.repAvg = {}; S.repAvgInfo = null;
     if (!S.branch) return;
     try {
-      const qs = new URLSearchParams({ branch: S.branch.code, location: S.branch.name, months: SET.repMonths || 6 });
+      const qs = new URLSearchParams({ branch: S.branch.code, location: S.branch.name, months: SET.salesMonths || 6 });
       const d = await fetch(`/api/replenishment/branch-averages?${qs}`).then(r => r.json());
       if (d.error) return;
       d.rows.forEach(r => { S.repAvg[r.sku_key] = r; });
       S.repAvgInfo = { months: d.months, reps: d.reps || [], count: d.rep_count };
     } catch (_) { /* a tela continua com a régua do local */ }
+  }
+
+  // Recarregar a régua não basta: as linhas já na tela foram construídas com o
+  // valor antigo, e enterGrid() só redesenha o que elas têm. Sem costurar, a
+  // segunda leitura do Cover não aparecia ao trocar a regra no Settings.
+  async function refreshRepAvg() {
+    await loadRepAvg();
+    S.lines.forEach(l => {
+      const r = S.repAvg[String(l.code).toUpperCase()];
+      l.repAvg = r ? r.rep_avg : null; l.locAvg = r ? r.loc_avg : null; l.repCount = r ? r.reps : 0;
+    });
   }
 
   async function loadBase() {
@@ -162,9 +186,13 @@
     // A régua escolhida MANDA no número que vira compra. Sem esta linha o
     // painel mostrava a diferença e o motor continuava comprando pela régua
     // antiga — a tela ficaria informando e não decidindo.
-    const avg = SET.avgBasis === 'rep' ? fromRep
-              : SET.avgBasis === 'max' ? Math.max(stored, fromRep)
-              : stored;
+    const avg = SET.demand === 'rep' ? fromRep
+              : SET.demand === 'branch' ? stored
+              : SET.demand === 'branch_then_rep' ? (stored > 0 ? stored : fromRep)
+              : SET.demand === 'rep_then_branch' ? (fromRep > 0 ? fromRep : stored)
+              // 'both': o maior manda na sugestão, e as duas leituras aparecem
+              // no Cover para o usuário ver de onde veio.
+              : Math.max(stored, fromRep);
     const avail = Number(stock[k] || 0);
     const inTransit = Number((S.inT[branch.code] && S.inT[branch.code][k]) || 0);
     const mainOnly = Number((S.stock.MAIN && S.stock.MAIN[k]) || 0);
@@ -243,9 +271,7 @@
   // diferença entre 20 e 396 sugestões — o pior tipo de rodapé errado.
   function writeScope() {
     const el = $('gridScope'); if (!el) return;
-    const ruler = SET.avgBasis === 'rep' ? `rep demand, ${SET.repMonths}m`
-                : SET.avgBasis === 'max' ? `higher of stored and rep demand (${SET.repMonths}m)`
-                : 'shipped from branch';
+    const ruler = `${DEMAND_LABEL[SET.demand] || SET.demand} · ${SET.salesMonths}m`;
     el.textContent = `Main+Gateway is the send pool · ${SET.abc ? 'ABC tiers' : SET.weeks + '-week target'} · ruler: ${ruler}`;
   }
 
@@ -268,8 +294,7 @@
     if (d && d.lines && d.lines.length) restoreDraft(d);
     S.mode = v; enterGrid();
     // Assíncrono de propósito: a grade não espera por isto para aparecer.
-    loadRepAvg().then(() => { S.lines.forEach(l => { const r = S.repAvg[String(l.code).toUpperCase()];
-      if (r) { l.repAvg = r.rep_avg; l.locAvg = r.loc_avg; l.repCount = r.reps; } }); renderGrid(); });
+    refreshRepAvg().then(renderGrid);
   }
   function enterGrid() {
     $('rpScroll').style.display = ''; $('rpHistory').style.display = 'none'; $('rpStage').style.display = ''; $('rpFoot').style.display = '';
@@ -314,9 +339,7 @@
       : S.stage === 'ready_to_check' ? 'Manager checks — comments stay open' : '';
     // A lógica em uso fica ao lado dos estágios: ela muda TODOS os números da
     // tela, e quem chega no meio do fluxo não tem como saber qual está valendo.
-    const ruler = SET.avgBasis === 'rep' ? `rep sales · ${SET.repMonths}m`
-                : SET.avgBasis === 'max' ? `higher of both · ${SET.repMonths}m`
-                : 'branch shipments';
+    const ruler = `${DEMAND_LABEL[SET.demand] || SET.demand} · ${SET.salesMonths}m`;
     const logic = `<span class="rp-logic" title="Which demand the suggestions and the cover projection are using. Change it in Settings, or pick it when you load suggestions.">
         <b>${esc(ruler)}</b> · ${SET.abc ? 'ABC tiers' : SET.weeks + 'w cover'} · order under ${SET.cutDays}d</span>`;
     $('rpStage').innerHTML = `<div class="rp-steps">${pills}</div><span class="sp-gap"></span><span class="rp-sub">${hint}</span> ${logic} ${action}`;
@@ -507,7 +530,11 @@
         const wk = (base) => base > 0 ? (l.soh + l.inTransit) / (base / RC.WEEKS_IN_MONTH) : null;
         const after = (base) => (base > 0 && q > 0)
           ? (l.soh + l.inTransit + q) / (base / RC.WEEKS_IN_MONTH) : null;
-        const num = (v) => v == null ? '<span class="rp-sub">n/a</span>' : n1(v >= 999 ? 999 : v) + 'w';
+        // Cobertura negativa é o estoque já vendido a mais: "−753 semanas" não
+        // informa nada e ainda ocupa a largura de quatro números. Vira um sinal.
+        const num = (v) => v == null ? '<span class="rp-sub">n/a</span>'
+          : v < 0 ? '<span class="rp-neg">short</span>'
+          : v >= 999 ? '99+w' : n1(v) + 'w';
 
         const bBase = l.storedAvg != null ? l.storedAvg : l.avg;
         const bNow = wk(bBase), bTo = after(bBase);
@@ -521,7 +548,7 @@
             <i class="t">${tag}</i><b>${num(now)}</b>${to == null ? '' : `<u>›${num(to)}</u>`}</span>`;
         const b1 = pair('B', bNow, bTo, `Branch shipments: ${n1(bBase || 0)}/month.`
           + (bTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(bTo)} weeks.`));
-        const b2 = l.repAvg > 0
+        const b2 = (SET.demand === 'both') && l.repAvg > 0
           ? pair('R', rNow, rTo, `This branch's reps sold ${n1(l.repAvg)}/month, wherever it shipped from.`
               + (rTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(rTo)} weeks.`))
           : '';
@@ -615,13 +642,13 @@
   // diferença aparece — em Brisbane, 20 itens contra 396. Escolher com os dois
   // números na frente é diferente de escolher num menu de configuração.
   function loadCountFor(basis) {
-    const keep = SET.avgBasis; SET.avgBasis = basis;
+    const keep = SET.demand; SET.demand = basis;
     let n = 0, units = 0;
     try {
       const have = new Set(S.lines.map(l => String(l.code).toUpperCase()));
       const sug = suggestionUniverse().filter(r => r.isSuggested && !have.has(String(r.code).toUpperCase()));
       n = sug.length; units = sug.reduce((a, r) => a + (r.sug || 0), 0);
-    } finally { SET.avgBasis = keep; }
+    } finally { SET.demand = keep; }
     return { n, units };
   }
   function openLoadModal() {
@@ -632,21 +659,21 @@
     $('loadMsg').innerHTML = `<b>${toAdd.length}</b> suggested line${toAdd.length === 1 ? '' : 's'} for <b>${esc(S.branch.name)}</b> under ${SET.cutDays}d cover.` +
       (S.lines.length ? ` Your ${S.lines.length} existing line${S.lines.length === 1 ? '' : 's'} stay untouched.` : '');
     // Os dois lados calculados de verdade, não estimados.
-    const cBranch = loadCountFor('location'), cRep = loadCountFor('rep');
+    const cBranch = loadCountFor('branch'), cRep = loadCountFor('rep');
     const box = $('loadBasis');
     if (box) box.innerHTML = `
-      <label class="rp-basis${SET.avgBasis !== 'rep' ? ' is-on' : ''}">
-        <input type="radio" name="lbasis" value="location"${SET.avgBasis !== 'rep' ? ' checked' : ''}>
+      <label class="rp-basis${SET.demand !== 'rep' ? ' is-on' : ''}">
+        <input type="radio" name="lbasis" value="branch"${SET.demand !== 'rep' ? ' checked' : ''}>
         <b>By branch shipments</b><span>${n0(cBranch.n)} lines · ${n0(cBranch.units)} units</span>
         <small>What went out of this branch. Misses what Main shipped on its behalf.</small></label>
-      <label class="rp-basis${SET.avgBasis === 'rep' ? ' is-on' : ''}">
-        <input type="radio" name="lbasis" value="rep"${SET.avgBasis === 'rep' ? ' checked' : ''}>
+      <label class="rp-basis${SET.demand === 'rep' ? ' is-on' : ''}">
+        <input type="radio" name="lbasis" value="rep"${SET.demand === 'rep' ? ' checked' : ''}>
         <b>By this branch's reps</b><span>${n0(cRep.n)} lines · ${n0(cRep.units)} units</span>
         <small>What the branch sold, wherever it shipped from.</small></label>`;
     box && box.querySelectorAll('input[name=lbasis]').forEach(r => r.addEventListener('change', () => {
-      SET.avgBasis = r.value; saveSet();
+      SET.demand = r.value; saveSet();
       // Recarrega para as quantidades já virem preenchidas pela régua escolhida.
-      loadRepAvg().then(() => { openLoadModal(); });
+      refreshRepAvg().then(() => { openLoadModal(); });
     }));
     $('loadConfirm').textContent = toAdd.length ? `Load ${toAdd.length}` : 'Nothing to add';
     $('loadConfirm').disabled = !toAdd.length;
@@ -837,7 +864,7 @@
   async function loadSideReps(sku) {
     const box = $('sideReps'); if (!box) return;
     try {
-      const qs = new URLSearchParams({ sku, branch: S.branch ? S.branch.code : '', months: SET.repMonths || 6 });
+      const qs = new URLSearchParams({ sku, branch: S.branch ? S.branch.code : '', months: SET.salesMonths || 6 });
       const d = await fetch(`/api/replenishment/sku-detail?${qs}`).then(r => r.json());
       if (d.error) throw new Error(d.error);
       const mine = (d.by_rep || []).filter(r => r.branch_code === (S.branch && S.branch.code));
@@ -1148,9 +1175,11 @@ The branch column is the decision that was recorded; the columns after it are wh
   function openSettings() {
     closeSide();
     $('setWeeks').value = SET.weeks; $('setDays').value = Math.round(SET.weeks * 7) + ' days'; $('setCutDays').value = SET.cutDays; $('setAbc').checked = SET.abc;
-    if ($('setAvgBasis')) $('setAvgBasis').value = SET.avgBasis;
-    if ($('setRepMonths')) $('setRepMonths').value = String(SET.repMonths);
-    $('setAvgSource').value = SET.avgSource; $('setPeriod').value = SET.period; $('setAvgRound').value = SET.avgRound; $('setCartons').checked = SET.cartons;
+    if ($('setDemand')) $('setDemand').value = SET.demand;
+    if ($('setSalesMonths')) $('setSalesMonths').value = String(SET.salesMonths);
+    if ($('setAvgSource')) $('setAvgSource').value = SET.avgSource;
+    if ($('setPeriod')) $('setPeriod').value = SET.period;
+    $('setAvgRound').value = SET.avgRound; $('setCartons').checked = SET.cartons;
     const rows = S.avg.map(r => ({ code: r.product, tot: BRANCHES.reduce((s, b) => s + pickAvg(r, b), 0) })).filter(r => r.tot > 0).sort((a, b) => b.tot - a.tot).slice(0, 60);
     $('setAvgTable').innerHTML = '<thead><tr><th class="txt">Rapid Code</th><th class="num">Tier</th><th class="num">Network avg/mo</th></tr></thead><tbody>' +
       rows.map(r => `<tr><td class="code txt">${esc(r.code)}</td><td class="num"><span class="rp-tier ${(S.ranks && S.ranks.get(r.code)) || 'C'}">${(S.ranks && S.ranks.get(r.code)) || 'C'}</span></td><td class="num">${n1(r.tot)}</td></tr>`).join('') + '</tbody>';
@@ -1159,16 +1188,18 @@ The branch column is the decision that was recorded; the columns after it are wh
   $('setWeeks') && $('setWeeks').addEventListener('input', e => { $('setDays').value = Math.round((Number(e.target.value) || 0) * 7) + ' days'; });
   function applySettings() {
     SET.weeks = Math.max(1, Number($('setWeeks').value) || 6); SET.cutDays = Math.max(1, Number($('setCutDays').value) || 25);
-    SET.abc = $('setAbc').checked; SET.avgSource = $('setAvgSource').value; SET.period = $('setPeriod').value; SET.avgRound = $('setAvgRound').value; SET.cartons = $('setCartons').checked;
-    const basisBefore = SET.avgBasis, monthsBefore = SET.repMonths;
-    if ($('setAvgBasis')) SET.avgBasis = $('setAvgBasis').value;
-    if ($('setRepMonths')) SET.repMonths = +$('setRepMonths').value;
+    SET.abc = $('setAbc').checked; if ($('setAvgSource')) SET.avgSource = $('setAvgSource').value;
+    if ($('setPeriod')) SET.period = $('setPeriod').value;
+    SET.avgRound = $('setAvgRound').value; SET.cartons = $('setCartons').checked;
+    const basisBefore = SET.demand, monthsBefore = SET.salesMonths;
+    if ($('setDemand')) SET.demand = $('setDemand').value;
+    if ($('setSalesMonths')) SET.salesMonths = +$('setSalesMonths').value;
     saveSet(); $('mdSettings').classList.remove('is-on');
     // Trocar a régua ou a janela muda o NÚMERO de cada linha, então a régua
     // tem de ser recarregada antes de a grade se redesenhar — senão a tela
     // mostra o alvo novo com a demanda velha.
-    if (SET.avgBasis !== basisBefore || SET.repMonths !== monthsBefore) {
-      loadRepAvg().then(() => { if (S.branch) enterGrid(); });
+    if (SET.demand !== basisBefore || SET.salesMonths !== monthsBefore) {
+      refreshRepAvg().then(() => { if (S.branch) enterGrid(); });
     }
     if (S.branch) { if (S.view !== 'history') { closeSide(); S.lines = S.lines.map(l => { const r = buildRow(l.code); if (!r) return l; r.ask = l.ask; r.invQty = l.invQty; r.reason = l.reason; r.comment = l.comment; return r; }); setControls(); renderGrid(); } }
     else renderLanding();
