@@ -38,4 +38,8 @@ jobs:
           CIN7_ACCOUNT_ID: ${{ secrets.CIN7_ACCOUNT_ID }}
           CIN7_API_KEY: ${{ secrets.CIN7_API_KEY }}
           CIN7_WEBHOOK_URL: ${{ secrets.CIN7_WEBHOOK_URL }}
+          # OBRIGATÓRIO: o PUT de reativação é substituição total. Sem este
+          # secret o watchdog gravaria bearer vazio e mataria o feed em laço.
+          # O script agora recusa reativar sem ele (webhook-watchdog.js).
+          CIN7_WEBHOOK_TOKEN: ${{ secrets.CIN7_WEBHOOK_TOKEN }}
         run: node cin7-stock-sync/webhook-watchdog.js

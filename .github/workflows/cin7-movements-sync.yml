@@ -41,7 +41,7 @@ jobs:
           ASSEMBLY_SINCE_DAYS: '1'
           ASSEMBLY_THROTTLE_MS: '4500'
         run: node cin7-stock-sync/sync-assembly.js
-      - name: Sync transfers / adjustments / purchases
+      - name: Sync transfers / adjustments
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -50,4 +50,8 @@ jobs:
           MOVE_SINCE_DAYS: '1'
           MOVE_THROTTLE_MS: '4500'
           MOVE_TIME_BUDGET_MS: '1200000'   # 20min wall-clock cap (job timeout is 30min) — defers overflow
-        run: node cin7-stock-sync/sync-movements.js --type=all
+        # 'purchase' SAIU: o webhook Purchase/StockReceivedAuthorised já grava o
+        # mesmo recebimento, sob outro cin7_task_id, e os dois se somavam em
+        # rapid_inv.v_sp_hist_receipts (011_history.sql:47 não filtra source).
+        # Medido em 2026-08-27: 19,5% de inflação no histórico de recebimento.
+        run: node cin7-stock-sync/sync-movements.js --type=transfer,adjustment
