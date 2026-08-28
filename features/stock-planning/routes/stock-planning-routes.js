@@ -890,6 +890,168 @@ function register(app) {
   }));
 
   // ── Ordens de compra ────────────────────────────────────────────────
+  /* ── CARRINHO DE COMPRA ──────────────────────────────────────────────
+     Um carrinho aberto por fornecedor, compartilhado. Ver 019_buy_cart.sql
+     para o porquê de ser compartilhado e não por pessoa. */
+
+  const cartOf = async (c, supplier, actor, scope) => {
+    // ON CONFLICT sobre o índice parcial: dois cliques simultâneos no mesmo
+    // fornecedor acabam no MESMO carrinho em vez de criarem dois.
+    const r = await c.query(
+      `INSERT INTO rapid_inv.buy_cart (supplier_code, created_by, scope) VALUES ($1,$2,$3)
+       ON CONFLICT (supplier_code) WHERE status = 'DRAFT'
+       DO UPDATE SET updated_at = now()
+       RETURNING *`, [supplier, actor, scope || null]);
+    return r.rows[0];
+  };
+
+  /** O carrinho de um fornecedor, com o que a tela precisa para decidir. */
+  app.get(`${R}/cart`, wrap(async (req, res) => {
+    const supplier = String(req.query.supplier || '').trim();
+    const carts = await db.query(
+      `SELECT c.*, count(l.id)::int lines, coalesce(sum(l.qty),0)::numeric units,
+              coalesce(sum(l.qty * coalesce(l.unit_cost_aud,0)),0)::numeric value_aud
+         FROM rapid_inv.buy_cart c
+         LEFT JOIN rapid_inv.buy_cart_line l ON l.cart_id = c.id
+        WHERE c.status = 'DRAFT' ${supplier ? 'AND c.supplier_code = $1' : ''}
+        GROUP BY c.id ORDER BY c.updated_at DESC`, supplier ? [supplier] : []);
+    const ids = carts.map((c) => c.id);
+    const lines = ids.length ? await db.query(
+      `SELECT * FROM rapid_inv.buy_cart_line WHERE cart_id = ANY($1) ORDER BY sku`, [ids]) : [];
+    const byCart = lines.reduce((m, l) => ((m[l.cart_id] = m[l.cart_id] || []).push(l), m), {});
+    res.json({ carts: carts.map((c) => ({ ...c, lines: byCart[c.id] || [] })) });
+  }));
+
+  /** Põe uma ou muitas linhas no carrinho. O mesmo SKU de novo é EDIÇÃO. */
+  app.post(`${R}/cart/lines`, wrap(async (req, res) => {
+    const supplier = String(req.body.supplier || '').trim();
+    const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
+    if (!supplier) return res.status(400).json({ error: 'supplier is required' });
+    if (!lines.length) return res.status(400).json({ error: 'send at least one line' });
+    const actor = actorOf(req);
+    const out = await db.tx(async (c) => {
+      const cart = await cartOf(c, supplier, actor, req.body.scope);
+      const feitas = [];
+      for (const l of lines) {
+        const key = String(l.sku_key || l.sku || '').trim().toUpperCase();
+        const qty = Number(l.qty);
+        if (!key || !isFinite(qty) || qty <= 0) continue;
+        // Somar em vez de sobrescrever: quem clica "adicionar" duas vezes quer
+        // duas, e quem edita usa o PATCH. Sobrescrever aqui perderia a
+        // quantidade que outra pessoa acabou de pôr.
+        const r = await c.query(
+          `INSERT INTO rapid_inv.buy_cart_line
+             (cart_id, sku_key, sku, qty, qty_suggested, carton_qty, unit_cost_aud, source, note, added_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (cart_id, sku_key) DO UPDATE
+             SET qty = rapid_inv.buy_cart_line.qty + EXCLUDED.qty,
+                 updated_at = now(), updated_by = EXCLUDED.added_by
+           RETURNING *`,
+          [cart.id, key, l.sku || key, qty, l.qty_suggested ?? null, l.carton_qty ?? null,
+           l.unit_cost_aud ?? null, l.source === 'manual' ? 'manual' : 'suggested',
+           l.note || null, actor]);
+        feitas.push(r.rows[0]);
+      }
+      await c.query('UPDATE rapid_inv.buy_cart SET updated_at = now() WHERE id = $1', [cart.id]);
+      return { cart_id: cart.id, lines: feitas };
+    }, actor);
+    res.json(out);
+  }));
+
+  app.patch(`${R}/cart/lines/:id`, wrap(async (req, res) => {
+    const id = asInt(req.params.id, 0, 1, 1e12);
+    const qty = Number(req.body.qty);
+    const actor = actorOf(req);
+    if (req.body.qty !== undefined && (!isFinite(qty) || qty <= 0))
+      return res.status(400).json({ error: 'qty must be above zero — remove the line instead' });
+    const row = await db.tx(async (c) => (await c.query(
+      `UPDATE rapid_inv.buy_cart_line
+          SET qty = COALESCE($1, qty), note = COALESCE($2, note),
+              updated_at = now(), updated_by = $3
+        WHERE id = $4 RETURNING *`,
+      [req.body.qty === undefined ? null : qty, req.body.note ?? null, actor, id])).rows[0], actor);
+    if (!row) return res.status(404).json({ error: 'line not found' });
+    res.json(row);
+  }));
+
+  app.delete(`${R}/cart/lines/:id`, wrap(async (req, res) => {
+    const id = asInt(req.params.id, 0, 1, 1e12);
+    const actor = actorOf(req);
+    const row = await db.tx(async (c) => (await c.query(
+      'DELETE FROM rapid_inv.buy_cart_line WHERE id = $1 RETURNING id, cart_id', [id])).rows[0], actor);
+    if (!row) return res.status(404).json({ error: 'line not found' });
+    res.json({ ok: true, ...row });
+  }));
+
+  app.delete(`${R}/cart/:id`, wrap(async (req, res) => {
+    const id = asInt(req.params.id, 0, 1, 1e12);
+    const actor = actorOf(req);
+    await db.tx(async (c) => c.query(
+      `UPDATE rapid_inv.buy_cart SET status='CANCELLED', updated_at=now() WHERE id=$1 AND status='DRAFT'`,
+      [id]), actor);
+    res.json({ ok: true });
+  }));
+
+  /** Confirma: o carrinho vira PO local e aparece na aba Purchase Orders. */
+  app.post(`${R}/cart/:id/confirm`, wrap(async (req, res) => {
+    const id = asInt(req.params.id, 0, 1, 1e12);
+    const actor = actorOf(req);
+    const poNumber = String(req.body.po_number || '').trim();
+    if (!poNumber) return res.status(400).json({ error: 'po_number is required' });
+    const out = await db.tx(async (c) => {
+      const cart = (await c.query(
+        `SELECT * FROM rapid_inv.buy_cart WHERE id=$1 AND status='DRAFT' FOR UPDATE`, [id])).rows[0];
+      if (!cart) throw new Error('cart is not open — it may already be confirmed');
+      const lines = (await c.query(
+        'SELECT * FROM rapid_inv.buy_cart_line WHERE cart_id=$1 ORDER BY sku', [id])).rows;
+      if (!lines.length) throw new Error('the cart is empty');
+      // O número de PO já existir é erro de quem digitou, não algo a contornar
+      // inventando um sufixo: duas POs com o mesmo número é o que estraga a
+      // conferência na chegada do contêiner.
+      const [{ n }] = (await c.query(
+        'SELECT count(*)::int n FROM rapid_inv.po_lines WHERE po_number=$1', [poNumber])).rows;
+      if (n > 0) throw new Error(`PO ${poNumber} already exists with ${n} lines`);
+      let seq = 0;
+      for (const l of lines) {
+        seq += 1;
+        await c.query(
+          // sku_key NÃO entra: em po_lines ela é GENERATED ALWAYS a partir de
+          // sku, e o Postgres recusa a inserção inteira se ela vier na lista.
+          `INSERT INTO rapid_inv.po_lines
+             (po_number, line_no, po_date, supplier_code, sku, qty, due_date,
+              value_aud, is_received, source, updated_by)
+           VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,$6,$7,false,'buy_cart',$8)`,
+          [poNumber, seq, cart.supplier_code, l.sku, l.qty,
+           toISODate(req.body.due_date) || null,
+           l.unit_cost_aud ? Number(l.unit_cost_aud) * Number(l.qty) : null, actor]);
+      }
+      await c.query(
+        `UPDATE rapid_inv.buy_cart SET status='CONFIRMED', po_number=$1,
+                confirmed_at=now(), confirmed_by=$2, updated_at=now() WHERE id=$3`,
+        [poNumber, actor, id]);
+      return { po_number: poNumber, lines: lines.length };
+    }, actor);
+    res.json(out);
+  }));
+
+  /* Limpeza do teste ponta a ponta.
+     O teste do carrinho grava numa PO de verdade, no banco de produção — é o
+     único jeito de provar que o confirmado aparece mesmo em Purchase Orders.
+     Então ele precisa saber se limpar, e o prefixo é fixo aqui e não vem do
+     cliente: um DELETE com prefixo livre seria uma porta para apagar POs de
+     verdade. */
+  app.post(`${R}/cart/test-cleanup`, wrap(async (req, res) => {
+    const PREFIXO = 'TEST-CART-';
+    if (String(req.body.prefix || '') !== PREFIXO)
+      return res.status(400).json({ error: 'this endpoint only removes the end-to-end test fixtures' });
+    const out = await db.tx(async (c) => {
+      const a = await c.query(`DELETE FROM rapid_inv.po_lines WHERE po_number LIKE $1 RETURNING id`, [PREFIXO + '%']);
+      const b = await c.query(`DELETE FROM rapid_inv.buy_cart WHERE supplier_code = 'TESTE' RETURNING id`);
+      return { po_lines: a.rowCount, carts: b.rowCount };
+    }, 'test-cleanup');
+    res.json(out);
+  }));
+
   app.get(`${R}/pos`, wrap(async (req, res) => {
     const limit = asInt(req.query.limit, 200, 1, MAX_PAGE);
     const where = ['1=1'], p = [];

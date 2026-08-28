@@ -624,3 +624,19 @@ tr.al-row:hover td{background:var(--card-2)}
 .brk .dot{display:inline-block;width:5px;height:5px;border-radius:50%;
   background:var(--xl-info-ink,#1f4e79);margin-left:5px;vertical-align:2px}
 .sp-loading{color:var(--mut);font:400 11px var(--sans);padding:4px 0}
+
+/* O carrinho. */
+.sp-box.is-wide{width:min(1000px,96vw)}
+.cart-block{margin-bottom:16px}
+.cart-block h4{margin:0 0 6px;font-size:13px;display:flex;align-items:baseline;gap:8px}
+.cart-block h4 span{font:400 11px var(--sans);color:var(--mut)}
+.cart-tbl input.cart-qty{width:74px;text-align:right;font:600 12px var(--mono);
+  border:1px solid var(--line-3);border-radius:3px;padding:1px 4px}
+.cart-man{font-style:normal;font:600 8.5px/13px var(--sans);margin-left:5px;padding:0 4px;
+  border-radius:3px;background:var(--xl-held);color:var(--xl-warn-ink)}
+.cart-po{width:190px;padding:4px 8px;border:1px solid var(--line-3);border-radius:4px;
+  font:500 12px var(--mono)}
+.cart-add{display:flex;gap:8px;align-items:center;margin-top:6px}
+.cart-add input{width:100px;text-align:right;padding:4px 8px;border:1px solid var(--line-3);
+  border-radius:4px;font:600 12px var(--mono)}
+.add-one,.add-all{padding:0 7px;font:700 11px/18px var(--sans)}

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="planning.css?v=18">
+<link rel="stylesheet" href="planning.css?v=19">
   <link rel="stylesheet" href="/shared/rail.css?v=4">
   <link rel="stylesheet" href="/shared/ui.css?v=4">
   <script defer src="/shared/rail.js?v=9"></script>
@@ -131,9 +131,21 @@
     <span class="sp-gap"></span>
     <span class="sp-count" id="byyCount"></span>
     <button class="sp-btn" id="byyCopy">Copy for PO</button>
+    <button class="sp-btn is-primary" id="byyCartBtn">Cart <span class="sp-pip" id="pipCart"></span></button>
   </div>
   <div id="byyBody"><div class="sp-loading">Working out what to buy…</div></div>
 </section>
+
+<!-- O carrinho. Um por fornecedor e COMPARTILHADO: o pedido de um fornecedor
+     é um só, e carrinhos separados por pessoa fariam duas montarem metade do
+     mesmo contêiner sem se ver. -->
+<div class="sp-modal" id="cartModal">
+  <div class="sp-box is-wide">
+    <header><h3 id="cartTitle">Purchase cart</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
+    <div class="sp-box-body" id="cartBody"></div>
+    <footer id="cartFoot"></footer>
+  </div>
+</div>
 
 <!-- ══ PURCHASE ORDERS ═══════════════════════════════════════════════ -->
 <section class="sp-view" data-view="pos">
@@ -226,6 +238,6 @@
 </div>
 
 <div class="sp-toast" id="toast"></div>
-<script src="planning.js?v=32"></script>
+<script src="planning.js?v=34"></script>
 </body>
 </html>

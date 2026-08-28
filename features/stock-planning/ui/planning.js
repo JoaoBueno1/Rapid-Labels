@@ -1138,8 +1138,26 @@ async function openWeek(sku, week) {
         <tr><td>Project commitment</td><td>${n0(d.sku?d.sku.project_orders:0)}</td></tr>
       </table>
       <h4>Who this demand belongs to</h4>
-      <div id="sideDemand" class="sp-loading">loading…</div>`);
+      <div id="sideDemand" class="sp-loading">loading…</div>
+      <h4>Put this SKU in the cart</h4>
+      <p class="faint">The buy list only suggests what the engine flagged. Anything you
+        know needs ordering goes in from here.</p>
+      <div class="cart-add">
+        <input id="sideQty" type="number" min="1" step="1" placeholder="quantity">
+        <button class="sp-btn" id="sideAdd" data-sku="${esc(sku)}"
+          data-sup="${esc(row?row.supplier||'':'')}">Add to the ${esc(row&&row.supplier?row.supplier:'')} cart</button>
+      </div>`);
     demandBreak(sku);
+    const add = $('#sideAdd');
+    if (add) add.addEventListener('click', async () => {
+      const q = Number($('#sideQty').value);
+      if (!isFinite(q) || q <= 0) { toast('Type how many first', true); return; }
+      try {
+        await addToCart(add.dataset.sup, [{ sku_key: add.dataset.sku, sku: add.dataset.sku,
+          qty: q, source: 'manual' }], S.supply.scope || null);
+        $('#sideQty').value = '';
+      } catch (err) { toast(err.message, true); }
+    });
   } catch (e) { toast(e.message, true); }
 }
 
@@ -1233,6 +1251,104 @@ async function loadBuy() {
     renderBuy();
   } catch (e) { $('#byyBody').innerHTML = `<div class="sp-empty">${esc(e.message)}</div>`; }
 }
+/* ── O CARRINHO ───────────────────────────────────────────────────────
+   O Buy calculava bem e não guardava nada: quem comprava anotava noutro
+   lugar e o que foi decidido morria quando a aba fechava.
+
+   O carrinho é por fornecedor e compartilhado — ver 019_buy_cart.sql. Por
+   isso ele é recarregado do servidor a cada abertura em vez de viver em
+   memória: com duas pessoas montando o mesmo pedido, um estado local ficaria
+   velho sem avisar. */
+let cartData = null;
+
+async function loadCart(abrir) {
+  try {
+    cartData = await api('/cart' + (S.buy.supplier ? `?supplier=${encodeURIComponent(S.buy.supplier)}` : ''));
+    const n = cartData.carts.reduce((a, c) => a + c.lines.length, 0);
+    const pip = $('#pipCart'); pip.textContent = n ? n0(n) : ''; pip.classList.toggle('on', n > 0);
+    if (abrir) { renderCart(); $('#cartModal').classList.add('is-on'); }
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderCart() {
+  const carts = (cartData && cartData.carts) || [];
+  if (!carts.length) {
+    $('#cartBody').innerHTML = `<div class="sp-empty">Nothing in the cart yet.<br>
+      Add lines from the buy list, or from any SKU in Supply Planning.</div>`;
+    $('#cartFoot').innerHTML = '<button class="sp-btn" data-close>Close</button>';
+    return;
+  }
+  $('#cartBody').innerHTML = carts.map((c) => {
+    const units = c.lines.reduce((a, l) => a + Number(l.qty), 0);
+    const val = c.lines.reduce((a, l) => a + Number(l.qty) * Number(l.unit_cost_aud || 0), 0);
+    return `<div class="cart-block" data-cart="${c.id}">
+      <h4>${esc(c.supplier_code)}
+        <span>${n0(c.lines.length)} SKUs · ${n0(units)} units${val ? ` · ${aud(val)}` : ''}${
+          c.scope ? ` · built in the ${esc(c.scope)} view` : ''}</span></h4>
+      <table class="brk cart-tbl"><thead><tr>
+        <th>SKU</th><th class="n">Qty</th><th class="n">Engine said</th><th>Added by</th><th></th>
+      </tr></thead><tbody>
+      ${c.lines.map((l) => {
+        // O que o motor calculou fica ao lado do que a pessoa decidiu. Sem os
+        // dois, ninguém sabe depois se o pedido seguiu ou contrariou a conta.
+        const dif = l.qty_suggested != null && Number(l.qty) !== Number(l.qty_suggested);
+        return `<tr data-line="${l.id}">
+          <td class="mono">${esc(l.sku)}${l.source === 'manual'
+            ? '<i class="cart-man" title="Added by hand, not suggested by the engine">manual</i>' : ''}</td>
+          <td class="n"><input class="cart-qty" type="number" min="1" step="1" value="${Number(l.qty)}"></td>
+          <td class="n${dif ? ' lean' : ''}" title="${dif
+            ? `The engine suggested ${n0(l.qty_suggested)} — this line was changed by hand`
+            : 'Matches the suggestion'}">${l.qty_suggested != null ? n0(l.qty_suggested) : '—'}</td>
+          <td class="faint">${esc(l.added_by || '')}</td>
+          <td class="n"><button class="sp-btn is-ghost cart-del" title="Remove this line">&times;</button></td>
+        </tr>`; }).join('')}
+      </tbody></table></div>`;
+  }).join('');
+  const c0 = carts[0];
+  $('#cartFoot').innerHTML = `<button class="sp-btn" data-close>Close</button>
+    <span class="sp-gap"></span>
+    <input id="cartPO" class="cart-po" placeholder="PO number" autocomplete="off">
+    <button class="sp-btn is-primary" id="cartConfirm" data-cart="${c0.id}">Confirm as a purchase order</button>`;
+}
+
+/* Um clique só do lado do usuário; do lado do servidor, a linha some do
+   carrinho e o carrinho é relido. Não se apaga a linha na tela e torce: com
+   duas pessoas mexendo, o que a tela mostra tem que ter vindo do banco. */
+$('#cartBody').addEventListener('click', async (e) => {
+  const del = e.target.closest('.cart-del'); if (!del) return;
+  const tr = del.closest('tr[data-line]');
+  try { await api(`/cart/lines/${tr.dataset.line}`, { method: 'DELETE' }); await loadCart(true); }
+  catch (err) { toast(err.message, true); }
+});
+$('#cartBody').addEventListener('change', async (e) => {
+  const inp = e.target.closest('.cart-qty'); if (!inp) return;
+  const tr = inp.closest('tr[data-line]');
+  const q = Number(inp.value);
+  if (!isFinite(q) || q <= 0) { toast('Quantity must be above zero — remove the line instead', true); return loadCart(true); }
+  try { await api(`/cart/lines/${tr.dataset.line}`, { method: 'PATCH', body: JSON.stringify({ qty: q }) }); await loadCart(true); }
+  catch (err) { toast(err.message, true); }
+});
+$('#cartFoot').addEventListener('click', async (e) => {
+  const b = e.target.closest('#cartConfirm'); if (!b) return;
+  const po = ($('#cartPO').value || '').trim();
+  if (!po) { toast('Give the purchase order a number first', true); return; }
+  try {
+    const r = await api(`/cart/${b.dataset.cart}/confirm`, { method: 'POST', body: JSON.stringify({ po_number: po }) });
+    toast(`${r.po_number} created with ${r.lines} lines`);
+    $('#cartModal').classList.remove('is-on');
+    await loadCart(false); loadPOs(); show('pos');
+  } catch (err) { toast(err.message, true); }
+});
+$('#byyCartBtn').addEventListener('click', () => loadCart(true));
+
+/** Põe linhas no carrinho e devolve quantas entraram. */
+async function addToCart(supplier, lines, scope) {
+  if (!supplier) { toast('This SKU has no supplier on file, so it cannot go in a purchase order', true); return; }
+  const r = await api('/cart/lines', { method: 'POST', body: JSON.stringify({ supplier, lines, scope }) });
+  await loadCart(false);
+  toast(`${r.lines.length} line${r.lines.length === 1 ? '' : 's'} added to the ${supplier} cart`);
+}
+
 function renderBuy() {
   const d = buyData;
   const rows = S.buy.late ? d.rows.filter(r => r.already_late) : d.rows;
@@ -1252,18 +1368,22 @@ function renderBuy() {
     </div>
     <div class="sp-panel">
       <h4>By supplier <span>a purchase order per supplier — and the start of a container</span></h4>
-      <table><thead><tr><th>Supplier</th><th class="n">SKUs</th><th class="n">Units</th><th class="n">Value</th><th class="n">Late</th></tr></thead>
+      <table><thead><tr><th>Supplier</th><th class="n">SKUs</th><th class="n">Units</th><th class="n">Value</th><th class="n">Late</th><th class="n"></th></tr></thead>
       <tbody>${d.bySupplier.map(s=>`<tr class="click" data-sup="${esc(s.supplier)}">
         <td class="em">${esc(s.supplier)}</td><td class="n">${s.skus}</td><td class="n">${n0(s.units)}</td>
         <td class="n">${aud(s.value_aud)}</td>
-        <td class="n"${s.late?' style="color:#9c0006;font-weight:600"':''}>${s.late||''}</td></tr>`).join('')}</tbody></table>
+        <td class="n"${s.late?' style="color:#9c0006;font-weight:600"':''}>${s.late||''}</td>
+        <td class="n"><button class="sp-btn is-ghost add-all" data-addall="${esc(s.supplier)}"
+          title="Put all ${s.skus} suggested lines for ${esc(s.supplier)} in the cart">add all</button></td>
+        </tr>`).join('')}</tbody></table>
     </div>
     <div class="sp-panel">
       <h4>What to order <span>soonest order date first · every number here comes from the same cascade as the week grid</span></h4>
       <table><thead><tr>
         <th>SKU</th><th>Supplier</th><th class="n">Stock</th><th class="n">Wk/Avg</th>
         <th class="n">Lead</th><th class="n">Low point</th><th class="n">Need</th>
-        <th class="n">Cartons</th><th class="n">Order</th><th class="n">Value</th><th class="n">Order by</th></tr></thead>
+        <th class="n">Cartons</th><th class="n">Order</th><th class="n">Value</th><th class="n">Order by</th>
+        <th class="n"></th></tr></thead>
       <tbody>${rows.map(r=>`<tr class="click" data-sku="${esc(r.sku_key)}" data-sup="${esc(r.supplier||'')}">
         <td class="em mono">${esc(r.sku)}</td><td>${esc(r.supplier||'')}</td>
         <td class="n"${r.soh<=0?' style="color:#9c0006;font-weight:600"':''}>${n0(r.soh)}</td>
@@ -1279,7 +1399,9 @@ function renderBuy() {
               ? `A data de pedir cai antes do início da projeção, então ela não é recuperável desta tela. Com o lead de ${n1(r.lead_weeks)} semanas, deveria ter saído há cerca de ${r.weeks_late} semana(s).`
               : 'Semana em que o pedido precisa sair para chegar antes do saldo cruzar o alvo.'}"
           >${r.already_late?'was due':d10(r.order_by_week)}</td>
-      </tr>`).join('') || '<tr><td colspan="11"><div class="sp-empty">Nothing to order with these filters.</div></td></tr>'}</tbody></table>
+        <td class="n"><button class="sp-btn is-ghost add-one" title="Add ${n0(r.suggested)} to the ${esc(r.supplier||'')} cart"
+          data-add="${esc(r.sku_key)}">+</button></td>
+      </tr>`).join('') || '<tr><td colspan="12"><div class="sp-empty">Nothing to order with these filters.</div></td></tr>'}</tbody></table>
     </div>
     ${d.skipped && d.skipped.length ? `<div class="sp-panel">
       <h4>Held back <span>calculated, then blocked — a suggestion is only as good as the number under it</span></h4>
@@ -1296,7 +1418,27 @@ function renderBuy() {
         ? ', and never under the MOQ'
         : '. <b>No supplier MOQ is on file</b>, so nothing here is being lifted to a minimum'}.
       A lead time marked <b>*</b> is a supplier default, not measured.</p>`;
-  $('#byyBody').onclick = e => {
+  $('#byyBody').onclick = async e => {
+    // Os botões de carrinho vêm ANTES do resto: eles ficam dentro de linhas
+    // que já respondem ao clique, e sem sair aqui o "+" também navegaria.
+    const one = e.target.closest('.add-one');
+    if (one) {
+      e.stopPropagation();
+      const r = buyData.rows.find(x => x.sku_key === one.dataset.add); if (!r) return;
+      return addToCart(r.supplier, [{ sku_key: r.sku_key, sku: r.sku, qty: r.suggested,
+        qty_suggested: r.suggested, carton_qty: r.carton_qty,
+        unit_cost_aud: r.value_aud && r.suggested ? r.value_aud / r.suggested : null }]);
+    }
+    const all = e.target.closest('.add-all');
+    if (all) {
+      e.stopPropagation();
+      const sup = all.dataset.addall;
+      const rs = buyData.rows.filter(x => x.supplier === sup);
+      if (!rs.length) return;
+      return addToCart(sup, rs.map(r => ({ sku_key: r.sku_key, sku: r.sku, qty: r.suggested,
+        qty_suggested: r.suggested, carton_qty: r.carton_qty,
+        unit_cost_aud: r.value_aud && r.suggested ? r.value_aud / r.suggested : null })));
+    }
     const su = e.target.closest('[data-sup]:not([data-sku])');
     if (su) { S.buy.supplier = su.dataset.sup; $('#byySupplier').value = su.dataset.sup; return loadBuy(); }
     const tr = e.target.closest('[data-sku]');
