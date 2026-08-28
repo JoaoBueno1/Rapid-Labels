@@ -118,6 +118,26 @@ SELECT
   (btrim(coalesce(c.stock_locator,'')) = '0'
     OR upper(btrim(coalesce(c.stock_locator,''))) IN ('BOM','PRODUCTION','STRIP CUT')) AS flag_locator_junk,
 
+  -- ── O ARQUIVO TAMBÉM PRECISA SER SINALIZADO ──
+  -- Medido: das 1.339 linhas do arquivo com dimensão, 1.284 têm a maior
+  -- medida acima de 100 e a mediana é 400. Isso é milímetro. Mas a coluna CBM
+  -- do arquivo é exatamente L*W*H/1e6, conta que só fecha se forem
+  -- centímetros — logo o CBM está 1000x maior nessas linhas. E não dá para
+  -- corrigir com um fator único, porque há linhas em centímetro de verdade
+  -- (R3041-300, 32x44x13, CBM 0,0183 — uma caixa plausível).
+  (greatest(f.length_mm, f.width_mm, f.height_mm) > 100)   AS flag_file_dim_unit,
+
+  -- 1.927 dos 3.829 volumes do arquivo são o MESMO número, 0,110592, que é
+  -- 48x48x48 cm. É a caixa padrão preenchida quando ninguém mediu, e ela
+  -- aparece igual num produto 32x44x13 e num 37x48x40. Usar isso para montar
+  -- contêiner é empilhar suposição.
+  (f.each_volume = 0.110592)                               AS flag_volume_default,
+
+  -- A soma das duas: dá para calcular o cubo deste SKU sem inventar nada?
+  (f.cbm IS NOT NULL
+    AND greatest(f.length_mm, f.width_mm, f.height_mm) <= 100
+    AND coalesce(f.each_volume, 0) <> 0.110592)            AS cube_trustworthy,
+
   -- Montado, e QUANTOS componentes. A pergunta "isto é feito de quê" só existe
   -- para 2.786 SKUs, e a coluna deixa o filtro possível sem juntar a tabela.
   bom.n_comp                                     AS bom_components,

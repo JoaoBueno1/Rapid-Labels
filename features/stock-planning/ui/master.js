@@ -50,6 +50,8 @@
     ['flag_dim_unit', 'mm', 'Size looks like millimetres stamped as centimetres — the median largest dimension is 20.5cm and this one is over 100'],
     ['flag_stock_no_dim', 'no size', 'Has stock somewhere but no dimension in any source — this is what stops a container being planned'],
     ['flag_pack_sku', 'pack', 'Carton SKU with carton quantity 0 — the pack size lives only in the UOM name, so stock can be double counted'],
+    ['flag_file_dim_unit', 'file mm', 'The product file size looks like millimetres, but its CBM column is computed as if it were centimetres — so that CBM is 1000x too big'],
+    ['flag_volume_default', 'vol 48cm', 'The volume is 0.110592, which is a 48x48x48cm box. It is the default filled in when nobody measured, and it is the same on 1,927 different products'],
     ['flag_carton_name_mismatch', 'name≠BOM', 'The number in the SKU name and the quantity in the BOM disagree — one of the two is wrong'],
     ['flag_locator_junk', 'loc?', 'Stock locator is not a bin: it is "0" or a process word like BOM or PRODUCTION'],
   ];
@@ -123,7 +125,8 @@
     if (!c) return;
     const map = { dims: c.gap_dims, weight: c.gap_weight, carton: c.gap_carton, pallet: c.gap_pallet, pick: c.gap_pick,
       dimunit: c.flag_dimunit, packsku: c.flag_packsku, locator: c.flag_locator, stocknodim: c.flag_stocknodim,
-      bom: c.flag_bom, cartonbad: c.flag_cartonbad };
+      bom: c.flag_bom, cartonbad: c.flag_cartonbad,
+      filedim: c.flag_filedim, voldefault: c.flag_voldefault, cube: c.flag_cube };
     document.querySelectorAll('[data-gap]').forEach((b) => {
       const n = map[b.dataset.gap];
       // A marca é explícita e não "o texto já tem dígito": o rótulo

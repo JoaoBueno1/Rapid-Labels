@@ -813,7 +813,9 @@ function register(app) {
                    locator: 'flag_locator_junk', stocknodim: 'flag_stock_no_dim',
                    bom: 'bom_components IS NOT NULL',
                    cartonfix: 'carton_qty_in_bom',
-                   cartonbad: 'flag_carton_name_mismatch' };
+                   cartonbad: 'flag_carton_name_mismatch',
+                   filedim: 'flag_file_dim_unit', voldefault: 'flag_volume_default',
+                   cube: 'cube_trustworthy' };
     if (GAPS[req.query.gap]) where.push(`${GAPS[req.query.gap]}`);
     if (req.query.conflict === '1') {
       where.push(`((cin7_length IS NOT NULL AND file_length IS NOT NULL AND abs(cin7_length - file_length) / greatest(cin7_length, 1) > 0.02)
@@ -846,7 +848,10 @@ function register(app) {
                      count(*) FILTER (WHERE flag_stock_no_dim)::int flag_stocknodim,
                      count(*) FILTER (WHERE bom_components IS NOT NULL)::int flag_bom,
                      count(*) FILTER (WHERE carton_qty_in_bom)::int flag_cartonfix,
-                     count(*) FILTER (WHERE flag_carton_name_mismatch)::int flag_cartonbad
+                     count(*) FILTER (WHERE flag_carton_name_mismatch)::int flag_cartonbad,
+                     count(*) FILTER (WHERE flag_file_dim_unit)::int flag_filedim,
+                     count(*) FILTER (WHERE flag_volume_default)::int flag_voldefault,
+                     count(*) FILTER (WHERE cube_trustworthy)::int flag_cube
                 FROM rapid_inv.v_master_stock`),
     ]);
     res.json({ rows, total: tot.n, counts, limit, offset, ms: Date.now() - t0 });
