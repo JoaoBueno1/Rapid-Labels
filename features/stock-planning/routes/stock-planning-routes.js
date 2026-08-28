@@ -232,7 +232,16 @@ function register(app) {
          LEFT JOIN rapid_inv.warehouses w ON w.code = b.branch_code
         WHERE b.branch_code IS NOT NULL
         GROUP BY 1, 2 ORDER BY 3 DESC`);
-    res.json({ reps: reps.map((r) => r.rep), customers: customers.map((c) => c.customer), branches });
+    // As linhas de produto, contadas DENTRO do arquivo de planejamento — a
+    // contagem do catálogo inteiro faria o usuário escolher uma linha de 3.094
+    // e receber 513.
+    const lines = await db.query(
+      `SELECT p.category AS line, count(*)::int n
+         FROM rapid_inv.v_sp_planning_skus v
+         JOIN cin7_mirror.products p ON upper(btrim(p.sku)) = v.sku_key
+        WHERE p.category IS NOT NULL AND btrim(p.category) <> ''
+        GROUP BY 1 ORDER BY 2 DESC`);
+    res.json({ reps: reps.map((r) => r.rep), customers: customers.map((c) => c.customer), branches, lines });
   }));
 
   // ── Edição inline ───────────────────────────────────────────────────
@@ -387,11 +396,29 @@ function register(app) {
     if (req.query.q) { p.push(`%${req.query.q}%`); where.push(`sku ILIKE $${p.length}`); }
     if (req.query.only === 'risk') where.push(`(soh_nonpositive OR mths_stock < 1)`);
     if (req.query.lifecycle) { p.push(req.query.lifecycle); where.push(`lifecycle_status = $${p.length}`); }
-    // Modo BOM: só os produtos montados. O EXISTS custa menos que juntar a
-    // tabela inteira e não multiplica a linha por componente — o pai tem que
-    // continuar sendo uma linha só, com os componentes vindo na expansão.
-    if (req.query.view === 'bom')
-      where.push(`EXISTS (SELECT 1 FROM rapid_inv.product_bom b WHERE b.parent_key = sku_key)`);
+    /* Os modos de visão. Cada um é uma pergunta inteira que hoje exige varrer
+       a lista à mão, e o número ao lado é o que ele devolve hoje:
+
+         bom       montados, com os componentes por baixo            225
+         coming    tem PO a caminho — é onde "esperar" é resposta    599
+         special   sem média: o motor não projeta, e some da conta   647
+         project   tem demanda de projeto presa                      261
+
+       'special' importa mais do que parece: 647 dos 1.951 não têm média, e em
+       toda tela ordenada por risco eles caem para o fim porque mths_stock é
+       NULL. Sem um modo que os isole, um terço do arquivo é invisível. */
+    const VIEWS = {
+      bom:     `EXISTS (SELECT 1 FROM rapid_inv.product_bom b WHERE b.parent_key = sku_key)`,
+      coming:  `soh_on_order > 0`,
+      special: `coalesce(wk_avg, 0) = 0`,
+      project: `(project_orders > 0 OR undated_qty > 0)`,
+    };
+    if (VIEWS[req.query.view]) where.push(VIEWS[req.query.view]);
+    // A linha de produto vem do Cin7 e não está na view de planejamento.
+    if (req.query.line) {
+      p.push(req.query.line);
+      where.push(`sku_key IN (SELECT upper(btrim(sku)) FROM cin7_mirror.products WHERE category = $${p.length})`);
+    }
     const w = where.join(' AND ');
 
     const [{ total }] = await db.query(`SELECT count(*)::int total FROM rapid_inv.v_sp_planning_skus WHERE ${w}`, p);
@@ -483,6 +510,11 @@ function register(app) {
          FROM rapid_inv.v_bom_expanded WHERE parent_key = ANY($1) ORDER BY parent_key, component_sku`,
       [keys]) : [];
     const bomIdx = bom.reduce((m, b) => ((m[b.parent_key] = m[b.parent_key] || []).push(b), m), {});
+    const cats = keys.length ? await db.query(
+      `SELECT upper(btrim(sku)) k, category FROM cin7_mirror.products
+        WHERE upper(btrim(sku)) = ANY($1) AND category IS NOT NULL`, [keys]) : [];
+    const catIdx = cats.reduce((m, c) => (m[c.k] = c.category, m), {});
+    rows.forEach((r) => { r.line = catIdx[r.sku_key] || null; });
     rows.forEach((r) => {
       const cs = bomIdx[r.sku_key];
       if (!cs) return;

@@ -15,7 +15,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const S = {
   view: 'overview', ov: 'health',
   projects: { q:'', status:'ACTIVE', rep:'', branch:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
-  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
+  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), line:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { muted:false, supplier:'' },
   buy:      { supplier:'', late:false },
@@ -119,7 +119,10 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     $('#statusDot').className = 'sp-dot ' + (hrs < 6 ? 'fresh' : hrs < 30 ? 'stale' : 'dead');
     $('#statusText').textContent = `Week ${d10(st.reporting_week)} · stock from ${src}`;
     const opts = sup.map(s => `<option value="${esc(s.code)}">${esc(s.code)} (${s.sku_count})</option>`).join('');
-    $('#spSupplier').innerHTML = '<option value="">Pick a supplier…</option>' + opts;
+    // Era "Pick a supplier…" porque a tela inteira levava 15,7s. Depois que a
+    // subconsulta LATERAL virou CTE MATERIALIZED (24×), os 1.951 SKUs saem em
+    // 616 ms — a restrição sobrevivia ao motivo dela.
+    $('#spSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#byySupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#poSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#alSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
@@ -135,6 +138,8 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     $('#pjBranch').innerHTML = '<option value="">All branches</option>'
       + (f.branches || []).map(b => `<option value="${esc(b.branch_code)}">${esc(b.name || b.branch_code)} (${n0(b.n)})</option>`).join('')
       + '<option value="__none">No branch yet</option>';
+    $('#spLine').innerHTML = '<option value="">All lines</option>'
+      + (f.lines || []).map(l => `<option value="${esc(l.line)}">${esc(l.line)} (${n0(l.n)})</option>`).join('');
     // Abre onde o link do menu pediu. Sem isto /planning#projects caía no
     // Overview e o item marcado no menu apontava para outra tela.
     const want = location.hash.replace('#', '');
@@ -753,20 +758,16 @@ async function openAudit(table, id) {
 let spData = null;
 async function loadSupply() {
   const s = S.supply;
-  // O modo BOM atravessa fornecedor: "quais montados eu consigo montar" é uma
-  // pergunta do estoque inteiro, e exigir escolher fornecedor antes a tornaria
-  // impossível de fazer.
-  if (!s.supplier && s.view !== 'bom') {
-    $('#spGrid').innerHTML = `<tbody><tr><td><div class="sp-empty">
-      Pick a supplier to load the projection.<br>
-      Same slice as the 22 supplier tabs — and it is what keeps this fast.</div></td></tr></tbody>`;
-    $('#spCount').textContent=''; return;
-  }
+  // Os modos de visão atravessam fornecedor. "O que está chegando" e "o que
+  // não tem previsão" são perguntas do estoque inteiro, e obrigar a escolher
+  // um fornecedor antes as tornaria impossíveis de fazer.
+
   // 600 cobre o maior fornecedor inteiro. Com 300, 36 das 57 linhas vermelhas
   // do CGD ficavam fora da tela — o selo existia e ninguém via.
-  const qs = new URLSearchParams({ weeks:s.weeks, limit:600 });
+  const qs = new URLSearchParams({ weeks:s.weeks, limit:500 });
   if (s.supplier) qs.set('supplier', s.supplier);
   if (s.view) qs.set('view', s.view);
+  if (s.line) qs.set('line', s.line);
   if (s.sort === 'risk') qs.set('sort','risk');
   if (s.q) qs.set('q', s.q);
   if (s.risk) qs.set('only','risk');
@@ -784,8 +785,19 @@ async function loadSupply() {
     const mudou = (hist ? hist.weeks.length : 0) !== (spHist ? spHist.weeks.length : 0);
     spHist = hist;
     if (mudou) spAnchor = true;
+    // O servidor corta em 500 por página. Mostrar "500 of 1.951" sem explicar
+    // faria a lista parecer completa para quem só olha a primeira tela.
+    const cortou = spData.rows.length < spData.total;
+    // E preciso dizer por QUE criterio a pagina cortou. No modo "specials"
+    // todos tem mths_stock nulo, entao a ordem cai para o SKU — chamar isso de
+    // "os de maior risco" seria descrever uma ordem que nao aconteceu.
+    const criterio = S.supply.view === 'special' ? 'first 500 by SKU'
+      : S.supply.sort === 'risk' ? `${n0(spData.rows.length)} at most risk`
+      : `${n0(spData.rows.length)} with the least cover`;
     $('#spCount').textContent = `${n0(spData.rows.length)} of ${n0(spData.total)} SKUs`
+      + (cortou ? ` — the ${criterio}; narrow by supplier or line to see the rest` : '')
       + (spData.bom_universe ? ` — the ${n0(spData.total)} assembled products in the planning file, of ${n0(spData.bom_universe)} in Cin7` : '')
+      + (S.supply.view && S.supply.view !== 'bom' ? ` · ${VIEW_WHY[S.supply.view]}` : '')
       + ` · ${spData.ms} ms`
       + (hist ? ` · ${hist.weeks.length} wk back in ${hist.ms} ms` : '');
     renderSupply();
@@ -842,6 +854,14 @@ function bomRows(r) {
   }).join('');
 }
 
+/* O modo escolhido tem que se explicar. "647 SKUs" sem dizer o que os une é
+   um número solto; o que informa é por que eles estão juntos. */
+const VIEW_WHY = {
+  coming:  'these have a purchase order on the way',
+  special: 'no weekly average — the engine cannot project these, and they sink to the bottom of every risk sort',
+  project: 'project demand is committed against these',
+};
+
 const WRK = [
   ['r-open', 'Opening Inventory Level', c => c.o],
   ['r-in',   'Inventory In:',           c => c.i],
@@ -896,7 +916,7 @@ function renderSupply() {
     const sup = r.superseded_by
         ? `<span class="sup-to">→ <b data-goto="${esc(r.superseded_by)}">${esc(r.superseded_by)}</b></span>` : '';
     const skuRow = `<tr class="sk ${lc}" data-sku="${esc(r.sku_key)}">
-      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${badgeMark(r)}${bomMark(r)}${sup}</td>
+      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${badgeMark(r)}${bomMark(r)}${sup}${r.line?`<span class="sp-line" title="Product line">${esc(r.line)}</span>`:''}</td>
       <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}</td>
       <td class="n${r.badge_drift?' drift':''}"${r.badge_drift?` title="${esc(r.badge_why||'')}"`:''}
         >${cellSku(r,'wk_avg',n1(r.wk_avg))}${r.badge_drift
@@ -1016,6 +1036,7 @@ $('#spSort').addEventListener('click', e => {
 });
 $('#spRisk').addEventListener('click', e => { S.supply.risk = !S.supply.risk; e.currentTarget.classList.toggle('is-on', S.supply.risk); loadSupply(); });
 $('#spLife').addEventListener('change', e => { S.supply.life = e.target.value; loadSupply(); });
+$('#spLine').addEventListener('change', e => { S.supply.line = e.target.value; loadSupply(); });
 $('#spView').addEventListener('change', e => {
   S.supply.view = e.target.value; localStorage.setItem('sp.view', e.target.value);
   // Entrar no modo BOM abre a expansão sozinho: o motivo de entrar nele é ver

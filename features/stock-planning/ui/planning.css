@@ -595,3 +595,6 @@ tr.al-row:hover td{background:var(--card-2)}
   background:var(--xl-info,#e7effa);color:var(--xl-info-ink,#1f4e79)}
 .pj-br.is-inf{border-style:dashed;background:transparent;color:var(--mut)}
 .pj-br.is-amb{border-color:var(--xl-warn-ink);color:var(--xl-warn-ink);background:transparent;border-style:dashed}
+/* A linha de produto fica discreta: é contexto, não alerta. */
+.sp-line{margin-left:8px;font:500 9.5px/15px var(--sans);color:var(--mut-2);
+  border:1px solid var(--line-3);border-radius:3px;padding:0 4px}

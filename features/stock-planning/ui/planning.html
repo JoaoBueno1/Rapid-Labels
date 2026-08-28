@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="planning.css?v=14">
+<link rel="stylesheet" href="planning.css?v=15">
   <link rel="stylesheet" href="/shared/rail.css?v=4">
   <link rel="stylesheet" href="/shared/ui.css?v=4">
   <script defer src="/shared/rail.js?v=9"></script>
@@ -78,7 +78,7 @@
 <!-- ══ SUPPLY PLANNING ═══════════════════════════════════════════════ -->
 <section class="sp-view" data-view="supply">
   <div class="sp-bar">
-    <select id="spSupplier"><option value="">Pick a supplier…</option></select>
+    <select id="spSupplier"><option value="">All suppliers</option></select>
     <input type="search" id="spSearch" placeholder="Filter SKU…">
     <select id="spWeeks">
       <option value="12">12 weeks</option>
@@ -94,10 +94,14 @@
     </select>
     <button class="sp-chip" id="spSort">Risk first</button>
     <button class="sp-chip" id="spRisk">At risk only</button>
-    <select id="spView" title="O que a lista mostra">
+    <select id="spView" title="What the list shows">
       <option value="">All products</option>
-      <option value="bom">Assembled only (BOM)</option>
+      <option value="coming">Supply coming</option>
+      <option value="special">No forecast (specials)</option>
+      <option value="project">Has project demand</option>
+      <option value="bom">Assembled (BOM)</option>
     </select>
+    <select id="spLine" title="Product line"><option value="">All lines</option></select>
     <select id="spLife"><option value="">All lifecycle</option><option value="ACTIVE">Active only</option><option value="RUN_OUT">Run-out</option><option value="DISCONTINUED">Discontinued</option></select>
     <button class="sp-chip" id="spExpand">Show the working</button>
     <span class="sp-gap"></span>
@@ -218,6 +222,6 @@
 </div>
 
 <div class="sp-toast" id="toast"></div>
-<script src="planning.js?v=26"></script>
+<script src="planning.js?v=29"></script>
 </body>
 </html>
