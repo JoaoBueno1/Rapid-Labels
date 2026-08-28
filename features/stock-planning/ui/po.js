@@ -294,6 +294,7 @@ async function loadCont() {
   $('#ctCount').textContent = 'loading…';
   try {
     contData = await api('/containers/lines?' + qs);
+    if ($('#ctPlans').options.length <= 1) carregarPlanos();
     if ($('#ctType').options.length <= 1) {
       $('#ctType').innerHTML = contData.types.map(t =>
         `<option value="${esc(t.code)}"${t.code === c.type ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
@@ -411,6 +412,56 @@ on('#ctAll', 'click', () => {
   S.cont.pick = todos ? new Set() : new Set(cub);
   renderCont();
 });
+/* Guardar a carga.
+   Montar contêiner leva horas e passa por mais de uma pessoa. Sem gravar, o
+   trabalho morre no primeiro F5 e a conversa recomeça do zero. O cubo vai
+   CONGELADO: a dimensão muda no Cin7 e um plano fechado não pode se
+   reescrever — quem embarcou precisa ver o número em que decidiu. */
+on('#ctSave', 'click', async (ev) => {
+  const b = ev.currentTarget; if (b.disabled) return;
+  const ids = [...S.cont.pick];
+  if (!ids.length) return toast('Pick the lines that go in the container first', true);
+  const nome = prompt('Name this load — the vessel, the week, whatever you call it:');
+  if (!nome || !nome.trim()) return;
+  b.disabled = true; const rot = b.textContent; b.textContent = 'Saving…';
+  try {
+    const r = await api('/container-plans', { method: 'POST', body: JSON.stringify({
+      name: nome.trim(), container_code: S.cont.type,
+      supplier_code: S.cont.supplier || null, po_line_ids: ids.map(Number) }) });
+    toast(`"${r.name}" saved with ${r.lines} lines`);
+    S.cont.pick = new Set();
+    await carregarPlanos(); await loadCont();
+  } catch (e) { toast(e.message, true); }
+  finally { b.disabled = false; b.textContent = rot; }
+});
+
+async function carregarPlanos() {
+  try {
+    const d = await api('/container-plans');
+    $('#ctPlans').innerHTML = '<option value="">Saved plans…</option>'
+      + d.plans.map(p => `<option value="${p.id}">${esc(p.name)} · ${esc(p.container_name)} · ${n1(p.cbm)} m³ · ${n0(p.lines)} lines</option>`).join('');
+  } catch (_) { /* a aba funciona sem a lista */ }
+}
+
+on('#ctPlans', 'change', async (e) => {
+  const id = e.target.value; if (!id) return;
+  try {
+    const d = await api(`/container-plans/${id}`);
+    S.cont.type = d.plan.container_code; $('#ctType').value = d.plan.container_code;
+    // Reabrir marca as linhas do plano que ainda estão na lista. As que já
+    // foram recebidas somem da consulta, e dizer isso evita o susto de ver
+    // um plano voltar menor do que foi salvo.
+    const naLista = new Set((contData?.rows || []).map(r => String(r.id)));
+    const doPlano = d.lines.map(l => String(l.po_line_id)).filter(Boolean);
+    S.cont.pick = new Set(doPlano.filter(x => naLista.has(x)));
+    const faltam = doPlano.length - S.cont.pick.size;
+    renderCont();
+    toast(faltam
+      ? `"${d.plan.name}" reopened — ${S.cont.pick.size} of ${doPlano.length} lines; ${faltam} are no longer open`
+      : `"${d.plan.name}" reopened with ${S.cont.pick.size} lines`);
+  } catch (err) { toast(err.message, true); }
+});
+
 on('#ctFill', 'click', () => {
   /* Encher até o contêiner. Ordena por data de vencimento — o que chega
      primeiro embarca primeiro — e para quando a próxima linha não cabe.

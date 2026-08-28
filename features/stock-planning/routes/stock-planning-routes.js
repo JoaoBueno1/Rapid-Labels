@@ -1248,6 +1248,95 @@ function register(app) {
     });
   }));
 
+  /* ── PLANOS DE CONTÊINER ─────────────────────────────────────────────
+     Montar carga leva horas e envolve mais de uma pessoa: quem compra escolhe
+     o que entra, quem embarca confere se fecha. Um plano que só existe na aba
+     aberta morre no primeiro F5 e a conversa recomeça. */
+
+  app.get(`${R}/container-plans`, wrap(async (req, res) => {
+    const plans = await db.query(
+      `SELECT p.*, t.name AS container_name, t.cbm_internal, t.usable_pct, t.payload_kg,
+              count(l.id)::int lines,
+              coalesce(sum(l.cbm_at_plan), 0)::numeric cbm,
+              coalesce(sum(l.kg_at_plan), 0)::numeric kg,
+              count(*) FILTER (WHERE l.cube_source <> 'carton')::int assumed
+         FROM rapid_inv.container_plan p
+         JOIN rapid_inv.container_type t ON t.code = p.container_code
+         LEFT JOIN rapid_inv.container_plan_line l ON l.plan_id = p.id
+        WHERE p.status <> 'CANCELLED'
+        GROUP BY p.id, t.name, t.cbm_internal, t.usable_pct, t.payload_kg
+        ORDER BY p.updated_at DESC LIMIT 50`);
+    res.json({ plans });
+  }));
+
+  app.get(`${R}/container-plans/:id`, wrap(async (req, res) => {
+    const id = asInt(req.params.id, 0, 1, 1e12);
+    const plan = await db.one(
+      `SELECT p.*, t.name AS container_name, t.cbm_internal, t.usable_pct, t.payload_kg
+         FROM rapid_inv.container_plan p JOIN rapid_inv.container_type t ON t.code = p.container_code
+        WHERE p.id = $1`, [id]);
+    if (!plan) return res.status(404).json({ error: 'plan not found' });
+    const lines = await db.query(
+      `SELECT l.*, pl.po_number, pl.supplier_code, pl.due_date, pl.qty AS po_qty
+         FROM rapid_inv.container_plan_line l
+         LEFT JOIN rapid_inv.po_lines pl ON pl.id = l.po_line_id
+        WHERE l.plan_id = $1 ORDER BY l.sku`, [id]);
+    res.json({ plan, lines });
+  }));
+
+  app.post(`${R}/container-plans`, wrap(async (req, res) => {
+    const name = String(req.body.name || '').trim();
+    const code = String(req.body.container_code || '').trim().toUpperCase();
+    const ids = Array.isArray(req.body.po_line_ids) ? req.body.po_line_ids.map(Number).filter(Boolean) : [];
+    if (!name) return res.status(400).json({ error: 'give the plan a name' });
+    if (!code) return res.status(400).json({ error: 'container type is required' });
+    if (!ids.length) return res.status(400).json({ error: 'pick at least one line' });
+    const actor = actorOf(req);
+    const out = await db.tx(async (c) => {
+      const t = (await c.query('SELECT 1 FROM rapid_inv.container_type WHERE code=$1', [code])).rowCount;
+      if (!t) throw new Error(`unknown container type ${code}`);
+      const plan = (await c.query(
+        `INSERT INTO rapid_inv.container_plan (name, container_code, supplier_code, eta_date, vessel, note, created_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *`,
+        [name, code, req.body.supplier_code || null, toISODate(req.body.eta_date) || null,
+         req.body.vessel || null, req.body.note || null, actor])).rows[0];
+      // O cubo e o peso são CONGELADOS aqui. A dimensão muda no Cin7 e um
+      // plano fechado semana passada não pode se reescrever: quem embarcou
+      // precisa ver o número em que baseou a decisão.
+      const src = await c.query(
+        `SELECT pl.id, pl.sku, pl.sku_key, pl.qty, cb.cbm_carton, cb.carton_qty, cb.kg_unit, cb.cube_source
+           FROM rapid_inv.po_lines pl
+           LEFT JOIN rapid_inv.v_sp_cube cb ON cb.sku_key = pl.sku_key
+          WHERE pl.id = ANY($1)`, [ids]);
+      let n = 0;
+      for (const l of src.rows) {
+        const cartons = (l.cbm_carton != null && l.carton_qty > 0)
+          ? Math.ceil(Number(l.qty) / Number(l.carton_qty)) : null;
+        await c.query(
+          `INSERT INTO rapid_inv.container_plan_line
+             (plan_id, po_line_id, sku_key, sku, qty, cbm_at_plan, kg_at_plan, cube_source, added_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           ON CONFLICT (plan_id, po_line_id) DO NOTHING`,
+          [plan.id, l.id, l.sku_key, l.sku, l.qty,
+           cartons != null ? cartons * Number(l.cbm_carton) : null,
+           l.kg_unit != null ? Number(l.qty) * Number(l.kg_unit) : null,
+           l.cube_source || null, actor]);
+        n += 1;
+      }
+      return { ...plan, lines: n };
+    }, actor);
+    res.json(out);
+  }));
+
+  app.delete(`${R}/container-plans/:id`, wrap(async (req, res) => {
+    const id = asInt(req.params.id, 0, 1, 1e12);
+    const actor = actorOf(req);
+    await db.tx(async (c) => c.query(
+      `UPDATE rapid_inv.container_plan SET status='CANCELLED', updated_at=now(), updated_by=$2
+        WHERE id=$1 AND status='DRAFT'`, [id, actor]), actor);
+    res.json({ ok: true });
+  }));
+
   app.get(`${R}/pos`, wrap(async (req, res) => {
     const limit = asInt(req.query.limit, 200, 1, MAX_PAGE);
     const where = ['1=1'], p = [];
