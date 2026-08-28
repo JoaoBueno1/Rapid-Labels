@@ -19,6 +19,14 @@
 (function () {
   if (window.__railMounted) return;
   window.__railMounted = true;
+  // A página chama isto ao trocar de aba: o hash mudou sem navegação, e o menu
+  // precisa remarcar o item certo.
+  window.__railSync = () => {
+    document.querySelectorAll('.rl-item[data-hash]').forEach((a) => {
+      const h = (location.hash || '').replace('#', '') || 'supply';
+      a.classList.toggle('on', a.dataset.hash === h);   // a classe deste rail é 'on'
+    });
+  };
 
   // Ícones em traço, herdando currentColor — o mesmo dialeto do sprite antigo.
   const ICONS = {
@@ -62,7 +70,16 @@
       // Sem badge de propósito: o número de SKUs em risco fica sempre perto de
       // 500 e nunca zera. Badge que não vai a zero deixa de ser sinal e vira
       // enfeite — o alerta útil está dentro da tela, agrupado por SKU.
-      { t: 'Stock Planning', href: '/planning', ic: 'plan', match: ['/planning', '/planning/', '/features/stock-planning/ui/planning.html'] },
+      // Stock Planning, Projects e Purchase Orders são a MESMA página: as três
+      // compartilham estado e se alimentam (o projeto puxa a linha de PO, a PO
+      // vira o incoming da grade). Entrada própria no menu, aba pelo hash —
+      // separar em páginas duplicaria a lógica que as liga.
+      { t: 'Stock Planning', href: '/planning#supply', ic: 'plan',
+        match: ['/planning', '/planning/', '/features/stock-planning/ui/planning.html'], hash: 'supply' },
+      { t: 'Projects', href: '/planning#projects', ic: 'fact',
+        match: ['/planning', '/planning/'], hash: 'projects' },
+      { t: 'Purchase Orders', href: '/planning#pos', ic: 'box',
+        match: ['/planning', '/planning/'], hash: 'pos' },
       { t: 'Container Check', href: '/features/container-check/container-check.html', ic: 'inbox' },
       { t: 'Gateway', href: '/gateway-main.html', ic: 'fact', dot: 'railDotGateway' },
       { t: 'Branch Replenishment', href: '/features/replenishment/ui/replenishment.html', ic: 'truck',
@@ -98,12 +115,19 @@
 
   const here = location.pathname.replace(/\/+$/, '') || '/';
   const isIndex = here === '/' || /\/index\.html$/.test(here);
+  // Três itens apontam para /planning; o que os separa é o hash. Sem olhar o
+  // hash, os três ficariam marcados ao mesmo tempo e o menu perderia o sentido.
   const isActive = (it) => {
     const list = it.match || (it.href ? [it.href] : []);
-    return list.some((m) => {
+    const pathOk = list.some((m) => {
       const p = m.replace(/\/+$/, '') || '/';
       return here === p || (p !== '/' && here.endsWith(p));
     });
+    if (!pathOk) return false;
+    if (!it.hash) return true;
+    const h = (location.hash || '').replace('#', '');
+    // Sem hash, o primeiro item do grupo (o padrão da página) leva a marcação.
+    return h ? h === it.hash : it.hash === 'supply';
   };
 
   let unlocked = false;
@@ -126,7 +150,9 @@
         : `<a class="rl-item${on}" href="/index.html?open=${encodeURIComponent(it.modal)}" title="${esc(it.t)}">${inner}</a>`;
     }
     const target = it.blank ? ' target="_blank" rel="noopener"' : '';
-    return `<a class="rl-item${on}" href="${esc(it.href)}"${target} title="${esc(it.t)}">${inner}</a>`;
+    // data-hash: é por ele que __railSync remarca sem recarregar a página.
+    const dh = it.hash ? ` data-hash="${esc(it.hash)}"` : '';
+    return `<a class="rl-item${on}" href="${esc(it.href)}"${target}${dh} title="${esc(it.t)}">${inner}</a>`;
   }
 
   function groupHTML(g) {

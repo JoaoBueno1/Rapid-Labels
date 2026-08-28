@@ -76,13 +76,30 @@ function vesselColor(v) {
 }
 
 /* ── navegação ──────────────────────────────────────────────────────── */
-function show(view) {
+// Projects e Purchase Orders ganharam entrada própria no menu lateral, mas
+// continuam ABAS desta mesma página — mesmo código, mesmos dados, mesmo estado.
+// O menu aponta para /planning#projects e a aba abre pelo hash. Duplicar as
+// telas para dar a cada uma sua URL seria duplicar a lógica que as liga: o
+// projeto puxa a linha de PO, a PO alimenta o incoming da grade.
+const HASH_VIEWS = ['overview', 'projects', 'supply', 'buy', 'pos', 'alerts'];
+function show(view, opts) {
   S.view = view;
   $$('.sp-tab').forEach(b => b.classList.toggle('is-on', b.dataset.view === view));
   $$('.sp-view').forEach(s => s.classList.toggle('is-on', s.dataset.view === view));
+  // O hash acompanha a aba, para o item certo do menu ficar marcado e para
+  // recarregar a página cair onde o usuário estava.
+  if (!opts || !opts.fromHash) {
+    const h = '#' + view;
+    if (location.hash !== h) history.replaceState(null, '', h);
+    if (window.__railSync) window.__railSync();
+  }
   ({ overview:loadOverview, projects:loadProjects, supply:loadSupply, buy:loadBuy, pos:loadPOs, alerts:loadAlerts }[view] || (()=>{}))();
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('.sp-tab'); if (b) show(b.dataset.view); });
+window.addEventListener('hashchange', () => {
+  const v = location.hash.replace('#', '');
+  if (HASH_VIEWS.includes(v) && v !== S.view) show(v, { fromHash: true });
+});
 
 function side(title, html) { $('#sideTitle').textContent = title; $('#sideBody').innerHTML = html; $('#side').classList.add('is-on'); }
 $('#sideClose').addEventListener('click', () => $('#side').classList.remove('is-on'));
@@ -112,7 +129,11 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     $('#spSort').classList.toggle('is-on', S.supply.sort === 'risk');
     const f = await api('/filters');
     $('#pjRep').innerHTML = '<option value="">All reps</option>' + f.reps.map(r => `<option>${esc(r)}</option>`).join('');
-    loadOverview();
+    // Abre onde o link do menu pediu. Sem isto /planning#projects caía no
+    // Overview e o item marcado no menu apontava para outra tela.
+    const want = location.hash.replace('#', '');
+    if (HASH_VIEWS.includes(want)) show(want, { fromHash: true });
+    else loadOverview();
   } catch (e) { toast('Could not load: ' + e.message, true); }
 })();
 

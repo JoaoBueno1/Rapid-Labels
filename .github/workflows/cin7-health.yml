@@ -1,0 +1,93 @@
+# ============================================================
+# Cin7 Health — a checagem de cobertura que já existia e nunca rodava
+# ============================================================
+# `cin7-stock-sync/verify-coverage.js` estava escrito, testado, com 7 checagens,
+# limiares explícitos e exit code — e não era chamado por workflow nenhum
+# (`grep -rn verify-coverage .github/` → vazio até 2026-08-27).
+#
+# Na PRIMEIRA vez que rodou (2026-08-27 20:12 Brisbane) achou duas perdas reais
+# do próprio dia: SO-284717 e SO-283173, pick em bin MA não capturado. Sem isto
+# essas duas somem sem ninguém ver.
+#
+# As 7 checagens:
+#   1. Sales capture gap        [HIGH]     pedido embarcado que não virou anomalia
+#   2. Standalone assembly      [MEDIUM]   build de FG não capturado
+#   3. Movement freshness       [HIGH]     o ledger está vivo?
+#   4. Webhook backlog / DLQ    [CRITICAL] fila parada ou evento morto
+#   5. Stock snapshot freshness [MEDIUM]   o estoque está atual?
+#   6. MW no-bin blind-spot     [MEDIUM]   ship sem bin escaneado
+#   7. Cron / Actions liveness  [HIGH]     algum cron parou?
+#
+# CUSTO EM CHAMADAS AO CIN7: zero. É só leitura do Supabase.
+# Por isso o minuto do cron não precisa ser de-colidido do resto — mas :07 está
+# livre no mapa de crons de qualquer forma.
+#
+# Exit code: 0 = sem FAIL (WARN passa) · 1 = algum FAIL · 2 = erro fatal.
+# O job falha de propósito quando uma checagem FALHA: um alarme que sempre
+# passa em verde não é alarme.
+#
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY
+# ============================================================
+
+name: Cin7 Health
+
+on:
+  schedule:
+    # 21:07 UTC = 07:07 Brisbane (AEST, sem horário de verão em QLD).
+    # Antes do turno começar e depois dos syncs da madrugada — mede estado
+    # assentado, não estado no meio de uma varredura.
+    - cron: '7 21 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: cin7-health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --production
+
+      - name: Coverage & integrity check
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node cin7-stock-sync/verify-coverage.js
+
+      # Roda mesmo se a checagem acima falhar: quando algo quebra, é justamente
+      # quando se quer ver a cobertura do histórico importado por CSV.
+      - name: Sales history coverage (CSV)
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          node -e '
+            const u = process.env.SUPABASE_URL, k = process.env.SUPABASE_SERVICE_KEY;
+            if (!u || !k) { console.log("(sem credencial — pulado)"); process.exit(0); }
+            fetch(u + "/rest/v1/v_cin7_sales_history_coverage?select=ym,linhas,pedidos,qty&order=ym",
+                  { headers: { apikey: k, Authorization: "Bearer " + k } })
+              .then(r => r.json())
+              .then(rows => {
+                if (!Array.isArray(rows)) { console.log("resposta inesperada:", JSON.stringify(rows).slice(0,200)); return; }
+                console.log("Histórico de vendas por CSV — " + rows.length + " mês(es):");
+                rows.forEach(r => console.log("  " + r.ym + "  " + String(r.linhas).padStart(7) + " linhas  " + String(r.pedidos).padStart(6) + " pedidos"));
+                const falta = [];
+                for (let y = 2025, m = 8; !(y === 2026 && m === 9); m++) {
+                  if (m > 12) { m = 1; y++; }
+                  const ym = y + "-" + String(m).padStart(2, "0");
+                  if (!rows.some(r => r.ym === ym)) falta.push(ym);
+                }
+                console.log(falta.length ? "⚠️  meses ausentes: " + falta.join(" ") : "✅ 2025-08 → 2026-08 completo");
+              })
+              .catch(e => console.log("(consulta falhou: " + e.message + ")"));
+          '
