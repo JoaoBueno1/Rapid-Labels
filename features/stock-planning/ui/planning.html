@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="planning.css?v=19">
+<link rel="stylesheet" href="planning.css?v=20">
   <link rel="stylesheet" href="/shared/rail.css?v=4">
   <link rel="stylesheet" href="/shared/ui.css?v=4">
   <script defer src="/shared/rail.js?v=9"></script>
@@ -19,10 +19,8 @@
     <span class="sp-brand"><span class="sp-logo">S</span> Stock Planning</span>
     <nav class="sp-tabs" id="tabs">
       <button class="sp-tab is-on" data-view="overview">Overview</button>
-      <button class="sp-tab" data-view="projects">Projects</button>
       <button class="sp-tab" data-view="supply">Supply Planning</button>
       <button class="sp-tab" data-view="buy">Buy <span class="sp-pip" id="pipBuy"></span></button>
-      <button class="sp-tab" data-view="pos">Purchase Orders</button>
       <button class="sp-tab" data-view="alerts">Alerts <span class="sp-pip" id="pipAlerts"></span></button>
     </nav>
     <div class="sp-status" id="status">
@@ -46,34 +44,6 @@
   <div id="ovBody"><div class="sp-loading">Loading…</div></div>
 </section>
 
-<!-- ══ PROJECTS ══════════════════════════════════════════════════════ -->
-<section class="sp-view" data-view="projects">
-  <div class="sp-bar">
-    <input type="search" id="pjSearch" placeholder="Sales order, customer, reference, SKU or REQUIRED text…">
-    <select id="pjStatus">
-      <option value="ACTIVE">Active</option>
-      <option value="COMPLETED">Completed</option>
-      <option value="CANCELLED">Cancelled</option>
-    </select>
-    <select id="pjRep"><option value="">All reps</option></select>
-    <select id="pjBranch" title="A filial do projeto"><option value="">All branches</option></select>
-    <button class="sp-chip" data-only="outstanding">Outstanding</button>
-    <button class="sp-chip" data-only="tba">No pick date</button>
-    <button class="sp-chip" data-only="held">Held</button>
-    <button class="sp-chip" data-only="over_planned">Over-planned</button>
-    <span class="sp-gap"></span>
-    <button class="sp-btn" id="pjFilters" title="Filter each column">Column filters</button>
-    <span class="sp-count" id="pjCount"></span>
-    <button class="sp-btn is-primary" id="btnImportSO">+ Add project</button>
-  </div>
-  <div class="sp-scroll"><table class="sp-grid sp-projects" id="pjGrid"></table></div>
-  <div class="sp-foot">
-    <span>Each block is one sales order</span><i></i>
-    <span>Click <b>PICK DATE</b> to plan the draws for a line</span><i></i>
-    <span><kbd>Enter</kbd> saves · <kbd>Esc</kbd> reverts</span><i></i>
-    <span>Completing a project moves no rows — it is only a status</span>
-  </div>
-</section>
 
 <!-- ══ SUPPLY PLANNING ═══════════════════════════════════════════════ -->
 <section class="sp-view" data-view="supply">
@@ -147,24 +117,6 @@
   </div>
 </div>
 
-<!-- ══ PURCHASE ORDERS ═══════════════════════════════════════════════ -->
-<section class="sp-view" data-view="pos">
-  <div class="sp-bar">
-    <input type="search" id="poSearch" placeholder="PO number, SKU or vessel…">
-    <select id="poSupplier"><option value="">All suppliers</option></select>
-    <button class="sp-chip is-on" id="poOpen">Open only</button>
-    <button class="sp-chip" id="poOverdue">Overdue</button>
-    <span class="sp-gap"></span>
-    <span class="sp-count" id="poCount"></span>
-    <button class="sp-btn is-primary" id="btnAddPO">+ Add PO</button>
-  </div>
-  <div class="sp-scroll"><table class="sp-grid sp-pos" id="poGrid"></table></div>
-  <div class="sp-foot">
-    <span>Stock arriving is driven by <b>Due Date</b> — not the PO date, not the finish date</span><i></i>
-    <span>Click <b>Allocation</b> to split a line across branches</span><i></i>
-    <span>V1 does not create POs in Cin7</span>
-  </div>
-</section>
 
 <!-- ══ ALERTS ════════════════════════════════════════════════════════ -->
 <section class="sp-view" data-view="alerts">
@@ -189,55 +141,10 @@
   <div class="sp-side-body" id="sideBody"></div>
 </aside>
 
-<!-- ══ modal: import sales order ═════════════════════════════════════ -->
-<div class="sp-modal" id="mdImport">
-  <div class="sp-box">
-    <header><h3>Add project from a sales order</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
-    <div class="sp-box-body">
-      <label class="sp-field">
-        <span>Find the sales order</span>
-        <input id="soSearch" placeholder="SO number, customer or reference" autocomplete="off">
-      </label>
-      <div class="sp-results" id="soResults"></div>
-      <div id="soPreview"></div>
-    </div>
-    <footer>
-      <button class="sp-btn" data-close>Cancel</button>
-      <button class="sp-btn is-primary" id="soImport" disabled>Import as project</button>
-    </footer>
-  </div>
-</div>
 
-<!-- ══ modal: new PO ═════════════════════════════════════════════════ -->
-<div class="sp-modal" id="mdPO">
-  <div class="sp-box">
-    <header><h3>Add purchase order</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
-    <div class="sp-box-body">
-      <div class="sp-row3">
-        <label class="sp-field"><span>PO number</span><input id="npoNumber" placeholder="PO-15900"></label>
-        <label class="sp-field"><span>PO date</span><input id="npoDate" type="date"></label>
-        <label class="sp-field"><span>Supplier</span><select id="npoSupplier"></select></label>
-      </div>
-      <div class="sp-row2">
-        <label class="sp-field"><span>Default due date</span><input id="npoDue" type="date"></label>
-        <label class="sp-field"><span>Vessel</span><input id="npoVessel" placeholder="MSC Unity"></label>
-      </div>
-      <label class="sp-field">
-        <span>Lines — paste from Excel: SKU, quantity, unit cost USD, due date</span>
-        <textarea id="npoLines" placeholder="R1021-WH-TRI	12090	1.80	20/12/2026&#10;R3560-TRI	240	10.57"></textarea>
-      </label>
-      <p class="sp-hint">Tab, comma or semicolon all work as separators. Cost and due date are optional —
-      a line without a due date uses the default above. The exchange rate is resolved by effective date, not typed.</p>
-      <div id="npoPreview"></div>
-    </div>
-    <footer>
-      <button class="sp-btn" data-close>Cancel</button>
-      <button class="sp-btn is-primary" id="npoSave">Save PO</button>
-    </footer>
-  </div>
-</div>
 
 <div class="sp-toast" id="toast"></div>
-<script src="planning.js?v=34"></script>
+<script src="/features/stock-planning/ui/sp-core.js?v=1"></script>
+<script src="/features/stock-planning/ui/planning.js?v=36"></script>
 </body>
 </html>

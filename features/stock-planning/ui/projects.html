@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Projects — Rapid LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Caminhos ABSOLUTOS. Esta página é servida por um app.get numa rota de
+     raiz, e um caminho relativo resolveria contra "/" — o navegador receberia
+     o HTML da própria página no lugar do script, com MIME text/html, e o
+     recusaria. Foi exatamente assim que /master quebrou. -->
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=20">
+<link rel="stylesheet" href="/shared/rail.css?v=7">
+<link rel="stylesheet" href="/shared/ui.css?v=4">
+<script defer src="/shared/rail.js?v=9"></script>
+</head>
+<body>
+
+<header class="sp-header">
+  <div class="sp-header-inner">
+    <span class="sp-brand"><span class="sp-logo">P</span> Projects</span>
+    <div class="sp-status" id="status">
+      <span class="sp-dot fresh" id="statusDot"></span><span id="statusText">Sales orders committed against stock</span>
+    </div>
+  </div>
+</header>
+
+<main class="sp-main">
+
+<!-- O invólucro .sp-view fica, e com is-on cravado.
+     Fica porque três seletores em projects.js procuram por
+     '.sp-view[data-view=projects] .sp-chip' e devolveriam lista vazia sem
+     erro nenhum — os chips simplesmente parariam de filtrar.
+     E com is-on porque .sp-view nasce display:none no CSS; quem acendia era
+     o show(), que não veio para esta página. -->
+<section class="sp-view is-on" data-view="projects">
+  <div class="sp-bar">
+    <input type="search" id="pjSearch" placeholder="Sales order, customer, reference, SKU or REQUIRED text…">
+    <select id="pjStatus">
+      <option value="ACTIVE">Active</option>
+      <option value="COMPLETED">Completed</option>
+      <option value="CANCELLED">Cancelled</option>
+    </select>
+    <select id="pjRep"><option value="">All reps</option></select>
+    <select id="pjBranch" title="A filial do projeto"><option value="">All branches</option></select>
+    <button class="sp-chip" data-only="outstanding">Outstanding</button>
+    <button class="sp-chip" data-only="tba">No pick date</button>
+    <button class="sp-chip" data-only="held">Held</button>
+    <button class="sp-chip" data-only="over_planned">Over-planned</button>
+    <span class="sp-gap"></span>
+    <button class="sp-btn" id="pjFilters" title="Filter each column">Column filters</button>
+    <span class="sp-count" id="pjCount"></span>
+    <button class="sp-btn is-primary" id="btnImportSO">+ Add project</button>
+  </div>
+  <div class="sp-scroll"><table class="sp-grid sp-projects" id="pjGrid"></table></div>
+  <div class="sp-foot">
+    <span>Each block is one sales order</span><i></i>
+    <span>Click <b>PICK DATE</b> to plan the draws for a line</span><i></i>
+    <span><kbd>Enter</kbd> saves · <kbd>Esc</kbd> reverts</span><i></i>
+    <span>Completing a project moves no rows — it is only a status</span>
+  </div>
+</section>
+
+</main>
+
+<!-- ══ modal: import sales order ═════════════════════════════════════ -->
+<div class="sp-modal" id="mdImport">
+  <div class="sp-box">
+    <header><h3>Add project from a sales order</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
+    <div class="sp-box-body">
+      <label class="sp-field">
+        <span>Find the sales order</span>
+        <input id="soSearch" placeholder="SO number, customer or reference" autocomplete="off">
+      </label>
+      <div class="sp-results" id="soResults"></div>
+      <div id="soPreview"></div>
+    </div>
+    <footer>
+      <button class="sp-btn" data-close>Cancel</button>
+      <button class="sp-btn is-primary" id="soImport" disabled>Import as project</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ══ side panel ════════════════════════════════════════════════════ -->
+<aside class="sp-side" id="side">
+  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose">&times;</button></header>
+  <div class="sp-side-body" id="sideBody"></div>
+</aside>
+
+<div class="sp-toast" id="toast"></div>
+<script src="/features/stock-planning/ui/sp-core.js?v=1"></script>
+<script src="/features/stock-planning/ui/projects.js?v=1"></script>
+</body>
+</html>

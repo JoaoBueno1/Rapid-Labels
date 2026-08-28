@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Purchase Orders — Rapid LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Absolutos: a rota é um app.get de raiz e um caminho relativo resolveria
+     contra "/", devolvendo o HTML da própria página no lugar do script. -->
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=20">
+<link rel="stylesheet" href="/features/stock-planning/ui/po.css?v=1">
+<link rel="stylesheet" href="/shared/rail.css?v=7">
+<link rel="stylesheet" href="/shared/ui.css?v=4">
+<script defer src="/shared/rail.js?v=9"></script>
+</head>
+<body>
+
+<header class="sp-header">
+  <div class="sp-header-inner">
+    <span class="sp-brand"><span class="sp-logo">O</span> Purchase Orders</span>
+    <nav class="sp-tabs" id="poTabs">
+      <button class="po-tab sp-tab is-on" data-tab="lines">Lines</button>
+      <button class="po-tab sp-tab" data-tab="alloc">Allocation</button>
+      <button class="po-tab sp-tab" data-tab="cont">Containers</button>
+    </nav>
+    <div class="sp-status" id="status">
+      <span class="sp-dot fresh" id="statusDot"></span><span id="statusText">Stock on its way</span>
+    </div>
+  </div>
+</header>
+
+<main class="sp-main">
+
+<!-- ══ ABA 1 — LINHAS ═══════════════════════════════════════════════ -->
+<section class="po-pane sp-view is-on" data-pane="lines">
+  <div class="sp-bar">
+    <input type="search" id="poSearch" placeholder="PO number, SKU or vessel…">
+    <select id="poSupplier"><option value="">All suppliers</option></select>
+    <button class="sp-chip is-on" id="poOpen">Open only</button>
+    <button class="sp-chip" id="poOverdue">Overdue</button>
+    <span class="sp-gap"></span>
+    <span class="sp-count" id="poCount"></span>
+    <button class="sp-btn is-primary" id="btnAddPO">+ Add PO</button>
+  </div>
+  <div class="sp-scroll"><table class="sp-grid sp-pos" id="poGrid"></table></div>
+  <div class="sp-foot">
+    <span>Stock arriving is driven by <b>Due Date</b> — not the PO date, not the finish date</span><i></i>
+    <span>Click <b>Allocation</b> to split a line across branches</span><i></i>
+    <span>V1 does not create POs in Cin7</span>
+  </div>
+</section>
+
+<!-- ══ ABA 2 — ALOCAÇÃO ═════════════════════════════════════════════ -->
+<section class="po-pane sp-view" data-pane="alloc">
+  <div class="sp-bar">
+    <input type="search" id="alSearch" placeholder="PO number or SKU…">
+    <select id="alSupplier"><option value="">All suppliers</option></select>
+    <select id="alOnly">
+      <option value="pending">Not fully allocated</option>
+      <option value="over">Over-allocated</option>
+      <option value="open">Every open line</option>
+    </select>
+    <span class="sp-gap"></span>
+    <span class="sp-count" id="alCount"></span>
+  </div>
+  <div class="sp-tiles" id="alTiles"></div>
+  <div class="sp-scroll"><table class="sp-grid sp-pos" id="alGrid"></table></div>
+  <div class="sp-foot">
+    <span>What is not split across branches arrives at <b>Main</b> — that is the rule, not an oversight</span><i></i>
+    <span>Over-allocating <b>warns, it does not block</b>: the operation has legitimate exceptions</span>
+  </div>
+</section>
+
+<!-- ══ ABA 3 — CONTÊINER ════════════════════════════════════════════ -->
+<section class="po-pane sp-view" data-pane="cont">
+  <div class="sp-bar">
+    <input type="search" id="ctSearch" placeholder="PO number or SKU…">
+    <select id="ctSupplier"><option value="">All suppliers</option></select>
+    <select id="ctType"><option value="40GP">40ft standard</option></select>
+    <button class="sp-btn" id="ctFill" title="Pick lines by due date until the container is full">Fill it</button>
+    <button class="sp-btn is-ghost" id="ctAll">Pick all / none</button>
+    <span class="sp-gap"></span>
+    <span class="sp-count" id="ctCount"></span>
+  </div>
+  <div class="ct-summary" id="ctSummary"></div>
+  <div class="sp-scroll"><table class="sp-grid sp-pos ct-grid" id="ctGrid"></table></div>
+  <div class="sp-foot">
+    <span>Volume only — <b>no 3D load plan</b>: that needs the carton size on every line and 22% do not have one</span><i></i>
+    <span>A line with no measurement is <b>left out and says so</b>, never filled in with an average</span>
+  </div>
+</section>
+
+</main>
+
+<!-- ══ modal: new PO ═════════════════════════════════════════════════ -->
+<div class="sp-modal" id="mdPO">
+  <div class="sp-box">
+    <header><h3>Add purchase order</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
+    <div class="sp-box-body">
+      <div class="sp-row3">
+        <label class="sp-field"><span>PO number</span><input id="npoNumber" placeholder="PO-15900"></label>
+        <label class="sp-field"><span>PO date</span><input id="npoDate" type="date"></label>
+        <label class="sp-field"><span>Supplier</span><select id="npoSupplier"></select></label>
+      </div>
+      <div class="sp-row2">
+        <label class="sp-field"><span>Default due date</span><input id="npoDue" type="date"></label>
+        <label class="sp-field"><span>Vessel</span><input id="npoVessel" placeholder="MSC Unity"></label>
+      </div>
+      <label class="sp-field">
+        <span>Lines — paste from Excel: SKU, quantity, unit cost USD, due date</span>
+        <textarea id="npoLines" placeholder="R1021-WH-TRI	12090	1.80	20/12/2026&#10;R3560-TRI	240	10.57"></textarea>
+      </label>
+      <p class="sp-hint">Tab, comma or semicolon all work as separators. Cost and due date are optional —
+      a line without a due date uses the default above. The exchange rate is resolved by effective date, not typed.</p>
+      <div id="npoPreview"></div>
+    </div>
+    <footer>
+      <button class="sp-btn" data-close>Cancel</button>
+      <button class="sp-btn is-primary" id="npoSave">Save PO</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ══ side panel ════════════════════════════════════════════════════ -->
+<aside class="sp-side" id="side">
+  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose">&times;</button></header>
+  <div class="sp-side-body" id="sideBody"></div>
+</aside>
+
+<div class="sp-toast" id="toast"></div>
+<script src="/features/stock-planning/ui/sp-core.js?v=1"></script>
+<script src="/features/stock-planning/ui/po.js?v=1"></script>
+</body>
+</html>

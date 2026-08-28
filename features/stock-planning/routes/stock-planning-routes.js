@@ -1057,6 +1057,126 @@ function register(app) {
     res.json(out);
   }));
 
+  /* ── AS TRÊS ABAS DE PURCHASE ORDERS ─────────────────────────────────
+     A tela saiu de dentro do Stock Planning e ganhou três perguntas
+     separadas: o que está em aberto, para quem vai, e como isso vira carga. */
+
+  /** Aba 2 — alocação: uma linha por linha de PO, com o que já foi repartido. */
+  app.get(`${R}/pos/allocations`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const p = [], where = ['1=1'];
+    if (req.query.supplier) { p.push(req.query.supplier); where.push(`supplier_code = $${p.length}`); }
+    if (req.query.q) { p.push(`%${req.query.q}%`); where.push(`(po_number ILIKE $${p.length} OR sku ILIKE $${p.length})`); }
+    // Só o que ainda não chegou: alocar o que já foi recebido não muda nada.
+    if (req.query.only !== 'all')
+      where.push(`po_line_id IN (SELECT id FROM rapid_inv.po_lines WHERE NOT coalesce(is_received,false))`);
+    if (req.query.only === 'pending') where.push(`unallocated_qty > 0`);
+    if (req.query.only === 'over')    where.push(`over_allocated`);
+    const w = where.join(' AND ');
+    const limit = asInt(req.query.limit, 300, 1, MAX_PAGE);
+    const [rows, counts] = await Promise.all([
+      db.query(`SELECT * FROM rapid_inv.v_sp_po_allocation
+                 WHERE ${w} ORDER BY due_date NULLS LAST, po_number, line_no LIMIT ${limit}`, p),
+      db.one(`SELECT count(*)::int total,
+                     count(*) FILTER (WHERE unallocated_qty > 0)::int pending,
+                     -- "over" e palavra reservada (funcao de janela); o alias
+                     -- precisa de outro nome ou o parser quebra na virgula.
+                     count(*) FILTER (WHERE over_allocated)::int over_count,
+                     coalesce(sum(unallocated_qty) FILTER (WHERE unallocated_qty > 0), 0)::numeric units_pending
+                FROM rapid_inv.v_sp_po_allocation
+               WHERE po_line_id IN (SELECT id FROM rapid_inv.po_lines WHERE NOT coalesce(is_received,false))`),
+    ]);
+    // As alocações existentes de cada linha da página, num SELECT só.
+    const ids = rows.map((r) => r.po_line_id);
+    const al = ids.length ? await db.query(
+      `SELECT a.po_line_id, a.branch_code, a.qty, a.eta_date, w.name AS branch_name
+         FROM rapid_inv.po_line_allocations a
+         LEFT JOIN rapid_inv.warehouses w ON w.code = a.branch_code
+        WHERE a.po_line_id = ANY($1) AND a.status <> 'CANCELLED'
+        ORDER BY a.po_line_id, a.seq`, [ids]) : [];
+    const byLine = al.reduce((m, a) => ((m[a.po_line_id] = m[a.po_line_id] || []).push(a), m), {});
+    res.json({ rows: rows.map((r) => ({ ...r, allocations: byLine[r.po_line_id] || [] })),
+               counts, ms: Date.now() - t0 });
+  }));
+
+  /** Quem está esperando esta PO.
+   *
+   * O elo óbvio seria project_lines.po_ref → po_lines.po_number, e ele não
+   * existe: das 1.442 linhas com po_ref, ZERO casam, nem pelos dígitos.
+   * Olhando os valores, po_ref guarda nome de gente ("SONIA", "WILL", "Rod"),
+   * nota ("Airfreight", "Will ordered") e algum número solto. É um campo de
+   * "quem pediu", não de referência de compra. Uma tela que ligasse por ele
+   * mostraria sempre vazio e pareceria bug.
+   *
+   * O elo de verdade é o SKU: a PO traz o produto que o projeto espera. Não é
+   * reserva — ninguém amarrou aquela carga àquele pedido — e por isso a tela
+   * diz "esperando este produto" e não "reservado para".
+   */
+  app.get(`${R}/pos/:po_number/projects`, wrap(async (req, res) => {
+    const po = String(req.params.po_number || '').trim();
+    if (!po) return res.status(400).json({ error: 'po_number is required' });
+    const rows = await db.query(
+      `WITH po AS (
+         SELECT sku_key, sku, sum(qty)::numeric qty, min(due_date) due_date
+           FROM rapid_inv.po_lines WHERE upper(btrim(po_number)) = upper(btrim($1))
+          GROUP BY 1, 2)
+       SELECT l.id, l.sales_order, l.customer, l.reference, l.sku, l.rep,
+              l.qty, l.qty_to_pick, l.project_status,
+              po.qty AS po_qty, po.due_date
+         FROM rapid_inv.v_sp_lines l
+         JOIN po ON po.sku_key = l.sku_key
+        WHERE l.project_status = 'ACTIVE' AND coalesce(l.qty_to_pick, 0) > 0
+        ORDER BY l.sales_order, l.sku`, [po]);
+    res.json({ po_number: po, rows,
+      linked_by: 'sku',
+      units: rows.reduce((a, r) => a + Number(r.qty_to_pick || 0), 0),
+      orders: new Set(rows.map((r) => r.sales_order)).size });
+  }));
+
+  /** Aba 3 — o cubo das linhas em aberto, e os tipos de contêiner. */
+  app.get(`${R}/containers/lines`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const p = [], where = ['NOT coalesce(pl.is_received,false)'];
+    if (req.query.supplier) { p.push(req.query.supplier); where.push(`pl.supplier_code = $${p.length}`); }
+    if (req.query.q) { p.push(`%${req.query.q}%`); where.push(`(pl.po_number ILIKE $${p.length} OR pl.sku ILIKE $${p.length})`); }
+    const rows = await db.query(
+      `SELECT pl.id, pl.po_number, pl.line_no, pl.supplier_code, pl.sku, pl.qty, pl.due_date, pl.vessel,
+              c.cbm_carton, c.carton_qty, c.cube_source, c.cube_basis, c.cube_disputed,
+              c.kg_unit, c.weight_ambiguous, c.carton_l, c.carton_w, c.carton_h,
+              -- Caixas inteiras: meia caixa não entra em contêiner.
+              CASE WHEN c.cbm_carton IS NOT NULL AND c.carton_qty > 0
+                   THEN ceil(pl.qty / c.carton_qty) END                       AS cartons,
+              CASE WHEN c.cbm_carton IS NOT NULL AND c.carton_qty > 0
+                   THEN round((ceil(pl.qty / c.carton_qty) * c.cbm_carton)::numeric, 3) END AS cbm,
+              CASE WHEN c.kg_unit IS NOT NULL THEN round((pl.qty * c.kg_unit)::numeric, 1) END AS kg,
+              cm.qty_planned, cm.plan_names
+         FROM rapid_inv.po_lines pl
+         LEFT JOIN rapid_inv.v_sp_cube c        ON c.sku_key = pl.sku_key
+         LEFT JOIN rapid_inv.v_sp_po_committed cm ON cm.po_line_id = pl.id
+        WHERE ${where.join(' AND ')}
+        ORDER BY pl.due_date NULLS LAST, pl.po_number, pl.line_no
+        LIMIT ${asInt(req.query.limit, 500, 1, MAX_PAGE)}`, p);
+    const types = await db.query(
+      `SELECT * FROM rapid_inv.container_type WHERE is_active ORDER BY sort_order`);
+    // O resumo do que ESTA página conseguiu cubar, e do que não conseguiu.
+    // Sai daqui e não do front porque a razão de cada recusa está no banco.
+    const cubed = rows.filter((r) => r.cbm != null);
+    res.json({
+      rows, types, ms: Date.now() - t0,
+      summary: {
+        lines: rows.length,
+        cubed: cubed.length,
+        cbm: Math.round(cubed.reduce((a, r) => a + Number(r.cbm), 0) * 10) / 10,
+        measured: cubed.filter((r) => r.cube_basis === 'measured').length,
+        measured_cbm: Math.round(cubed.filter((r) => r.cube_basis === 'measured')
+          .reduce((a, r) => a + Number(r.cbm), 0) * 10) / 10,
+        disputed: cubed.filter((r) => r.cube_disputed).length,
+        no_cube: rows.filter((r) => r.cbm == null).length,
+        no_weight: rows.filter((r) => r.kg == null).length,
+      },
+    });
+  }));
+
   app.get(`${R}/pos`, wrap(async (req, res) => {
     const limit = asInt(req.query.limit, 200, 1, MAX_PAGE);
     const where = ['1=1'], p = [];

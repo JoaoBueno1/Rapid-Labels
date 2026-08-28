@@ -70,16 +70,16 @@
       // Sem badge de propósito: o número de SKUs em risco fica sempre perto de
       // 500 e nunca zera. Badge que não vai a zero deixa de ser sinal e vira
       // enfeite — o alerta útil está dentro da tela, agrupado por SKU.
-      // Stock Planning, Projects e Purchase Orders são a MESMA página: as três
-      // compartilham estado e se alimentam (o projeto puxa a linha de PO, a PO
-      // vira o incoming da grade). Entrada própria no menu, aba pelo hash —
-      // separar em páginas duplicaria a lógica que as liga.
+      // As três eram a MESMA página, separadas só pelo hash. Viraram páginas
+      // próprias: quem abre Projects não carrega mais 1.951 SKUs de projeção
+      // para ver uma linha de pedido. Continuam se alimentando — pela URL e
+      // pelos dados, não por compartilharem escopo de script.
       { t: 'Stock Planning', href: '/planning#supply', ic: 'plan',
-        match: ['/planning', '/planning/', '/features/stock-planning/ui/planning.html'], hash: 'supply' },
-      { t: 'Projects', href: '/planning#projects', ic: 'fact',
-        match: ['/planning', '/planning/'], hash: 'projects' },
-      { t: 'Purchase Orders', href: '/planning#pos', ic: 'box',
-        match: ['/planning', '/planning/'], hash: 'pos' },
+        match: ['/planning', '/planning/', '/features/stock-planning/ui/planning.html'] },
+      { t: 'Projects', href: '/projects', ic: 'fact',
+        match: ['/projects', '/features/stock-planning/ui/projects.html'] },
+      { t: 'Purchase Orders', href: '/purchase-orders', ic: 'box',
+        match: ['/purchase-orders', '/features/stock-planning/ui/po.html'] },
       { t: 'Master Stock', href: '/master', ic: 'box',
         match: ['/master', '/features/stock-planning/ui/master.html'] },
       { t: 'Container Check', href: '/features/container-check/container-check.html', ic: 'inbox' },
@@ -117,8 +117,8 @@
 
   const here = location.pathname.replace(/\/+$/, '') || '/';
   const isIndex = here === '/' || /\/index\.html$/.test(here);
-  // Três itens apontam para /planning; o que os separa é o hash. Sem olhar o
-  // hash, os três ficariam marcados ao mesmo tempo e o menu perderia o sentido.
+  // O `hash` sobrevive porque outros itens podem precisar dele; hoje nenhum
+  // dos três usa, desde que Projects e Purchase Orders ganharam URL própria.
   const isActive = (it) => {
     const list = it.match || (it.href ? [it.href] : []);
     const pathOk = list.some((m) => {

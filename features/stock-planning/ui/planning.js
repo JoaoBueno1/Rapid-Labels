@@ -1,5 +1,9 @@
 'use strict';
-/* Stock Planning — front end.
+/* Stock Planning — Overview, Supply Planning, Buy e Alerts.
+
+   Projects e Purchase Orders saíram daqui para páginas próprias. O que os
+   três compartilham — cliente de API, formatadores, painel lateral, toast,
+   editor de célula — está em sp-core.js, carregado antes deste arquivo.
 
    Nenhum cálculo mora aqui: a projeção semanal vem pronta do servidor. O
    navegador desenha e edita. É o que permite abrir 1.300 SKUs sem travar.
@@ -8,80 +12,24 @@
    esse formato — ele usa 'd-mmm' (8-Nov). Foi decisão explícita padronizar,
    e dd/mm/yyyy é também o que Returns, Open Orders e Pick Anomalies já usam. */
 
-const API = '/api/stock-planning';
-const $  = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 const S = {
   view: 'overview', ov: 'health',
-  projects: { q:'', status:'ACTIVE', rep:'', branch:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
   supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), line:'', scope:(localStorage.getItem('sp.scope')||''), weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
-  pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { muted:false, supplier:'' },
   buy:      { supplier:'', late:false },
-  suppliers: [], branches: [], state: null,
+  suppliers: [], state: null,
 };
 
-/* ── utilidades ─────────────────────────────────────────────────────── */
-async function api(path, opts = {}) {
-  const r = await fetch(API + path, { ...opts,
-    headers: { 'Content-Type':'application/json', 'x-sp-user': localStorage.getItem('sp.who') || 'planner', ...(opts.headers||{}) } });
-  const b = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(b.error || `HTTP ${r.status}`);
-  return b;
-}
-const esc = v => v==null ? '' : String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const n0  = v => (v==null||v==='') ? '' : Math.round(Number(v)).toLocaleString('en-AU');
-/* Zero não é informação. O Excel deixa a célula vazia, e uma coluna de zeros
-   compete visualmente com os números que importam. */
-const nz0 = v => (v==null||v===''||Number(v)===0) ? '' : Math.round(Number(v)).toLocaleString('en-AU');
-const n1  = v => (v==null||v==='') ? '' : Number(v).toLocaleString('en-AU',{maximumFractionDigits:1});
-const aud = v => (v==null||v==='') ? '' : 'A$' + Math.round(Number(v)).toLocaleString('en-AU');
-const usd = v => (v==null||v==='') ? '' : '$' + Number(v).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});
-
-/** dd/mm/yyyy — o padrão do app (features/returns/returns.js:20). */
-const d10 = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||'')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
-const dSh = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||'')); return m ? `${m[3]}/${m[2]}` : ''; };
-const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-/** Aceita dd/mm/yyyy, yyyy-mm-dd e "8 Nov 26". Devolve sempre ISO. */
-function parseDate(v) {
-  const s = String(v||'').trim();
-  if (!s) return null;
-  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (m) return s;
-  m = s.match(/^(\d{1,2})[\/\-. ](\d{1,2})[\/\-. ](\d{2,4})$/);
-  if (m) { const y = m[3].length===2 ? '20'+m[3] : m[3]; return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
-  m = s.match(/^(\d{1,2})[\s-]([A-Za-z]{3})[a-z]*[\s-]?(\d{2,4})?$/);
-  if (m) { const i = MON.findIndex(x => x.toLowerCase()===m[2].toLowerCase()); if (i<0) return null;
-    const y = !m[3] ? String(new Date().getFullYear()) : (m[3].length===2 ? '20'+m[3] : m[3]);
-    return `${y}-${String(i+1).padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
-  return null;
-}
-
-let toastT;
-function toast(msg, bad) {
-  const el = $('#toast'); el.textContent = msg;
-  el.className = 'sp-toast is-on' + (bad ? ' bad' : '');
-  clearTimeout(toastT); toastT = setTimeout(() => el.className = 'sp-toast', bad ? 5000 : 2400);
-}
-const debounce = (fn, ms=260) => { let t; return (...a) => { clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
-
-/** Cor por navio, estável. O Excel pinta a Due Date com uma cor por
-    consignação — 24 cores mapeadas quase 1:1 com o nome do navio. */
-const VESSEL_HUES = [186,42,318,14,268,96,352,210,58,140,300,24,166,240,80,330,4,200,120,282];
-function vesselColor(v) {
-  if (!v) return null;
-  let h = 0; for (let i=0;i<v.length;i++) h = (h*31 + v.charCodeAt(i)) >>> 0;
-  return `hsl(${VESSEL_HUES[h % VESSEL_HUES.length]} 72% 62%)`;
-}
-
 /* ── navegação ──────────────────────────────────────────────────────── */
-// Projects e Purchase Orders ganharam entrada própria no menu lateral, mas
-// continuam ABAS desta mesma página — mesmo código, mesmos dados, mesmo estado.
+// Projects e Purchase Orders saíram para páginas próprias. Um link antigo com
+// #projects ou #pos ainda existe por aí (favorito, aba aberta), e cair numa
+// view que não existe mais daria uma tela em branco sem erro: o redirecionamento
+// abaixo os leva para o lugar certo em vez de falhar em silêncio.
 // O menu aponta para /planning#projects e a aba abre pelo hash. Duplicar as
 // telas para dar a cada uma sua URL seria duplicar a lógica que as liga: o
 // projeto puxa a linha de PO, a PO alimenta o incoming da grade.
-const HASH_VIEWS = ['overview', 'projects', 'supply', 'buy', 'pos', 'alerts'];
+const HASH_VIEWS = ['overview', 'supply', 'buy', 'alerts'];
 function show(view, opts) {
   S.view = view;
   $$('.sp-tab').forEach(b => b.classList.toggle('is-on', b.dataset.view === view));
@@ -93,20 +41,21 @@ function show(view, opts) {
     if (location.hash !== h) history.replaceState(null, '', h);
     if (window.__railSync) window.__railSync();
   }
-  ({ overview:loadOverview, projects:loadProjects, supply:loadSupply, buy:loadBuy, pos:loadPOs, alerts:loadAlerts }[view] || (()=>{}))();
+  // O objeto literal avalia TUDO na hora: uma chave apontando para uma função
+  // que saiu daqui é ReferenceError antes de a tela desenhar qualquer coisa.
+  ({ overview:loadOverview, supply:loadSupply, buy:loadBuy, alerts:loadAlerts }[view] || (()=>{}))();
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('.sp-tab'); if (b) show(b.dataset.view); });
+/* Um link antigo com #projects ou #pos ainda existe por aí — favorito, aba
+   deixada aberta, mensagem no chat. Sem isto ele cairia numa view inexistente
+   e a tela ficaria em branco sem erro nenhum. */
+const MUDOU_DE_CASA = { projects: '/projects', pos: '/purchase-orders' };
 window.addEventListener('hashchange', () => {
   const v = location.hash.replace('#', '');
+  if (MUDOU_DE_CASA[v]) return location.assign(MUDOU_DE_CASA[v]);
   if (HASH_VIEWS.includes(v) && v !== S.view) show(v, { fromHash: true });
 });
 
-function side(title, html) { $('#sideTitle').textContent = title; $('#sideBody').innerHTML = html; $('#side').classList.add('is-on'); }
-$('#sideClose').addEventListener('click', () => $('#side').classList.remove('is-on'));
-document.addEventListener('keydown', e => { if (e.key !== 'Escape') return;
-  $('#side').classList.remove('is-on'); $$('.sp-modal.is-on').forEach(m => m.classList.remove('is-on')); });
-$$('.sp-modal').forEach(m => m.addEventListener('click', e => {
-  if (e.target === m || e.target.hasAttribute('data-close')) m.classList.remove('is-on'); }));
 
 /* ── boot ───────────────────────────────────────────────────────────── */
 (async function boot() {
@@ -124,25 +73,18 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     // 616 ms — a restrição sobrevivia ao motivo dela.
     $('#spSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#byySupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
-    $('#poSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#alSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
-    $('#npoSupplier').innerHTML = '<option value="">—</option>' + opts;
     if (S.supply.supplier) $('#spSupplier').value = S.supply.supplier;
     if (S.supply.view) { $('#spView').value = S.supply.view; S.supply.expandAll = true; }
     if (S.supply.back) $('#spBack').value = String(S.supply.back);
     $('#spSort').classList.toggle('is-on', S.supply.sort === 'risk');
     const f = await api('/filters');
-    $('#pjRep').innerHTML = '<option value="">All reps</option>' + f.reps.map(r => `<option>${esc(r)}</option>`).join('');
-    // A contagem no rótulo: um filtro de filial sem número obriga a testar uma
-    // por uma para descobrir onde há trabalho.
-    $('#pjBranch').innerHTML = '<option value="">All branches</option>'
-      + (f.branches || []).map(b => `<option value="${esc(b.branch_code)}">${esc(b.name || b.branch_code)} (${n0(b.n)})</option>`).join('')
-      + '<option value="__none">No branch yet</option>';
     $('#spLine').innerHTML = '<option value="">All lines</option>'
       + (f.lines || []).map(l => `<option value="${esc(l.line)}">${esc(l.line)} (${n0(l.n)})</option>`).join('');
-    // Abre onde o link do menu pediu. Sem isto /planning#projects caía no
-    // Overview e o item marcado no menu apontava para outra tela.
+    // Abre onde o link pediu. E se o link é de antes da separação, manda para
+    // a página nova em vez de cair no Overview calado.
     const want = location.hash.replace('#', '');
+    if (MUDOU_DE_CASA[want]) return location.assign(MUDOU_DE_CASA[want]);
     if (HASH_VIEWS.includes(want)) show(want, { fromHash: true });
     else loadOverview();
   } catch (e) { toast('Could not load: ' + e.message, true); }
@@ -289,7 +231,10 @@ async function ovInbound() {
           <td class="mono">${esc(r.sku)}</td><td class="n">${n0(r.qty)}</td><td class="n">${d10(r.due_date)}</td>
           <td class="n" style="color:#9c0006;font-weight:600">${r.days_late}</td><td>${esc(r.vessel||'')}</td></tr>`).join('')}</tbody></table>
       </div>` : ''}`;
-    $('#ovBody').onclick = e => { const tr = e.target.closest('tr[data-sup]'); if (tr) { S.pos.supplier = tr.dataset.sup; $('#poSupplier').value = tr.dataset.sup; show('pos'); } };
+    // O filtro viaja pela URL: o seletor de fornecedor não mora mais nesta
+    // página, e escrever nele daqui seria escrever em null.
+    $('#ovBody').onclick = e => { const tr = e.target.closest('tr[data-sup]');
+      if (tr) location.assign('/purchase-orders?supplier=' + encodeURIComponent(tr.dataset.sup)); };
   } catch (e) { $('#ovBody').innerHTML = `<div class="sp-empty">${esc(e.message)}</div>`; }
 }
 
@@ -333,7 +278,7 @@ async function ovDemand() {
           <td class="n">${h.customers}</td></tr>`).join('')}</tbody></table>
       </div>`;
     $('#ovBody').onclick = e => { if (e.target.closest('tr[data-held]')) {
-      S.projects.only = 'held'; $$('.sp-view[data-view=projects] .sp-chip').forEach(c => c.classList.toggle('is-on', c.dataset.only==='held')); show('projects'); } };
+      location.assign('/projects?only=held'); } };
   } catch (e) { $('#ovBody').innerHTML = `<div class="sp-empty">${esc(e.message)}</div>`; }
 }
 
@@ -420,335 +365,6 @@ function jumpSupply(sup, sku) {
   S.supply.supplier = sup || ''; S.supply.q = sku || '';
   $('#spSupplier').value = S.supply.supplier; $('#spSearch').value = S.supply.q;
   show('supply');
-}
-
-/* ═══ PROJECTS ══════════════════════════════════════════════════════ */
-/* A grade mostra o pedido UMA vez, como faixa, e as linhas de produto abaixo.
-   Tira cinco colunas repetidas da grade e resolve o pedido do usuário de
-   separar visualmente cada sales order — coisa que o Excel não faz (medido:
-   dos 318 blocos de pedido, 158 têm mais de uma cor de linha dentro). */
-const LN = [
-  ['sku',          'SKU',          '',      160, r => `<span class="mono em">${esc(r.sku)}</span>`],
-  ['qty',          'QTY',          'n',      58, r => n0(r.qty)],
-  ['type',         'TYPE',         'clip',   80, r => cellEd(r,'type',esc(r.type))],
-  ['unit_price',   'UNIT PRICE',   'n',      78, r => Number(r.unit_price) ? usd(r.unit_price) : ''],
-  ['qty_to_pick',  'QTY to Pick',  'n',      74, r => Number(r.qty_to_pick) ? `<b>${n0(r.qty_to_pick)}</b>` : ''],
-  ['po_ref',       'PO',           '',       82, r => cellEd(r,'po_ref',esc(r.po_ref))],
-  ['pick',         'PICK DATE',    '',      118, r => drawCell(r)],
-  ['qty_held',     'QTY HELD',     'n',      70, r => cellEd(r,'qty_held',nz0(r.qty_held),'num')],
-  ['date_packed',  'Date packed',  '',       94, r => cellEd(r,'date_packed',d10(r.date_packed),'date')],
-  ['days_held',    'Days held',    'n',      66, r => r.days_held>0 ? `<span${r.days_held>180?' style="color:#9c0006;font-weight:600"':''}>${n0(r.days_held)}</span>` : ''],
-  ['qty_inv',      'QTY INV',      'n',      68, r => cellEd(r,'qty_inv',nz0(r.qty_inv),'num')],
-  ['required_text','REQUIRED',     'clip',  210, r => cellEd(r,'required_text',esc(r.required_text))],
-  ['warehouse_note','WAREHOUSE',   'clip',  130, r => esc(r.warehouse_note)],
-];
-const cellEd = (r, f, html, kind='text') =>
-  `<span class="sp-cell${html?'':' void'}" contenteditable="plaintext-only" spellcheck="false"
-     data-line="${r.id}" data-field="${f}" data-kind="${kind}">${html||''}</span>`;
-
-/** Estado da linha, com as cores que o workbook usa. */
-function lineState(r) {
-  if (Number(r.qty_inv) >= Number(r.qty) && Number(r.qty) > 0) return 'st-closed';
-  if (Number(r.qty_held) > 0 && r.date_packed) return 'st-held';
-  return '';
-}
-function drawCell(r) {
-  if (!r.draw_count) return Number(r.qty_to_pick) > 0
-    ? `<button class="ui-act ui-act--warn" data-draws="${r.id}">plan it</button>`
-    : `<span class="faint">—</span>`;
-  if (r.draw_count === 1) {
-    const d = r.draws[0];
-    return d && d.planned_date
-      ? `<button class="ui-act" data-draws="${r.id}">${d10(d.planned_date)}</button>`
-      : `<button class="ui-act ui-act--warn" data-draws="${r.id}">TBA</button>`;
-  }
-  return `<button class="ui-act" data-draws="${r.id}">${r.draw_count} draws</button>`
-       + (r.over_planned ? ' <span class="ui-tag ui-tag--danger">over</span>' : '');
-}
-
-let pjRows = [], pjOrders = [];
-async function loadProjects() {
-  const p = S.projects;
-  const qs = new URLSearchParams({ status:p.status, limit:p.limit, offset:p.offset, sort:'order_date', dir:'desc' });
-  if (p.q) qs.set('q', p.q);
-  if (p.rep) qs.set('rep', p.rep);
-  if (p.branch) qs.set('branch', p.branch);
-  if (p.only) qs.set('only', p.only);
-  $('#pjCount').textContent = 'loading…';
-  try {
-    const d = await api('/lines?' + qs);
-    pjRows = d.rows;
-    const by = new Map();
-    for (const r of d.rows) {
-      const k = r.project_id || r.sales_order;
-      if (!by.has(k)) by.set(k, { key:k, id:r.project_id, so:r.sales_order, cu:r.customer, rf:r.reference,
-                                  rp:r.rep, dt:r.order_date, wh:r.warehouse_note,
-                                  br:r.branch_code, brs:r.branch_source, lines:[] });
-      by.get(k).lines.push(r);
-    }
-    pjOrders = [...by.values()];
-    $('#pjCount').textContent = `${n0(pjOrders.length)} orders · ${n0(d.rows.length)} of ${n0(d.total)} lines`;
-    renderProjects();
-  } catch (e) { $('#pjCount').textContent=''; toast(e.message, true); }
-}
-
-/* A filial e de onde ela veio, na mesma marca.
-   "order" e fato: o pedido de venda diz. "rep" e inferencia pelo mapa
-   rep->filial — 1.468 dos 1.667 vem por ai, e apaga-las na mesma cor do fato
-   seria transformar palpite em dado. Contorno tracejado marca o inferido. */
-const branchChip = (o) => {
-  if (!o.br) return o.brs === 'ambiguous'
-    ? `<span class="sep"></span><span class="pj-br is-amb" title="The rep's first name belongs to more than one person, in different branches — it cannot be decided from the name alone">branch?</span>`
-    : '';
-  const inferido = o.brs === 'rep';
-  return `<span class="sep"></span><span class="pj-br${inferido ? ' is-inf' : ''}" title="${
-    inferido ? `Inferred from the rep ${esc(o.rp || '')} — the sales order does not say which branch`
-             : 'From the sales order itself'}">${esc(o.br)}${inferido ? '?' : ''}</span>`;
-};
-
-function renderProjects() {
-  const showFlt = $('#pjFilters').classList.contains('is-on');
-  const head = `<thead>
-    <tr>${LN.map(([k,l,c,w])=>`<th class="${c==='n'?'n':''}" style="width:${w}px">${l}</th>`).join('')}</tr>
-    <tr class="sp-filters${showFlt?'':' hide'}">${LN.map(([k])=>
-      k==='pick' ? `<th><select data-f="${k}"><option value="">all</option><option value="dated">dated</option><option value="tba">TBA</option><option value="none">no draw</option></select></th>`
-                 : `<th><input data-f="${k}" placeholder="filter" value="${esc(S.projects.col[k]||'')}"></th>`).join('')}</tr>
-  </thead>`;
-  const f = S.projects.col;
-  const keep = r => LN.every(([k]) => {
-    const v = (f[k]||'').trim().toLowerCase(); if (!v) return true;
-    if (k === 'pick') {
-      if (v==='dated') return r.draws && r.draws.some(d=>d.planned_date);
-      if (v==='tba')   return r.draws && r.draws.some(d=>!d.planned_date);
-      if (v==='none')  return !r.draw_count;
-      return true;
-    }
-    return String(r[k] ?? '').toLowerCase().includes(v);
-  });
-  const bodies = pjOrders.map(o => {
-    const lines = o.lines.filter(keep);
-    if (!lines.length) return '';
-    const qty = lines.reduce((s,r)=>s+Number(r.qty||0),0);
-    const pick = lines.reduce((s,r)=>s+Number(r.qty_to_pick||0),0);
-    return `<tbody data-order="${o.key}">
-      <tr class="sp-ord${showFlt?' flt':''}"><td colspan="${LN.length}"><div class="sp-ord-in">
-        <span class="so">${esc(o.so)}</span><span class="sep"></span>
-        <span class="cu">${esc(o.cu||'')}</span>
-        ${o.rf?`<span class="sep"></span><span class="rf" title="${esc(o.rf)}">${esc(o.rf)}</span>`:''}
-        ${o.rp?`<span class="sep"></span><span class="rp">${esc(o.rp)}</span>`:''}
-        ${branchChip(o)}
-        <span class="sep"></span><span class="dt">${d10(o.dt)}</span>
-        <span class="rt">
-          <span class="mt">${lines.length} lines · ${n0(qty)} ordered · ${n0(pick)} to pick</span>
-          ${o.id?`<button class="ui-act" data-project="${o.id}">Open</button>`:''}
-        </span></div></td></tr>
-      ${lines.map(r=>`<tr class="sp-ln ${lineState(r)}" data-row="${r.id}">
-        ${LN.map(([k,l,c,w,fn])=>{
-          const cls = [c==='n'?'n':'', c==='clip'?'clip':''].filter(Boolean).join(' ');
-          const extra = k==='qty_inv' && Number(r.qty_inv)>=Number(r.qty) && Number(r.qty)>0 ? ' cf-inv'
-                      : k==='qty_held' && Number(r.qty_held)>=Number(r.qty) && Number(r.qty)>0 ? ' cf-held' : '';
-          const title = c==='clip' && r[k] ? ` title="${esc(r[k])}"` : '';
-          return `<td class="${cls}${extra}" style="width:${w}px"${title}>${fn(r)||''}</td>`;
-        }).join('')}</tr>`).join('')}
-    </tbody>`;
-  }).join('');
-  $('#pjGrid').innerHTML = head + (bodies || `<tbody><tr><td colspan="${LN.length}"><div class="sp-empty">Nothing matches those filters.</div></td></tr></tbody>`);
-}
-
-$('#pjSearch').addEventListener('input', debounce(e => { S.projects.q = e.target.value; loadProjects(); }));
-$('#pjStatus').addEventListener('change', e => { S.projects.status = e.target.value; loadProjects(); });
-$('#pjRep').addEventListener('change', e => { S.projects.rep = e.target.value; loadProjects(); });
-$('#pjBranch').addEventListener('change', e => { S.projects.branch = e.target.value; S.projects.offset = 0; loadProjects(); });
-$('#pjFilters').addEventListener('click', e => { e.currentTarget.classList.toggle('is-on'); renderProjects(); });
-$$('.sp-view[data-view=projects] .sp-chip').forEach(c => c.addEventListener('click', () => {
-  const on = S.projects.only === c.dataset.only;
-  S.projects.only = on ? '' : c.dataset.only;
-  $$('.sp-view[data-view=projects] .sp-chip').forEach(x => x.classList.toggle('is-on', !on && x === c));
-  loadProjects();
-}));
-$('#pjGrid').addEventListener('input', e => {
-  const f = e.target.closest('[data-f]'); if (!f) return;
-  S.projects.col[f.dataset.f] = f.value;
-  clearTimeout(window.__fT); window.__fT = setTimeout(() => {
-    const active = document.activeElement?.dataset?.f;
-    renderProjects();
-    if (active) { const el = $(`[data-f="${active}"]`); if (el) { el.focus(); el.setSelectionRange?.(el.value.length, el.value.length); } }
-  }, 200);
-});
-$('#pjGrid').addEventListener('click', e => {
-  const dz = e.target.closest('[data-draws]'); if (dz) return toggleDraws(+dz.dataset.draws);
-  const pb = e.target.closest('[data-project]'); if (pb) return openProject(+pb.dataset.project);
-});
-
-/* ── edição inline ──────────────────────────────────────────────────── */
-const before = new WeakMap();
-document.addEventListener('focusin', e => { const c = e.target.closest('.sp-cell'); if (c) before.set(c, c.textContent); });
-document.addEventListener('keydown', e => {
-  const c = e.target.closest('.sp-cell'); if (!c) return;
-  if (e.key === 'Enter') { e.preventDefault(); c.blur(); }
-  else if (e.key === 'Escape') { e.preventDefault(); c.textContent = before.get(c)||''; c.dataset.skip='1'; c.blur(); }
-  else if (e.key === 'Tab') {
-    const cells = $$('.sp-cell', c.closest('tbody')||document);
-    const i = cells.indexOf(c) + (e.shiftKey ? -1 : 1);
-    if (cells[i]) { e.preventDefault(); c.blur(); cells[i].focus(); }
-  }
-});
-document.addEventListener('focusout', async e => {
-  const c = e.target.closest('.sp-cell'); if (!c) return;
-  if (c.dataset.skip) { delete c.dataset.skip; return; }
-  const was = before.get(c); const now = c.textContent.trim();
-  if (was === undefined || now === was.trim()) return;
-  const field = c.dataset.field;
-  let value = now;
-  if (c.dataset.kind === 'num')  value = now === '' ? 0 : Number(now.replace(/[^0-9.-]/g,''));
-  if (c.dataset.kind === 'date') value = parseDate(now);
-  if (c.dataset.kind === 'num' && isNaN(value)) { c.classList.add('bad'); return toast('Not a number', true); }
-  if (c.dataset.kind === 'date' && now && !value) { c.classList.add('bad'); return toast('Use dd/mm/yyyy', true); }
-  c.classList.add('busy');
-  try {
-    const t = c.dataset.line ? `/lines/${c.dataset.line}` : c.dataset.po ? `/po-lines/${c.dataset.po}`
-            : `/skus/${encodeURIComponent(c.dataset.sku)}`;
-    const upd = await api(t, { method:'PATCH', body: JSON.stringify({ [field]: value }) });
-    c.classList.replace('busy','ok'); setTimeout(()=>c.classList.remove('ok'), 1000);
-    before.set(c, c.textContent);
-    if (c.dataset.line) { const i = pjRows.findIndex(r=>r.id===+c.dataset.line);
-      if (i>=0) { pjRows[i] = { ...pjRows[i], ...upd, draws: pjRows[i].draws }; renderProjects(); } }
-  } catch (err) {
-    c.classList.replace('busy','bad'); c.textContent = was;
-    toast('Not saved: ' + err.message, true); setTimeout(()=>c.classList.remove('bad'), 2500);
-  }
-});
-
-/* ── draws: editor de verdade, não prompt() ─────────────────────────── */
-function toggleDraws(lineId) {
-  const open = $(`tr.sp-draw-row[data-for="${lineId}"]`);
-  if (open) return open.remove();
-  $$('tr.sp-draw-row').forEach(t => t.remove());
-  const row = pjRows.find(r => r.id === lineId);
-  const tr = $(`tr[data-row="${lineId}"]`);
-  if (!row || !tr) return;
-  const el = document.createElement('tr');
-  el.className = 'sp-draw-row'; el.dataset.for = lineId;
-  el.innerHTML = `<td colspan="${LN.length}">${drawEditor(row)}</td>`;
-  tr.after(el);
-  const first = el.querySelector('input.q'); if (first) first.focus();
-}
-function drawEditor(row) {
-  const planned = (row.draws||[]).reduce((s,d)=>s+Number(d.qty),0);
-  const left = Number(row.qty_to_pick) - planned;
-  return `<div class="dw-head">
-      <b>${esc(row.sku)}</b>
-      <span>${n0(row.qty_to_pick)} to pick · ${n0(planned)} planned</span>
-      ${left>0 ? `<span class="ui-tag ui-tag--warn">${n0(left)} unplanned</span>`
-        : left<0 ? `<span class="ui-tag ui-tag--danger">${n0(-left)} over</span>`
-        : '<span class="ui-tag ui-tag--ok">balanced</span>'}
-    </div>
-    <div class="dw-list">
-      ${(row.draws||[]).map(d=>`<span class="dw ${d.planned_date?'':'tba'}" data-draw="${d.id}">
-        <input class="q" value="${n0(d.qty)}" data-k="qty" title="Quantity">
-        <input class="d" value="${d.planned_date?d10(d.planned_date):''}" data-k="planned_date"
-               placeholder="dd/mm/yyyy — blank = TBA" title="Planned pick date">
-        <button class="sp" data-act="split" title="Split this draw in two">&#8646;</button>
-        <button class="x" data-act="del" title="Remove">&times;</button></span>`).join('')}
-      <button class="dw-add" data-act="add" data-line="${row.id}">+ add draw${left>0?` (${n0(left)})`:''}</button>
-    </div>
-    <p class="dw-note">Leave the date blank for TBA — a made-up pick date is worse than none, and half the workbook's demand legitimately has no date. Changes save as you leave the field.</p>`;
-}
-document.addEventListener('change', async e => {
-  const inp = e.target.closest('.dw input'); if (!inp) return;
-  const wrap = inp.closest('[data-draw]'); const id = +wrap.dataset.draw;
-  const lineId = +inp.closest('tr.sp-draw-row').dataset.for;
-  const row = pjRows.find(r => r.id === lineId);
-  const body = {};
-  if (inp.dataset.k === 'qty') {
-    const q = Number(String(inp.value).replace(/[^0-9.]/g,''));
-    if (!(q > 0)) { toast('Quantity must be more than zero', true); return; }
-    body.qty = q;
-  } else {
-    const v = inp.value.trim();
-    if (v && !parseDate(v)) { toast('Use dd/mm/yyyy', true); return; }
-    body.planned_date = v ? parseDate(v) : null;
-  }
-  try {
-    const upd = await api(`/draws/${id}`, { method:'PATCH', body: JSON.stringify(body) });
-    const d = row.draws.find(x => x.id === id); Object.assign(d, upd);
-    redrawLine(lineId); toast('Draw updated');
-  } catch (err) { toast(err.message, true); }
-});
-document.addEventListener('click', async e => {
-  const b = e.target.closest('.dw-list [data-act]'); if (!b) return;
-  const act = b.dataset.act;
-  const lineId = +b.closest('tr.sp-draw-row').dataset.for;
-  const row = pjRows.find(r => r.id === lineId);
-  const wrap = b.closest('[data-draw]');
-  try {
-    if (act === 'add') {
-      const planned = (row.draws||[]).reduce((s,d)=>s+Number(d.qty),0);
-      const qty = Math.max(Number(row.qty_to_pick) - planned, 1);
-      const created = await api(`/lines/${lineId}/draws`, { method:'POST', body: JSON.stringify({ qty, planned_date:null }) });
-      row.draws.push(created); row.draw_count = row.draws.length; redrawLine(lineId);
-    } else if (act === 'del') {
-      const id = +wrap.dataset.draw;
-      await api(`/draws/${id}`, { method:'DELETE' });
-      row.draws = row.draws.filter(d => d.id !== id); row.draw_count = row.draws.length; redrawLine(lineId);
-    } else if (act === 'split') {
-      const id = +wrap.dataset.draw;
-      const d = row.draws.find(x => x.id === id);
-      const half = Math.floor(Number(d.qty)/2);
-      if (half < 1) return toast('Too small to split', true);
-      const out = await api(`/draws/${id}/split`, { method:'POST', body: JSON.stringify({ qty:half, planned_date:null }) });
-      d.qty = Number(d.qty) - half; row.draws.push(out.created); row.draw_count = row.draws.length;
-      redrawLine(lineId); toast('Split — set the date on the new draw');
-    }
-  } catch (err) { toast(err.message, true); }
-});
-function redrawLine(lineId) {
-  const row = pjRows.find(r => r.id === lineId);
-  const holder = $(`tr.sp-draw-row[data-for="${lineId}"] td`);
-  if (holder) holder.innerHTML = drawEditor(row);
-  const tr = $(`tr[data-row="${lineId}"]`);
-  if (tr) { const i = LN.findIndex(([k])=>k==='pick'); tr.children[i].innerHTML = drawCell(row); }
-}
-
-/* ── projeto ────────────────────────────────────────────────────────── */
-async function openProject(id) {
-  try {
-    const { project, lines } = await api(`/projects/${id}`);
-    const done = project.status === 'COMPLETED';
-    side(`${project.sales_order} · ${project.customer||''}`, `
-      <table class="brk">
-        <tr><td>Reference</td><td>${esc(project.reference)||'—'}</td></tr>
-        <tr><td>Rep</td><td>${esc(project.rep)||'—'}</td></tr>
-        <tr><td>Order date</td><td>${d10(project.order_date)||'—'}</td></tr>
-        <tr><td>Status</td><td>${project.status}${project.finish_date?' · '+d10(project.finish_date):''}</td></tr>
-        <tr><td>Source</td><td>${project.source}</td></tr>
-        <tr><td>Warehouse</td><td>${esc(project.warehouse_note)||'—'}</td></tr>
-        <tr class="tot"><td>Lines</td><td>${lines.length}</td></tr>
-      </table>
-      <div style="display:flex;gap:8px;margin:14px 0">
-        <button class="sp-btn ${done?'':'is-primary'}" id="pjTog" data-id="${id}" data-to="${done?'ACTIVE':'COMPLETED'}">
-          ${done?'Reactivate':'Complete project'}</button>
-        <button class="sp-btn" id="pjAud" data-id="${id}">History</button>
-      </div>
-      <h4>Lines</h4>
-      <table class="brk">${lines.map(l=>`<tr><td><span class="mono">${esc(l.sku)}</span></td>
-        <td>${n0(l.qty)} · ${n0(l.qty_to_pick)} to pick${l.draw_count>1?` · ${l.draw_count} draws`:''}</td></tr>`).join('')}</table>`);
-    $('#pjTog').onclick = async ev => {
-      const b = ev.currentTarget;
-      try { await api(`/projects/${b.dataset.id}`, { method:'PATCH', body: JSON.stringify({ status:b.dataset.to }) });
-        toast(b.dataset.to==='COMPLETED' ? 'Completed — no rows were moved' : 'Reactivated');
-        $('#side').classList.remove('is-on'); loadProjects();
-      } catch (err) { toast(err.message, true); }
-    };
-    $('#pjAud').onclick = () => openAudit('projects', id);
-  } catch (e) { toast(e.message, true); }
-}
-async function openAudit(table, id) {
-  const rows = await api(`/audit?table=${table}&record=${id}&limit=60`);
-  side('History', rows.length ? `<table class="brk">${rows.map(r=>`<tr>
-      <td>${esc(r.user_email||'system')}<br><span style="color:var(--mut-3);font-size:11px">${d10(String(r.changed_at).slice(0,10))} ${String(r.changed_at).slice(11,16)}</span></td>
-      <td>${r.action}</td></tr>`).join('')}</table>`
-    : '<p style="color:var(--mut-2)">Nothing changed yet.</p>');
 }
 
 /* ═══ SUPPLY PLANNING ═══════════════════════════════════════════════ */
@@ -1336,7 +952,10 @@ $('#cartFoot').addEventListener('click', async (e) => {
     const r = await api(`/cart/${b.dataset.cart}/confirm`, { method: 'POST', body: JSON.stringify({ po_number: po }) });
     toast(`${r.po_number} created with ${r.lines} lines`);
     $('#cartModal').classList.remove('is-on');
-    await loadCart(false); loadPOs(); show('pos');
+    await loadCart(false);
+    // Purchase Orders é outra página agora. Levar o número junto abre já
+    // filtrado na PO que acabou de nascer — é o "as telas conversam".
+    location.assign('/purchase-orders?po=' + encodeURIComponent(r.po_number));
   } catch (err) { toast(err.message, true); }
 });
 $('#byyCartBtn').addEventListener('click', () => loadCart(true));
@@ -1456,115 +1075,6 @@ $('#byyCopy').addEventListener('click', () => {
     .then(() => toast(`${rows.length} lines copied — paste straight into Add PO`))
     .catch(() => toast('Could not reach the clipboard', true));
 });
-
-/* ═══ PURCHASE ORDERS ═══════════════════════════════════════════════ */
-let poRows = [];
-async function loadPOs() {
-  const p = S.pos;
-  const qs = new URLSearchParams({ limit:500 });
-  if (p.q) qs.set('q', p.q);
-  if (p.supplier) qs.set('supplier', p.supplier);
-  if (p.open) qs.set('only','open');
-  try {
-    let rows = await api('/pos?' + qs);
-    const today = new Date().toISOString().slice(0,10);
-    if (p.overdue) rows = rows.filter(r => r.due_date && r.due_date < today);
-    poRows = rows;
-    $('#poCount').textContent = `${n0(rows.length)} lines`;
-    $('#poGrid').innerHTML = `<thead><tr>
-        <th style="width:92px">PO #</th><th style="width:88px">Date</th><th style="width:92px">Supplier</th>
-        <th style="width:190px">SKU</th><th class="n" style="width:78px">QTY</th>
-        <th style="width:92px">Finish</th><th style="width:92px">Due Date</th><th style="width:200px">Vessel</th>
-        <th class="n" style="width:84px">Unit USD</th><th class="n" style="width:48px">FX</th>
-        <th class="n" style="width:96px">Value AUD</th><th style="width:150px">Allocation</th></tr></thead>
-      <tbody>${rows.map(r => {
-        const vc = vesselColor(r.vessel);
-        const late = r.due_date && r.due_date < today;
-        return `<tr data-po="${r.id}">
-          <td class="po-anchor mono">${esc(r.po_number)}</td>
-          <td>${d10(r.po_date)}</td>
-          <td>${esc(r.supplier_code)||'<span style="color:#9c0006">?</span>'}</td>
-          <td class="mono">${esc(r.sku)}</td>
-          <td class="n">${cellPo(r,'qty',n0(r.qty),'num')}</td>
-          <td>${d10(r.finish_date)||esc(r.require_status)||''}</td>
-          <td class="due ${late?'overdue':''}" style="${vc?`border-left-color:${vc}`:''}">${cellPo(r,'due_date',d10(r.due_date),'date')}</td>
-          <td class="clip" title="${esc(r.vessel||'')}">${cellPo(r,'vessel',esc(r.vessel))}</td>
-          <td class="n mono">${r.unit_cost_usd==null?'':usd(r.unit_cost_usd)}</td>
-          <td class="n mono" style="color:var(--mut-3)">${r.fx_used||''}</td>
-          <td class="n mono">${r.value_aud==null?'':aud(r.value_aud)}</td>
-          <td><button class="ui-act" data-alloc="${r.id}">Allocate</button></td></tr>`;
-      }).join('')}</tbody>`;
-  } catch (e) { toast(e.message, true); }
-}
-const cellPo = (r,f,html,kind='text') =>
-  `<span class="sp-cell${html?'':' void'}" contenteditable="plaintext-only" spellcheck="false"
-     data-po="${r.id}" data-field="${f}" data-kind="${kind}">${html||''}</span>`;
-
-$('#poSearch').addEventListener('input', debounce(e => { S.pos.q = e.target.value; loadPOs(); }));
-$('#poSupplier').addEventListener('change', e => { S.pos.supplier = e.target.value; loadPOs(); });
-$('#poOpen').addEventListener('click', e => { S.pos.open = !S.pos.open; e.currentTarget.classList.toggle('is-on', S.pos.open); loadPOs(); });
-$('#poOverdue').addEventListener('click', e => { S.pos.overdue = !S.pos.overdue; e.currentTarget.classList.toggle('is-on', S.pos.overdue); loadPOs(); });
-$('#poGrid').addEventListener('click', e => { const b = e.target.closest('[data-alloc]'); if (b) openAllocation(+b.dataset.alloc); });
-
-/** Repartir a linha entre filiais. O saldo não alocado fica com o Main, e
-    isso aparece escrito — não fica implícito. */
-async function openAllocation(id) {
-  try {
-    const d = await api(`/po-lines/${id}/allocations`);
-    const rows = d.allocations.length ? d.allocations : [{ branch_code:'', qty:'', eta_date:null }];
-    const opts = b => S.branches.map(x =>
-      `<option value="${x.code}"${x.code===b?' selected':''}>${esc(x.name)}</option>`).join('');
-    side(`${d.po_number} · ${d.sku}`, `
-      <table class="brk">
-        <tr><td>Line quantity</td><td>${n0(d.qty)}</td></tr>
-        <tr><td>Due date</td><td>${d10(d.due_date)}</td></tr>
-        <tr><td>Vessel</td><td>${esc(d.vessel)||'—'}</td></tr>
-      </table>
-      <h4>Split across branches</h4>
-      <div class="alloc" id="allocList">
-        ${rows.map(a=>`<div class="alloc-row">
-          <select data-k="branch_code"><option value="">Branch…</option>${opts(a.branch_code)}</select>
-          <input class="q" data-k="qty" value="${a.qty===''?'':n0(a.qty)}" placeholder="qty">
-          <input data-k="eta_date" value="${a.eta_date?d10(a.eta_date):''}" placeholder="ETA dd/mm/yyyy">
-          <button class="sp-btn is-ghost" data-rm>&times;</button></div>`).join('')}
-      </div>
-      <button class="sp-btn" id="allocAdd" style="margin-top:8px">+ branch</button>
-      <div class="alloc-sum"><span>Unallocated — stays at Main</span><b id="allocLeft">${n0(d.unallocated_qty)}</b></div>
-      <p class="sp-hint">Allocating more than the line warns; it never blocks. The planning grid keeps using
-      company-wide stock — branch allocation is context, not the basis of the calculation.</p>
-      <div style="display:flex;gap:8px;margin-top:14px">
-        <button class="sp-btn is-primary" id="allocSave" data-id="${id}">Save allocation</button>
-      </div>`);
-    const recalc = () => {
-      const used = $$('#allocList .alloc-row').reduce((s,r)=>s+(Number(String(r.querySelector('[data-k=qty]').value).replace(/[^0-9.]/g,''))||0),0);
-      const left = Number(d.qty) - used;
-      const el = $('#allocLeft'); el.textContent = n0(left);
-      el.style.color = left < 0 ? '#9c0006' : left === 0 ? '#006100' : '';
-    };
-    $('#allocList').addEventListener('input', recalc);
-    $('#allocList').addEventListener('click', e => { if (e.target.closest('[data-rm]')) { e.target.closest('.alloc-row').remove(); recalc(); } });
-    $('#allocAdd').onclick = () => {
-      const el = document.createElement('div'); el.className = 'alloc-row';
-      el.innerHTML = `<select data-k="branch_code"><option value="">Branch…</option>${opts('')}</select>
-        <input class="q" data-k="qty" placeholder="qty"><input data-k="eta_date" placeholder="ETA dd/mm/yyyy">
-        <button class="sp-btn is-ghost" data-rm>&times;</button>`;
-      $('#allocList').append(el);
-    };
-    $('#allocSave').onclick = async ev => {
-      const allocations = $$('#allocList .alloc-row').map(r => ({
-        branch_code: r.querySelector('[data-k=branch_code]').value,
-        qty: Number(String(r.querySelector('[data-k=qty]').value).replace(/[^0-9.]/g,'')),
-        eta_date: parseDate(r.querySelector('[data-k=eta_date]').value),
-      })).filter(a => a.branch_code && a.qty > 0);
-      try {
-        const out = await api(`/po-lines/${ev.currentTarget.dataset.id}/allocations`,
-          { method:'PUT', body: JSON.stringify({ allocations }) });
-        toast(out.over_allocated ? `Saved — ${n0(-out.unallocated_qty)} over the line quantity` : 'Allocation saved');
-        $('#side').classList.remove('is-on');
-      } catch (err) { toast(err.message, true); }
-    };
-  } catch (e) { toast(e.message, true); }
-}
 
 /* ═══ ALERTS ═══════════════════════════════════════════════════════
    Uma lista de mensagens obriga a sair da tela para decidir qualquer coisa.
@@ -1721,92 +1231,4 @@ $('#alBody').addEventListener('click', e => {
   if (so) return jumpSupply(so.dataset.supOpen, '');
   const row = e.target.closest('[data-sku]');
   if (row) return jumpSupply(row.dataset.sup, row.dataset.sku);
-});
-
-/* ═══ IMPORT SALES ORDER ════════════════════════════════════════════ */
-let soPick = null;
-$('#btnImportSO').addEventListener('click', () => {
-  soPick = null; $('#soSearch').value=''; $('#soResults').innerHTML=''; $('#soPreview').innerHTML='';
-  $('#soImport').disabled = true; $('#mdImport').classList.add('is-on');
-  setTimeout(()=>$('#soSearch').focus(), 50);
-});
-$('#soSearch').addEventListener('input', debounce(async e => {
-  const q = e.target.value.trim();
-  if (q.length < 3) return $('#soResults').innerHTML = '';
-  try {
-    const rows = await api('/find/orders?q=' + encodeURIComponent(q));
-    $('#soResults').innerHTML = rows.length ? rows.map(r=>`
-      <div class="sp-res" data-no="${esc(r.number)}" data-dup="${r.existing_project_id||''}">
-        <span class="m">${esc(r.number)}</span>
-        <span class="g">${esc(r.customer||'')} · ${esc(r.reference||'')}</span>
-        <span class="g" style="flex:0;text-align:right">${d10(r.order_date)} · ${r.mirrored_lines} lines</span>
-        ${r.existing_project_id?'<span class="w">already imported</span>':''}</div>`).join('')
-      : '<div class="sp-empty">Nothing found.</div>';
-  } catch (err) { toast(err.message, true); }
-}));
-$('#soResults').addEventListener('click', async e => {
-  const row = e.target.closest('.sp-res'); if (!row) return;
-  $$('.sp-res', $('#soResults')).forEach(r => r.classList.toggle('is-on', r === row));
-  soPick = row.dataset.no;
-  const dup = row.dataset.dup;
-  try {
-    const lines = await api(`/find/orders/${encodeURIComponent(soPick)}/lines`);
-    $('#soImport').disabled = !lines.length || !!dup;
-    $('#soPreview').innerHTML = `<h4 style="margin:16px 0 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut-2)">
-        ${lines.length} lines · check before importing</h4>
-      ${dup?'<p class="sp-hint warn"><b>This sales order is already a project.</b> Importing again would duplicate it, so it is blocked.</p>':''}
-      <div class="sp-results" style="max-height:210px">${lines.map(l=>`
-        <div class="sp-res"><span class="m">${esc(l.sku)}</span>
-          <span class="g">${esc(l.product_name||'')}</span>
-          <span class="g" style="flex:0">${n0(l.quantity)} &times; ${usd(l.price)}</span>
-          ${l.in_planning?'':'<span class="w">not in planning</span>'}</div>`).join('')}</div>
-      <p class="sp-hint">Every line arrives with one draw and <b>no date</b>. Inventing a pick date is worse than TBA —
-      half the workbook's real demand legitimately has none.</p>`;
-  } catch (err) { toast(err.message, true); }
-});
-$('#soImport').addEventListener('click', async () => {
-  if (!soPick) return;
-  const b = $('#soImport'); b.disabled = true; b.textContent = 'Importing…';
-  try {
-    const out = await api('/projects/import-order', { method:'POST', body: JSON.stringify({ sales_order: soPick }) });
-    toast(`${soPick} imported — ${out.lines} lines, nothing retyped`);
-    $('#mdImport').classList.remove('is-on');
-    S.projects.q = soPick.replace('SO-',''); $('#pjSearch').value = S.projects.q; show('projects');
-  } catch (e) { toast(e.message, true); }
-  finally { b.disabled = false; b.textContent = 'Import as project'; }
-});
-
-/* ═══ NEW PO ════════════════════════════════════════════════════════ */
-$('#btnAddPO').addEventListener('click', () => {
-  $('#npoNumber').value=''; $('#npoLines').value=''; $('#npoPreview').innerHTML='';
-  $('#npoDate').value = new Date().toISOString().slice(0,10);
-  $('#mdPO').classList.add('is-on'); setTimeout(()=>$('#npoNumber').focus(), 50);
-});
-function parsePoLines(text) {
-  return text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{
-    const [sku,qty,cost,due] = l.split(/\t|;|,(?=\s*\S)/).map(x=>(x||'').trim());
-    return { sku, qty:Number(String(qty||'').replace(/[^0-9.]/g,'')),
-             unit_cost_usd: cost ? Number(String(cost).replace(/[^0-9.]/g,'')) : null,
-             due_date: due ? parseDate(due) : null };
-  }).filter(l => l.sku && l.qty > 0);
-}
-$('#npoLines').addEventListener('input', debounce(() => {
-  const lines = parsePoLines($('#npoLines').value);
-  const total = lines.reduce((s,l)=>s+(l.unit_cost_usd||0)*l.qty, 0);
-  $('#npoPreview').innerHTML = lines.length
-    ? `<p class="sp-hint"><b>${lines.length}</b> lines · ${n0(lines.reduce((s,l)=>s+l.qty,0))} units${total?` · ${usd(total)} USD`:''}</p>`
-    : '<p class="sp-hint">No lines recognised yet.</p>';
-}, 200));
-$('#npoSave').addEventListener('click', async () => {
-  const lines = parsePoLines($('#npoLines').value);
-  if (!$('#npoNumber').value.trim()) return toast('PO number is required', true);
-  if (!lines.length) return toast('At least one line is required', true);
-  try {
-    const out = await api('/pos', { method:'POST', body: JSON.stringify({
-      po_number: $('#npoNumber').value.trim(), po_date: $('#npoDate').value,
-      supplier_code: $('#npoSupplier').value || null, due_date: $('#npoDue').value || null,
-      vessel: $('#npoVessel').value.trim() || null, lines }) });
-    toast(`PO saved — ${out.created} lines now count as stock arriving`);
-    $('#mdPO').classList.remove('is-on'); loadPOs();
-  } catch (e) { toast(e.message, true); }
 });

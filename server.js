@@ -417,6 +417,12 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   try {
     require('./features/stock-planning/routes/stock-planning-routes').register(app);
     app.use('/planning', express.static(path.join(__dirname, 'features/stock-planning/ui'), { index: 'planning.html' }));
+    // Projects e Purchase Orders saíram de dentro do Stock Planning para
+    // páginas próprias. Ficam no MESMO bloco de propósito: o try/catch acima
+    // engole o erro e só avisa no console, então registrá-las no bloco do
+    // Analytics faria as três sumirem juntas por um motivo que não é delas.
+    app.get('/projects', (req, res) => res.sendFile(path.join(__dirname, 'features/stock-planning/ui/projects.html')));
+    app.get('/purchase-orders', (req, res) => res.sendFile(path.join(__dirname, 'features/stock-planning/ui/po.html')));
   } catch (e) {
     console.warn('⚠️  Could not register Stock Planning routes:', e.message);
   }

@@ -65,6 +65,16 @@
   --xl-good:#c6efce;  --xl-good-ink:#006100;
   --xl-rule:#8ea9db;
 
+  /* Informação — o par que faltava.
+     Eu vinha escrevendo var(--xl-info) em quatro lugares, e o
+     fallback funcionava tão bem que o token nunca existiu. Um fallback é uma
+     cor cravada com passo extra: muda-se o :root e aqueles quatro não mudam.
+     Os valores são o accent do design system (#2563EB / #DBEAFE / #1E40AF). */
+  --xl-info:#dbeafe;  --xl-info-ink:#1e40af;
+
+  /* Superfície rebaixada, do design system. Mesmo caso. */
+  --sunken:#f8fafc;
+
   --in:#0b6b7d;
   --dr:#0aa5e6;
 
@@ -569,8 +579,8 @@ tr.al-row:hover td{background:var(--card-2)}
    Ficam dentro da mesma expansão do cálculo e herdam a altura de linha dela,
    porque o ganho medido daquela compactação (51 linhas visíveis contra 20) se
    perderia se o BOM abrisse linhas altas. */
-.bom-mark{background:var(--xl-info,#e7effa);color:var(--xl-info-ink,#1f4e79);
-  border:1px solid var(--xl-info-ink,#1f4e79);border-radius:3px;
+.bom-mark{background:var(--xl-info);color:var(--xl-info-ink);
+  border:1px solid var(--xl-info-ink);border-radius:3px;
   padding:0 5px;font:700 9.5px/16px var(--sans);margin-left:4px}
 .sp-supply tr.bom-row td.lbl{padding-left:26px;color:var(--ink-2);
   /* A grade inteira foi apertada para 18px de linha, e foi essa compactação
@@ -580,7 +590,7 @@ tr.al-row:hover td{background:var(--card-2)}
 .sp-supply tr.bom-row td.lbl .ui-tag{line-height:14px;padding:0 4px;vertical-align:1px}
 .sp-supply tr.bom-row.is-tight td.lbl{box-shadow:inset 3px 0 0 var(--xl-warn-ink)}
 .bom-qty{display:inline-block;min-width:34px;font:700 10.5px/16px var(--mono);
-  color:var(--xl-info-ink,#1f4e79);text-align:right;margin-right:6px}
+  color:var(--xl-info-ink);text-align:right;margin-right:6px}
 .bom-row .bom-name{color:var(--mut);margin-left:8px;font-size:10.5px}
 .bom-soh{margin-left:10px;font:500 10.5px/16px var(--mono);color:var(--ink-2)}
 .bom-build{margin-left:8px;font:600 10px/16px var(--sans);color:var(--mut-2)}
@@ -591,8 +601,8 @@ tr.al-row:hover td{background:var(--card-2)}
    do rep, que é a maioria (1.468 de 1.667) — a diferença tem que estar
    visível ou a tela passa inferência por fato. */
 .pj-br{display:inline-block;padding:0 5px;border-radius:3px;
-  font:700 9.5px/15px var(--sans);border:1px solid var(--xl-info-ink,#1f4e79);
-  background:var(--xl-info,#e7effa);color:var(--xl-info-ink,#1f4e79)}
+  font:700 9.5px/15px var(--sans);border:1px solid var(--xl-info-ink);
+  background:var(--xl-info);color:var(--xl-info-ink)}
 .pj-br.is-inf{border-style:dashed;background:transparent;color:var(--mut)}
 .pj-br.is-amb{border-color:var(--xl-warn-ink);color:var(--xl-warn-ink);background:transparent;border-style:dashed}
 /* A linha de produto fica discreta: é contexto, não alerta. */
@@ -602,9 +612,9 @@ tr.al-row:hover td{background:var(--card-2)}
 /* O aviso do escopo. Fica entre a barra e a grade porque é condição de leitura
    da grade inteira — num rodapé ninguém lê antes de decidir. */
 .sp-note{margin:0 0 6px;padding:5px 9px;border-radius:4px;
-  background:var(--xl-info,#e7effa);border:1px solid var(--line-3);
+  background:var(--xl-info);border:1px solid var(--line-3);
   font:400 11px/16px var(--sans);color:var(--ink-2)}
-.sp-note b{color:var(--xl-info-ink,#1f4e79)}
+.sp-note b{color:var(--xl-info-ink)}
 .sp-note em{font-style:normal;font-weight:700}
 .sp-note-warn{color:var(--xl-warn-ink);font-weight:500}
 
@@ -618,11 +628,11 @@ tr.al-row:hover td{background:var(--card-2)}
 /* A decomposição da demanda no painel. "lean" marca a filial cuja venda vem
    mais pelo rep que pelo próprio depósito — o sinal de que ela é atendida do
    Main e de que a conta por local a subestima. */
-.brk tr.in-scope td{background:var(--xl-info,#e7effa)}
+.brk tr.in-scope td{background:var(--xl-info)}
 .brk tr.out-scope td{opacity:.55}
 .brk td.lean{color:var(--xl-warn-ink);font-weight:700}
 .brk .dot{display:inline-block;width:5px;height:5px;border-radius:50%;
-  background:var(--xl-info-ink,#1f4e79);margin-left:5px;vertical-align:2px}
+  background:var(--xl-info-ink);margin-left:5px;vertical-align:2px}
 .sp-loading{color:var(--mut);font:400 11px var(--sans);padding:4px 0}
 
 /* O carrinho. */

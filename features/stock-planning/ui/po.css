@@ -1,0 +1,51 @@
+/* Purchase Orders — só o que é desta tela.
+   Tudo o que é compartilhado continua em planning.css: um quinto arquivo de
+   tema com !important reapontando token de outro módulo é exatamente a dívida
+   que o CLAUDE.md manda não aumentar. Aqui não há um único !important. */
+
+/* As três abas. .po-pane nasce escondida pela regra de .sp-view; quem acende
+   é a função tab(), e o is-on do HTML dá a primeira. */
+.po-pane{display:none}
+.po-pane.is-on{display:flex;flex-direction:column;flex:1;min-height:0}
+
+/* ── aba 2: alocação ── */
+.al-rest{color:var(--xl-warn-ink);font-weight:700}
+.sp-pos tr.al-over td{background:var(--xl-bad)}
+.al-split{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.al-chip{display:inline-block;margin-right:4px;padding:0 5px;border-radius:3px;
+  font:600 9.5px/15px var(--sans);background:var(--sunken);
+  border:1px solid var(--line-3);color:var(--ink-2)}
+
+/* ── aba 3: contêiner ── */
+.ct-summary{margin:0 0 8px;padding:9px 12px;border:1px solid var(--line);
+  border-radius:6px;background:var(--sunken)}
+/* A barra é a resposta da tela; o resto é detalhe. Ela ganha o tamanho. */
+.ct-bar{position:relative;display:flex;height:16px;border-radius:4px;overflow:hidden;
+  background:var(--line);margin-bottom:7px}
+.ct-bar i{background:var(--xl-info-ink);transition:width .18s ease}
+.ct-bar em{background:var(--xl-warn-ink);font-style:normal}
+.ct-nums{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;
+  font:400 11.5px/17px var(--sans);color:var(--ink-2)}
+.ct-nums b{font:700 13px/17px var(--sans);color:var(--ink)}
+.ct-nums span{color:var(--mut)}
+.ct-pct{font-weight:700;color:var(--ink-2)}
+.ct-pct.is-over{color:var(--xl-bad-ink)}
+/* A linha honesta fica ABAIXO do número e não num rodapé: quem lê "94% cheio"
+   precisa ver na mesma olhada quanto disso é suposição. */
+.ct-honest{display:flex;flex-direction:column;gap:2px;margin-top:6px;
+  font:400 11px/16px var(--sans);color:var(--mut)}
+.ct-warn{color:var(--xl-warn-ink)}
+.ct-good{color:var(--xl-good-ink)}
+.ct-grid tr.ct-nocube td{color:var(--mut-2)}
+.ct-grid tr.is-picked td{background:var(--xl-info)}
+.ct-src,.ct-no,.ct-dis,.ct-plan{display:inline-block;padding:0 5px;margin-right:3px;
+  border-radius:3px;font:700 9px/15px var(--sans)}
+.ct-src.is-measured{background:var(--xl-good);color:var(--xl-good-ink)}
+.ct-src.is-assumed{background:var(--xl-held);color:var(--xl-warn-ink)}
+.ct-no{background:var(--line);color:var(--mut)}
+.ct-dis{background:var(--xl-held);color:var(--xl-warn-ink)}
+.ct-plan{background:var(--xl-info);color:var(--xl-info-ink)}
+.ct-pick{cursor:pointer}
+
+/* Vazio e erro são coisas diferentes e não podem parecer a mesma. */
+.sp-empty.is-bad{color:var(--xl-bad-ink)}
