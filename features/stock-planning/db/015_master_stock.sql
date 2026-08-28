@@ -20,7 +20,10 @@
 -- DROP antes do CREATE: o CREATE OR REPLACE não reordena nem renomeia coluna,
 -- e esta view ganhou campos no meio. Nada depende dela ainda, então recriar é
 -- seguro — se um dia depender, a alternativa é acrescentar no fim.
-DROP VIEW IF EXISTS rapid_inv.v_master_stock;
+-- CASCADE porque v_sp_cube (021) foi construída sobre esta. Sem ele o DROP
+-- falha e a migração inteira aborta; com ele, 021 tem que rodar em seguida —
+-- é a ordem que apply-db já garante pelo número.
+DROP VIEW IF EXISTS rapid_inv.v_master_stock CASCADE;
 CREATE VIEW rapid_inv.v_master_stock AS
 WITH soh AS (
   SELECT upper(btrim(sku)) AS k,
@@ -138,6 +141,20 @@ SELECT
     AND greatest(f.length_mm, f.width_mm, f.height_mm) <= 100
     AND coalesce(f.each_volume, 0) <> 0.110592)            AS cube_trustworthy,
 
+  -- ── AS DECISÕES POR PRODUTO ──
+  -- A view nunca tocou em sku_settings, e é por isso que este join entra:
+  -- sem ele, o controle na tela grava numa tabela que não tem a linha e
+  -- devolve 404 na maioria dos SKUs — v_master_stock cobre 11.307 do
+  -- catálogo e sku_settings tem 3.634.
+  coalesce(st.lifecycle_status, 'ACTIVE')        AS lifecycle_status,
+  -- O default é TRUE quando não há linha: um produto que ninguém configurou
+  -- pode ser reposto. Marcá-lo como bloqueado por ausência de registro
+  -- esconderia 7.673 SKUs por engano.
+  coalesce(st.use_in_replenishment, true)        AS use_in_replenishment,
+  st.replenishment_note,
+  (st.sku_key IS NOT NULL)                       AS has_settings,
+  st.is_planned,
+
   -- Montado, e QUANTOS componentes. A pergunta "isto é feito de quê" só existe
   -- para 2.786 SKUs, e a coluna deixa o filtro possível sem juntar a tabela.
   bom.n_comp                                     AS bom_components,
@@ -163,6 +180,7 @@ FULL OUTER JOIN rapid_inv.product_file f ON f.sku_key = c.k
 LEFT JOIN soh s  ON s.k  = coalesce(c.k, f.sku_key)
 LEFT JOIN pal    ON pal.k = coalesce(c.k, f.sku_key)
 LEFT JOIN rst    ON rst.k = coalesce(c.k, f.sku_key)
-LEFT JOIN bom    ON bom.k = coalesce(c.k, f.sku_key);
+LEFT JOIN bom    ON bom.k = coalesce(c.k, f.sku_key)
+LEFT JOIN rapid_inv.sku_settings st ON st.sku_key = coalesce(c.k, f.sku_key);
 
 GRANT SELECT ON rapid_inv.v_master_stock TO anon, authenticated, service_role;

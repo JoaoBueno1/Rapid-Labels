@@ -57,6 +57,8 @@
   ];
   const flags = (r) => FLAGS.filter(([k]) => r[k])
     .map(([, t, tip]) => `<i class="ms-flag" title="${esc(tip)}">${t}</i>`).join('')
+    + (r.use_in_replenishment === false
+        ? `<i class="ms-blk" title="Not sent to branches${r.replenishment_note ? ' — ' + esc(r.replenishment_note) : ''}">no branch</i>` : '')
     + (r.bom_components
         ? `<i class="ms-bom" title="Assembled from ${r.bom_components} component${r.bom_components > 1 ? 's' : ''}${
             r.carton_qty_in_bom ? ` — and this is where its pack size of ${n0(r.bom_first_qty)} is recorded, since carton quantity is 0` : ''}">BOM ${r.bom_components}</i>`
@@ -174,8 +176,82 @@
       <div class="sp-panel"><h4>Where this row came from</h4><div class="in rp-sub">
         ${r.in_cin7 ? 'In Cin7' : '<b>Not in Cin7</b>'} ·
         ${r.in_file ? 'in the product file' : 'not in the product file'}
-        ${r.source_sheets ? '<br>Sheets: ' + esc([].concat(r.source_sheets).join(', ')) : ''}</div></div>`;
+        ${r.source_sheets ? '<br>Sheets: ' + esc([].concat(r.source_sheets).join(', ')) : ''}</div></div>
+
+      <!-- A única parte desta tela que ESCREVE. Fica no fim de propósito: o
+           painel existe para conferir de onde vem cada número, e a decisão
+           vem depois de olhar, não antes. -->
+      <div class="sp-panel is-edit"><h4>Decisions <span>this product, everywhere</span></h4><div class="in">
+        <label class="ms-sw">
+          <input type="checkbox" id="msRepl" data-sku="${esc(r.sku_key)}"${r.use_in_replenishment ? ' checked' : ''}>
+          <span>Can be sent to a branch</span>
+        </label>
+        <p class="ms-hint">Off means Branch Replenishment stops suggesting it and stops offering it
+          when someone types. Nothing else changes — it can still be bought and still counts as stock.</p>
+        ${r.replenishment_note ? `<p class="ms-note">${esc(r.replenishment_note)}</p>` : ''}
+        <label class="ms-fl"><span>Lifecycle</span>
+          <select id="msLife" data-sku="${esc(r.sku_key)}">
+            <option value="ACTIVE"${r.lifecycle_status === 'ACTIVE' ? ' selected' : ''}>Active — buy normally</option>
+            <option value="RUN_OUT"${r.lifecycle_status === 'RUN_OUT' ? ' selected' : ''}>Run-out — sell what is left, do not reorder</option>
+            <option value="DISCONTINUED"${r.lifecycle_status === 'DISCONTINUED' ? ' selected' : ''}>Discontinued — dead</option>
+          </select></label>
+        <p class="ms-hint">${r.has_settings
+          ? 'This product already has settings of its own.'
+          : 'This product has no settings yet — saving here creates them.'}</p>
+      </div></div>`;
     $('#side').classList.add('is-on');
+    wireDecisions(key);
+  }
+
+  /* Os dois controles gravam.
+     master.js era inteiramente de leitura — um único GET, sem api() e sem
+     toast(), embora o HTML já declarasse um #toast que ninguém tocava. Estes
+     dois são a primeira escrita da tela, e por isso trazem o cabeçalho de
+     auditoria: sem ele a mudança fica atribuída a "planner" e ninguém sabe
+     quem decidiu tirar um produto da reposição. */
+  async function salvar(el, sku, corpo) {
+    if (el.disabled) return;
+    el.disabled = true;
+    try {
+      const r = await fetch(`/api/stock-planning/sku-settings/${encodeURIComponent(sku)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json',
+                   'x-sp-user': localStorage.getItem('sp.who') || 'planner' },
+        body: JSON.stringify(corpo),
+      });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.error || `HTTP ${r.status}`);
+      // A linha da grade em memória acompanha, senão a tela contradiz o banco
+      // até alguém recarregar.
+      const i = S.rows.findIndex((x) => x.sku_key === sku);
+      if (i >= 0) S.rows[i] = { ...S.rows[i], ...b, has_settings: true };
+      aviso('Saved');
+      return b;
+    } catch (e) { aviso('Not saved: ' + e.message, true); throw e; }
+    finally { el.disabled = false; }
+  }
+
+  let avisoT;
+  function aviso(msg, bad) {
+    const el = $('#toast'); if (!el) return;
+    el.textContent = msg;
+    el.className = 'sp-toast is-on' + (bad ? ' bad' : '');
+    clearTimeout(avisoT); avisoT = setTimeout(() => { el.className = 'sp-toast'; }, bad ? 5000 : 2000);
+  }
+
+  function wireDecisions(sku) {
+    const rep = $('#msRepl');
+    if (rep) rep.addEventListener('change', async (e) => {
+      const v = e.target.checked;
+      try { await salvar(e.target, sku, { use_in_replenishment: v }); }
+      catch (_) { e.target.checked = !v; }   // desfaz na tela se o servidor recusou
+    });
+    const lf = $('#msLife');
+    if (lf) lf.addEventListener('change', async (e) => {
+      const antes = S.rows.find((x) => x.sku_key === sku)?.lifecycle_status || 'ACTIVE';
+      try { await salvar(e.target, sku, { lifecycle_status: e.target.value }); render(); }
+      catch (_) { e.target.value = antes; }
+    });
   }
 
   $('#msQ').addEventListener('input', debounce((e) => { S.q = e.target.value; load(); }));

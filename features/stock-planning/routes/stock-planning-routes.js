@@ -1062,6 +1062,77 @@ function register(app) {
      separadas: o que está em aberto, para quem vai, e como isso vira carga. */
 
   /** Aba 2 — alocação: uma linha por linha de PO, com o que já foi repartido. */
+  /* As decisões por produto, gravadas a partir do Master Stock.
+   *
+   * UPSERT e não UPDATE, e a diferença não é estilo: v_master_stock cobre os
+   * 11.307 SKUs do catálogo e sku_settings tem 3.634. Um UPDATE simples
+   * devolveria 404 em 7.673 deles — exatamente os que ninguém configurou
+   * ainda, que são os que mais precisam de uma primeira decisão.
+   *
+   * lifecycle_source fica MANUAL para o sync do Cin7 nunca sobrescrever a
+   * escolha de uma pessoa; é a mesma regra da rota de ciclo de vida.
+   */
+  app.patch(`${R}/sku-settings/:sku`, wrap(async (req, res) => {
+    const key = String(req.params.sku || '').trim().toUpperCase();
+    if (!key) return res.status(400).json({ error: 'sku is required' });
+    const actor = actorOf(req);
+    const campos = {};
+    if ('use_in_replenishment' in req.body) campos.use_in_replenishment = !!req.body.use_in_replenishment;
+    if ('replenishment_note' in req.body)   campos.replenishment_note = req.body.replenishment_note || null;
+    if ('lifecycle_status' in req.body) {
+      const v = String(req.body.lifecycle_status || '').toUpperCase();
+      if (!['ACTIVE', 'RUN_OUT', 'DISCONTINUED'].includes(v))
+        return res.status(400).json({ error: 'lifecycle_status must be ACTIVE, RUN_OUT or DISCONTINUED' });
+      campos.lifecycle_status = v;
+    }
+    if (!Object.keys(campos).length) return res.status(400).json({ error: 'nothing to update' });
+
+    const row = await db.tx(async (c) => {
+      // O sku precisa vir do catálogo: sku_settings.sku é NOT NULL e a chave
+      // é derivada dele, então inserir só a key deixaria a linha inconsistente.
+      const [p] = (await c.query(
+        `SELECT sku FROM cin7_mirror.products WHERE upper(btrim(sku)) = $1 LIMIT 1`, [key])).rows;
+      const sku = p ? p.sku : key;
+      /* is_planned = FALSE na inserção, e isto NÃO é detalhe.
+       *
+       * A coluna tem default true, e ela é o WHERE de v_sp_planning_skus. Sem
+       * esta linha, marcar "não mandar para filial" num SKU qualquer do
+       * catálogo o ADICIONA ao arquivo de planejamento de compra — duas
+       * decisões opostas pelo mesmo clique. Peguei isso porque o modo "sem
+       * previsão" do Supply Planning foi de 647 para 649 depois dos meus
+       * testes: os dois SKUs que eu tinha tocado eram -CartonNN, exatamente o
+       * que não pode entrar. No UPDATE ela não aparece, porque quem já está
+       * no arquivo deve continuar.
+       */
+      const cols = ['sku', 'is_planned', ...Object.keys(campos), 'settings_updated_at', 'settings_updated_by'];
+      const vals = [sku, false, ...Object.values(campos)];
+      const ph = vals.map((_, i) => `$${i + 1}`).concat(['now()', `$${vals.length + 1}`]);
+      const set = [...Object.keys(campos).map((k, i) => `${k} = $${i + 3}`),
+                   'settings_updated_at = now()', `settings_updated_by = $${vals.length + 1}`];
+      if (campos.lifecycle_status) { set.push(`lifecycle_source = 'MANUAL'`, 'lifecycle_set_at = now()'); }
+      const q = `INSERT INTO rapid_inv.sku_settings (${cols.join(',')}) VALUES (${ph.join(',')})
+                 ON CONFLICT (sku_key) DO UPDATE SET ${set.join(', ')}
+                 RETURNING sku_key, sku, use_in_replenishment, replenishment_note,
+                           lifecycle_status, settings_updated_at, settings_updated_by`;
+      return (await c.query(q, [...vals, actor])).rows[0];
+    }, actor);
+    res.json(row);
+  }));
+
+  /** Quais SKUs NÃO devem ser sugeridos na reposição de filial.
+   *
+   * Existe porque a tela de reposição lê cin7_mirror.products direto do
+   * navegador pelo PostgREST, e o schema rapid_inv não é exposto lá — uma
+   * coluna em sku_settings é invisível para ela sem um endpoint. Devolve só a
+   * lista de chaves, que é pequena e cabe num payload. */
+  app.get(`${R}/replenishment-blocked`, wrap(async (req, res) => {
+    const rows = await db.query(
+      `SELECT sku_key, replenishment_note FROM rapid_inv.sku_settings
+        WHERE NOT use_in_replenishment`);
+    res.json({ keys: rows.map((r) => r.sku_key), notes: rows.reduce((m, r) =>
+      (r.replenishment_note ? (m[r.sku_key] = r.replenishment_note) : 0, m), {}) });
+  }));
+
   app.get(`${R}/pos/allocations`, wrap(async (req, res) => {
     const t0 = Date.now();
     const p = [], where = ['1=1'];

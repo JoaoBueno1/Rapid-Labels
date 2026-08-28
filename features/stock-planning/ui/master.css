@@ -60,3 +60,18 @@
 .ms-bom{font:600 8.5px/13px var(--sans);font-style:normal;background:var(--xl-info);
   color:var(--xl-info-ink);border-radius:3px;padding:0 4px;margin-left:3px;
   vertical-align:1px;cursor:help}
+
+/* O painel de decisões — a única parte desta tela que escreve. */
+.sp-panel.is-edit h4{color:var(--ink)}
+.ms-sw{display:flex;align-items:center;gap:8px;font:600 12px/18px var(--sans);cursor:pointer}
+.ms-sw input{width:15px;height:15px;cursor:pointer}
+.ms-fl{display:flex;flex-direction:column;gap:3px;margin-top:9px;font:600 11px/16px var(--sans)}
+.ms-fl select{padding:4px 7px;border:1px solid var(--line-3);border-radius:4px;
+  font:400 12px var(--sans);background:var(--card)}
+.ms-hint{margin:4px 0 0;font:400 10.5px/15px var(--sans);color:var(--mut)}
+.ms-note{margin:4px 0 0;padding:4px 7px;border-radius:4px;background:var(--xl-held);
+  color:var(--xl-warn-ink);font:400 10.5px/15px var(--sans)}
+/* Bloqueado para filial: cinza e não vermelho. É uma decisão deliberada de
+   alguém, não um problema a consertar. */
+.ms-blk{font:600 8.5px/13px var(--sans);font-style:normal;background:var(--line);
+  color:var(--mut);border-radius:3px;padding:0 4px;margin-left:3px;vertical-align:1px;cursor:help}

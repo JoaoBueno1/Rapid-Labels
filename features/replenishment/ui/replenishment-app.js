@@ -141,6 +141,18 @@
     ]);
     S.avg = avg;
     S.avgBy = {}; avg.forEach(r => { if (r.product) S.avgBy[String(r.product).toUpperCase()] = r; });
+    /* Os produtos que alguém marcou no Master Stock como "não mandar para
+       filial". Vem por endpoint e não pelo PostgREST porque a decisão mora em
+       rapid_inv.sku_settings, e aquele schema não é exposto ao navegador.
+       Falhar aqui NÃO pode derrubar a tela: sem a lista a reposição continua
+       funcionando como sempre funcionou, só sem esse corte — e o rodapé do
+       autocomplete deixa de prometer que ele existe. */
+    S.blocked = new Set(); S.blockedNote = {};
+    try {
+      const r = await fetch('/api/stock-planning/replenishment-blocked');
+      if (r.ok) { const b = await r.json();
+        S.blocked = new Set(b.keys || []); S.blockedNote = b.notes || {}; }
+    } catch (_) { /* segue sem o corte */ }
     S.prod = {}; S.prodList = prod;
     prod.forEach(p => { if (p.sku) S.prod[String(p.sku).toUpperCase()] = p; });
     const buckets = {}, inT = {};
@@ -232,6 +244,10 @@
       const c0 = String(r.product || '').trim(); if (!c0) continue;
       const p = S.prod[c0.toUpperCase()] || {}; if (RC.isExcludedProduct(c0, p.name)) continue;
       if (isPackSku(c0) || p.status === 'Deprecated') continue;
+      // O MESMO corte do autocomplete. Aplicar num só deixaria o produto
+      // bloqueado para quem digita e liberado para quem clica em "Load
+      // suggested" — que é o buraco que já existe hoje entre os dois caminhos.
+      if (S.blocked && S.blocked.has(c0.toUpperCase())) continue;
       const row = buildRow(c0); if (!row || row.avg <= 0) continue;
       const coverDays = Math.round(row.coverWeeks * 7);
       row.isSuggested = (row.canSend > 0 && row.sug > 0 && coverDays < SET.cutDays);
@@ -707,12 +723,16 @@
   function acSearch(q) {
     q = (q || '').trim().toLowerCase(); if (q.length < 2) return acHide();
     const starts = [], contains = [];
-    let hidDep = 0, hidNoMain = 0, hidPack = 0;
+    let hidDep = 0, hidNoMain = 0, hidPack = 0, hidBlk = 0;
     for (const p of S.prodList) {
       // Deprecated não entra: 2.744 de 11.259 no catálogo, e a filial não deve
       // pedir o que a empresa já aposentou.
       if (p.status === 'Deprecated') { hidDep++; continue; }
       if (isPackSku(p.sku)) { hidPack++; continue; }
+      // Decisão explícita de alguém no Master Stock. Vem ANTES do corte por
+      // estoque: um produto desligado de propósito não deve reaparecer só
+      // porque hoje há saldo no Main.
+      if (S.blocked && S.blocked.has(String(p.sku || '').toUpperCase())) { hidBlk++; continue; }
       // Nem o que Main+Gateway não tem: pedir o que ninguém pode mandar só
       // gera uma linha que morre no check. São 5.909 dos 8.515 ativos.
       const kk = String(p.sku || '').toUpperCase();
@@ -722,7 +742,7 @@
       else if (sku.includes(q) || dc.includes(q) || nm.includes(q)) contains.push(p);
       if (starts.length >= 25) break;
     }
-    acState.hidden = { dep: hidDep, noMain: hidNoMain, pack: hidPack };
+    acState.hidden = { dep: hidDep, noMain: hidNoMain, pack: hidPack, blocked: hidBlk };
     const items = starts.concat(contains).slice(0, 25); acState.items = items; acState.sel = items.length ? 0 : -1;
     const ac = $('rpAc');
     ac.innerHTML = items.length ? items.map((p, i) => {
@@ -731,7 +751,10 @@
     }).join('') : '<div class="none">No product matches</div>';
     // Esconder em silêncio faria o usuário procurar um código que existe e
     // concluir que o sistema está quebrado.
-    ac.innerHTML += `<div class="acfoot">Hidden: deprecated products, carton SKUs, and anything Main + Gateway cannot send today.</div>`;
+    // O rodapé lista o que foi escondido. Um corte novo que não apareça aqui
+    // faz o usuário procurar um código que existe e concluir que quebrou.
+    ac.innerHTML += `<div class="acfoot">Hidden: deprecated products, carton SKUs, anything Main + Gateway cannot send today${
+      hidBlk ? `, and ${hidBlk} marked in Master Stock as not for branches` : ''}.</div>`;
     ac.querySelectorAll('[data-sku]').forEach(d => d.addEventListener('mousedown', e => { e.preventDefault(); acPick(d.dataset.sku); }));
     positionAc(); ac.classList.add('on');
   }
