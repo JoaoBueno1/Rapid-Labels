@@ -70,6 +70,7 @@ async function main() {
 
   console.log(`Checked ${hooks.length} webhook(s); ${ours.length} are ours.`);
   let reactivated = 0, healthy = 0;
+  let needsToken = 0;   // webhooks que precisavam de reativação e o token não estava no ambiente
 
   for (const h of ours) {
     if (h.IsActive) {
@@ -77,7 +78,25 @@ async function main() {
       await logHealth({ webhook_type: h.Type, webhook_id: h.ID, was_active: true, reactivated: false });
       continue;
     }
-    // Cin7 disabled it → reactivate
+    // Cin7 disabled it → reactivate.
+    // GUARDA: o PUT do Cin7 é substituição TOTAL, então reativar com o token
+    // vazio apaga o bearer do webhook. O receptor então rejeita tudo com 401
+    // (webhook-receiver.js:54), o Cin7 desativa de novo após 6 falhas, e o
+    // watchdog reativa de novo — laço infinito que mata o feed tempo-real
+    // (≈437 eventos/dia) enquanto grava reactivated:true e sai em verde.
+    // Este ramo nunca tinha executado (webhook_health_log: 623 checagens, zero
+    // com was_active=false), então o defeito estava armado e não disparado.
+    if (!process.env.CIN7_WEBHOOK_TOKEN) {
+      console.error(`❌ ${h.Type} está DESATIVADO e CIN7_WEBHOOK_TOKEN não está no ambiente.`);
+      console.error('   NÃO vou reativar: o PUT gravaria bearer vazio e o feed morreria em laço.');
+      console.error('   Adicione o secret CIN7_WEBHOOK_TOKEN ao workflow e rode de novo.');
+      await logHealth({
+        webhook_type: h.Type, webhook_id: h.ID, was_active: false,
+        reactivated: false, notes: 'NÃO reativado: CIN7_WEBHOOK_TOKEN ausente no ambiente',
+      });
+      needsToken++;
+      continue;
+    }
     // PUT is a full replace → resend all fields incl. our bearer token
     const put = await cin7('PUT', '/webhooks', {
       ID: h.ID,
@@ -102,6 +121,13 @@ async function main() {
   if (missing.length) console.warn(`⚠️  Not registered: ${missing.join(', ')}`);
 
   console.log(`✅ Watchdog done. healthy=${healthy} reactivated=${reactivated} missing=${missing.length}`);
+
+  // Sair 1 quando havia webhook desativado e não deu para reativar: um watchdog
+  // que sai verde enquanto o feed está morto é pior que não ter watchdog.
+  if (needsToken) {
+    console.error(`❌ ${needsToken} webhook(s) desativado(s) e NÃO reativado(s) por falta de CIN7_WEBHOOK_TOKEN.`);
+    process.exit(1);
+  }
 }
 
 main().catch(e => { console.error('❌ Watchdog crashed:', e); process.exit(1); });

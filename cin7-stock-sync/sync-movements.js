@@ -197,7 +197,15 @@ async function runType(t) {
 }
 
 (async () => {
-  const types = TYPE === 'all' ? ['transfer', 'adjustment', 'purchase'] : [TYPE];
+  // Aceita lista: --type=transfer,adjustment. Existe porque 'purchase' saiu do
+  // agendamento — o webhook Purchase/StockReceivedAuthorised já grava o mesmo
+  // recebimento, e os dois usavam cin7_task_id diferente (webhook: TaskID do
+  // payload; aqui: det.ID, linha 131), então nenhum dedup pegava. Medido em
+  // 2026-08-27: 469 das 515 linhas deste poll eram gêmeas de uma linha de
+  // webhook em (PO|SKU|qty) — 33.967 de 174.488 unidades, 19,5% a mais.
+  const ALL = ['transfer', 'adjustment', 'purchase'];
+  const types = TYPE === 'all' ? ALL : TYPE.split(',').map(t => t.trim()).filter(t => ALL.includes(t));
+  if (!types.length) { console.error(`--type inválido: ${TYPE} (use ${ALL.join('|')}|all, ou lista com vírgula)`); process.exit(2); }
   for (const t of types) {
     if (!CFG[t]) { console.error('tipo invalido:', t); process.exit(1); }
     if (overBudget()) { console.warn(`⏱️ time budget reached — skipping remaining type(s): ${types.slice(types.indexOf(t)).join(', ')}`); break; }
