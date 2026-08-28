@@ -292,14 +292,33 @@ app.post('/api/pipeline-sync', async (req, res) => {
   }
 });
 
-// Auto-sync pipeline every hour (backup for GH Actions cron)
-const PIPELINE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-setTimeout(() => {
-  _runPipelineSync('scheduled-initial').catch(() => {});
-  setInterval(() => {
-    _runPipelineSync('scheduled').catch(() => {});
-  }, PIPELINE_INTERVAL_MS);
-}, 30_000); // Wait 30s after server start before first sync
+// Auto-sync pipeline every hour (backup for GH Actions cron) — LOCAL ONLY.
+//
+// Mesmo guarda do app.listen lá embaixo, e pelo mesmo motivo: na Vercel isto
+// não é um agendador, é um agendador POR INSTÂNCIA QUENTE. Medido em
+// cin7_mirror.sync_runs (25–27/08/2026): 59, 33 e 42 execuções/dia contra as
+// 24 que o cron `35 * * * *` agenda — e ZERO delas no minuto 35. As mais
+// frequentes caíam em 12:31:33, 13:31:33, 14:31:33, 15:31:33: mesmo segundo,
+// de hora em hora. Cron não deriva um segundo por vez; setInterval deriva.
+// Eram várias instâncias quentes, cada uma com seu relógio.
+//
+// E não era ocioso: _runPipelineSync → detectCompleted (order-pipeline-sync.js:
+// 547-600) marca COMPLETED todo SO/TR ausente da própria busca. A trava
+// `pipelineSyncRunning` é por instância e o `concurrency:` do GitHub Actions
+// não alcança a Vercel — cada execução extra era uma chance de fechar pedido
+// vivo, além de gastar cota do Cin7 em horário que ninguém agendou.
+//
+// O cron do GitHub Actions (order-pipeline-sync.yml) continua sendo o
+// agendador de produção. Este bloco serve só ao `npm start` local.
+if (!process.env.VERCEL) {
+  const PIPELINE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  setTimeout(() => {
+    _runPipelineSync('scheduled-initial').catch(() => {});
+    setInterval(() => {
+      _runPipelineSync('scheduled').catch(() => {});
+    }, PIPELINE_INTERVAL_MS);
+  }, 30_000); // Wait 30s after server start before first sync
+}
 
 // ── Gateway Inventory routes (lots · FIFO · transfers · reconciliation) ──
 try {
