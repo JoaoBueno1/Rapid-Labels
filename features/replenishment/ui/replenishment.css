@@ -159,7 +159,6 @@ tr.rp-flagged td{box-shadow:inset 0 -2px 0 var(--xl-warn-ink)}
   background:var(--row);border:1px solid var(--line-3);border-radius:3px;padding:0 3px}
 
 /* ── para onde o pedido leva a cobertura ── */
-.rp-after{margin-left:5px;font:600 10px var(--mono);color:var(--mut-3)}
 
 /* O aviso do diário. A regra dele é diferente da semanal e isso tem de estar na
    tela, não no treinamento de quem entrou ontem. */
@@ -230,7 +229,10 @@ tr.rp-decided td{background:var(--acc-soft,#eef7fc)}
 
 /* A régua do rep ao lado da do local, na mesma célula. Só aparece quando as
    duas discordam mais de 15% — senão vira ruído em 1.500 linhas. */
-.rp-repavg{display:block;font:600 9.5px var(--mono);line-height:1.3;margin-top:1px}
+/* Inline e não em bloco: o Cover já mostra as duas leituras lado a lado, então
+   aqui basta a marca de que elas divergem — uma segunda linha aqui esticava a
+   grade inteira de 18px para 29px por causa de um número repetido. */
+.rp-repavg{margin-left:4px;font:600 9.5px var(--mono);line-height:15px}
 .rp-repavg.up{color:var(--xl-warn-ink)}
 .rp-repavg.dn{color:var(--mut-3)}
 
@@ -242,8 +244,6 @@ tr.rp-decided td{background:var(--acc-soft,#eef7fc)}
 
 /* As duas projeções de cobertura, uma por linha. Azul porque é consequência do
    que o usuário acabou de digitar, e não um estado do estoque. */
-.rp-after{display:block;font:600 10px var(--mono);line-height:1.35;color:var(--acc)}
-.rp-after-rep{color:var(--xl-warn-ink);opacity:.9}
 
 /* A lógica em uso, ao lado dos estágios. */
 .rp-logic{font:400 11px var(--sans);color:var(--mut-2);background:var(--row);
@@ -258,3 +258,43 @@ tr.rp-decided td{background:var(--acc-soft,#eef7fc)}
 .rp-basis b{font-size:13px}
 .rp-basis span{font:600 12px var(--mono);color:var(--acc);text-align:right}
 .rp-basis small{grid-column:2/4;color:var(--mut-2);font-size:11.5px}
+
+/* ── Cover: duas leituras, uma linha cada, dentro da altura de sempre ──
+   B = o que despachou desta filial · R = o que os reps dela venderam.
+   Os quatro números no MESMO tamanho: a projeção é o que está sendo decidido
+   enquanto se digita, não uma nota de rodapé. Azul porque é consequência da
+   quantidade digitada, e não um estado do estoque.
+   line-height 1.15 em 10,5px = 12px por linha; duas linhas cabem nos 26px da
+   linha da grade sem esticá-la. */
+td.rp-cover{white-space:nowrap;text-align:left;padding-left:8px!important}
+.rp-cv{display:inline-block;font:600 10.5px/15px var(--mono)}
+.rp-cv + .rp-cv{margin-left:7px;padding-left:7px;border-left:1px solid var(--line-3)}
+.rp-cv .t{display:inline-block;width:9px;font-style:normal;font-weight:700;
+  font-size:8.5px;color:var(--mut-3);text-align:left}
+.rp-cv b{font-weight:600;color:var(--ink)}
+.rp-cv u{text-decoration:none;color:var(--acc);margin-left:3px}
+td.rp-cover .rp-mk{font-style:normal;margin-left:3px}
+
+/* ── Altura da linha: 18px, como a planilha ──
+   Quem esticava a grade não era o Cover (14px) e sim os campos de entrada:
+   Branch Ask em 25px e Comments em 23px, com padding de 3px em cima e embaixo
+   e line-height solto. Numa tela de 480 linhas cada pixel a mais é uma linha
+   a menos visível.
+   O alvo de toque continua aceitável porque a célula inteira é clicável — o
+   input ocupa 100% da largura dela. */
+#rpGrid .rp-in{padding:0 5px;height:16px;line-height:14px;font-size:12px;border-radius:4px}
+#rpGrid .rp-in.txt{font-size:11.5px}
+#rpGrid tr.rp-line td{height:18px;line-height:15px;padding-top:0;padding-bottom:0;vertical-align:middle}
+/* O Cover é a única célula com duas linhas; ela define o piso e não o teto. */
+
+#rpGrid .rp-act{width:17px;height:17px;font-size:11px}
+#rpGrid .rp-acts{padding:0 3px!important}
+/* O selo de status e a marca de ciclo de vida param de empurrar a linha. */
+#rpGrid .bdg,#rpGrid .lc-mark{line-height:13px;padding-top:0;padding-bottom:0}
+
+/* Texto não quebra: numa grade densa uma descrição longa vira duas linhas e
+   estica a linha inteira, e o usuário não lê o nome completo de qualquer jeito
+   — ele lê o código. O nome inteiro fica no title e no painel lateral. */
+#rpGrid tr.rp-line td.txt, #rpGrid tr.rp-line td.code{
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
+#rpGrid tr.rp-line td.em{white-space:nowrap;overflow:hidden}

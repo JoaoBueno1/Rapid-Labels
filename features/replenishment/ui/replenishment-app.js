@@ -372,18 +372,19 @@
       { key: 'soh', label: 'SOH', w: 64, align: 'num', group: 'stk', sortable: true, def: true },
       // In Transit deixa de ser coluna: vira marca cinza no SOH, com o TR no
       // painel. Ela custava 82px para dizer, quase sempre, "·".
-      { key: 'cover', label: 'Cover', w: 108, align: 'num', group: 'stk', sortable: true, def: true },
+      { key: 'cover', label: 'Cover', w: 168, align: 'num', group: 'stk', sortable: true, def: true },
       { key: 'main', label: 'Main', w: 84, align: 'num', group: 'stk', sortable: true, def: true },
     ];
     if (S.branch && VARIANT[S.branch.code]) c.push({ key: 'syd', label: 'SYD Stock', w: 82, align: 'num', group: 'stk', sortable: true, def: true });
     // Sem isto o usuário digitava errado e não tinha como desfazer: só apagar
     // o número, deixando uma linha morta na planilha que o check ia ter que
     // interpretar.
-    c.push({ key: 'act', label: '', w: 54, align: 'num', group: 'ref', sortable: false, def: true, always: true });
     c.push({ key: 'comment', label: mode === 'daily' ? 'Reason' : 'Comments',
              w: 180, align: 'txt', group: 'ref', sortable: false, def: true });
     c.push({ key: 'invComment', label: 'Inv Comments', w: 180, align: 'txt', group: 'ref', sortable: false, def: true,
              stages: ['submitted', 'ready_to_check', 'approved'] });
+    // Última coluna: ação vem DEPOIS do que se lê para decidir, não antes.
+    c.push({ key: 'act', label: '', w: 54, align: 'num', group: 'ref', sortable: false, def: true, always: true });
     return c;
   }
   function defVis(mode) { return new Set(catalog(mode).filter(c => c.def).map(c => c.key)); }
@@ -495,27 +496,36 @@
       case 'pallet': return wrap(l.pallet ? n0(l.pallet) : '<span class="rp-sub">—</span>', '', l.pallet ? `${n0(l.pallet)} per pallet` : 'No pallet quantity on file for this 5DC');
       case 'inTransit': return wrap(l.inTransit ? n0(l.inTransit) : '<span class="rp-sub">·</span>');
       case 'cover': {
-        const w = l.coverWeeks;
-        const mk = !l.avg ? '' : (w * 7 < 7 ? '<span class="rp-mk low">low</span>' : w > 12 ? '<span class="rp-mk over">over</span>' : '');
-        // Para onde o pedido leva a cobertura — a pergunta que o usuário faz ao
-        // digitar a quantidade, e que ele respondia de cabeça.
+        // DUAS linhas, não três. Cada uma é uma leitura completa da mesma
+        // situação: "onde estou" e "onde chego com esta quantidade", pela
+        // média da filial em cima e pela do rep embaixo.
         //
-        // Duas linhas porque são duas leituras da MESMA quantidade: pela média
-        // da filial (o que despachou daqui) e pela do rep (o que a filial
-        // vendeu, onde quer que tenha saído). Quando as duas discordam é
-        // exatamente o caso em que a decisão muda — em Brisbane a segunda é
-        // quase três vezes a primeira.
+        // Os quatro números têm o MESMO tamanho de propósito. Projeção menor
+        // que o valor atual leria como nota de rodapé, e ela é justamente o
+        // que o usuário está decidindo enquanto digita.
         const q = finalQty(l);
-        const proj = (base) => (base > 0 && q > 0)
+        const wk = (base) => base > 0 ? (l.soh + l.inTransit) / (base / RC.WEEKS_IN_MONTH) : null;
+        const after = (base) => (base > 0 && q > 0)
           ? (l.soh + l.inTransit + q) / (base / RC.WEEKS_IN_MONTH) : null;
-        const byBranch = proj(l.storedAvg != null ? l.storedAvg : l.avg);
-        const byRep = l.repAvg > 0 ? proj(l.repAvg) : null;
-        const a1 = byBranch == null ? ''
-          : `<span class="rp-after" title="With ${n0(q)} units, cover goes from ${n1(w >= 999 ? 0 : w)} to ${n1(byBranch)} weeks — read against what shipped out of this branch">›${n1(byBranch)}w</span>`;
-        const a2 = byRep == null ? ''
-          : `<span class="rp-after rp-after-rep" title="Same quantity read against what this branch's reps sold: ${n1(l.repAvg)}/month, wherever it shipped from">›${n1(byRep)}w</span>`;
-        return wrap(`${l.avg ? n1(w >= 999 ? 0 : w) + 'w' : '<span class="rp-sub">n/a</span>'}${mk}${a1}${a2}`,
-          '', l.avg ? `${Math.round(w * 7)} days of cover today` : '');
+        const num = (v) => v == null ? '<span class="rp-sub">n/a</span>' : n1(v >= 999 ? 999 : v) + 'w';
+
+        const bBase = l.storedAvg != null ? l.storedAvg : l.avg;
+        const bNow = wk(bBase), bTo = after(bBase);
+        const rNow = l.repAvg > 0 ? wk(l.repAvg) : null, rTo = after(l.repAvg);
+
+        const mk = bNow == null ? '' : (bNow * 7 < 7 ? '<i class="rp-mk low">low</i>' : bNow > 12 ? '<i class="rp-mk over">over</i>' : '');
+        // UMA linha com as duas leituras. Duas linhas legíveis não cabem em
+        // 18px — e a altura da linha ganha, porque numa tela de 480 SKUs cada
+        // pixel a mais é uma linha a menos visível.
+        const pair = (tag, now, to, tip) => `<span class="rp-cv" title="${esc(tip)}">
+            <i class="t">${tag}</i><b>${num(now)}</b>${to == null ? '' : `<u>›${num(to)}</u>`}</span>`;
+        const b1 = pair('B', bNow, bTo, `Branch shipments: ${n1(bBase || 0)}/month.`
+          + (bTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(bTo)} weeks.`));
+        const b2 = l.repAvg > 0
+          ? pair('R', rNow, rTo, `This branch's reps sold ${n1(l.repAvg)}/month, wherever it shipped from.`
+              + (rTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(rTo)} weeks.`))
+          : '';
+        return `<td class="num rp-cover">${b1}${b2}${mk}</td>`;
       }
       case 'main': return wrap(n0(l.mainGw), '', `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
       case 'ask':
@@ -528,12 +538,13 @@
       case 'syd': return wrap(n0(l.syd));
       case 'act': {
         const bits = [];
-        // O alerta é para quem faz o check final: diz "olhe esta com atenção".
-        // Vale em qualquer estágio menos o aprovado, que é imutável.
-        if (S.stage !== 'approved')
-          bits.push(`<button class="rp-act rp-flag${l.flag ? ' on' : ''}" data-act="flag" title="${l.flag ? 'Clear the flag' : 'Flag for an extra check'}">!</button>`);
+        // No rascunho a filial só precisa poder APAGAR o que digitou errado.
+        // O alerta é ferramenta de quem confere — oferecê-lo aqui convidaria a
+        // filial a marcar o próprio pedido, que não é o ponto dele.
         if (askEditable())
           bits.push(`<button class="rp-act rp-del" data-act="del" title="Remove this line">×</button>`);
+        else if (S.stage !== 'approved')
+          bits.push(`<button class="rp-act rp-flag${l.flag ? ' on' : ''}" data-act="flag" title="${l.flag ? 'Clear the flag' : 'Flag for an extra check'}">!</button>`);
         return `<td class="num rp-acts">${bits.join('')}</td>`;
       }
       case 'comment':
