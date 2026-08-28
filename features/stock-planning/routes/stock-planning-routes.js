@@ -436,6 +436,62 @@ function register(app) {
     };
   }
 
+  /* De onde vem a média deste SKU, filial por filial.
+     A tela mostra um número por semana e o planejador tem que confiar nele. A
+     pergunta que ele faz antes de confiar é sempre a mesma — "isso é venda de
+     quem?" — e sem resposta ele volta para a planilha. Sai a conta pelos DOIS
+     caminhos, porque a diferença entre eles é a informação: onde a venda por
+     rep é muito maior que a por local, aquela filial está sendo atendida do
+     Main e a conta por local a subestima. */
+  app.get(`${R}/planning/:sku/demand`, wrap(async (req, res) => {
+    const key = String(req.params.sku || '').trim().toUpperCase();
+    const months = asInt(req.query.months, 6, 1, 13);
+    const win = `order_date >= (date_trunc('month',
+                   (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
+                 - ($2::int - 1) * interval '1 month')`;
+    const rows = await db.query(
+      `SELECT coalesce(w.code, b.branch_code) AS code, w.name,
+              sum(d.qty_signed) FILTER (WHERE d.location_branch = coalesce(w.code, b.branch_code))::numeric AS by_loc,
+              sum(d.qty_signed) FILTER (WHERE coalesce(d.location_branch,'') <> coalesce(w.code, b.branch_code)
+                                          AND d.rep_branch = coalesce(w.code, b.branch_code))::numeric AS by_rep,
+              count(DISTINCT d.sales_rep) FILTER (WHERE d.rep_branch = coalesce(w.code, b.branch_code))::int AS reps
+         FROM rapid_inv.v_sp_demand_scope d
+         -- DISTINCT, e nao e detalhe: quando o local e o rep sao a MESMA
+         -- filial -- que e o caso comum -- o unnest devolvia a filial duas
+         -- vezes e a quantidade entrava dobrada. O SKU R2353-WW aparecia com
+         -- 365 contra 288 de venda real, e nada na tela denunciava.
+         CROSS JOIN LATERAL (SELECT DISTINCT unnest(ARRAY[d.location_branch, d.rep_branch]) AS branch_code) b
+         LEFT JOIN rapid_inv.warehouses w ON w.code = b.branch_code
+        WHERE d.sku_key = $1 AND ${win} AND b.branch_code IS NOT NULL
+        GROUP BY 1, 2`, [key, months]);
+    // O que não caiu em filial nenhuma. Some se não for dito: são as vendas de
+    // "Project Warehouse" e as de rep sem alocação, e elas existem.
+    const [orfas] = await db.query(
+      `SELECT sum(qty_signed)::numeric qty, count(*)::int linhas
+         FROM rapid_inv.v_sp_demand_scope
+        WHERE sku_key = $1 AND ${win}
+          AND location_branch IS NULL AND rep_branch IS NULL`, [key, months]);
+    // O total de verdade. As linhas por filial ainda podem somar mais que ele
+    // de forma legitima: uma venda cujo rep e de Sydney e cujo deposito e o
+    // Main pertence as duas, e e essa sobreposicao que interessa ver.
+    const [tudo] = await db.query(
+      `SELECT sum(qty_signed)::numeric qty FROM rapid_inv.v_sp_demand_scope
+        WHERE sku_key = $1 AND ${win}`, [key, months]);
+    const weeks = (months * 52) / 12;
+    res.json({
+      sku_key: key, months, weeks,
+      total: Number(tudo.qty || 0),
+      rows: rows.map((r) => ({
+        code: r.code, name: r.name,
+        by_loc: Number(r.by_loc || 0), by_rep: Number(r.by_rep || 0),
+        total: Number(r.by_loc || 0) + Number(r.by_rep || 0),
+        wk: (Number(r.by_loc || 0) + Number(r.by_rep || 0)) / weeks,
+        reps: r.reps,
+      })).filter((r) => r.total !== 0).sort((a, b) => b.total - a.total),
+      unassigned: { qty: Number(orfas.qty || 0), lines: orfas.linhas },
+    });
+  }));
+
   // ── Planejamento semanal ────────────────────────────────────────────
   app.get(`${R}/planning`, wrap(async (req, res) => {
     const t0 = Date.now();

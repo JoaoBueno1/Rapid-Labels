@@ -614,3 +614,13 @@ tr.al-row:hover td{background:var(--card-2)}
    sem aumentar o espaço da linha. */
 .sp-supply td.n{white-space:nowrap}
 .sp-supply .meas{white-space:nowrap}
+
+/* A decomposição da demanda no painel. "lean" marca a filial cuja venda vem
+   mais pelo rep que pelo próprio depósito — o sinal de que ela é atendida do
+   Main e de que a conta por local a subestima. */
+.brk tr.in-scope td{background:var(--xl-info,#e7effa)}
+.brk tr.out-scope td{opacity:.55}
+.brk td.lean{color:var(--xl-warn-ink);font-weight:700}
+.brk .dot{display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--xl-info-ink,#1f4e79);margin-left:5px;vertical-align:2px}
+.sp-loading{color:var(--mut);font:400 11px var(--sans);padding:4px 0}

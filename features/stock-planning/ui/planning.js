@@ -1136,8 +1136,45 @@ async function openWeek(sku, week) {
         <tr><td>Main</td><td>${n0(d.sku?d.sku.main_soh:0)}</td></tr>
         <tr><td>Gateway</td><td>${n0(d.sku?d.sku.gateway_soh:0)}</td></tr>
         <tr><td>Project commitment</td><td>${n0(d.sku?d.sku.project_orders:0)}</td></tr>
-      </table>`);
+      </table>
+      <h4>Who this demand belongs to</h4>
+      <div id="sideDemand" class="sp-loading">loading…</div>`);
+    demandBreak(sku);
   } catch (e) { toast(e.message, true); }
+}
+
+/* A decomposição da média por filial.
+   O planejador só confia num número depois de responder "isso é venda de
+   quem?", e sem a resposta na tela ele volta para a planilha. As duas colunas
+   existem porque a diferença entre elas É a informação: onde a venda por rep é
+   muito maior que a por depósito, aquela filial está sendo atendida do Main e
+   a conta por local a subestima. */
+async function demandBreak(sku) {
+  const el = $('#sideDemand'); if (!el) return;
+  try {
+    const d = await api(`/planning/${encodeURIComponent(sku)}/demand?months=6`);
+    if (!d.rows.length) { el.innerHTML = '<p class="faint">No sale in the last 6 months.</p>'; return; }
+    const soma = d.rows.reduce((a, r) => a + r.total, 0);
+    const sobra = Math.round(soma - d.total);
+    const dentro = (S.supply.scope && spData.scope) ? spData.scope.codes : null;
+    el.innerHTML = `<table class="brk">
+      <tr class="hd"><td>Branch</td><td>from its depot</td><td>via its rep</td><td>a week</td></tr>
+      ${d.rows.map(r => `<tr${dentro ? (dentro.includes(r.code) ? ' class="in-scope"' : ' class="out-scope"') : ''}>
+        <td>${esc(r.name || r.code)}${dentro && dentro.includes(r.code) ? '<i class="dot"></i>' : ''}</td>
+        <td>${r.by_loc ? n0(r.by_loc) : '<span class="faint">—</span>'}</td>
+        <td${r.by_rep > r.by_loc ? ' class="lean"' : ''}
+            title="${r.reps} rep${r.reps === 1 ? '' : 's'} of this branch sold it${
+              r.by_rep > r.by_loc ? ' — more through reps than from its own depot, which means it ships from Main' : ''}"
+          >${r.by_rep ? n0(r.by_rep) : '<span class="faint">—</span>'}</td>
+        <td><b>${n1(r.wk)}</b></td></tr>`).join('')}
+      <tr class="tot"><td>Sold in 6 months</td><td colspan="2">${n0(d.total)}</td><td><b>${n1(d.total / d.weeks)}</b></td></tr>
+    </table>
+    ${sobra > 0 ? `<p class="faint">The rows add to ${n0(soma)}, which is ${n0(sobra)} more than ${n0(d.total)}:
+      a sale whose rep is from one branch and whose depot is another belongs to both, and is counted on both lines.</p>` : ''}
+    ${d.unassigned.qty ? `<p class="faint">${n0(d.unassigned.qty)} units on ${n0(d.unassigned.lines)} lines
+      belong to no branch — sold from Project Warehouse, or by a rep with no branch assigned.</p>` : ''}
+    ${dentro ? `<p class="faint">The dot marks the branches inside <b>${esc(spData.scope.label)}</b>.</p>` : ''}`;
+  } catch (e) { el.innerHTML = `<p class="faint">${esc(e.message)}</p>`; }
 }
 
 /** O planejador decide o ciclo de vida. O Cin7 só confirma depois — e
