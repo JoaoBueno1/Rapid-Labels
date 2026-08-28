@@ -19,7 +19,8 @@
   const BLANK_ROWS = 10;
 
   // ── settings ─────────────────────────────────────────────────────────
-  const DEFAULTS = { weeks: 6, cutDays: 25, abc: true, avgSource: 'rep_then_branch', period: 'stored', avgRound: 'pure', cartons: false };
+  const DEFAULTS = { weeks: 6, cutDays: 25, abc: true, avgSource: 'rep_then_branch', period: 'stored', avgRound: 'pure', cartons: false,
+    avgBasis: 'location', repMonths: 6 };
   let SET = loadSet();
   function loadSet() { try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('rp.set') || '{}')); } catch (_) { return Object.assign({}, DEFAULTS); } }
   function saveSet() { try { localStorage.setItem('rp.set', JSON.stringify(SET)); } catch (_) {} }
@@ -38,7 +39,7 @@
 
   // ── state ────────────────────────────────────────────────────────────
   const S = {
-    avg: [], avgBy: {}, ranks: null, stock: {}, inT: {}, prod: {}, prodList: [], pallet: {}, loaded: false,
+    avg: [], avgBy: {}, ranks: null, stock: {}, inT: {}, prod: {}, prodList: [], pallet: {}, repAvg: {}, repAvgInfo: null, loaded: false,
     branch: null, view: 'weekly', mode: 'weekly', stage: 'draft', lines: [],
     sort: { key: null, dir: 1 }, search: '', vis: { weekly: null, daily: null }, sideSku: null,
   };
@@ -69,6 +70,23 @@
       out = out.concat(data || []); if (!data || data.length < 1000) break; i += 1000;
     }
     return out;
+  }
+
+  // A régua do REP: soma de todos os reps alocados à filial, sem olhar de onde
+  // a mercadoria saiu. Existe porque a régua do local tem um buraco medido —
+  // quando a filial está sem estoque o pedido despacha do Main e a venda some
+  // da conta dela. Em Brisbane isso é +175%, e 635 SKUs vendem pelo rep com
+  // ZERO pelo local: a média por local diz "não vende" e o motor nem sugere.
+  async function loadRepAvg() {
+    S.repAvg = {}; S.repAvgInfo = null;
+    if (!S.branch) return;
+    try {
+      const qs = new URLSearchParams({ branch: S.branch.code, location: S.branch.name, months: SET.repMonths || 6 });
+      const d = await fetch(`/api/replenishment/branch-averages?${qs}`).then(r => r.json());
+      if (d.error) return;
+      d.rows.forEach(r => { S.repAvg[r.sku_key] = r; });
+      S.repAvgInfo = { months: d.months, reps: d.reps || [], count: d.rep_count };
+    } catch (_) { /* a tela continua com a régua do local */ }
   }
 
   async function loadBase() {
@@ -126,7 +144,14 @@
   function buildRow(code) {
     const branch = S.branch, k = String(code || '').trim().toUpperCase(); if (!k) return null;
     const p = S.prod[k] || {}, avgRow = S.avgBy[k] || null, stock = S.stock[branch.code] || {};
-    const avg = avgRow ? pickAvg(avgRow, branch) : 0;
+    const stored = avgRow ? pickAvg(avgRow, branch) : 0;
+    const fromRep = (S.repAvg[k] && S.repAvg[k].rep_avg) || 0;
+    // A régua escolhida MANDA no número que vira compra. Sem esta linha o
+    // painel mostrava a diferença e o motor continuava comprando pela régua
+    // antiga — a tela ficaria informando e não decidindo.
+    const avg = SET.avgBasis === 'rep' ? fromRep
+              : SET.avgBasis === 'max' ? Math.max(stored, fromRep)
+              : stored;
     const avail = Number(stock[k] || 0);
     const inTransit = Number((S.inT[branch.code] && S.inT[branch.code][k]) || 0);
     const mainOnly = Number((S.stock.MAIN && S.stock.MAIN[k]) || 0);
@@ -134,6 +159,7 @@
     const mainGw = mainOnly + gw;
     const syd = Number((S.stock.SYD && S.stock.SYD[k]) || 0);
     const pallet = Number(S.pallet[String(p.attribute1 || '').trim().toUpperCase()] || 0);
+    const ra = S.repAvg[k] || null;
     const tier = (S.ranks && (S.ranks.get(k) || S.ranks.get(code))) || 'C';
     const weeks = SET.abc ? RC.targetWeeksForTier(tier) : SET.weeks;
     const target = RC.computeBranchTarget(avg, weeks);
@@ -146,6 +172,8 @@
     return {
       code: p.sku || code, dc: p.attribute1 || '', name: p.name || '', ctn: p.carton_quantity || 0,
       pallet, deprecated: p.status === 'Deprecated',
+      repAvg: ra ? ra.rep_avg : null, locAvg: ra ? ra.loc_avg : null, repCount: ra ? ra.reps : 0,
+      storedAvg: stored,
       loc: p.stock_locator || '', avg, soh: avail, inTransit, mainGw, mainOnly, gw, canSend, syd,
       tier, target, weeks, mainAvg, sug, coverWeeks,
       // invComment e flag nascem aqui para o rascunho salvo já ter o formato
@@ -196,13 +224,25 @@
   }
 
   // ═══ BRANCH WORKSPACE ══════════════════════════════════════════════
+  // O rodapé diz qual régua está valendo, e vive aqui e não em openBranch:
+  // a régua muda no Settings, e escrito só na entrada da filial o rótulo
+  // ficava velho enquanto os números já eram outros. Em Brisbane isso é a
+  // diferença entre 20 e 396 sugestões — o pior tipo de rodapé errado.
+  function writeScope() {
+    const el = $('gridScope'); if (!el) return;
+    const ruler = SET.avgBasis === 'rep' ? `rep demand, ${SET.repMonths}m`
+                : SET.avgBasis === 'max' ? `higher of stored and rep demand (${SET.repMonths}m)`
+                : 'shipped from branch';
+    el.textContent = `Main+Gateway is the send pool · ${SET.abc ? 'ABC tiers' : SET.weeks + '-week target'} · ruler: ${ruler}`;
+  }
+
   function openBranch(code) {
     const branch = BRANCHES.find(b => b.code === code); if (!branch) return;
     S.branch = branch; S.sort = { key: null, dir: 1 }; S.search = ''; $('gridSearch').value = '';
     S.vis.weekly = loadVis('weekly'); S.vis.daily = loadVis('daily');
     $('branchLanding').style.display = 'none'; $('branchGrid').style.display = '';
     $('gridTitle').textContent = branch.name;
-    $('gridScope').textContent = `Main+Gateway is the send pool · ${SET.abc ? 'ABC tiers' : SET.weeks + '-week target'} · avg: ${SET.avgSource.replace(/_/g, ' ')}`;
+    writeScope();
     setView('weekly');
   }
   function setView(v) {
@@ -215,6 +255,9 @@
     const d = loadDraft();
     if (d && d.lines && d.lines.length) restoreDraft(d);
     S.mode = v; enterGrid();
+    // Assíncrono de propósito: a grade não espera por isto para aparecer.
+    loadRepAvg().then(() => { S.lines.forEach(l => { const r = S.repAvg[String(l.code).toUpperCase()];
+      if (r) { l.repAvg = r.rep_avg; l.locAvg = r.loc_avg; l.repCount = r.reps; } }); renderGrid(); });
   }
   function enterGrid() {
     $('rpScroll').style.display = ''; $('rpHistory').style.display = 'none'; $('rpStage').style.display = ''; $('rpFoot').style.display = '';
@@ -230,6 +273,7 @@
     setControls(); renderStage(); renderGrid();
   }
   function setControls() {
+    writeScope();
     const gridding = S.view !== 'history';
     const draft = S.stage === 'draft';
     $('gridSearch').style.display = gridding ? '' : 'none';
@@ -412,7 +456,18 @@
       case 'name': return wrap(esc(l.name), '', l.name);
       case 'ctn': return wrap(l.ctn ? n0(l.ctn) : '<span class="rp-sub">—</span>');
       case 'loc': return wrap(esc(l.loc) || '<span class="rp-sub">—</span>', '', l.loc);
-      case 'avg': return wrap(l.avg ? n1(l.avg) : '<span class="rp-sub">—</span>');
+      case 'avg': {
+        // As duas réguas na mesma célula: a que o motor usa em cima, e a do
+        // rep embaixo quando ela discorda. Coluna separada custaria 80px numa
+        // tabela que já rola, e o número só interessa quando diverge.
+        const r = l.repAvg;
+        const gap = r != null && l.avg > 0 ? (r - l.avg) / l.avg : null;
+        const show = r != null && (l.avg <= 0 ? r > 0 : Math.abs(gap) >= 0.15);
+        const mark = show
+          ? `<span class="rp-repavg ${r > l.avg ? 'up' : 'dn'}" title="Sold by this branch's reps: ${n1(r)}/month, wherever it shipped from. ${l.repCount || 0} of the branch's ${(S.repAvgInfo && S.repAvgInfo.count) || 0} reps touched this SKU. The number above is only what shipped out of this branch.">${r > l.avg ? '▲' : '▼'}${n1(r)}</span>`
+          : '';
+        return wrap((l.avg ? n1(l.avg) : '<span class="rp-sub">—</span>') + mark);
+      }
       case 'soh': {
         // In Transit era uma coluna de 82px que quase sempre dizia "·". Vira
         // marca aqui, e o painel mostra o TR — que é o que o usuário quer ver.
@@ -965,6 +1020,8 @@
   function openSettings() {
     closeSide();
     $('setWeeks').value = SET.weeks; $('setDays').value = Math.round(SET.weeks * 7) + ' days'; $('setCutDays').value = SET.cutDays; $('setAbc').checked = SET.abc;
+    if ($('setAvgBasis')) $('setAvgBasis').value = SET.avgBasis;
+    if ($('setRepMonths')) $('setRepMonths').value = String(SET.repMonths);
     $('setAvgSource').value = SET.avgSource; $('setPeriod').value = SET.period; $('setAvgRound').value = SET.avgRound; $('setCartons').checked = SET.cartons;
     const rows = S.avg.map(r => ({ code: r.product, tot: BRANCHES.reduce((s, b) => s + pickAvg(r, b), 0) })).filter(r => r.tot > 0).sort((a, b) => b.tot - a.tot).slice(0, 60);
     $('setAvgTable').innerHTML = '<thead><tr><th class="txt">Rapid Code</th><th class="num">Tier</th><th class="num">Network avg/mo</th></tr></thead><tbody>' +
@@ -975,7 +1032,16 @@
   function applySettings() {
     SET.weeks = Math.max(1, Number($('setWeeks').value) || 6); SET.cutDays = Math.max(1, Number($('setCutDays').value) || 25);
     SET.abc = $('setAbc').checked; SET.avgSource = $('setAvgSource').value; SET.period = $('setPeriod').value; SET.avgRound = $('setAvgRound').value; SET.cartons = $('setCartons').checked;
+    const basisBefore = SET.avgBasis, monthsBefore = SET.repMonths;
+    if ($('setAvgBasis')) SET.avgBasis = $('setAvgBasis').value;
+    if ($('setRepMonths')) SET.repMonths = +$('setRepMonths').value;
     saveSet(); $('mdSettings').classList.remove('is-on');
+    // Trocar a régua ou a janela muda o NÚMERO de cada linha, então a régua
+    // tem de ser recarregada antes de a grade se redesenhar — senão a tela
+    // mostra o alvo novo com a demanda velha.
+    if (SET.avgBasis !== basisBefore || SET.repMonths !== monthsBefore) {
+      loadRepAvg().then(() => { if (S.branch) enterGrid(); });
+    }
     if (S.branch) { if (S.view !== 'history') { closeSide(); S.lines = S.lines.map(l => { const r = buildRow(l.code); if (!r) return l; r.ask = l.ask; r.invQty = l.invQty; r.reason = l.reason; r.comment = l.comment; return r; }); setControls(); renderGrid(); } }
     else renderLanding();
     toast('Settings applied — recomputed');

@@ -382,6 +382,67 @@ function register(app, db) {
     res.json({ months, rows: withDecision, decided: saved.length });
   }));
 
+  /**
+   * A média por SKU de uma filial, pelas DUAS réguas, lado a lado.
+   *
+   *   por LOCAL — de onde a mercadoria saiu.
+   *   por REP   — soma de todos os reps alocados àquela filial, sem olhar de
+   *               onde saiu.
+   *
+   * A segunda existe porque a primeira tem um buraco medido: quando a filial
+   * está sem estoque, o pedido despacha do Main, e a venda some da conta dela.
+   * Medido em 6 meses: Brisbane vende 113.742 pela régua do rep contra 41.307
+   * pela do local — +175%. Sydney +80%, Sunshine +50%. Já Cairns (+6%), Coffs
+   * (+7%) e Hobart (+12%) quase não mudam, porque ficam longe demais para o
+   * Main atender no lugar delas. O padrão é geográfico e confirma a causa.
+   *
+   * A régua do rep é a demanda da filial; a do local é o despacho. Para decidir
+   * reposição, a que importa é a primeira.
+   */
+  app.get(`${R}/branch-averages`, wrap(async (req, res) => {
+    const months = asInt(req.query.months, 6, 1, 13);
+    const branch = (req.query.branch || '').trim().toUpperCase();
+    const location = (req.query.location || '').trim();
+    if (!branch) return res.status(400).json({ error: 'branch é obrigatório' });
+
+    const reps = await db.query(
+      `SELECT sales_rep FROM rapid_inv.sales_rep_branch WHERE branch_code = $1 AND is_active`, [branch]);
+    const names = reps.map((r) => r.sales_rep);
+
+    const win = `order_date >= (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
+                                - ($1::int - 1) * interval '1 month')`;
+    const [byRep, byLoc] = await Promise.all([
+      names.length ? db.query(
+        `SELECT sku_key, sum(qty_signed) AS qty, count(DISTINCT order_number) AS orders,
+                count(DISTINCT sales_rep) AS reps
+           FROM cin7_mirror.v_sales_demand_line
+          WHERE ${win} AND sales_rep = ANY($2)
+          GROUP BY 1`, [months, names]) : [],
+      location ? db.query(
+        `SELECT sku_key, sum(qty_signed) AS qty
+           FROM cin7_mirror.v_sales_demand_line
+          WHERE ${win} AND location_name = $2
+          GROUP BY 1`, [months, location]) : [],
+    ]);
+
+    const loc = byLoc.reduce((m, r) => (m[r.sku_key] = Number(r.qty), m), {});
+    const rows = byRep.map((r) => ({
+      sku_key: r.sku_key,
+      rep_avg: Math.round((Number(r.qty) / months) * 100) / 100,
+      loc_avg: Math.round(((loc[r.sku_key] || 0) / months) * 100) / 100,
+      orders: Number(r.orders), reps: Number(r.reps),
+    }));
+    // SKUs que a filial vendeu pelo local mas nenhum rep dela tocou: o inverso
+    // do buraco, e vale aparecer para ninguém achar que a régua do rep é
+    // sempre maior.
+    for (const [k, q] of Object.entries(loc)) {
+      if (!rows.some((x) => x.sku_key === k)) {
+        rows.push({ sku_key: k, rep_avg: 0, loc_avg: Math.round((q / months) * 100) / 100, orders: 0, reps: 0 });
+      }
+    }
+    res.json({ branch, months, rep_count: names.length, reps: names, rows });
+  }));
+
   /** Gravar a alocação. Um rep por chamada — é decisão, não importação. */
   app.put(`${R}/reps/:rep`, wrap(async (req, res) => {
     const rep = req.params.rep;

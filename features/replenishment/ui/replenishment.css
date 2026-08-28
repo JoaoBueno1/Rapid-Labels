@@ -227,3 +227,9 @@ select.rp-assign{font:400 12px var(--sans);padding:3px 5px;border:1px solid var(
 select.rp-assign:disabled{opacity:.5}
 tr.rp-decided select.rp-assign{border-color:var(--acc);font-weight:600}
 tr.rp-decided td{background:var(--acc-soft,#eef7fc)}
+
+/* A régua do rep ao lado da do local, na mesma célula. Só aparece quando as
+   duas discordam mais de 15% — senão vira ruído em 1.500 linhas. */
+.rp-repavg{display:block;font:600 9.5px var(--mono);line-height:1.3;margin-top:1px}
+.rp-repavg.up{color:var(--xl-warn-ink)}
+.rp-repavg.dn{color:var(--mut-3)}

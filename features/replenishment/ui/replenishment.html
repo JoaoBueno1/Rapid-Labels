@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=16">
+<link rel="stylesheet" href="replenishment.css?v=18">
 <script defer src="/shared/rail.js?v=7"></script>
 </head>
 <body>
@@ -153,6 +153,17 @@
       <div class="rp-set">
         <div class="rp-set-h">Which average to use</div>
         <div class="sp-row2">
+          <label class="sp-field"><span>Demand ruler</span>
+            <select id="setAvgBasis">
+              <option value="location">Shipped from this branch (stored)</option>
+              <option value="rep">Sold by this branch's reps</option>
+              <option value="max">Whichever is higher</option>
+            </select>
+            <small>When a branch runs out, the order ships from Main and the sale leaves its count. Measured over 6 months: Brisbane +175%, Sydney +80%, Sunshine +50% — Cairns, Coffs and Hobart barely move, because Main is too far to cover for them.</small>
+          </label>
+          <label class="sp-field"><span>Rep window</span>
+            <select id="setRepMonths"><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option></select>
+          </label>
           <label class="sp-field"><span>Average source</span>
             <select id="setAvgSource">
               <option value="rep_then_branch">Sales-rep avg, fall back to branch (current)</option>
@@ -209,6 +220,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=16"></script>
+<script src="replenishment-app.js?v=20"></script>
 </body>
 </html>
