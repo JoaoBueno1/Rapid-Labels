@@ -21,6 +21,13 @@ const crypto = require('crypto');
 
 const CIN7 = 'https://inventory.dearsystems.com/ExternalApi/v2';
 
+// Local de propósito: o stock-planning tem a sua, e importar de lá acoplaria
+// dois módulos por causa de quatro linhas.
+const asInt = (v, d, min, max) => {
+  const n = parseInt(v, 10);
+  return isNaN(n) ? d : Math.min(Math.max(n, min), max);
+};
+
 function register(app, db) {
   const R = '/api/replenishment';
 
@@ -249,6 +256,116 @@ function register(app, db) {
         WHERE ${where.join(' AND ')}
         ORDER BY created_at DESC LIMIT 200`, p);
     res.json({ rows });
+  }));
+
+  /**
+   * As médias, calculadas na janela que o usuário escolher.
+   *
+   * Fonte: cin7_mirror.v_sales_demand_line — 170.672 linhas, 13 meses
+   * contíguos, sales_rep e location_name em 100%. NÃO usa sale_lines +
+   * sales_orders: ali o location_name existe em 27,5% dos pedidos e o viés é
+   * CRONOLÓGICO (0,9% em ago/25 contra 99,4% em jul/26), então uma "média de 6
+   * meses" por aquele caminho seria "jun–ago/26" disfarçada.
+   *
+   * Devolve a cobertura junto do número de propósito: sem ela o planejador lê
+   * uma média de agosto como mês cheio quando o mês ainda está correndo.
+   */
+  app.get(`${R}/averages`, wrap(async (req, res) => {
+    const months = asInt(req.query.months, 6, 1, 13);
+    const location = (req.query.location || '').trim();
+    const p = [months];
+    let where = `order_date >= (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
+                                - ($1::int - 1) * interval '1 month')`;
+    if (location) { p.push(location); where += ` AND location_name = $${p.length}`; }
+
+    const [rows, cover, span] = await Promise.all([
+      db.query(`
+        SELECT sku_key, min(sku) AS sku, min(product_name) AS name,
+               location_name,
+               sum(qty_signed)                       AS qty,
+               round(sum(qty_signed) / $1::numeric, 2) AS avg_month,
+               count(DISTINCT order_number)          AS orders,
+               count(DISTINCT to_char(order_date, 'YYYY-MM')) AS months_with_sales
+          FROM cin7_mirror.v_sales_demand_line
+         WHERE ${where}
+         GROUP BY sku_key, location_name
+        HAVING sum(qty_signed) <> 0
+         ORDER BY sum(qty_signed) DESC
+         LIMIT 4000`, p),
+      db.query(`SELECT ym, linhas, pedidos, skus, reps, qty FROM public.v_cin7_sales_history_coverage
+                 ORDER BY ym DESC LIMIT 13`),
+      db.one(`SELECT min(order_date)::text AS first_day, max(order_date)::text AS last_day,
+                     count(DISTINCT to_char(order_date,'YYYY-MM')) AS months
+                FROM cin7_mirror.v_sales_demand_line`),
+    ]);
+
+    // O mês corrente quase nunca está fechado. Incluí-lo como mês cheio puxa a
+    // média para baixo, e é o tipo de erro que ninguém percebe.
+    const last = span.last_day || '';
+    const partial = last.slice(0, 7) === new Date().toISOString().slice(0, 7);
+
+    res.json({ months, location: location || null, rows, coverage: cover,
+               span: { ...span, partial_month: partial, last_day: last } });
+  }));
+
+  /**
+   * Qual filial cada sales rep atende.
+   *
+   * Não existe cadastro disso em lugar nenhum do banco — foi procurado, só há
+   * colunas de texto livre. Tudo aqui é INFERIDO da venda, e por isso vem com
+   * a segunda colocada e a contagem: mostrar só a primeira transforma um
+   * 53% × 44% em fato.
+   *
+   * E um limite que vale para a coluna inteira: location_name é de onde a
+   * mercadoria SAIU, não a filial do rep. 42,6% do despacho dos reps de Sydney
+   * sai do Main — por isso todo rep de filial tem cauda em Main.
+   */
+  app.get(`${R}/reps`, wrap(async (req, res) => {
+    const months = asInt(req.query.months, 13, 1, 13);
+    const rows = await db.query(`
+      WITH base AS (
+        SELECT sales_rep, location_name, count(DISTINCT order_number) AS orders,
+               max(order_date) AS last_order
+          FROM cin7_mirror.v_sales_demand_line
+         WHERE order_date >= (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
+                              - ($1::int - 1) * interval '1 month')
+         GROUP BY 1, 2),
+      tot AS (SELECT sales_rep, sum(orders) AS total, max(last_order) AS last_order FROM base GROUP BY 1),
+      rk AS (SELECT b.*, t.total, t.last_order AS rep_last,
+                    row_number() OVER (PARTITION BY b.sales_rep ORDER BY b.orders DESC) AS pos
+               FROM base b JOIN tot t ON t.sales_rep = b.sales_rep)
+      SELECT r1.sales_rep AS rep, r1.location_name AS branch_1, r1.orders AS orders_1,
+             round(100.0 * r1.orders / r1.total, 1) AS pct_1,
+             r2.location_name AS branch_2, r2.orders AS orders_2,
+             round(100.0 * COALESCE(r2.orders, 0) / r1.total, 1) AS pct_2,
+             r1.total AS orders_total, r1.rep_last::date::text AS last_order
+        FROM rk r1 LEFT JOIN rk r2 ON r2.sales_rep = r1.sales_rep AND r2.pos = 2
+       WHERE r1.pos = 1
+       ORDER BY r1.location_name, r1.total DESC`, [months]);
+
+    // O limite inferior de Wilson a 95%. Sem ele, "54% de 144 pedidos" parece
+    // uma alocação e é empate. O piso muda com a vantagem: 100% precisa de 6
+    // pedidos, 60% precisa de 114.
+    const wilson = (k, n) => {
+      if (!n) return 0;
+      const z = 1.96, ph = k / n;
+      const d = 1 + z * z / n;
+      const c = ph + z * z / (2 * n);
+      const m = z * Math.sqrt((ph * (1 - ph) + z * z / (4 * n)) / n);
+      return Math.max(0, (c - m) / d);
+    };
+    const today = new Date();
+    const out = rows.map((r) => {
+      const lb = wilson(Number(r.orders_1), Number(r.orders_total));
+      const daysIdle = r.last_order ? Math.round((today - new Date(r.last_order)) / 864e5) : null;
+      const notPerson = /^(api|rapid led|test)/i.test(r.rep) || !/\s/.test(String(r.rep).trim());
+      const conf = notPerson ? 'not_a_person'
+        : daysIdle != null && daysIdle > 120 ? 'inactive'
+        : lb >= 0.5 && Number(r.orders_total) >= 30 ? 'high'
+        : lb >= 0.5 ? 'medium' : 'low';
+      return { ...r, wilson_lb: Math.round(lb * 1000) / 10, days_idle: daysIdle, confidence: conf };
+    });
+    res.json({ months, rows: out });
   }));
 
   console.log('✅ Branch Replenishment routes registered (Cin7 write: ORDERED only)');

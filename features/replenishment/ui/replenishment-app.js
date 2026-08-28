@@ -210,6 +210,7 @@
     document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
     closeSide();
     if (v === 'history') { showHistory(); return; }
+    if (v === 'averages') { showAverages(); return; }
     S.mode = v; S.stage = 'draft'; S.lines = [];
     const d = loadDraft();
     if (d && d.lines && d.lines.length) restoreDraft(d);
@@ -217,6 +218,7 @@
   }
   function enterGrid() {
     $('rpScroll').style.display = ''; $('rpHistory').style.display = 'none'; $('rpStage').style.display = ''; $('rpFoot').style.display = '';
+    if ($('rpAvg')) $('rpAvg').style.display = 'none';
     // O diário tem regra própria e ela precisa estar na tela, não no treinamento.
     const note = $('rpDailyNote');
     if (note) {
@@ -493,7 +495,6 @@
     }));
     const ac = tb.querySelector('.rp-acq'); tb.querySelectorAll('.rp-acq').forEach(a => attachAutocomplete(a)); if (ac && S.autoFocusAdd) { ac.focus(); S.autoFocusAdd = false; }
   }
-  window.__rg = renderGrid;   // gancho de teste: forçar um re-render
   function lineByRow(tr) { if (!tr) return null; const code = tr.getAttribute('data-code'); return code ? S.lines.find(l => l.code === code) : null; }
   function updateCount() { const rows = visibleLines(); const total = rows.reduce((s, l) => s + finalQty(l), 0);
     $('gridCount').textContent = rows.length ? `${rows.length} line${rows.length === 1 ? '' : 's'} · ${n0(total)} units` : ''; }
@@ -697,6 +698,99 @@
     };
     list.unshift(snap); try { localStorage.setItem(histKey(), JSON.stringify(list.slice(0, 60))); } catch (_) {}
   }
+
+  // ── Averages ────────────────────────────────────────────────────────────
+  // Existe para o planejador CONFERIR o número que vira compra, sem sair da
+  // tela e sem pedir para alguém rodar uma consulta.
+  //
+  // Fonte: cin7_mirror.v_sales_demand_line — 13 meses contíguos com sales_rep
+  // e location em 100% das linhas. A rota antiga (sale_lines + sales_orders)
+  // NÃO serve: o location existe em 27,5% dos pedidos e o viés é cronológico,
+  // então uma "média de 6 meses" por ali seria "os últimos 2 meses" disfarçada.
+  let avgState = { months: 6, tab: 'sku' };
+  async function showAverages() {
+    $('rpScroll').style.display = 'none'; $('rpStage').style.display = 'none';
+    $('rpFoot').style.display = 'none'; $('rpHistory').style.display = 'none';
+    const dn = $('rpDailyNote'); if (dn) dn.style.display = 'none';
+    $('rpAvg').style.display = ''; setControls();
+    $('rpAvg').innerHTML = '<div class="rp-hist-empty">Loading…</div>';
+    try {
+      const qs = new URLSearchParams({ months: avgState.months });
+      if (avgState.tab === 'sku' && S.branch) qs.set('location', S.branch.name);
+      const [a, reps] = await Promise.all([
+        fetch(`/api/replenishment/averages?${qs}`).then(r => r.json()),
+        fetch(`/api/replenishment/reps`).then(r => r.json()),
+      ]);
+      renderAvgView(a, reps);
+    } catch (e) {
+      $('rpAvg').innerHTML = `<div class="rp-hist-empty">Could not load averages.<br><span class="rp-sub">${esc(e.message)}</span></div>`;
+    }
+  }
+  // renderAvgView e não renderAverages: o módulo JÁ tinha uma renderAverages
+  // (a tabela consultiva do Settings, linha ~922). Declaração de função
+  // posterior sobrescreve a anterior, então a minha nunca era chamada — a
+  // tela ficava em "Loading…" sem erro nenhum, que é o pior tipo de falha.
+  function renderAvgView(a, reps) {
+    const sp = a.span || {};
+    // O aviso vem ANTES do número, não depois: um número lido sem o contexto
+    // já virou decisão antes de o rodapé ser lido.
+    const warn = `<div class="rp-note rp-note-info">
+      History runs <b>${esc(String(sp.first_day || '').slice(0, 10))}</b> to <b>${esc(String(sp.last_day || '').slice(0, 10))}</b>
+      — ${sp.months} months, the most this data goes back.
+      ${sp.partial_month ? '<b>The current month is still running</b>, so counting it as a full month pulls the average down.' : ''}
+      Sales swing about 2× across the year, so the window you pick changes the average by up to 47%.</div>`;
+
+    const win = [3, 6, 12].map(m => `<button class="sp-chip${avgState.months === m ? ' is-on' : ''}" data-mon="${m}">${m} months</button>`).join('');
+    const tabs = [['sku', 'By SKU'], ['rep', 'Sales rep → branch']]
+      .map(([k, l]) => `<button class="sp-chip${avgState.tab === k ? ' is-on' : ''}" data-atab="${k}">${l}</button>`).join('');
+
+    const body = avgState.tab === 'sku' ? avgSkuTable(a) : avgRepTable(reps);
+    $('rpAvg').innerHTML = `<div class="sp-bar">${tabs}<span class="rp-sep"></span>${win}
+      <span class="sp-gap"></span><span class="sp-count">${esc(avgState.tab === 'sku' ? (a.location || 'all branches') : (reps.rows || []).length + ' reps')}</span></div>
+      ${warn}${body}`;
+    $('rpAvg').querySelectorAll('[data-mon]').forEach(b => b.addEventListener('click', () => { avgState.months = +b.dataset.mon; showAverages(); }));
+    $('rpAvg').querySelectorAll('[data-atab]').forEach(b => b.addEventListener('click', () => { avgState.tab = b.dataset.atab; showAverages(); }));
+  }
+  function avgSkuTable(a) {
+    const rows = (a.rows || []).slice(0, 400);
+    if (!rows.length) return '<div class="rp-hist-empty">No sales in this window for this branch.</div>';
+    return `<div class="sp-scroll"><table class="sp-grid rp-grid">
+      <thead><tr><th class="txt" style="width:180px">Rapid Code</th><th class="txt">Product</th>
+        <th class="num" style="width:110px">Avg / month</th><th class="num" style="width:96px">Units</th>
+        <th class="num" style="width:86px">Orders</th>
+        <th class="num" style="width:130px">Months with sales</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td class="code txt">${esc(r.sku)}</td><td class="txt">${esc(r.name || '')}</td>
+        <td class="num"><b>${n1(r.avg_month)}</b></td><td class="num">${n0(r.qty)}</td>
+        <td class="num">${n0(r.orders)}</td>
+        <td class="num ${r.months_with_sales < avgState.months / 2 ? 'rp-thin' : ''}"
+            title="${r.months_with_sales} of the ${avgState.months} months in the window had a sale">
+          ${r.months_with_sales} / ${avgState.months}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  function avgRepTable(reps) {
+    const rows = reps.rows || [];
+    const LBL = { high: 'solid', medium: 'fair', low: 'split', inactive: 'inactive', not_a_person: 'not a person' };
+    return `<div class="rp-note rp-note-info">
+      There is <b>no field anywhere</b> saying a rep belongs to a branch — this is inferred from where the goods
+      shipped from. That is why every branch rep has a Main tail: about 43% of a Sydney rep's orders ship out of Main.
+      <b>The second branch and the order count are shown on purpose</b> — 53% against 44% is a split book, not an allocation.</div>
+      <div class="sp-scroll"><table class="sp-grid rp-grid">
+      <thead><tr><th class="txt" style="width:190px">Sales rep</th>
+        <th class="txt" style="width:170px">Ships mostly from</th><th class="num" style="width:70px">%</th>
+        <th class="txt" style="width:170px">Second</th><th class="num" style="width:70px">%</th>
+        <th class="num" style="width:80px">Orders</th><th class="num" style="width:90px">Lower bound</th>
+        <th class="txt" style="width:110px">Read</th><th class="num" style="width:100px">Last order</th></tr></thead>
+      <tbody>${rows.map(r => `<tr class="${r.confidence === 'high' ? '' : 'rp-dim'}">
+        <td class="txt">${esc(r.rep)}</td>
+        <td class="txt">${esc(r.branch_1)}</td><td class="num">${n1(r.pct_1)}</td>
+        <td class="txt">${esc(r.branch_2 || '—')}</td><td class="num">${r.branch_2 ? n1(r.pct_2) : '·'}</td>
+        <td class="num">${n0(r.orders_total)}</td>
+        <td class="num" title="Wilson 95% lower bound — below 50% the lead is not statistically real">${n1(r.wilson_lb)}%</td>
+        <td class="txt"><span class="rp-conf c-${r.confidence}">${LBL[r.confidence]}</span></td>
+        <td class="num">${esc(r.last_order || '—')}${r.days_idle > 120 ? ` <span class="rp-sub">${r.days_idle}d</span>` : ''}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+  }
+
   // ── History ─────────────────────────────────────────────────────────────
   // Lê do BANCO, não do localStorage. O snapshot foi congelado no momento do
   // envio: recalcular a partir do estoque de hoje daria outro número e o
@@ -708,6 +802,7 @@
     // à troca de aba.
     $('rpScroll').style.display = 'none'; $('rpStage').style.display = 'none'; $('rpFoot').style.display = 'none';
     const dn = $('rpDailyNote'); if (dn) dn.style.display = 'none';
+    if ($('rpAvg')) $('rpAvg').style.display = 'none';
     $('rpHistory').style.display = ''; setControls();
     $('rpHistory').innerHTML = '<div class="rp-hist-empty">Loading…</div>';
     let rows = [];
