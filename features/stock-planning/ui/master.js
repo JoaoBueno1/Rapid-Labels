@@ -44,6 +44,22 @@
     ? '<td class="ms-none">·</td>'
     : `<td class="${cls}" title="${esc(tip)}">${(fmt || n2)(v)}</td>`;
 
+  // As bandeiras vão NA LINHA e não só no filtro: quem está olhando um produto
+  // precisa saber que o número dele é suspeito, mesmo sem ter filtrado por isso.
+  const FLAGS = [
+    ['flag_dim_unit', 'mm', 'Size looks like millimetres stamped as centimetres — the median largest dimension is 20.5cm and this one is over 100'],
+    ['flag_stock_no_dim', 'no size', 'Has stock somewhere but no dimension in any source — this is what stops a container being planned'],
+    ['flag_pack_sku', 'pack', 'Carton SKU with carton quantity 0 — the pack size lives only in the UOM name, so stock can be double counted'],
+    ['flag_carton_name_mismatch', 'name≠BOM', 'The number in the SKU name and the quantity in the BOM disagree — one of the two is wrong'],
+    ['flag_locator_junk', 'loc?', 'Stock locator is not a bin: it is "0" or a process word like BOM or PRODUCTION'],
+  ];
+  const flags = (r) => FLAGS.filter(([k]) => r[k])
+    .map(([, t, tip]) => `<i class="ms-flag" title="${esc(tip)}">${t}</i>`).join('')
+    + (r.bom_components
+        ? `<i class="ms-bom" title="Assembled from ${r.bom_components} component${r.bom_components > 1 ? 's' : ''}${
+            r.carton_qty_in_bom ? ` — and this is where its pack size of ${n0(r.bom_first_qty)} is recorded, since carton quantity is 0` : ''}">BOM ${r.bom_components}</i>`
+        : '');
+
   const COLS = [
     ['SKU', 90], ['5DC', 62], ['Product', 210], ['Status', 78],
     ['SOH', 66], ['Main', 66], ['Locs', 46],
@@ -60,7 +76,7 @@
         <td class="txt code">${esc(r.sku)}</td>
         <td class="txt">${esc(r.dc) || '<span class="ms-none">·</span>'}</td>
         <td class="txt" title="${esc(r.name)}">${esc(r.name)}</td>
-        <td class="txt"><span class="ms-st st-${r.status.replace(/\W/g, '')}">${esc(r.status)}</span></td>
+        <td class="txt"><span class="ms-st st-${r.status.replace(/\W/g, '')}">${esc(r.status)}</span>${flags(r)}</td>
         <td class="num">${n0(r.soh_total)}</td>
         <td class="num">${n0(r.soh_main)}</td>
         <td class="num">${n0(r.locations)}</td>
@@ -105,10 +121,14 @@
   // não é filtro, e sem o número o usuário só descobre abrindo.
   function paintChips(c) {
     if (!c) return;
-    const map = { dims: c.gap_dims, weight: c.gap_weight, carton: c.gap_carton, pallet: c.gap_pallet, pick: c.gap_pick };
+    const map = { dims: c.gap_dims, weight: c.gap_weight, carton: c.gap_carton, pallet: c.gap_pallet, pick: c.gap_pick,
+      dimunit: c.flag_dimunit, packsku: c.flag_packsku, locator: c.flag_locator, stocknodim: c.flag_stocknodim,
+      bom: c.flag_bom, cartonbad: c.flag_cartonbad };
     document.querySelectorAll('[data-gap]').forEach((b) => {
       const n = map[b.dataset.gap];
-      if (n != null && !/\d/.test(b.textContent)) b.textContent = `${b.textContent} (${n0(n)})`;
+      // A marca é explícita e não "o texto já tem dígito": o rótulo
+      // "Carton SKU, qty 0" tem um dígito próprio e ficava sem contagem.
+      if (n != null && !b.dataset.counted) { b.dataset.counted = '1'; b.textContent = `${b.textContent} (${n0(n)})`; }
       b.classList.toggle('is-on', S.gap === b.dataset.gap);
     });
     $('#msConflict').classList.toggle('is-on', S.conflict);

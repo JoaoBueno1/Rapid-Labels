@@ -360,6 +360,11 @@ function register(app) {
     if (req.query.q) { p.push(`%${req.query.q}%`); where.push(`sku ILIKE $${p.length}`); }
     if (req.query.only === 'risk') where.push(`(soh_nonpositive OR mths_stock < 1)`);
     if (req.query.lifecycle) { p.push(req.query.lifecycle); where.push(`lifecycle_status = $${p.length}`); }
+    // Modo BOM: só os produtos montados. O EXISTS custa menos que juntar a
+    // tabela inteira e não multiplica a linha por componente — o pai tem que
+    // continuar sendo uma linha só, com os componentes vindo na expansão.
+    if (req.query.view === 'bom')
+      where.push(`EXISTS (SELECT 1 FROM rapid_inv.product_bom b WHERE b.parent_key = sku_key)`);
     const w = where.join(' AND ');
 
     const [{ total }] = await db.query(`SELECT count(*)::int total FROM rapid_inv.v_sp_planning_skus WHERE ${w}`, p);
@@ -441,7 +446,39 @@ function register(app) {
         || (a.badge_wts ?? 999) - (b.badge_wts ?? 999)
         || a.sku.localeCompare(b.sku));
     }
+    // Os componentes vêm no MESMO payload, em um SELECT para o conjunto todo.
+    // Buscar por linha seria N+1 numa tela que abre 300 linhas de uma vez.
+    // Vêm sempre, não só no modo BOM: um produto montado no meio da lista geral
+    // também precisa dizer que é montado.
+    const bom = keys.length ? await db.query(
+      `SELECT parent_key, component_sku, component_name, quantity, comp_soh, comp_main,
+              can_build_main, comp_lifecycle, comp_main_negative
+         FROM rapid_inv.v_bom_expanded WHERE parent_key = ANY($1) ORDER BY parent_key, component_sku`,
+      [keys]) : [];
+    const bomIdx = bom.reduce((m, b) => ((m[b.parent_key] = m[b.parent_key] || []).push(b), m), {});
+    rows.forEach((r) => {
+      const cs = bomIdx[r.sku_key];
+      if (!cs) return;
+      r.bom = cs.map((c) => ({
+        sku: c.component_sku, name: c.component_name, qty: Number(c.quantity),
+        soh: Number(c.comp_soh), main: Number(c.comp_main),
+        build: c.can_build_main == null ? null : Number(c.can_build_main),
+        life: c.comp_lifecycle, neg: c.comp_main_negative === true,
+      }));
+      // Com vários componentes quem manda é o mais escasso. Mostrar a média ou
+      // o maior faria a tela prometer uma montagem que o gargalo não permite.
+      const builds = r.bom.map((c) => c.build).filter((v) => v != null);
+      r.bom_build = builds.length ? Math.min(...builds) : null;
+    });
+
+    // O modo BOM mostra só os montados que estão no arquivo de planejamento
+    // (is_planned). Dizer 225 sem dizer de quantos seria truncar em silêncio.
+    const bomAll = req.query.view === 'bom'
+      ? (await db.query('SELECT count(DISTINCT parent_key)::int n FROM rapid_inv.product_bom'))[0].n
+      : null;
+
     res.json({
+      bom_universe: bomAll,
       reporting_week: state.reporting_week,
       weeks: weeks.slice(0, horizon + 1).map((w) => ({ ...w, label: shortLabel(w.week_ending) })),
       total, limit, offset, rows, ms: Date.now() - t0,
@@ -520,7 +557,14 @@ function register(app) {
       return m;
     }, {});
 
+    // O modo BOM mostra só os montados que estão no arquivo de planejamento
+    // (is_planned). Dizer 225 sem dizer de quantos seria truncar em silêncio.
+    const bomAll = req.query.view === 'bom'
+      ? (await db.query('SELECT count(DISTINCT parent_key)::int n FROM rapid_inv.product_bom'))[0].n
+      : null;
+
     res.json({
+      bom_universe: bomAll,
       reporting_week: state.reporting_week,
       weeks: weeks.map((w) => ({ week_ending: w.week_ending, label: shortLabel(w.week_ending) })),
       rows, coverage: cov, ms: Date.now() - t0,
@@ -547,7 +591,14 @@ function register(app) {
     // fazer X" — e por isso vêm com a contagem, senão o usuário não sabe se
     // vale abrir.
     const GAPS = { dims: 'missing_dims', weight: 'missing_weight', pick: 'missing_pick',
-                   carton: 'missing_carton', pallet: 'missing_pallet' };
+                   carton: 'missing_carton', pallet: 'missing_pallet',
+                   // Bandeiras de qualidade: o dado existe mas está suspeito.
+                   // São filtros de LIMPEZA, não de falta.
+                   dimunit: 'flag_dim_unit', packsku: 'flag_pack_sku',
+                   locator: 'flag_locator_junk', stocknodim: 'flag_stock_no_dim',
+                   bom: 'bom_components IS NOT NULL',
+                   cartonfix: 'carton_qty_in_bom',
+                   cartonbad: 'flag_carton_name_mismatch' };
     if (GAPS[req.query.gap]) where.push(`${GAPS[req.query.gap]}`);
     if (req.query.conflict === '1') {
       where.push(`((cin7_length IS NOT NULL AND file_length IS NOT NULL AND abs(cin7_length - file_length) / greatest(cin7_length, 1) > 0.02)
@@ -573,7 +624,14 @@ function register(app) {
                      count(*) FILTER (WHERE missing_weight)::int gap_weight,
                      count(*) FILTER (WHERE missing_pick)::int gap_pick,
                      count(*) FILTER (WHERE missing_carton)::int gap_carton,
-                     count(*) FILTER (WHERE missing_pallet)::int gap_pallet
+                     count(*) FILTER (WHERE missing_pallet)::int gap_pallet,
+                     count(*) FILTER (WHERE flag_dim_unit)::int flag_dimunit,
+                     count(*) FILTER (WHERE flag_pack_sku)::int flag_packsku,
+                     count(*) FILTER (WHERE flag_locator_junk)::int flag_locator,
+                     count(*) FILTER (WHERE flag_stock_no_dim)::int flag_stocknodim,
+                     count(*) FILTER (WHERE bom_components IS NOT NULL)::int flag_bom,
+                     count(*) FILTER (WHERE carton_qty_in_bom)::int flag_cartonfix,
+                     count(*) FILTER (WHERE flag_carton_name_mismatch)::int flag_cartonbad
                 FROM rapid_inv.v_master_stock`),
     ]);
     res.json({ rows, total: tot.n, counts, limit, offset, ms: Date.now() - t0 });
@@ -1250,7 +1308,14 @@ function register(app) {
       bySupplier[k].value_aud += r.value_aud || 0;
       if (r.already_late) bySupplier[k].late++;
     }
+    // O modo BOM mostra só os montados que estão no arquivo de planejamento
+    // (is_planned). Dizer 225 sem dizer de quantos seria truncar em silêncio.
+    const bomAll = req.query.view === 'bom'
+      ? (await db.query('SELECT count(DISTINCT parent_key)::int n FROM rapid_inv.product_bom'))[0].n
+      : null;
+
     res.json({
+      bom_universe: bomAll,
       reporting_week: state.reporting_week, horizon_weeks: maxWeeks, uncovered_skus: uncovered,
       // Barrar em silêncio é o mesmo pecado do truncamento: o total tem de
       // aparecer, com o motivo e o dinheiro que ele representa.

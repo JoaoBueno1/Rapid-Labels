@@ -15,7 +15,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const S = {
   view: 'overview', ov: 'health',
   projects: { q:'', status:'ACTIVE', rep:'', only:'', sort:'order_date', dir:'desc', offset:0, limit:400, col:{} },
-  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
+  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
   pos:      { q:'', supplier:'', open:true, overdue:false },
   alerts:   { muted:false, supplier:'' },
   buy:      { supplier:'', late:false },
@@ -125,6 +125,7 @@ $$('.sp-modal').forEach(m => m.addEventListener('click', e => {
     $('#alSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
     $('#npoSupplier').innerHTML = '<option value="">—</option>' + opts;
     if (S.supply.supplier) $('#spSupplier').value = S.supply.supplier;
+    if (S.supply.view) { $('#spView').value = S.supply.view; S.supply.expandAll = true; }
     if (S.supply.back) $('#spBack').value = String(S.supply.back);
     $('#spSort').classList.toggle('is-on', S.supply.sort === 'risk');
     const f = await api('/filters');
@@ -729,7 +730,10 @@ async function openAudit(table, id) {
 let spData = null;
 async function loadSupply() {
   const s = S.supply;
-  if (!s.supplier) {
+  // O modo BOM atravessa fornecedor: "quais montados eu consigo montar" é uma
+  // pergunta do estoque inteiro, e exigir escolher fornecedor antes a tornaria
+  // impossível de fazer.
+  if (!s.supplier && s.view !== 'bom') {
     $('#spGrid').innerHTML = `<tbody><tr><td><div class="sp-empty">
       Pick a supplier to load the projection.<br>
       Same slice as the 22 supplier tabs — and it is what keeps this fast.</div></td></tr></tbody>`;
@@ -737,7 +741,9 @@ async function loadSupply() {
   }
   // 600 cobre o maior fornecedor inteiro. Com 300, 36 das 57 linhas vermelhas
   // do CGD ficavam fora da tela — o selo existia e ninguém via.
-  const qs = new URLSearchParams({ supplier:s.supplier, weeks:s.weeks, limit:600 });
+  const qs = new URLSearchParams({ weeks:s.weeks, limit:600 });
+  if (s.supplier) qs.set('supplier', s.supplier);
+  if (s.view) qs.set('view', s.view);
   if (s.sort === 'risk') qs.set('sort','risk');
   if (s.q) qs.set('q', s.q);
   if (s.risk) qs.set('only','risk');
@@ -755,7 +761,9 @@ async function loadSupply() {
     const mudou = (hist ? hist.weeks.length : 0) !== (spHist ? spHist.weeks.length : 0);
     spHist = hist;
     if (mudou) spAnchor = true;
-    $('#spCount').textContent = `${n0(spData.rows.length)} of ${n0(spData.total)} SKUs · ${spData.ms} ms`
+    $('#spCount').textContent = `${n0(spData.rows.length)} of ${n0(spData.total)} SKUs`
+      + (spData.bom_universe ? ` — the ${n0(spData.total)} assembled products in the planning file, of ${n0(spData.bom_universe)} in Cin7` : '')
+      + ` · ${spData.ms} ms`
       + (hist ? ` · ${hist.weeks.length} wk back in ${hist.ms} ms` : '');
     renderSupply();
   } catch (e) { $('#spCount').textContent=''; toast(e.message, true); }
@@ -773,6 +781,44 @@ const histKnown = (src, week) => {
   const c = spHist && spHist.coverage && spHist.coverage[src];
   return !!c && week >= c.first_week && week <= c.last_week;
 };
+/* O selo de montado. Só aparece quando há BOM, e o número que ele carrega é
+   quantos pais dá para montar HOJE com o componente que está em Main — que é a
+   pergunta que o planejador faz. Medido: 1.154 produtos aparecem com estoque
+   zero e já dão para montar, ou seja, a tela dizia "compre" com a peça na
+   prateleira. */
+const bomMark = (r) => !r.bom ? '' :
+  `<span class="ui-tag bom-mark" title="Assembled from ${r.bom.length} component${r.bom.length>1?'s':''}${
+    r.bom_build!=null ? ` — ${n0(r.bom_build)} can be built right now from what is in Main` : ''}">BOM${
+    r.soh<=0 && r.bom_build>0 ? ` · build ${n0(r.bom_build)}` : ''}</span>`;
+
+/* Os componentes ficam SOB o produto montado, dentro da mesma expansão em que
+   já mora o cálculo. Cada um traz o próprio estoque, porque a lista sem o
+   estoque ao lado é enciclopédia e não decisão. */
+function bomRows(r) {
+  if (!r.bom || !r.bom.length) return '';
+  const colspan = 7;
+  // Marcar o gargalo só informa quando ele DISTINGUE. Com todos os componentes
+  // empatados — o caso comum aqui, todos em 0 — a marca ia para 404 das 609
+  // linhas e deixava de significar "olhe este".
+  const empatado = new Set(r.bom.map((c) => c.build)).size <= 1;
+  return r.bom.map((c) => {
+    const gargalo = !empatado && c.build != null && c.build === r.bom_build;
+    return `<tr class="wrk bom-row${gargalo ? ' is-tight' : ''}">
+      <td class="lbl" colspan="${colspan}">
+        <span class="bom-qty">${n0(c.qty)}&times;</span>
+        <b data-goto="${esc(c.sku)}" class="mono">${esc(c.sku)}</b>
+        <span class="bom-name">${esc(c.name || '')}</span>
+        ${c.life === 'DISCONTINUED' ? '<span class="ui-tag ui-tag--neutral">DISC</span>' : ''}
+        <span class="bom-soh${c.neg ? ' is-neg' : ''}"${c.neg
+          ? ' title="Main is negative for this component — oversold in the ERP. It cannot build anything, and the negative itself needs fixing."' : ''
+          }>Main <b>${n0(c.main)}</b>${c.soh !== c.main ? ` · all ${n0(c.soh)}` : ''}</span>
+        ${c.build != null ? `<span class="bom-build${gargalo ? ' tight' : ''}"
+          title="${gargalo ? 'This is the component that limits the build' : 'How many parents this component alone allows'}"
+          >builds ${n0(c.build)}</span>` : ''}
+      </td></tr>`;
+  }).join('');
+}
+
 const WRK = [
   ['r-open', 'Opening Inventory Level', c => c.o],
   ['r-in',   'Inventory In:',           c => c.i],
@@ -827,7 +873,7 @@ function renderSupply() {
     const sup = r.superseded_by
         ? `<span class="sup-to">→ <b data-goto="${esc(r.superseded_by)}">${esc(r.superseded_by)}</b></span>` : '';
     const skuRow = `<tr class="sk ${lc}" data-sku="${esc(r.sku_key)}">
-      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${badgeMark(r)}${sup}</td>
+      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${badgeMark(r)}${bomMark(r)}${sup}</td>
       <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}</td>
       <td class="n${r.badge_drift?' drift':''}"${r.badge_drift?` title="${esc(r.badge_why||'')}"`:''}
         >${cellSku(r,'wk_avg',n1(r.wk_avg))}${r.badge_drift
@@ -873,7 +919,7 @@ function renderSupply() {
         return `<td class="wk ${i===0?'rep':''} ${isClose&&c.neg?'neg':''} ${isClose&&c.lowEdge?'low':''} ${isClose&&isOpenCell(r.sku_key,c.w)?'is-open':''}"
           ${isClose?`data-week="${c.w}"`:''}>${v===0?'<span class="faint">0</span>':cls==='r-out'?n1(v):n0(v)}</td>`;
       }).join('')}</tr>`).join('');
-    return `<tbody>${skuRow}${work}</tbody>`;
+    return `<tbody>${skuRow}${bomRows(r)}${work}</tbody>`;
   }).join('');
   $('#spGrid').innerHTML = head + bodies;
 
@@ -947,6 +993,14 @@ $('#spSort').addEventListener('click', e => {
 });
 $('#spRisk').addEventListener('click', e => { S.supply.risk = !S.supply.risk; e.currentTarget.classList.toggle('is-on', S.supply.risk); loadSupply(); });
 $('#spLife').addEventListener('change', e => { S.supply.life = e.target.value; loadSupply(); });
+$('#spView').addEventListener('change', e => {
+  S.supply.view = e.target.value; localStorage.setItem('sp.view', e.target.value);
+  // Entrar no modo BOM abre a expansão sozinho: o motivo de entrar nele é ver
+  // os componentes, e obrigar a clicar 300 vezes seria esconder o que se pediu.
+  S.supply.expandAll = e.target.value === 'bom';
+  $('#spExpand').classList.toggle('is-on', S.supply.expandAll);
+  loadSupply();
+});
 $('#spExpand').addEventListener('click', e => {
   S.supply.expandAll = !S.supply.expandAll;
   // Desligar precisa fechar de verdade: sem isto, as linhas abertas uma a uma

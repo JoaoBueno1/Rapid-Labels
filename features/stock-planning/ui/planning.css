@@ -564,3 +564,25 @@ tr.al-row:hover td{background:var(--card-2)}
    digitado continua sendo o editável; este é leitura. */
 .sp-supply .meas{margin-left:4px;font:600 10px var(--mono);color:var(--xl-warn-ink)}
 .sp-supply .meas::before{content:'→ '}
+
+/* BOM — componentes sob o produto montado.
+   Ficam dentro da mesma expansão do cálculo e herdam a altura de linha dela,
+   porque o ganho medido daquela compactação (51 linhas visíveis contra 20) se
+   perderia se o BOM abrisse linhas altas. */
+.bom-mark{background:var(--xl-info,#e7effa);color:var(--xl-info-ink,#1f4e79);
+  border:1px solid var(--xl-info-ink,#1f4e79);border-radius:3px;
+  padding:0 5px;font:700 9.5px/16px var(--sans);margin-left:4px}
+.sp-supply tr.bom-row td.lbl{padding-left:26px;color:var(--ink-2);
+  /* A grade inteira foi apertada para 18px de linha, e foi essa compactação
+     que levou o visível de 20 para 51 linhas. O BOM tem que caber nela: as
+     tags internas ganham line-height próprio para não empurrar a altura. */
+  line-height:16px;padding-top:0;padding-bottom:0;white-space:nowrap}
+.sp-supply tr.bom-row td.lbl .ui-tag{line-height:14px;padding:0 4px;vertical-align:1px}
+.sp-supply tr.bom-row.is-tight td.lbl{box-shadow:inset 3px 0 0 var(--xl-warn-ink)}
+.bom-qty{display:inline-block;min-width:34px;font:700 10.5px/16px var(--mono);
+  color:var(--xl-info-ink,#1f4e79);text-align:right;margin-right:6px}
+.bom-row .bom-name{color:var(--mut);margin-left:8px;font-size:10.5px}
+.bom-soh{margin-left:10px;font:500 10.5px/16px var(--mono);color:var(--ink-2)}
+.bom-build{margin-left:8px;font:600 10px/16px var(--sans);color:var(--mut-2)}
+.bom-build.tight{color:var(--xl-warn-ink);font-weight:700}
+.bom-soh.is-neg b{color:#9c0006}

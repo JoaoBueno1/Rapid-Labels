@@ -7,10 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=11">
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=13">
 <link rel="stylesheet" href="/shared/rail.css?v=7">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="/features/stock-planning/ui/master.css?v=1">
+<link rel="stylesheet" href="/features/stock-planning/ui/master.css?v=3">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -45,6 +45,15 @@
       <button class="sp-chip" data-gap="pallet">Missing pallet</button>
       <button class="sp-chip" data-gap="pick">Missing pickface</button>
       <button class="sp-chip" id="msConflict">Sources disagree</button>
+      <span class="rp-sep"></span>
+      <span class="ms-grp">Looks wrong:</span>
+      <button class="sp-chip" data-gap="dimunit">Size in mm</button>
+      <button class="sp-chip" data-gap="stocknodim">Stock, no size</button>
+      <button class="sp-chip" data-gap="packsku">Carton SKU, qty 0</button>
+      <button class="sp-chip" data-gap="locator">Locator not a bin</button>
+      <button class="sp-chip" data-gap="cartonbad">Carton name vs BOM</button>
+      <span class="rp-sep"></span>
+      <button class="sp-chip" data-gap="bom">Assembled</button>
       <span class="sp-gap"></span>
       <span class="sp-count" id="msCount"></span>
     </div>
@@ -57,6 +66,7 @@
       <span><i class="k k-rst"></i>only in Re-Stock</span>
       <span><i class="k k-conf"></i>both have it and they disagree — both values shown</span>
       <span class="ms-plain">no colour = the sources agree</span>
+      <span class="ms-plain">· the <b>Looks wrong</b> filters flag data to clean later — nothing is corrected or hidden</span>
     </div>
 
     <div class="sp-scroll ms-scroll"><table class="sp-grid ms-grid" id="msGrid"></table></div>
@@ -75,6 +85,6 @@
 </aside>
 
 <div class="sp-toast" id="toast"></div>
-<script src="/features/stock-planning/ui/master.js?v=1"></script>
+<script src="/features/stock-planning/ui/master.js?v=3"></script>
 </body>
 </html>

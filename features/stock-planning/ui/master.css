@@ -48,3 +48,15 @@
 .st-Deprecated{background:var(--row);color:var(--mut-3)}
 .st-NotinCin7{background:var(--xl-held);color:var(--xl-warn-ink)}
 .ms-scroll{flex:1;min-height:0}
+
+/* Bandeiras de qualidade. Âmbar e não vermelho: o dado não está errado com
+   certeza, está suspeito — e o usuário decidiu manter como está por enquanto,
+   para limpar depois. Marcar como erro seria forte demais para uma suspeita. */
+.ms-flag{font:600 8.5px/13px var(--sans);font-style:normal;letter-spacing:.02em;
+  background:var(--xl-held);color:var(--xl-warn-ink);border-radius:3px;
+  padding:0 4px;margin-left:3px;vertical-align:1px;cursor:help}
+.ms-grp{font:600 11px var(--sans);color:var(--mut-3);margin-right:2px}
+/* Montado é fato, não suspeita — por isso azul e não âmbar. */
+.ms-bom{font:600 8.5px/13px var(--sans);font-style:normal;background:var(--xl-info,#e7effa);
+  color:var(--xl-info-ink,#1f4e79);border-radius:3px;padding:0 4px;margin-left:3px;
+  vertical-align:1px;cursor:help}
