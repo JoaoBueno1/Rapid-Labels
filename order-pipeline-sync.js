@@ -544,20 +544,94 @@ async function syncStockTransfers(sb) {
 // DETECT COMPLETED: Mark orders that disappeared from active
 // ============================================================
 
+/**
+ * Confirma, contra cin7_mirror.sales_orders, se um pedido REALMENTE saiu do
+ * armazém. Custa ZERO chamada ao Cin7 — o dado já está no espelho, mantido pelo
+ * webhook (0 min) e pelo cin7-sales-sync.
+ *
+ * Devolve o conjunto de `number` que NÃO pode ser marcado como concluído.
+ */
+async function confirmarAtivos(sb, numeros) {
+  const vivos = new Set();
+  if (!numeros.length) return vivos;
+  const ATIVOS = CONFIG.activeSaleStatuses.map((x) => x.toUpperCase());
+  for (let i = 0; i < numeros.length; i += 200) {
+    const lote = numeros.slice(i, i + 200);
+    const { data, error } = await sb
+      .from('sales_orders').select('order_number, status').in('order_number', lote);
+    if (error) {
+      // Espelho indisponível: preferir NÃO marcar. Deixar na tela um pedido já
+      // concluído custa uma linha a mais; tirar da tela um pedido vivo custa um
+      // pedido que ninguém embala.
+      lote.forEach((n) => vivos.add(n));
+      log('warn', 'confirmarAtivos: espelho indisponível, nada será marcado neste lote', { error: error.message });
+      continue;
+    }
+    const visto = new Map((data || []).map((r) => [r.order_number, String(r.status || '').toUpperCase()]));
+    for (const n of lote) {
+      const st = visto.get(n);
+      // Sem linha no espelho = sem evidência. Não adivinha.
+      if (st === undefined || ATIVOS.includes(st)) vivos.add(n);
+    }
+  }
+  return vivos;
+}
+
 async function detectCompleted(sb, freshSoIds, freshTrIds) {
   const nowIso = new Date().toISOString();
   const completedStatuses = [...CONFIG.completedStatuses, 'INVOICED'];
 
+  // --dry-run tem que valer AQUI também. cleanupCompleted já respeitava a flag
+  // (linha ~613) e esta função não: um `--dry-run` marcava pedido como
+  // concluído de verdade, no banco de produção. Um comando que se anuncia como
+  // simulação e escreve é pior que não ter simulação — ninguém o trata com o
+  // cuidado que ele exige.
+  if (FLAGS.dryRun) {
+    const soSumidos = [];
+    const { data: cSo } = await sb.from('order_pipeline')
+      .select('id, number').eq('type', 'SO').not('status', 'in', `(${completedStatuses.join(',')})`);
+    (cSo || []).forEach(r => { if (!freshSoIds.has(r.id)) soSumidos.push(r.number); });
+    const vivos = await confirmarAtivos(sb, soSumidos.filter(Boolean));
+    const marcaria = soSumidos.filter(x => !vivos.has(x));
+    log('info', `[DRY RUN] ${soSumidos.length} SO sumiram da busca · ${vivos.size} seguem ativos no espelho (mantidos) · marcaria ${marcaria.length}`);
+    if (marcaria.length) log('info', `[DRY RUN] marcaria: ${marcaria.slice(0, 20).join(', ')}`);
+    return 0;
+  }
+
   // Find SO in cache that are still marked active but weren't in the fresh fetch
   const { data: cachedSo, error: soErr } = await sb
     .from('order_pipeline')
-    .select('id, status, updated_at')
+    .select('id, number, status, updated_at')
     .eq('type', 'SO')
     .not('status', 'in', `(${completedStatuses.join(',')})`);
 
   let soMarked = 0;
   if (!soErr && cachedSo) {
-    const disappeared = cachedSo.filter(r => !freshSoIds.has(r.id));
+    let disappeared = cachedSo.filter(r => !freshSoIds.has(r.id));
+
+    // GUARDA 1 — busca encolhida não é conclusão em massa.
+    // "Sumiu da busca" só significa "concluído" se a busca veio inteira. Um 429,
+    // um timeout, uma página truncada ou duas instâncias correndo juntas também
+    // fazem o pedido sumir. Em 2026-08-27, 13 pedidos foram marcados COMPLETED
+    // por engano — 7 deles em PICKED, ou seja: separados, prontos para embalar,
+    // e apagados do quadro do armazém.
+    const ativosEmCache = cachedSo.length;
+    if (ativosEmCache > 0 && disappeared.length > ativosEmCache * 0.30) {
+      log('warn', `⚠️ ${disappeared.length}/${ativosEmCache} SO sumiram de uma vez (>30%) — busca provavelmente incompleta. NÃO vou marcar nada.`);
+      disappeared = [];
+    }
+
+    // GUARDA 2 — confirmar contra o espelho antes de tirar da tela.
+    // Zero chamada ao Cin7: sales_orders é mantido pelo webhook.
+    if (disappeared.length > 0) {
+      const vivos = await confirmarAtivos(sb, disappeared.map(r => r.number).filter(Boolean));
+      const antes = disappeared.length;
+      disappeared = disappeared.filter(r => !vivos.has(r.number));
+      if (antes !== disappeared.length) {
+        log('warn', `⚠️ ${antes - disappeared.length} SO sumiram da busca mas seguem ATIVOS no espelho — mantidos no quadro.`);
+      }
+    }
+
     if (disappeared.length > 0) {
       log('info', `🔍 Detected ${disappeared.length} SO completed since last sync`);
       // Use updated_at from cached row as approximate completion time
@@ -582,7 +656,14 @@ async function detectCompleted(sb, freshSoIds, freshTrIds) {
 
   let trMarked = 0;
   if (!trErr && cachedTr) {
-    const disappeared = cachedTr.filter(r => !freshTrIds.has(r.id));
+    let disappeared = cachedTr.filter(r => !freshTrIds.has(r.id));
+    // Mesma guarda 1. Não há guarda 2 aqui: cin7_mirror.stock_transfers é
+    // header-only e não cobre todo TR do quadro, então confirmar contra ele
+    // daria falso "vivo" — pior que não confirmar.
+    if (cachedTr.length > 0 && disappeared.length > cachedTr.length * 0.30) {
+      log('warn', `⚠️ ${disappeared.length}/${cachedTr.length} TR sumiram de uma vez (>30%) — busca provavelmente incompleta. NÃO vou marcar nada.`);
+      disappeared = [];
+    }
     if (disappeared.length > 0) {
       log('info', `🔍 Detected ${disappeared.length} TR completed since last sync`);
       for (const row of disappeared) {
