@@ -750,6 +750,24 @@
       ${warn}${body}`;
     $('rpAvg').querySelectorAll('[data-mon]').forEach(b => b.addEventListener('click', () => { avgState.months = +b.dataset.mon; showAverages(); }));
     $('rpAvg').querySelectorAll('[data-atab]').forEach(b => b.addEventListener('click', () => { avgState.tab = b.dataset.atab; showAverages(); }));
+    $('rpAvg').querySelectorAll('select.rp-assign').forEach(sel => sel.addEventListener('change', async () => {
+      const rep = sel.dataset.rep;
+      sel.disabled = true;
+      try {
+        const r = await fetch(`/api/replenishment/reps/${encodeURIComponent(rep)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-sp-user': (localStorage.getItem('rp.user') || 'planner') },
+          body: JSON.stringify({ branch_code: sel.value || null,
+            inferred: { branch: sel.dataset.inf, pct: Number(sel.dataset.pct), orders: Number(sel.dataset.ord) } }),
+        });
+        if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
+        sel.closest('tr').classList.add('rp-decided');
+        toast(`${rep} → ${sel.options[sel.selectedIndex].text}`);
+      } catch (e) {
+        toast(`Could not save: ${e.message}`, true);
+        showAverages();   // recarrega para a tela não mentir sobre o que ficou salvo
+      } finally { sel.disabled = false; }
+    }));
   }
   function avgSkuTable(a) {
     const rows = (a.rows || []).slice(0, 400);
@@ -770,18 +788,28 @@
   function avgRepTable(reps) {
     const rows = reps.rows || [];
     const LBL = { high: 'solid', medium: 'fair', low: 'split', inactive: 'inactive', not_a_person: 'not a person' };
+    // NULL é resposta válida e precisa estar na lista: "não é rep de filial"
+    // cobre o pessoal do Main, a razão social e o canal de API.
+    const opts = (cur) => `<option value=""${!cur ? ' selected' : ''}>— not a branch rep —</option>`
+      + BRANCHES.map(b => `<option value="${esc(b.code)}"${cur === b.code ? ' selected' : ''}>${esc(b.name)}</option>`).join('');
     return `<div class="rp-note rp-note-info">
       There is <b>no field anywhere</b> saying a rep belongs to a branch — this is inferred from where the goods
       shipped from. That is why every branch rep has a Main tail: about 43% of a Sydney rep's orders ship out of Main.
-      <b>The second branch and the order count are shown on purpose</b> — 53% against 44% is a split book, not an allocation.</div>
+      <b>The second branch and the order count are shown on purpose</b> — 53% against 44% is a split book, not an allocation.
+      Set <b>Assigned branch</b> to record the decision; it is saved with who decided and when, and it overrides the guess.</div>
       <div class="sp-scroll"><table class="sp-grid rp-grid">
-      <thead><tr><th class="txt" style="width:190px">Sales rep</th>
-        <th class="txt" style="width:170px">Ships mostly from</th><th class="num" style="width:70px">%</th>
-        <th class="txt" style="width:170px">Second</th><th class="num" style="width:70px">%</th>
-        <th class="num" style="width:80px">Orders</th><th class="num" style="width:90px">Lower bound</th>
-        <th class="txt" style="width:110px">Read</th><th class="num" style="width:100px">Last order</th></tr></thead>
-      <tbody>${rows.map(r => `<tr class="${r.confidence === 'high' ? '' : 'rp-dim'}">
+      <thead><tr><th class="txt" style="width:180px">Sales rep</th>
+        <th class="txt" style="width:180px">Assigned branch</th>
+        <th class="txt" style="width:150px">Ships mostly from</th><th class="num" style="width:60px">%</th>
+        <th class="txt" style="width:150px">Second</th><th class="num" style="width:60px">%</th>
+        <th class="num" style="width:70px">Orders</th><th class="num" style="width:80px">Lower bound</th>
+        <th class="txt" style="width:100px">Read</th><th class="num" style="width:96px">Last order</th></tr></thead>
+      <tbody>${rows.map(r => `<tr class="${r.confidence === 'high' ? '' : 'rp-dim'}${r.decided ? ' rp-decided' : ''}">
         <td class="txt">${esc(r.rep)}</td>
+        <td class="txt"><select class="rp-assign" data-rep="${esc(r.rep)}"
+              data-inf="${esc(r.branch_1)}" data-pct="${r.pct_1}" data-ord="${r.orders_total}"
+              title="${r.decided ? 'Decided by ' + esc(r.decided_by || '') + ' on ' + esc(String(r.decided_at || '').slice(0, 10)) : 'Not decided yet — the branch below is only a guess from where goods shipped'}"
+            >${opts(r.assigned_branch)}</select></td>
         <td class="txt">${esc(r.branch_1)}</td><td class="num">${n1(r.pct_1)}</td>
         <td class="txt">${esc(r.branch_2 || '—')}</td><td class="num">${r.branch_2 ? n1(r.pct_2) : '·'}</td>
         <td class="num">${n0(r.orders_total)}</td>

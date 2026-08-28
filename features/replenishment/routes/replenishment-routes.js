@@ -365,7 +365,42 @@ function register(app, db) {
         : lb >= 0.5 ? 'medium' : 'low';
       return { ...r, wilson_lb: Math.round(lb * 1000) / 10, days_idle: daysIdle, confidence: conf };
     });
-    res.json({ months, rows: out });
+    // A decisão humana entra por cima. A inferência continua no payload, ao
+    // lado, para a tela poder mostrar as duas e sinalizar quando discordam.
+    const saved = await db.query(`SELECT * FROM rapid_inv.sales_rep_branch`);
+    const byRep = saved.reduce((m, r) => (m[r.sales_rep] = r, m), {});
+    const withDecision = out.map((r) => {
+      const d = byRep[r.rep];
+      return { ...r,
+        assigned_branch: d ? d.branch_code : null,
+        assigned_note: d ? d.note : null,
+        assigned_active: d ? d.is_active : null,
+        decided_by: d ? d.decided_by : null,
+        decided_at: d ? d.decided_at : null,
+        decided: !!d };
+    });
+    res.json({ months, rows: withDecision, decided: saved.length });
+  }));
+
+  /** Gravar a alocação. Um rep por chamada — é decisão, não importação. */
+  app.put(`${R}/reps/:rep`, wrap(async (req, res) => {
+    const rep = req.params.rep;
+    const { branch_code, note, is_active, inferred } = req.body || {};
+    const actor = (req.get('x-sp-user') || req.body?._as || 'anon').toString().slice(0, 120);
+    const row = await db.one(`
+      INSERT INTO rapid_inv.sales_rep_branch
+        (sales_rep, branch_code, note, is_active, inferred_branch, inferred_pct, inferred_orders, decided_by, decided_at)
+      VALUES ($1, $2, $3, COALESCE($4, true), $5, $6, $7, $8, now())
+      ON CONFLICT (sales_rep) DO UPDATE
+        SET branch_code = EXCLUDED.branch_code, note = EXCLUDED.note,
+            is_active = EXCLUDED.is_active, decided_by = EXCLUDED.decided_by,
+            decided_at = now()
+      RETURNING *`,
+      [rep, branch_code || null, note || null,
+       typeof is_active === 'boolean' ? is_active : null,
+       (inferred && inferred.branch) || null, (inferred && inferred.pct) || null,
+       (inferred && inferred.orders) || null, actor]);
+    res.json({ ok: true, row });
   }));
 
   console.log('✅ Branch Replenishment routes registered (Cin7 write: ORDERED only)');

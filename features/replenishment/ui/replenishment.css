@@ -219,3 +219,11 @@ tr.rp-flagged td{box-shadow:inset 0 -2px 0 var(--xl-warn-ink)}
 .c-inactive,.c-not_a_person{background:var(--row);color:var(--mut-3)}
 tr.rp-dim td{color:var(--mut-2)}
 .rp-thin{color:var(--xl-warn-ink);font-weight:600}
+
+/* O seletor de alocação. A linha decidida fica marcada — sem isso não dá para
+   ver de relance o que já foi resolvido e o que ainda é palpite. */
+select.rp-assign{font:400 12px var(--sans);padding:3px 5px;border:1px solid var(--line-3);
+  border-radius:5px;background:var(--surface);color:var(--ink);width:100%;max-width:170px}
+select.rp-assign:disabled{opacity:.5}
+tr.rp-decided select.rp-assign{border-color:var(--acc);font-weight:600}
+tr.rp-decided td{background:var(--acc-soft,#eef7fc)}
