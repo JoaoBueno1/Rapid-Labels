@@ -40,8 +40,16 @@ rst AS (SELECT upper(btrim(product)) AS k, max(qty_per_pallet)::numeric AS qty,
                max(qty_per_ctn)::numeric AS ctn
           FROM public.restock_setup GROUP BY 1)
 SELECT
-  c.k                                        AS sku_key,
-  c.sku, c.attribute1 AS dc, c.name, c.status, c.category, c.brand, c.uom, c.barcode,
+  -- FULL OUTER: o usuário foi explícito em não perder nenhuma informação, e
+  -- partir do Cin7 descartava em silêncio os 34 SKUs que só existem no arquivo.
+  -- A view traz TUDO — inclusive os 2.744 Deprecated —, e quem filtra é a tela.
+  coalesce(c.k, f.sku_key)                   AS sku_key,
+  coalesce(c.sku, f.sku)                     AS sku,
+  coalesce(c.attribute1, f.dc)               AS dc,
+  coalesce(c.name, f.description)            AS name,
+  coalesce(c.status, 'Not in Cin7')          AS status,
+  c.category, c.brand, c.uom, c.barcode,
+  (c.k IS NOT NULL)                          AS in_cin7,
   -- ── estoque, só do Cin7: não há segunda fonte e nem deveria haver ──
   coalesce(s.total, 0)  AS soh_total,
   coalesce(s.main, 0)   AS soh_main,
@@ -81,9 +89,9 @@ SELECT
   (nullif(c.carton_quantity, 0) IS NULL AND f.carton_qty IS NULL) AS missing_carton,
   (coalesce(pal.qty, rst.qty) IS NULL)           AS missing_pallet
 FROM (SELECT upper(btrim(sku)) AS k, * FROM cin7_mirror.products) c
-LEFT JOIN rapid_inv.product_file f ON f.sku_key = c.k
-LEFT JOIN soh s  ON s.k  = c.k
-LEFT JOIN pal    ON pal.k = c.k
-LEFT JOIN rst    ON rst.k = c.k;
+FULL OUTER JOIN rapid_inv.product_file f ON f.sku_key = c.k
+LEFT JOIN soh s  ON s.k  = coalesce(c.k, f.sku_key)
+LEFT JOIN pal    ON pal.k = coalesce(c.k, f.sku_key)
+LEFT JOIN rst    ON rst.k = coalesce(c.k, f.sku_key);
 
 GRANT SELECT ON rapid_inv.v_master_stock TO anon, authenticated, service_role;

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Master Stock — Rapid LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=11">
+<link rel="stylesheet" href="/shared/rail.css?v=7">
+<link rel="stylesheet" href="/shared/ui.css?v=4">
+<link rel="stylesheet" href="/features/stock-planning/ui/master.css?v=1">
+<script defer src="/shared/rail.js?v=9"></script>
+</head>
+<body>
+
+<header class="sp-header">
+  <div class="sp-header-inner">
+    <span class="sp-brand"><span class="sp-logo">M</span> Master Stock</span>
+    <div class="sp-status" id="status">
+      <span class="sp-dot" id="statusDot"></span><span id="statusText">Loading…</span>
+    </div>
+  </div>
+</header>
+
+<main class="sp-main">
+<section class="sp-view is-on">
+  <div class="sp-view-inner">
+
+    <!-- Uma linha só de filtros. Cada chip carrega a CONTAGEM: um filtro sem
+         número obriga a abrir para descobrir se vale a pena. -->
+    <div class="sp-bar ms-bar">
+      <input type="search" id="msQ" placeholder="SKU, 5DC or product name…" style="max-width:280px">
+      <select id="msStatus">
+        <option value="">All statuses</option>
+        <option value="Active">Active</option>
+        <option value="Deprecated">Deprecated</option>
+        <option value="Not in Cin7">Only in the file</option>
+      </select>
+      <span class="rp-sep"></span>
+      <button class="sp-chip" data-gap="dims">Missing size</button>
+      <button class="sp-chip" data-gap="weight">Missing weight</button>
+      <button class="sp-chip" data-gap="carton">Missing carton</button>
+      <button class="sp-chip" data-gap="pallet">Missing pallet</button>
+      <button class="sp-chip" data-gap="pick">Missing pickface</button>
+      <button class="sp-chip" id="msConflict">Sources disagree</button>
+      <span class="sp-gap"></span>
+      <span class="sp-count" id="msCount"></span>
+    </div>
+
+    <!-- A legenda fica ACIMA da tabela e não num rodapé: sem ela as cores são
+         enfeite, e o ponto inteiro desta tela é saber de onde veio cada número. -->
+    <div class="ms-legend">
+      <span><i class="k k-cin7"></i>only in Cin7</span>
+      <span><i class="k k-file"></i>only in the product file</span>
+      <span><i class="k k-rst"></i>only in Re-Stock</span>
+      <span><i class="k k-conf"></i>both have it and they disagree — both values shown</span>
+      <span class="ms-plain">no colour = the sources agree</span>
+    </div>
+
+    <div class="sp-scroll ms-scroll"><table class="sp-grid ms-grid" id="msGrid"></table></div>
+
+    <div class="sp-foot">
+      <span id="msFoot"></span><span class="sp-gap"></span>
+      <button class="sp-btn is-ghost" id="msMore" style="display:none">Load more</button>
+    </div>
+  </div>
+</section>
+</main>
+
+<aside class="sp-side" id="side">
+  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose">&times;</button></header>
+  <div class="sp-side-body" id="sideBody"></div>
+</aside>
+
+<div class="sp-toast" id="toast"></div>
+<script src="/features/stock-planning/ui/master.js?v=1"></script>
+</body>
+</html>

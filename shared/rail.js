@@ -80,6 +80,8 @@
         match: ['/planning', '/planning/'], hash: 'projects' },
       { t: 'Purchase Orders', href: '/planning#pos', ic: 'box',
         match: ['/planning', '/planning/'], hash: 'pos' },
+      { t: 'Master Stock', href: '/master', ic: 'box',
+        match: ['/master', '/features/stock-planning/ui/master.html'] },
       { t: 'Container Check', href: '/features/container-check/container-check.html', ic: 'inbox' },
       { t: 'Gateway', href: '/gateway-main.html', ic: 'fact', dot: 'railDotGateway' },
       { t: 'Branch Replenishment', href: '/features/replenishment/ui/replenishment.html', ic: 'truck',

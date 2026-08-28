@@ -1,0 +1,50 @@
+/* Master Stock — a cor diz a FONTE, não o estado.
+   É a diferença desta tela para todas as outras do app: em Supply Planning o
+   vermelho é risco, aqui a cor é procedência. Por isso os tons são frios e
+   pálidos: eles marcam a origem sem competir com o número. */
+
+.ms-bar{flex-wrap:wrap;gap:6px}
+.ms-legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:7px 2px 10px;
+  font:400 11.5px/1.4 var(--sans);color:var(--mut-2)}
+.ms-legend .k{display:inline-block;width:11px;height:11px;border-radius:3px;
+  margin-right:5px;vertical-align:-1px;border:1px solid var(--line-3)}
+.ms-legend .ms-plain{color:var(--mut-3);font-style:italic}
+
+.k-cin7{background:#e8f1fb}
+.k-file{background:#fdf3e3}
+.k-rst {background:#eaf6ec}
+.k-conf{background:#fde9e9}
+
+/* As mesmas cores nas células. Fundo e não texto: o número precisa continuar
+   legível, e colorir o texto brigaria com o negativo em vermelho. */
+.ms-grid td.ms-cin7{background:#e8f1fb}
+.ms-grid td.ms-file{background:#fdf3e3}
+.ms-grid td.ms-rst {background:#eaf6ec}
+.ms-grid td.ms-none{color:var(--line-3);text-align:center}
+
+/* Divergência: os dois valores na mesma célula, cada um com a inicial da fonte.
+   Compacto de propósito — são 1.230 SKUs assim só em comprimento, e uma célula
+   alta aqui esticaria a tabela inteira. */
+.ms-grid td.ms-conf{background:#fde9e9;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ms-grid td.ms-conf b{font-weight:700;color:var(--ink)}
+.ms-grid td.ms-conf span{color:var(--mut-2);margin-left:2px}
+.ms-grid td.ms-conf i{font-style:normal;font-size:8.5px;font-weight:700;
+  color:var(--xl-bad-ink);vertical-align:2px;margin:0 1px}
+
+.ms-grid{font-size:12px}
+.ms-grid td{height:19px;padding:0 6px;line-height:17px;border-right:1px solid var(--line)}
+.ms-grid td:last-child{border-right:0}
+.ms-grid td.txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
+.ms-grid tr.ms-row{cursor:pointer}
+.ms-grid tr.ms-row:hover td{background:var(--row)}
+
+/* Desativado continua visível — o usuário pediu a lista inteira "mesmo que não
+   usemos" — mas apagado, para não competir com o que está em uso. */
+.ms-grid tr.is-dep td{opacity:.55}
+.ms-grid tr.is-file td{box-shadow:inset 2px 0 0 var(--xl-warn-ink)}
+
+.ms-st{font:600 9.5px var(--sans);letter-spacing:.03em;padding:1px 5px;border-radius:3px}
+.st-Active{background:var(--xl-good,#e2f0d9);color:#215c2b}
+.st-Deprecated{background:var(--row);color:var(--mut-3)}
+.st-NotinCin7{background:var(--xl-held);color:var(--xl-warn-ink)}
+.ms-scroll{flex:1;min-height:0}

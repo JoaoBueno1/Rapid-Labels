@@ -527,6 +527,58 @@ function register(app) {
     });
   }));
 
+
+  /**
+   * Master Stock: um item por linha, com TUDO o que existe sobre ele.
+   *
+   * Devolve os dois lados de cada campo — Cin7 e arquivo — sem escolher. A tela
+   * pinta: iguais sem cor, só-uma-fonte na cor da fonte, divergentes com os
+   * dois valores. Escolher aqui apagaria justamente o que o usuário quer ver.
+   *
+   * Traz TODOS os status, inclusive Deprecated e os 48 que só existem no
+   * arquivo: ele pediu a lista inteira "mesmo que não usemos".
+   */
+  app.get(`${R}/master-stock`, wrap(async (req, res) => {
+    const t0 = Date.now();
+    const p = [], where = ['1=1'];
+    if (req.query.q) { p.push(`%${req.query.q}%`); where.push(`(sku ILIKE $${p.length} OR name ILIKE $${p.length} OR dc ILIKE $${p.length})`); }
+    if (req.query.status) { p.push(req.query.status); where.push(`status = $${p.length}`); }
+    // Os filtros de trabalho. Cada um responde "o que falta para eu conseguir
+    // fazer X" — e por isso vêm com a contagem, senão o usuário não sabe se
+    // vale abrir.
+    const GAPS = { dims: 'missing_dims', weight: 'missing_weight', pick: 'missing_pick',
+                   carton: 'missing_carton', pallet: 'missing_pallet' };
+    if (GAPS[req.query.gap]) where.push(`${GAPS[req.query.gap]}`);
+    if (req.query.conflict === '1') {
+      where.push(`((cin7_length IS NOT NULL AND file_length IS NOT NULL AND abs(cin7_length - file_length) / greatest(cin7_length, 1) > 0.02)
+               OR (cin7_cost   IS NOT NULL AND file_cost   IS NOT NULL AND abs(cin7_cost - file_cost) / greatest(cin7_cost, 0.01) > 0.05)
+               OR (cin7_pick   IS NOT NULL AND file_pick   IS NOT NULL AND upper(btrim(cin7_pick)) <> upper(btrim(file_pick)))
+               OR (cin7_carton IS NOT NULL AND file_carton IS NOT NULL AND cin7_carton <> file_carton))`);
+    }
+    const w = where.join(' AND ');
+    const limit = asInt(req.query.limit, 300, 1, 2000);
+    const offset = asInt(req.query.offset, 0, 0, 1e6);
+
+    const [rows, tot, counts] = await Promise.all([
+      db.query(`SELECT * FROM rapid_inv.v_master_stock WHERE ${w}
+                 ORDER BY (status = 'Active') DESC, soh_total DESC NULLS LAST, sku
+                 LIMIT ${limit} OFFSET ${offset}`, p),
+      db.one(`SELECT count(*)::int n FROM rapid_inv.v_master_stock WHERE ${w}`, p),
+      db.one(`SELECT count(*)::int total,
+                     count(*) FILTER (WHERE status='Active')::int active,
+                     count(*) FILTER (WHERE status='Deprecated')::int deprecated,
+                     count(*) FILTER (WHERE NOT in_cin7)::int file_only,
+                     count(*) FILTER (WHERE NOT in_file)::int cin7_only,
+                     count(*) FILTER (WHERE missing_dims)::int gap_dims,
+                     count(*) FILTER (WHERE missing_weight)::int gap_weight,
+                     count(*) FILTER (WHERE missing_pick)::int gap_pick,
+                     count(*) FILTER (WHERE missing_carton)::int gap_carton,
+                     count(*) FILTER (WHERE missing_pallet)::int gap_pallet
+                FROM rapid_inv.v_master_stock`),
+    ]);
+    res.json({ rows, total: tot.n, counts, limit, offset, ms: Date.now() - t0 });
+  }));
+
   /** O drill-down: por que este número. Sem isto o planejador não confia na tela. */
   app.get(`${R}/planning/:sku/week/:week`, wrap(async (req, res) => {
     const key = req.params.sku.toUpperCase();

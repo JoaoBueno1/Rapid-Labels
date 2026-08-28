@@ -400,6 +400,8 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
     require('./features/replenishment/routes/replenishment-routes')
       .register(app, require('./features/stock-planning/lib/sp-db'));
     app.use('/analytics', express.static(path.join(__dirname, 'features/analytics/ui'), { index: 'analytics.html' }));
+    // Master Stock: mesma pasta do Stock Planning, rota própria.
+    app.get('/master', (req, res) => res.sendFile(path.join(__dirname, 'features/stock-planning/ui/master.html')));
   } catch (e) {
     console.warn('⚠️  Could not register Analytics routes:', e.message);
   }
