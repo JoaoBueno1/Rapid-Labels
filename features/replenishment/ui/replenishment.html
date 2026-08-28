@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=21">
+<link rel="stylesheet" href="replenishment.css?v=26">
 <script defer src="/shared/rail.js?v=7"></script>
 </head>
 <body>
@@ -114,6 +114,7 @@
     <header><h3>Load engine suggestions</h3><button class="sp-btn is-ghost" data-close-load>&times;</button></header>
     <div class="sp-box-body">
       <p class="sp-hint" id="loadMsg"></p>
+      <div id="loadBasis" class="rp-basis-box"></div>
       <p class="sp-hint">These are the SKUs under the coverage threshold, each with the engine's send
         quantity. They fill empty rows only — anything you've already typed is kept.</p>
     </div>
@@ -221,6 +222,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=23"></script>
+<script src="replenishment-app.js?v=29"></script>
 </body>
 </html>

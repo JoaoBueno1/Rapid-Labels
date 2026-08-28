@@ -443,6 +443,33 @@ function register(app, db) {
     res.json({ branch, months, rep_count: names.length, reps: names, rows });
   }));
 
+  /** O detalhe de um SKU numa filial: quem vendeu, quanto, e por qual local. */
+  app.get(`${R}/sku-detail`, wrap(async (req, res) => {
+    const sku = (req.query.sku || '').trim().toUpperCase();
+    const branch = (req.query.branch || '').trim().toUpperCase();
+    const months = asInt(req.query.months, 6, 1, 13);
+    if (!sku) return res.status(400).json({ error: 'sku é obrigatório' });
+    const win = `order_date >= (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
+                                - ($2::int - 1) * interval '1 month')`;
+    const [byRep, byLoc] = await Promise.all([
+      db.query(`
+        SELECT d.sales_rep, COALESCE(a.branch_code, '—') AS branch_code,
+               sum(d.qty_signed) AS qty, count(DISTINCT d.order_number) AS orders,
+               max(d.order_date)::date::text AS last_order
+          FROM cin7_mirror.v_sales_demand_line d
+          LEFT JOIN rapid_inv.sales_rep_branch a ON a.sales_rep = d.sales_rep
+         WHERE d.sku_key = $1 AND ${win}
+         GROUP BY 1, 2 HAVING sum(d.qty_signed) <> 0
+         ORDER BY 3 DESC`, [sku, months]),
+      db.query(`
+        SELECT location_name, sum(qty_signed) AS qty
+          FROM cin7_mirror.v_sales_demand_line
+         WHERE sku_key = $1 AND ${win}
+         GROUP BY 1 HAVING sum(qty_signed) <> 0 ORDER BY 2 DESC`, [sku, months]),
+    ]);
+    res.json({ sku, branch, months, by_rep: byRep, by_location: byLoc });
+  }));
+
   /** Gravar a alocação. Um rep por chamada — é decisão, não importação. */
   app.put(`${R}/reps/:rep`, wrap(async (req, res) => {
     const rep = req.params.rep;

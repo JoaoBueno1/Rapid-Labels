@@ -233,3 +233,28 @@ tr.rp-decided td{background:var(--acc-soft,#eef7fc)}
 .rp-repavg{display:block;font:600 9.5px var(--mono);line-height:1.3;margin-top:1px}
 .rp-repavg.up{color:var(--xl-warn-ink)}
 .rp-repavg.dn{color:var(--mut-3)}
+
+/* A filial do rep, consultiva. Main e "não é pessoa" com tom próprio para não
+   se confundirem com uma filial de reposição. */
+.rp-brn{font:600 11.5px var(--sans);color:var(--ink)}
+.rp-brn.is-main{color:var(--mut-2)}
+.rp-brn.is-none{color:var(--mut-3);font-style:italic}
+
+/* As duas projeções de cobertura, uma por linha. Azul porque é consequência do
+   que o usuário acabou de digitar, e não um estado do estoque. */
+.rp-after{display:block;font:600 10px var(--mono);line-height:1.35;color:var(--acc)}
+.rp-after-rep{color:var(--xl-warn-ink);opacity:.9}
+
+/* A lógica em uso, ao lado dos estágios. */
+.rp-logic{font:400 11px var(--sans);color:var(--mut-2);background:var(--row);
+  border:1px solid var(--line-3);border-radius:9999px;padding:3px 10px;margin-right:8px;white-space:nowrap}
+.rp-logic b{color:var(--ink);font-weight:600}
+
+/* A escolha da régua no momento de carregar, com os dois números à vista. */
+.rp-basis-box{display:grid;gap:8px;margin:12px 0}
+.rp-basis{display:grid;grid-template-columns:auto 1fr auto;gap:4px 9px;align-items:baseline;
+  padding:10px 12px;border:1px solid var(--line-3);border-radius:8px;cursor:pointer}
+.rp-basis.is-on{border-color:var(--acc);background:var(--acc-soft,#eef7fc)}
+.rp-basis b{font-size:13px}
+.rp-basis span{font:600 12px var(--mono);color:var(--acc);text-align:right}
+.rp-basis small{grid-column:2/4;color:var(--mut-2);font-size:11.5px}

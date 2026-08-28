@@ -18,11 +18,21 @@
   // Local: o stock-planning tem a sua, e importar de lá acoplaria dois
   // módulos por causa de três linhas.
   const debounce = (fn, ms = 180) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  // dd/mm/yyyy em toda a interface, definido uma vez. Espalhar
+  // toLocaleDateString pelo código foi como o History acabou com outro formato.
+  const dmy = (v) => { if (!v) return '—'; const d = new Date(v); if (isNaN(d)) return String(v);
+    const p2 = (n) => String(n).padStart(2, '0');
+    return `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()}`; };
+  const dmyTime = (v) => { const d = new Date(v); return isNaN(d) ? '—'
+    : `${dmy(v)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
   const clampInt = v => { const n = Math.round(Number(v)); return isFinite(n) && n > 0 ? n : 0; };
   const BLANK_ROWS = 10;
 
   // ── settings ─────────────────────────────────────────────────────────
-  const DEFAULTS = { weeks: 6, cutDays: 25, abc: true, avgSource: 'rep_then_branch', period: 'stored', avgRound: 'pure', cartons: false,
+  // ABC desligado por padrao: os degraus 10/8/6 vieram de quando a media era
+// uma coluna importada. Com 13 meses de historico e janela escolhivel, a
+// cobertura pura e mais honesta — quem quiser os degraus liga no Settings.
+  const DEFAULTS = { weeks: 6, cutDays: 25, abc: false, avgSource: 'rep_then_branch', period: 'stored', avgRound: 'pure', cartons: false,
     avgBasis: 'location', repMonths: 6 };
   let SET = loadSet();
   function loadSet() { try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('rp.set') || '{}')); } catch (_) { return Object.assign({}, DEFAULTS); } }
@@ -302,7 +312,14 @@
     const hint = S.stage === 'draft' ? 'Branch fills Branch Ask'
       : S.stage === 'submitted' ? 'Inventory team checks and adjusts Inv Qty'
       : S.stage === 'ready_to_check' ? 'Manager checks — comments stay open' : '';
-    $('rpStage').innerHTML = `<div class="rp-steps">${pills}</div><span class="sp-gap"></span><span class="rp-sub">${hint}</span> ${action}`;
+    // A lógica em uso fica ao lado dos estágios: ela muda TODOS os números da
+    // tela, e quem chega no meio do fluxo não tem como saber qual está valendo.
+    const ruler = SET.avgBasis === 'rep' ? `rep sales · ${SET.repMonths}m`
+                : SET.avgBasis === 'max' ? `higher of both · ${SET.repMonths}m`
+                : 'branch shipments';
+    const logic = `<span class="rp-logic" title="Which demand the suggestions and the cover projection are using. Change it in Settings, or pick it when you load suggestions.">
+        <b>${esc(ruler)}</b> · ${SET.abc ? 'ABC tiers' : SET.weeks + 'w cover'} · order under ${SET.cutDays}d</span>`;
+    $('rpStage').innerHTML = `<div class="rp-steps">${pills}</div><span class="sp-gap"></span><span class="rp-sub">${hint}</span> ${logic} ${action}`;
     const a = $('btnAdvance'); if (a) a.addEventListener('click', advanceStage);
     const b = $('btnBackStage'); if (b) b.addEventListener('click', backStage);
   }
@@ -480,14 +497,24 @@
       case 'cover': {
         const w = l.coverWeeks;
         const mk = !l.avg ? '' : (w * 7 < 7 ? '<span class="rp-mk low">low</span>' : w > 12 ? '<span class="rp-mk over">over</span>' : '');
-        // Para onde o pedido leva a cobertura. É a pergunta que o usuário faz
-        // ao digitar a quantidade, e ele respondia de cabeça.
+        // Para onde o pedido leva a cobertura — a pergunta que o usuário faz ao
+        // digitar a quantidade, e que ele respondia de cabeça.
+        //
+        // Duas linhas porque são duas leituras da MESMA quantidade: pela média
+        // da filial (o que despachou daqui) e pela do rep (o que a filial
+        // vendeu, onde quer que tenha saído). Quando as duas discordam é
+        // exatamente o caso em que a decisão muda — em Brisbane a segunda é
+        // quase três vezes a primeira.
         const q = finalQty(l);
-        const after = (l.avg > 0 && q > 0)
-          ? (l.soh + l.inTransit + q) / (l.avg / RC.WEEKS_IN_MONTH) : null;
-        const arrow = after == null ? ''
-          : `<span class="rp-after" title="With ${n0(q)} units, cover goes from ${n1(w >= 999 ? 0 : w)} to ${n1(after)} weeks">›${n1(after)}w</span>`;
-        return wrap(`${l.avg ? n1(w >= 999 ? 0 : w) + 'w' : '<span class="rp-sub">n/a</span>'}${mk}${arrow}`,
+        const proj = (base) => (base > 0 && q > 0)
+          ? (l.soh + l.inTransit + q) / (base / RC.WEEKS_IN_MONTH) : null;
+        const byBranch = proj(l.storedAvg != null ? l.storedAvg : l.avg);
+        const byRep = l.repAvg > 0 ? proj(l.repAvg) : null;
+        const a1 = byBranch == null ? ''
+          : `<span class="rp-after" title="With ${n0(q)} units, cover goes from ${n1(w >= 999 ? 0 : w)} to ${n1(byBranch)} weeks — read against what shipped out of this branch">›${n1(byBranch)}w</span>`;
+        const a2 = byRep == null ? ''
+          : `<span class="rp-after rp-after-rep" title="Same quantity read against what this branch's reps sold: ${n1(l.repAvg)}/month, wherever it shipped from">›${n1(byRep)}w</span>`;
+        return wrap(`${l.avg ? n1(w >= 999 ? 0 : w) + 'w' : '<span class="rp-sub">n/a</span>'}${mk}${a1}${a2}`,
           '', l.avg ? `${Math.round(w * 7)} days of cover today` : '');
       }
       case 'main': return wrap(n0(l.mainGw), '', `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
@@ -530,7 +557,12 @@
     }));
     tb.querySelectorAll('input.rp-in').forEach(inp => {
       const l = lineByRow(inp.closest('tr')); if (!l) return; const k = inp.dataset.k;
-      inp.addEventListener('input', () => { if (k === 'ask') l.ask = clampInt(inp.value); else if (k === 'invQty') l.invQty = inp.value === '' ? null : clampInt(inp.value); else l[k] = inp.value; if (k === 'ask' || k === 'invQty') updateCount(); });
+      inp.addEventListener('input', () => {
+        if (k === 'ask') l.ask = clampInt(inp.value);
+        else if (k === 'invQty') l.invQty = inp.value === '' ? null : clampInt(inp.value);
+        else l[k] = inp.value;
+        if (k === 'ask' || k === 'invQty') { updateCount(); repaintCover(inp.closest('tr'), l); }
+      });
       inp.addEventListener('change', saveDraft);
       inp.addEventListener('click', e => e.stopPropagation());
     });
@@ -551,11 +583,36 @@
     }));
     const ac = tb.querySelector('.rp-acq'); tb.querySelectorAll('.rp-acq').forEach(a => attachAutocomplete(a)); if (ac && S.autoFocusAdd) { ac.focus(); S.autoFocusAdd = false; }
   }
+  // Repinta SÓ a célula do cover da linha digitada. Um renderGrid() a cada
+  // tecla custaria ~250 ms em 480 linhas e ainda brigaria com o cursor — a
+  // seta precisa acompanhar a digitação sem redesenhar a tabela.
+  function repaintCover(tr, l) {
+    if (!tr) return;
+    const C = visibleCols(); const i = C.findIndex(c => c.key === 'cover');
+    if (i < 0) return;
+    const td = tr.children[i]; if (!td) return;
+    const tmp = document.createElement('tr'); tmp.innerHTML = cell(l, C[i]);
+    const src = tmp.firstElementChild; if (!src) return;
+    td.innerHTML = src.innerHTML; td.title = src.title || '';
+  }
   function lineByRow(tr) { if (!tr) return null; const code = tr.getAttribute('data-code'); return code ? S.lines.find(l => l.code === code) : null; }
   function updateCount() { const rows = visibleLines(); const total = rows.reduce((s, l) => s + finalQty(l), 0);
     $('gridCount').textContent = rows.length ? `${rows.length} line${rows.length === 1 ? '' : 's'} · ${n0(total)} units` : ''; }
 
   // ── load suggested (merge, write-protected) ──────────────────────────
+  // A régua também se escolhe AQUI, e não só no Settings: é neste clique que a
+  // diferença aparece — em Brisbane, 20 itens contra 396. Escolher com os dois
+  // números na frente é diferente de escolher num menu de configuração.
+  function loadCountFor(basis) {
+    const keep = SET.avgBasis; SET.avgBasis = basis;
+    let n = 0, units = 0;
+    try {
+      const have = new Set(S.lines.map(l => String(l.code).toUpperCase()));
+      const sug = suggestionUniverse().filter(r => r.isSuggested && !have.has(String(r.code).toUpperCase()));
+      n = sug.length; units = sug.reduce((a, r) => a + (r.sug || 0), 0);
+    } finally { SET.avgBasis = keep; }
+    return { n, units };
+  }
   function openLoadModal() {
     closeSide();
     const uni = suggestionUniverse(), sug = uni.filter(r => r.isSuggested);
@@ -563,6 +620,23 @@
     const toAdd = sug.filter(r => !have.has(String(r.code).toUpperCase()));
     $('loadMsg').innerHTML = `<b>${toAdd.length}</b> suggested line${toAdd.length === 1 ? '' : 's'} for <b>${esc(S.branch.name)}</b> under ${SET.cutDays}d cover.` +
       (S.lines.length ? ` Your ${S.lines.length} existing line${S.lines.length === 1 ? '' : 's'} stay untouched.` : '');
+    // Os dois lados calculados de verdade, não estimados.
+    const cBranch = loadCountFor('location'), cRep = loadCountFor('rep');
+    const box = $('loadBasis');
+    if (box) box.innerHTML = `
+      <label class="rp-basis${SET.avgBasis !== 'rep' ? ' is-on' : ''}">
+        <input type="radio" name="lbasis" value="location"${SET.avgBasis !== 'rep' ? ' checked' : ''}>
+        <b>By branch shipments</b><span>${n0(cBranch.n)} lines · ${n0(cBranch.units)} units</span>
+        <small>What went out of this branch. Misses what Main shipped on its behalf.</small></label>
+      <label class="rp-basis${SET.avgBasis === 'rep' ? ' is-on' : ''}">
+        <input type="radio" name="lbasis" value="rep"${SET.avgBasis === 'rep' ? ' checked' : ''}>
+        <b>By this branch's reps</b><span>${n0(cRep.n)} lines · ${n0(cRep.units)} units</span>
+        <small>What the branch sold, wherever it shipped from.</small></label>`;
+    box && box.querySelectorAll('input[name=lbasis]').forEach(r => r.addEventListener('change', () => {
+      SET.avgBasis = r.value; saveSet();
+      // Recarrega para as quantidades já virem preenchidas pela régua escolhida.
+      loadRepAvg().then(() => { openLoadModal(); });
+    }));
     $('loadConfirm').textContent = toAdd.length ? `Load ${toAdd.length}` : 'Nothing to add';
     $('loadConfirm').disabled = !toAdd.length;
     $('mdLoad')._toAdd = toAdd;
@@ -657,6 +731,7 @@
     $('sideBody').innerHTML = `
       <div class="rp-side-code">${esc(line.code)}</div>
       <div class="rp-side-name">${esc(line.name || '')}</div>
+      <div class="sp-panel" id="sideReps"><h4>Who sells it <span>loading…</span></h4><div class="in"><div class="rp-sub">…</div></div></div>
       <div class="sp-panel" style="margin-top:14px"><h4>Across branches <span>avg / mo · SOH · on the way</span></h4><div class="in" style="padding:0">
         <table><thead><tr><th>Branch</th><th class="n">Avg</th><th class="n">SOH</th><th class="n">In transit</th></tr></thead><tbody>
         ${across.map(x => `<tr class="${x.here ? 'rp-side-here' : ''}"><td>${esc(x.name)}${x.here ? ' •' : ''}</td><td class="n">${x.a ? n1(x.a) : '·'}</td><td class="n ${x.soh < 0 ? 'rp-neg' : ''}">${n0(x.soh)}</td><td class="n">${x.it ? n0(x.it) : '·'}</td></tr>`).join('')}
@@ -674,6 +749,9 @@
       </div></div>`;
     const ta = $('sideComment'); if (ta) ta.addEventListener('input', () => { line.comment = ta.value; const inp = document.querySelector(`#rpGrid tr[data-code="${cssEsc(line.code)}"] input[data-k="comment"]`); if (inp) inp.value = ta.value; }); if (ta) ta.addEventListener('change', saveDraft);
     $('side').classList.add('is-on');
+    // Depois de o painel existir: loadSideReps procura #sideReps no DOM, e
+    // chamado antes ele não achava nada e voltava calado.
+    loadSideReps(sku);
     loadSideDetail(line.code);
   }
   function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
@@ -742,6 +820,33 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  // Quem vende este SKU, e por qual local ele saiu. É a resposta para "por que
+  // a média da minha filial é baixa se eu vendo isso" — a venda está no rep,
+  // o despacho está no Main.
+  async function loadSideReps(sku) {
+    const box = $('sideReps'); if (!box) return;
+    try {
+      const qs = new URLSearchParams({ sku, branch: S.branch ? S.branch.code : '', months: SET.repMonths || 6 });
+      const d = await fetch(`/api/replenishment/sku-detail?${qs}`).then(r => r.json());
+      if (d.error) throw new Error(d.error);
+      const mine = (d.by_rep || []).filter(r => r.branch_code === (S.branch && S.branch.code));
+      const other = (d.by_rep || []).filter(r => r.branch_code !== (S.branch && S.branch.code));
+      const mineQty = mine.reduce((n, r) => n + Number(r.qty), 0);
+      const row = (r, cls) => `<tr class="${cls}"><td>${esc(r.sales_rep)}</td>
+        <td class="rp-sub">${esc(branchName(r.branch_code))}</td>
+        <td class="n">${n0(r.qty)}</td><td class="n">${n0(r.orders)}</td>
+        <td class="n rp-sub">${esc(dmy(r.last_order))}</td></tr>`;
+      box.innerHTML = `<h4>Who sells it <span>last ${d.months} months</span></h4><div class="in" style="padding:0">
+        <table><thead><tr><th>Sales rep</th><th>Branch</th><th class="n">Units</th><th class="n">Orders</th><th class="n">Last</th></tr></thead>
+        <tbody>${mine.map(r => row(r, 'rp-side-here')).join('')}${other.map(r => row(r, '')).join('')}</tbody></table></div>
+        <div class="in rp-sub" style="padding-top:8px">
+          <b>${n0(mineQty)}</b> units sold by this branch's ${mine.length} rep(s) — ${n1(mineQty / d.months)}/month.
+          ${(d.by_location || []).length ? 'Shipped from: ' + d.by_location.slice(0, 4).map(l => `${esc(l.location_name)} ${n0(l.qty)}`).join(' · ') : ''}</div>`;
+    } catch (e) {
+      box.innerHTML = `<h4>Who sells it</h4><div class="in rp-sub">Could not load — ${esc(e.message)}</div>`;
+    }
+  }
+
   // ── history (approved snapshots) ─────────────────────────────────────
   function histKey() { return `rp.history.${S.branch.code}`; }
   function loadHist() { try { return JSON.parse(localStorage.getItem(histKey()) || '[]'); } catch (_) { return []; } }
@@ -755,62 +860,46 @@
     list.unshift(snap); try { localStorage.setItem(histKey(), JSON.stringify(list.slice(0, 60))); } catch (_) {}
   }
 
+  // MAIN e NONE não estão em BRANCHES (não são destino de reposição), mas
+  // precisam de nome: 12 reps são do Main e 2 não são pessoas, e mostrá-los
+  // em branco fazia parecer que ninguém tinha decidido.
+  const BRN = { MAIN: 'Main Warehouse', NONE: 'Not a person' };
+  const branchName = (code) => BRN[code] || (BRANCHES.find(b => b.code === code) || {}).name || '—';
+
   function avRepTable(rows) {
     const LBL = { high: 'solid', medium: 'fair', low: 'split', inactive: 'inactive', not_a_person: 'not a person' };
     // NULL é resposta válida e precisa estar na lista: "não é rep de filial"
     // cobre o pessoal do Main, a razão social e o canal de API.
-    const opts = (cur) => `<option value=""${!cur ? ' selected' : ''}>— not a branch rep —</option>`
-      + BRANCHES.map(b => `<option value="${esc(b.code)}"${cur === b.code ? ' selected' : ''}>${esc(b.name)}</option>`).join('');
     return `<div class="rp-note rp-note-info">
       There is <b>no field anywhere</b> saying a rep belongs to a branch — this is inferred from where the goods
       shipped from. That is why every branch rep has a Main tail: about 43% of a Sydney rep's orders ship out of Main.
       <b>The second branch and the order count are shown on purpose</b> — 53% against 44% is a split book, not an allocation.
-      Set <b>Assigned branch</b> to record the decision; it is saved with who decided and when, and it overrides the guess.</div>
+The branch column is the decision that was recorded; the columns after it are what the sales actually show.</div>
       <div class="sp-scroll"><table class="sp-grid rp-grid">
       <thead><tr><th class="txt" style="width:180px">Sales rep</th>
-        <th class="txt" style="width:180px">Assigned branch</th>
+        <th class="txt" style="width:160px">Branch</th>
         <th class="txt" style="width:150px">Ships mostly from</th><th class="num" style="width:60px">%</th>
         <th class="txt" style="width:150px">Second</th><th class="num" style="width:60px">%</th>
         <th class="num" style="width:70px">Orders</th><th class="num" style="width:80px">Lower bound</th>
         <th class="txt" style="width:100px">Read</th><th class="num" style="width:96px">Last order</th></tr></thead>
       <tbody>${rows.map(r => `<tr class="${r.confidence === 'high' ? '' : 'rp-dim'}${r.decided ? ' rp-decided' : ''}">
         <td class="txt">${esc(r.rep)}</td>
-        <td class="txt"><select class="rp-assign" data-rep="${esc(r.rep)}"
-              data-inf="${esc(r.branch_1)}" data-pct="${r.pct_1}" data-ord="${r.orders_total}"
-              title="${r.decided ? 'Decided by ' + esc(r.decided_by || '') + ' on ' + esc(String(r.decided_at || '').slice(0, 10)) : 'Not decided yet — the branch below is only a guess from where goods shipped'}"
-            >${opts(r.assigned_branch)}</select></td>
+        <td class="txt"><span class="rp-brn ${r.assigned_branch === 'MAIN' ? 'is-main' : r.assigned_branch === 'NONE' ? 'is-none' : ''}"
+            title="${r.decided ? 'Decided by ' + esc(r.decided_by || '') + ' on ' + esc(dmy(r.decided_at)) : 'Not decided'}"
+          >${esc(branchName(r.assigned_branch))}</span></td>
         <td class="txt">${esc(r.branch_1)}</td><td class="num">${n1(r.pct_1)}</td>
         <td class="txt">${esc(r.branch_2 || '—')}</td><td class="num">${r.branch_2 ? n1(r.pct_2) : '·'}</td>
         <td class="num">${n0(r.orders_total)}</td>
         <td class="num" title="Wilson 95% lower bound — below 50% the lead is not statistically real">${n1(r.wilson_lb)}%</td>
         <td class="txt"><span class="rp-conf c-${r.confidence}">${LBL[r.confidence]}</span></td>
-        <td class="num">${esc(r.last_order || '—')}${r.days_idle > 120 ? ` <span class="rp-sub">${r.days_idle}d</span>` : ''}</td>
+        <td class="num">${esc(dmy(r.last_order))}${r.days_idle > 120 ? ` <span class="rp-sub">${r.days_idle}d</span>` : ''}</td>
       </tr>`).join('')}</tbody></table></div>`;
   }
 
   // Gravar a alocação. Um rep por vez, direto no change — não há botão de
   // salvar de propósito: é uma decisão por linha, e um formulário com 40
   // seletores e um Save no fim convida a perder tudo num refresh.
-  function avRepWire() {
-    $('avBody').querySelectorAll('select.rp-assign').forEach(sel => sel.addEventListener('change', async () => {
-      const rep = sel.dataset.rep;
-      sel.disabled = true;
-      try {
-        const r = await fetch(`/api/replenishment/reps/${encodeURIComponent(rep)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'x-sp-user': (localStorage.getItem('rp.user') || 'planner') },
-          body: JSON.stringify({ branch_code: sel.value || null,
-            inferred: { branch: sel.dataset.inf, pct: Number(sel.dataset.pct), orders: Number(sel.dataset.ord) } }),
-        });
-        if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
-        sel.closest('tr').classList.add('rp-decided');
-        toast(`${rep} → ${sel.options[sel.selectedIndex].text}`);
-      } catch (e) {
-        toast(`Could not save: ${e.message}`, true);
-        renderAverages();   // recarrega para a tela não mentir sobre o que ficou salvo
-      } finally { sel.disabled = false; }
-    }));
-  }
+
 
   // ── History ─────────────────────────────────────────────────────────────
   // Lê do BANCO, não do localStorage. O snapshot foi congelado no momento do
@@ -873,12 +962,7 @@
       <tbody>${lines.map(l => `<tr><td class="code txt">${esc(l.sku)}</td><td class="num"><b>${n0(l.qty)}</b></td></tr>`).join('')}</tbody>
     </table></div>`;
   }
-  function fmtWhen(iso) {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
-      + ' ' + d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
-  }
+  const fmtWhen = (iso) => (iso ? dmyTime(iso) : '—');
   function wireHistory() {
     $('rpHistory').querySelectorAll('[data-tog]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
@@ -1045,8 +1129,8 @@
     let rows = d.rows || [];
     if (AV.q) { const q = AV.q.toLowerCase(); rows = rows.filter(r => r.rep.toLowerCase().includes(q)); }
     $('avBody').innerHTML = avBar({ search: true }) + avRepTable(rows);
-    $('avCount').textContent = `${rows.length} reps · ${rows.filter(r => r.decided).length} assigned`;
-    avWire(); avRepWire();
+    $('avCount').textContent = `${rows.length} reps · ${rows.filter(r => r.assigned_branch && !['MAIN','NONE'].includes(r.assigned_branch)).length} on branches`;
+    avWire();
   }
 
   // ── settings ─────────────────────────────────────────────────────────
