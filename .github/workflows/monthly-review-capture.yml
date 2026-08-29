@@ -1,0 +1,49 @@
+# ============================================================
+# Monthly Review — captura diária do saldo e dos pedidos abertos
+# ============================================================
+# Existe porque seis slides do Inventory Report são impossíveis hoje, e não
+# por falta de código: ninguém guardou o histórico. O sync do Cin7 faz TRUNCATE
+# e reescreve, o Cin7 não vende saldo em data passada, e o saldo de julho já
+# não existe em lugar nenhum.
+#
+# Isso torna este cron urgente de um jeito que quase nenhum outro é: o slide
+# "Top 10 em estoque baixo nos últimos 6 meses" existe seis meses depois de
+# isto começar a rodar, e não antes. Cada dia sem rodar é um dia que não volta.
+#
+# Roda às 20:10 UTC = 06:10 AEST, depois do sync de estoque das 4h e antes de
+# o armazém abrir — o saldo gravado é o de fim de expediente do dia anterior,
+# que é o que o relatório mensal quer dizer com "as at".
+#
+# Não chama a API do Cin7: lê o espelho que já está no banco. Zero consumo da
+# cota de 60/min compartilhada com o TMS e os outros 16 workflows.
+# ============================================================
+
+name: Monthly Review Capture
+
+on:
+  schedule:
+    - cron: '10 20 * * *'    # 06:10 AEST
+  workflow_dispatch: {}
+
+concurrency:
+  group: monthly-review-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --production
+      - name: Capturar saldo do dia e pedidos abertos do mês
+        env:
+          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node features/stock-planning/scripts/capture-monthly.js --write
