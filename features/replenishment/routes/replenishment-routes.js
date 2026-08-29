@@ -244,18 +244,90 @@ function register(app, db) {
   }));
 
   /** O histórico. Lê o snapshot gravado, nunca recalcula a partir do estoque de hoje. */
+  /* Relê no Cin7 o estado das transferências que ainda podem mudar.
+   *
+   * UMA chamada cobre até 100 transferências (stockTransferList devolve
+   * TaskID e Status de todas), então perguntar por transferência seria gastar
+   * cota compartilhada — 60/min para a aplicação inteira, dividida com o TMS
+   * e 16 workflows — para obter a mesma resposta.
+   *
+   * Só relê o que NÃO está num estado final. COMPLETED e VOIDED não voltam
+   * atrás, e reperguntar por elas para sempre é chamada desperdiçada.
+   */
+  const FINAIS = new Set(['COMPLETED', 'VOIDED']);
+
+  async function refrescarStatus(rows) {
+    const abertos = rows.filter((r) => r.cin7_task_id && !FINAIS.has(r.cin7_status || ''));
+    if (!abertos.length) return rows;
+    let lista;
+    try {
+      const res = await fetch('https://inventory.dearsystems.com/ExternalApi/v2/stockTransferList?Page=1&Limit=100',
+        { headers: headers(), signal: AbortSignal.timeout(20000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      lista = j.StockTransferList || j.StockTransfers || j.List || [];
+    } catch (e) {
+      // Falhar aqui NÃO pode esconder o histórico. Devolve o que há em banco,
+      // e cada linha diz quando foi lida pela última vez — que é o que impede
+      // um status velho de passar por atual.
+      return rows.map((r) => ({ ...r, cin7_refresh_error: e.message }));
+    }
+    const porTask = lista.reduce((m, t) => (m[String(t.TaskID).toLowerCase()] = t, m), {});
+    const mudou = [];
+    for (const r of abertos) {
+      const t = porTask[String(r.cin7_task_id).toLowerCase()];
+      if (!t || t.Status === r.cin7_status) continue;
+      mudou.push({ id: r.id, status: t.Status, done: t.CompletionDate ? String(t.CompletionDate).slice(0, 10) : null });
+    }
+    if (mudou.length) {
+      await db.tx(async (c) => {
+        for (const m of mudou) {
+          await c.query(
+            `UPDATE rapid_inv.replenishment_order
+                SET cin7_status = $1, cin7_status_at = now(), cin7_completed = $2 WHERE id = $3`,
+            [m.status, m.done, m.id]);
+        }
+      }, 'refresh-transfer-status');
+    }
+    // Carimba a hora da leitura em TODAS as que foram consultadas, inclusive
+    // as que não mudaram: "lido agora e continua ORDERED" é informação, e sem
+    // o carimbo ela ficaria indistinguível de "nunca foi lido".
+    const idsLidos = abertos.filter((r) => porTask[String(r.cin7_task_id).toLowerCase()]).map((r) => r.id);
+    if (idsLidos.length) {
+      await db.tx(async (c) => c.query(
+        `UPDATE rapid_inv.replenishment_order SET cin7_status_at = now()
+          WHERE id = ANY($1) AND cin7_status IS NOT NULL`, [idsLidos]), 'stamp-transfer-read');
+    }
+    const idx = mudou.reduce((m, x) => (m[x.id] = x, m), {});
+    return rows.map((r) => {
+      const t = porTask[String(r.cin7_task_id || '').toLowerCase()];
+      if (!t) return r;
+      return { ...r, cin7_status: idx[r.id] ? idx[r.id].status : (r.cin7_status || t.Status),
+               cin7_completed: t.CompletionDate ? String(t.CompletionDate).slice(0, 10) : r.cin7_completed,
+               cin7_status_at: new Date().toISOString() };
+    });
+  }
+
   app.get(`${R}/orders`, wrap(async (req, res) => {
     const p = [], where = ['1=1'];
     if (req.query.branch) { p.push(req.query.branch); where.push(`branch_code = $${p.length}`); }
     if (req.query.mode) { p.push(req.query.mode); where.push(`mode = $${p.length}`); }
-    const rows = await db.query(
+    let rows = await db.query(
       `SELECT id, op_key, branch_code, branch_name, mode, week_ending, total_units, line_count,
               from_location, to_location, status, cin7_task_id, cin7_number, error,
+              cin7_status, cin7_status_at, cin7_completed,
               created_by, created_at, ordered_at, lines
          FROM rapid_inv.replenishment_order
         WHERE ${where.join(' AND ')}
         ORDER BY created_at DESC LIMIT 200`, p);
-    res.json({ rows });
+
+    // `fresh=0` existe para quem só quer o registro sem gastar a cota do Cin7.
+    if (req.query.fresh !== '0') rows = await refrescarStatus(rows);
+
+    // Uma contagem do que foi escondido. Esconder em silêncio faria o usuário
+    // procurar um pedido que ele sabe que existe e concluir que a tela perdeu.
+    const cancelados = rows.filter((r) => FINAIS.has(r.cin7_status || '') && r.cin7_status === 'VOIDED').length;
+    res.json({ rows, voided: cancelados });
   }));
 
   /**

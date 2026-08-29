@@ -1253,7 +1253,9 @@ The branch column is the decision that was recorded; the columns after it are wh
       // Só o que de fato virou pedido. Uma tentativa que falhou não é
       // histórico — é ruído de operação, e mostrar erro cru para a filial não
       // ajuda ninguém a decidir nada.
-      rows = ((await r.json()).rows || []).filter(o => o.status !== 'FAILED' && o.cin7_number);
+      const j = await r.json();
+      rows = (j.rows || []).filter(o => o.status !== 'FAILED' && o.cin7_number);
+      histErro = j.rows && j.rows[0] && j.rows[0].cin7_refresh_error || null;
     } catch (e) {
       $('rpHistory').innerHTML = `<div class="rp-hist-empty">Could not load the history.<br><span class="rp-sub">${esc(e.message)}</span></div>`;
       return;
@@ -1263,17 +1265,57 @@ The branch column is the decision that was recorded; the columns after it are wh
         <span class="rp-sub">When a plan is approved the TR is recorded here, frozen at the values that were sent.</span></div>`;
       return;
     }
-    histRows = rows;
-    $('rpHistory').innerHTML = rows.map((o, i) => histCard(o, i)).join('');
+    /* Cancelada não é histórico útil.
+       Você viu a TR-50193 aparecer como ORDERED quando no Cin7 ela está
+       VOIDED — e não era só ela: as seis que este módulo criou estavam
+       canceladas, e a tela mostrava as seis como ORDERED. A causa era o
+       `status` guardar o que NÓS escrevemos ao criar, sem nunca reperguntar.
+       Agora o cartão mostra o estado atual do Cin7, e as canceladas saem da
+       lista — mas o número delas fica dito, porque esconder em silêncio faria
+       procurar um pedido que se sabe que existe e concluir que a tela perdeu. */
+    const cancelada = (o) => o.cin7_status === 'VOIDED';
+    const vivas = histShowVoided ? rows : rows.filter(o => !cancelada(o));
+    const nVoid = rows.filter(cancelada).length;
+    histRows = vivas;
+
+    const aviso = histErro
+      ? `<div class="rp-hist-warn">Showing the last known status — Cin7 did not answer just now
+           (${esc(histErro)}). Each card says when it was last read.</div>` : '';
+    const alterna = nVoid
+      ? `<div class="rp-hist-bar">${histShowVoided
+          ? `Showing <b>${n0(nVoid)}</b> cancelled transfer${nVoid === 1 ? '' : 's'}`
+          : `<b>${n0(nVoid)}</b> cancelled transfer${nVoid === 1 ? '' : 's'} hidden`}
+         <button class="ui-act" id="histVoid">${histShowVoided ? 'Hide them' : 'Show them'}</button></div>` : '';
+
+    if (!vivas.length) {
+      $('rpHistory').innerHTML = aviso + alterna + `<div class="rp-hist-empty">
+        No transfer is live for ${esc(S.branch.name)}.${nVoid ? ' Every one placed was cancelled in Cin7.' : ''}</div>`;
+      wireHistory();
+      return;
+    }
+    $('rpHistory').innerHTML = aviso + alterna + vivas.map((o, i) => histCard(o, i)).join('');
     wireHistory();
   }
-  let histRows = [], histOpen = new Set();
+  let histRows = [], histOpen = new Set(), histShowVoided = false, histErro = null;
+
+  /* O estado que o Cin7 diz HOJE, e não o que pedimos ao criar.
+     Sem leitura ainda, diz isso com essas palavras: um status sem procedência
+     é o que causou o problema em primeiro lugar. */
+  const CIN7_ST = {
+    ORDERED:   { rot: 'Ordered',   cls: 'st-ord',  ajuda: 'Authorised in Cin7, nothing picked yet.' },
+    PICKING:   { rot: 'Picking',   cls: 'st-pick', ajuda: 'Being picked at Main.' },
+    PICKED:    { rot: 'Picked',    cls: 'st-pick', ajuda: 'Picked, not yet dispatched.' },
+    SHIPPED:   { rot: 'Shipped',   cls: 'st-ship', ajuda: 'On its way to the branch.' },
+    COMPLETED: { rot: 'Completed', cls: 'st-done', ajuda: 'Received at the branch.' },
+    VOIDED:    { rot: 'Cancelled', cls: 'st-void', ajuda: 'Cancelled in Cin7. Nothing moved.' },
+  };
 
   function histCard(o, i) {
     const when = o.ordered_at || o.created_at;
-    const bad = false;
+    const st = CIN7_ST[o.cin7_status] || null;
+    const bad = o.cin7_status === 'VOIDED';
     const open = histOpen.has(i);
-    return `<div class="rp-h2 ${bad ? 'is-bad' : ''}" data-i="${i}">
+    return `<div class="rp-h2 ${bad ? 'is-void' : ''}" data-i="${i}">
       <div class="rp-h2-head">
         <button class="rp-h2-tog" data-tog="${i}" title="${open ? 'Collapse' : 'Expand the lines'}">${open ? '▾' : '▸'}</button>
         <span class="rp-h2-tr">${esc(o.cin7_number || '—')}</span>
@@ -1282,7 +1324,10 @@ The branch column is the decision that was recorded; the columns after it are wh
         <span class="rp-h2-meta">${o.line_count} line${o.line_count === 1 ? '' : 's'} · ${n0(o.total_units)} units</span>
         <span class="rp-h2-route">${esc(o.from_location || '')} › ${esc(o.to_location || o.branch_name || '')}</span>
         <span class="sp-gap"></span>
-        <span class="rp-h2-st ${bad ? 'bad' : ''}">${esc(o.status)}</span>
+        <span class="rp-h2-st ${st ? st.cls : 'st-unknown'}"
+          title="${st ? esc(st.ajuda) : 'Never read back from Cin7 — this is only what we asked for when we created it.'}${
+            o.cin7_status_at ? ` Read ${esc(dmyTime(o.cin7_status_at))}.` : ''}"
+          >${st ? esc(st.rot) : 'Not checked'}</span>
         ${o.cin7_number ? `<button class="ui-act" data-print="${i}">Print</button>` : ''}
       </div>
       ${open ? histLines(o) : ''}
@@ -1297,6 +1342,8 @@ The branch column is the decision that was recorded; the columns after it are wh
   }
   const fmtWhen = (iso) => (iso ? dmyTime(iso) : '—');
   function wireHistory() {
+    const v = $('histVoid');
+    if (v) v.addEventListener('click', () => { histShowVoided = !histShowVoided; showHistory(); });
     $('rpHistory').querySelectorAll('[data-tog]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
       const i = +b.dataset.tog;
