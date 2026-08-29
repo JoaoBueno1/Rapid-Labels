@@ -11,6 +11,11 @@
  * descobrindo o buraco na véspera da reunião, como descobre hoje.
  */
 (function () {
+  // Os quatro estados, em inglês porque a tela é em inglês. A ordem é a de
+  // urgência decrescente, e é a mesma da legenda e da contagem — três lugares
+  // que precisam concordar.
+  const ESTADOS = ['READY', 'CONNECT', 'BUILD', 'MANUAL'];
+
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => v == null ? '' : String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const n0 = (v) => (v == null || v === '' || isNaN(v)) ? '' : Math.round(Number(v)).toLocaleString('en-AU');
@@ -20,8 +25,8 @@
      qual. A heurística é o nome da coluna — imperfeita de propósito: errar o
      cifrão é feio, inventar uma declaração de tipo por coluna em 12 tabelas
      seria pior. */
-  const ehDinheiro = (col) => /valor|venda|custo|\$|cost|value/i.test(col);
-  const ehNumero = (col) => /qty|unidades|pedidos|linhas|skus|dias|meses|%|coletados|sem fatura/i.test(col);
+  const ehDinheiro = (col) => /value|sales|cost|\$|revenue/i.test(col);
+  const ehNumero = (col) => /qty|units|orders|lines|skus|days|months|%|collected|uninvoiced|count/i.test(col);
 
   function celula(v, col) {
     if (v == null || v === '') return '<td class="n">—</td>';
@@ -51,7 +56,7 @@
   }
 
   function bloco(b) {
-    const vazio = b.estado !== 'PRONTO';
+    const vazio = b.estado !== 'READY';
     const corpo = vazio ? '' : `<div class="dk-body">
       ${b.aviso ? `<p class="dk-nota dk-aviso">${esc(b.aviso)}</p>` : ''}
       ${b.nota ? `<p class="dk-nota">${esc(b.nota)}</p>` : ''}
@@ -71,7 +76,7 @@
   }
 
   async function carregar(mes) {
-    $('#dkBody').innerHTML = '<div class="sp-loading">Montando o relatório…</div>';
+    $('#dkBody').innerHTML = '<div class="sp-loading">Building the report…</div>';
     try {
       const r = await fetch('/api/analytics/deck' + (mes ? `?month=${mes}` : ''));
       const d = await r.json();
@@ -80,31 +85,29 @@
       const c = d.contagem;
       const tot = Object.values(c).reduce((a, b) => a + b, 0);
       $('#dkIntro').innerHTML = `
-        Este é o <b>Inventory Report de ${esc(d.mes.rotulo)}</b>, na ordem do deck.
-        Dos ${tot} blocos, <b>${c.PRONTO || 0}</b> saem do banco agora.
-        Todo valor é <b>ex-GST</b> — o próprio deck usa as duas réguas em tabelas
-        diferentes, e a de receita é sem imposto.
+        The <b>${esc(d.mes.rotulo)} Inventory Report</b>, in the order of the deck.
+        <b>${c.READY || 0}</b> of ${tot} blocks come straight from the data today.
+        Every figure is <b>ex-GST</b> — the deck itself uses both bases in different
+        tables, and revenue is reported without tax.
         <div class="dk-counts">
-          ${['PRONTO', 'CONECTAR', 'CONSTRUIR', 'MANUAL'].filter((k) => c[k])
-            .map((k) => `<span class="dk-st ${k}">${k} ${c[k]}</span>`).join('')}
+          ${ESTADOS.filter((k) => c[k]).map((k) => `<span class="dk-st ${k}">${k} ${c[k]}</span>`).join('')}
         </div>`;
-      $('#dkKey').innerHTML = ['PRONTO', 'CONECTAR', 'CONSTRUIR', 'MANUAL']
-        .map((k) => `<span class="dk-st ${k}">${k}</span>`).join('');
+      $('#dkKey').innerHTML = ESTADOS.map((k) => `<span class="dk-st ${k}">${k}</span>`).join('');
       $('#dkBody').innerHTML = d.blocos.map(bloco).join('');
       $('#dkStatus').textContent = `${d.ms} ms`;
       $('#dkDot').className = 'sp-dot fresh';
     } catch (e) {
-      $('#dkBody').innerHTML = `<div class="sp-empty">Não deu para montar o relatório.<br>
+      $('#dkBody').innerHTML = `<div class="sp-empty">The report could not be built.<br>
         <span class="rp-sub">${esc(e.message)}</span></div>`;
       $('#dkDot').className = 'sp-dot dead';
-      $('#dkStatus').textContent = 'erro';
+      $('#dkStatus').textContent = 'error';
     }
   }
 
   // Os últimos 13 meses. O padrão é o último mês FECHADO, que é o que a
   // reunião discute — o mês corrente ainda está andando.
   (function meses() {
-    const sel = $('#dkMes'); const hoje = new Date(); const opts = [];
+    const sel = $('#dkMonth'); const hoje = new Date(); const opts = [];
     for (let i = 1; i <= 13; i++) {
       const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
       const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

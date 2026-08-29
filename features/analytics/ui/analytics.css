@@ -10,9 +10,9 @@
    vazio precisa dizer POR QUE está vazio, senão parece defeito. */
 .dk-st{display:inline-block;padding:1px 8px;border-radius:11px;
   font:700 9.5px/16px var(--sans);letter-spacing:.03em;white-space:nowrap}
-.dk-st.PRONTO{background:#dcfce7;color:#166534}
-.dk-st.CONECTAR{background:#dbeafe;color:#1e40af}
-.dk-st.CONSTRUIR{background:#fef3c7;color:#92400e}
+.dk-st.READY{background:#dcfce7;color:#166534}
+.dk-st.CONNECT{background:#dbeafe;color:#1e40af}
+.dk-st.BUILD{background:#fef3c7;color:#92400e}
 .dk-st.MANUAL{background:var(--line);color:var(--mut)}
 
 .dk-key{display:flex;gap:9px;align-items:center;font:400 11px var(--sans);color:var(--mut)}

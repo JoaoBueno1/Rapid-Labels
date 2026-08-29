@@ -14,10 +14,13 @@
  * se ainda não há de onde tirá-lo.
  *
  * OS QUATRO ESTADOS, decididos medindo os dados e não estimando:
- *   PRONTO     o dado está no banco e o bloco monta agora
- *   CONECTAR   existe no Cin7, num arquivo ou no TMS, falta sincronizar
- *   CONSTRUIR  ninguém registra isso; é preciso passar a capturar
- *   MANUAL     é julgamento de pessoa e vai continuar sendo
+ *   READY    o dado está no banco e o bloco monta agora
+ *   CONNECT  existe no Cin7, num arquivo ou no TMS, falta sincronizar
+ *   BUILD    ninguém registra isso; é preciso passar a capturar
+ *   MANUAL   é julgamento de pessoa e vai continuar sendo
+ *
+ * Os rótulos ficam em inglês porque a tela é lida em inglês. Os comentários
+ * seguem em português, que é a língua de quem mantém isto.
  *
  * TRÊS RÉGUAS QUE TIVE DE FIXAR, porque o próprio deck usa as duas versões em
  * tabelas diferentes e a diferença é de 10%:
@@ -99,16 +102,16 @@ function register(app) {
                    AND sum(total_gross) FILTER (WHERE location_name ILIKE '%project%') > 0
                  ORDER BY 2 DESC NULLS LAST`, [ini, fim]),
     ]);
-    add({ n: 2, titulo: 'PROJECTS — Sales', estado: 'PRONTO', tipo: 'kpi+tabelas',
-          kpi: { rotulo: `Vendas de projeto · ${rotulo}`, valor: proj.venda, sub: `${proj.pedidos} pedidos · ex-GST` },
+    add({ n: 2, titulo: 'PROJECTS — Sales', estado: 'READY', tipo: 'kpi+tabelas',
+          kpi: { rotulo: `Project sales · ${rotulo}`, valor: proj.venda, sub: `${proj.pedidos} orders · ex-GST` },
           tabelas: [
-            { titulo: '% do total de cada rep vindo de projeto', cols: ['Rep', '%', 'Venda PR'], linhas: freq.map((r) => [r.rep, r.pct == null ? '—' : r.pct + '%', r.venda_pr]) },
-            { titulo: 'Top 10 categorias', cols: ['Categoria', 'Venda'], linhas: cats.map((r) => [r.categoria, r.venda]) },
-            { titulo: 'Top 10 SKUs', cols: ['SKU', 'Qty', 'Venda'], linhas: skus.map((r) => [r.sku, r.qty, r.venda]) },
+            { titulo: "Each rep's share of sales that came from projects", cols: ['Rep', '%', 'Project sales'], linhas: freq.map((r) => [r.rep, r.pct == null ? '—' : r.pct + '%', r.venda_pr]) },
+            { titulo: 'Top 10 categories', cols: ['Category', 'Sales'], linhas: cats.map((r) => [r.categoria, r.venda]) },
+            { titulo: 'Top 10 SKUs', cols: ['SKU', 'Qty', 'Sales'], linhas: skus.map((r) => [r.sku, r.qty, r.venda]) },
           ] });
 
-    add({ n: '2b', titulo: 'Crescimento contra o mesmo mês do ano passado', estado: 'CONECTAR',
-          nota: 'cin7_mirror.sales_history_line começa em agosto/2025 — julho/2025 não existe. Faltam os 12 exports "Sale Order Details" anteriores.' });
+    add({ n: '2b', titulo: 'Growth on the same month last year', estado: 'CONNECT',
+          nota: 'The sales history only starts in August 2025, so July 2025 does not exist. It needs the twelve earlier "Sale Order Details" exports.' });
 
     /* ── 3 · PROJECTS — Open Orders ───────────────────────────────── */
     const [abertos, idade] = await Promise.all([
@@ -119,22 +122,39 @@ function register(app) {
                        round(sum(coalesce(qty_to_pick,0) * coalesce(unit_price,0))::numeric, 2) restante
                   FROM rapid_inv.v_sp_lines WHERE project_status = 'ACTIVE'
                  GROUP BY 1 ORDER BY 3 DESC`),
-      db.one(`SELECT max(imported_at) AS quando,
-                     (current_date - max(imported_at)::date)::int AS dias
-                FROM rapid_inv.import_batches`).catch(() => ({ quando: null, dias: null })),
+      // finished_at, não imported_at — a coluna tem outro nome e o catch
+      // engolia o erro, então o aviso simplesmente nunca aparecia.
+      db.one(`SELECT max(finished_at) AS quando,
+                     (current_date - max(finished_at)::date)::int AS dias
+                FROM rapid_inv.import_batches WHERE ok`).catch(() => ({ quando: null, dias: null })),
     ]);
-    add({ n: 3, titulo: 'PROJECTS — Open Orders', estado: 'PRONTO', tipo: 'tabela',
+    /* As grafias de rep são de gente digitando, e o relatório soma por elas.
+       Medido: "ChrisC" e "Chris.C" são Chris Capper; "ChrisR" e "Chris R" são
+       Chris Ryan — duas pessoas em quatro linhas. Juntar em silêncio seria
+       decidir por quem monta o deck, então a tela AVISA e mantém como está. */
+    const grafias = (() => {
+      const chave = (r) => String(r.rep).toLowerCase().replace(/[^a-z]/g, '');
+      const m = {};
+      abertos.forEach((r) => (m[chave(r)] = (m[chave(r)] || []).concat(r.rep)));
+      return Object.values(m).filter((v) => v.length > 1);
+    })();
+
+    add({ n: 3, titulo: 'PROJECTS — Open Orders', estado: 'READY', tipo: 'tabela',
+          nota: grafias.length
+            ? `The same person appears under more than one spelling and the totals split across them: ${
+                grafias.map((g) => g.join(' / ')).join(' · ')}. Left as typed — merging them is a call for whoever owns the file.`
+            : null,
           // A idade do import fica na tela. É a única ressalva desta fonte, e
           // escondê-la faria um número de agosto passar por número de hoje.
           aviso: idade && idade.dias != null
-            ? `Vem do arquivo de planejamento, importado há ${idade.dias} dia(s). Sem um import novo, este número não anda.`
+            ? `From the planning file, imported ${idade.dias} day(s) ago. Without a fresh import this number does not move.`
             : null,
-          kpi: { rotulo: 'Total de pedidos em aberto', valor: abertos.reduce((a, r) => a + r.pedidos, 0), formato: 'int' },
-          tabelas: [{ cols: ['Rep', 'Pedidos', '$ Pedido', "$ Faturado", '$ Restante'],
+          kpi: { rotulo: 'Total open orders', valor: abertos.reduce((a, r) => a + r.pedidos, 0), formato: 'int' },
+          tabelas: [{ cols: ['Rep', 'Orders', '$ Ordered', '$ Invoiced', '$ Remaining'],
                       linhas: abertos.map((r) => [r.rep, r.pedidos, r.valor, r.faturado, r.restante]) }] });
 
-    add({ n: '3b', titulo: 'Variação contra o mês anterior', estado: 'CONSTRUIR',
-          nota: 'A captura mensal foi ligada em 29/08/2026. A primeira comparação sai no fechamento seguinte — é subtração entre duas fotos, e só existe a primeira.' });
+    add({ n: '3b', titulo: 'Change against the previous month', estado: 'BUILD',
+          nota: 'The monthly capture started on 29 Aug 2026. This is the difference between two snapshots, and only the first one exists so far.' });
 
     /* ── 4 e 5 · Pack & Hold ──────────────────────────────────────── */
     const [ph, phJobs] = await Promise.all([
@@ -155,11 +175,11 @@ function register(app) {
                  WHERE qty_held > 0 AND project_status = 'ACTIVE'
                  GROUP BY 1,2,3 ORDER BY 4 DESC NULLS LAST LIMIT 10`),
     ]);
-    add({ n: 4, titulo: 'PROJECTS — Top 10 Pack & Hold por custo', estado: 'PRONTO', tipo: 'tabela',
-          tabelas: [{ cols: ['SKU', 'Unidades', 'Custo'], linhas: ph.map((r) => [r.sku, r.qty, r.custo]) }] });
-    add({ n: 5, titulo: 'PROJECTS — Pack and Hold Analysis', estado: 'PRONTO', tipo: 'tabela',
-          nota: 'A coluna "Stock Type" (Indent / Stock / Disc.) do deck é classificação de pessoa e continua sendo digitada.',
-          tabelas: [{ cols: ['Cliente', 'Obra', 'Média de dias', 'Unidades'],
+    add({ n: 4, titulo: 'PROJECTS — Top 10 Pack & Hold by cost', estado: 'READY', tipo: 'tabela',
+          tabelas: [{ cols: ['SKU', 'Units', 'Cost'], linhas: ph.map((r) => [r.sku, r.qty, r.custo]) }] });
+    add({ n: 5, titulo: 'PROJECTS — Pack and Hold Analysis', estado: 'READY', tipo: 'tabela',
+          nota: 'The deck\'s "Stock Type" column (Indent / Stock / Disc.) is a human call and stays typed in.',
+          tabelas: [{ cols: ['Customer', 'Job', 'Average days', 'Units'],
                       linhas: phJobs.map((r) => [`${r.customer || ''}${r.rep ? ' — ' + r.rep : ''}`, r.job || '—', r.dias, r.qty]) }] });
 
     /* ── 7 · Container pipeline ───────────────────────────────────── */
@@ -171,9 +191,9 @@ function register(app) {
          FROM rapid_inv.po_lines
         WHERE NOT coalesce(is_received, false) AND due_date IS NOT NULL
         GROUP BY 1, 2 ORDER BY 1 LIMIT 20`);
-    add({ n: 7, titulo: 'CONTAINER PIPELINE — ETA', estado: 'PRONTO', tipo: 'tabela',
-          nota: 'O campo "vessel" é texto livre: 108 valores distintos, incluindo "Rushed 21-Jul, was 30th Aug" e números de rastreio. Contar contêineres exige normalizar isso.',
-          tabelas: [{ cols: ['ETA', 'Navio', 'Fornecedores', 'Linhas', 'Unidades', 'Valor'],
+    add({ n: 7, titulo: 'CONTAINER PIPELINE — ETA', estado: 'READY', tipo: 'tabela',
+          nota: 'The vessel field is free text — 108 distinct values, including "Rushed 21-Jul, was 30th Aug" and tracking numbers. Counting containers needs that cleaned up first.',
+          tabelas: [{ cols: ['ETA', 'Vessel', 'Suppliers', 'Lines', 'Units', 'Value'],
                       linhas: pipe.map((r) => [r.eta, r.navio, r.fornecedores, r.linhas, r.unidades, r.valor]) }] });
 
     /* ── 11 · Cost Out por armazém ────────────────────────────────── */
@@ -183,9 +203,9 @@ function register(app) {
          FROM cin7_mirror.sales_orders
         WHERE invoice_date BETWEEN $1 AND $2 AND cogs_amount IS NOT NULL
         GROUP BY 1 ORDER BY 2 DESC NULLS LAST`, [ini, fim]);
-    add({ n: 11, titulo: 'COST OUT por armazém', estado: 'PRONTO', tipo: 'tabela',
-          nota: 'COGS real do ERP, não derivado de custo médio. Só existe de junho/2026 em diante.',
-          tabelas: [{ cols: ['Armazém', 'Custo de saída', 'Pedidos'], linhas: cogs.map((r) => [r.armazem, r.custo, r.pedidos]) }] });
+    add({ n: 11, titulo: 'COST OUT by warehouse', estado: 'READY', tipo: 'tabela',
+          nota: 'Real COGS from the ERP, not derived from average cost. Only exists from June 2026 onwards.',
+          tabelas: [{ cols: ['Warehouse', 'Cost out', 'Orders'], linhas: cogs.map((r) => [r.armazem, r.custo, r.pedidos]) }] });
 
     /* ── 16 e 17 · Pick anomalies ─────────────────────────────────── */
     const [pa, paSem, corr] = await Promise.all([
@@ -203,19 +223,19 @@ function register(app) {
                 FROM public.pick_anomaly_corrections
                WHERE corrected_at::date BETWEEN $1 AND $2`, [ini, fim]),
     ]);
-    add({ n: 16, titulo: 'PICK ANOMALIES — detecção', estado: 'PRONTO', tipo: 'kpi+serie',
+    add({ n: 16, titulo: 'PICK ANOMALIES — detection', estado: 'READY', tipo: 'kpi+serie',
           kpis: [
-            { rotulo: 'Ordens analisadas', valor: pa.ordens, formato: 'int' },
-            { rotulo: 'Taxa de anomalia', valor: pa.taxa, formato: 'pct' },
-            { rotulo: 'Picks com anomalia', valor: pa.anomalias, formato: 'int' },
+            { rotulo: 'Orders analysed', valor: pa.ordens, formato: 'int' },
+            { rotulo: 'Anomaly rate', valor: pa.taxa, formato: 'pct' },
+            { rotulo: 'Anomaly picks', valor: pa.anomalias, formato: 'int' },
           ],
-          serie: { titulo: 'Anomalias por semana', pontos: paSem.map((r) => ({ x: r.semana, y: r.anomalias })) } });
-    add({ n: 17, titulo: 'PICK CORRECTIONS', estado: 'PRONTO', tipo: 'kpi',
-          nota: 'O "85% auto-corrigido" do deck não reproduz: não existe marca de automático contra manual nas 795 correções — todas têm o mesmo user_email.',
+          serie: { titulo: 'Anomalies per week', pontos: paSem.map((r) => ({ x: r.semana, y: r.anomalias })) } });
+    add({ n: 17, titulo: 'PICK CORRECTIONS', estado: 'READY', tipo: 'kpi',
+          nota: 'The deck\'s "85% auto-fixed" cannot be reproduced: nothing marks automatic against manual across the 795 corrections — they all carry the same user.',
           kpis: [
-            { rotulo: 'Correções feitas', valor: corr.correcoes, formato: 'int' },
-            { rotulo: 'Ordens corrigidas', valor: corr.ordens, formato: 'int' },
-            { rotulo: 'SKUs envolvidos', valor: corr.skus, formato: 'int' },
+            { rotulo: 'Corrections made', valor: corr.correcoes, formato: 'int' },
+            { rotulo: 'Orders corrected', valor: corr.ordens, formato: 'int' },
+            { rotulo: 'SKUs involved', valor: corr.skus, formato: 'int' },
           ] });
 
     /* ── 19 · Stock on Hand por armazém ───────────────────────────── */
@@ -234,9 +254,9 @@ function register(app) {
          FROM est e FULL OUTER JOIN vnd v ON v.location = e.location
         WHERE coalesce(e.valor, 0) <> 0 OR coalesce(v.venda, 0) <> 0
         ORDER BY e.valor DESC NULLS LAST`, [ini, fim]);
-    add({ n: 19, titulo: 'Stock on Hand por armazém', estado: 'PRONTO', tipo: 'tabela',
-          nota: 'O valor vem da captura diária, com o custo congelado no dia. A venda é ex-GST.',
-          tabelas: [{ cols: ['Armazém', 'Valor do estoque', 'Venda do mês', 'Meses de estoque'],
+    add({ n: 19, titulo: 'Stock on Hand by warehouse', estado: 'READY', tipo: 'tabela',
+          nota: 'Value comes from the daily capture, with the cost frozen on the day. Sales are ex-GST.',
+          tabelas: [{ cols: ['Warehouse', 'Stock value', 'Month sales', 'Months of stock'],
                       linhas: soh.map((r) => [r.armazem, r.valor, r.venda, r.meses]) }] });
 
     /* ── 21 · Ghost Warehouse ─────────────────────────────────────── */
@@ -262,11 +282,11 @@ function register(app) {
       `SELECT round(sum(on_hand)::numeric,1) qty, round(sum(value_at_cost)::numeric,2) valor
          FROM rapid_inv.mr_soh_daily
         WHERE location = 'Ghost' AND snapshot_date = (SELECT max(snapshot_date) FROM rapid_inv.mr_soh_daily)`);
-    add({ n: 21, titulo: 'Ghost Warehouse', estado: 'PRONTO', tipo: 'tabela',
-          nota: 'Movimento só existe de 09/06/2026 em diante. A filial vem do bin, que é onde o Ghost guarda essa informação.',
-          kpi: { rotulo: 'Ghost — total da empresa', valor: ghostTot ? ghostTot.valor : 0,
-                 sub: ghostTot ? `${ghostTot.qty} unidades` : '' },
-          tabelas: [{ cols: ['Filial', 'Qty in', 'Qty out', 'Custo in', 'Custo out', 'Qty total', 'Valor'],
+    add({ n: 21, titulo: 'Ghost Warehouse', estado: 'READY', tipo: 'tabela',
+          nota: 'Movements only exist from 9 June 2026 onwards. The branch comes from the bin, which is where Ghost keeps it.',
+          kpi: { rotulo: 'Ghost — company wide', valor: ghostTot ? ghostTot.valor : 0,
+                 sub: ghostTot ? `${ghostTot.qty} units` : '' },
+          tabelas: [{ cols: ['Branch', 'Qty in', 'Qty out', 'Cost in', 'Cost out', 'Total qty', 'Value'],
                       linhas: ghost.map((r) => [r.filial, r.qty_in, r.qty_out, r.custo_in, r.custo_out, r.total_qty, r.valor]) }] });
 
     /* ── 24 e 25 · Produtos novos ─────────────────────────────────── */
@@ -280,12 +300,12 @@ function register(app) {
                  WHERE vessel ILIKE 'NEW%' AND po_date BETWEEN $1 AND $2
                  ORDER BY po_date, sku`, [ini, fim]),
     ]);
-    add({ n: 24, titulo: 'New Products — a caminho', estado: 'PRONTO', tipo: 'tabela',
-          nota: '"NEW" é convenção escrita à mão na coluna de navio. O mês que o deck publica é palpite do comprador — não é o finish_date nem o due_date.',
-          tabelas: [{ cols: ['Produto', 'PO', 'Finish', 'Due', 'Fornecedor'],
+    add({ n: 24, titulo: 'New Products — coming', estado: 'READY', tipo: 'tabela',
+          nota: '"NEW" is a hand-typed convention in the vessel column. The month the deck publishes is the buyer\'s call — it is neither the finish date nor the due date.',
+          tabelas: [{ cols: ['Product', 'PO', 'Finish', 'Due', 'Supplier'],
                       linhas: chegando.map((r) => [r.sku, r.po_number, r.finish_date, r.due_date, r.supplier_code]) }] });
-    add({ n: 25, titulo: `New Products — pedidos em ${rotulo}`, estado: 'PRONTO', tipo: 'tabela',
-          tabelas: [{ cols: ['Produto', 'PO', 'Data', 'Qty'],
+    add({ n: 25, titulo: `New Products — ordered in ${rotulo}`, estado: 'READY', tipo: 'tabela',
+          tabelas: [{ cols: ['Product', 'PO', 'Date', 'Qty'],
                       linhas: pedidos.map((r) => [r.sku, r.po_number, r.po_date, r.qty]) }] });
 
     /* ── 27-30 · Descontinuados ───────────────────────────────────── */
@@ -303,11 +323,11 @@ function register(app) {
                 JOIN rapid_inv.sku_settings s ON s.sku_key = d.sku_key AND s.lifecycle_status = 'DISCONTINUED'
                WHERE d.snapshot_date = (SELECT max(snapshot_date) FROM rapid_inv.mr_soh_daily)`),
     ]);
-    add({ n: '27-30', titulo: 'Discontinued Items', estado: 'PRONTO', tipo: 'tabela',
-          nota: 'O total do deck usa a lista de Excel do time, que é outra definição — combine qual vale antes de comparar. O "Value Cleared" mês a mês precisa da captura, que começou agora.',
-          kpi: { rotulo: 'Descontinuado com estoque', valor: descTot ? descTot.valor : 0,
+    add({ n: '27-30', titulo: 'Discontinued Items', estado: 'READY', tipo: 'tabela',
+          nota: 'The deck\'s total uses the team\'s Excel list, which is a different definition — agree which one counts before comparing. The month-by-month "Value Cleared" needs the capture, which has just started.',
+          kpi: { rotulo: 'Discontinued, still holding stock', valor: descTot ? descTot.valor : 0,
                  sub: descTot ? `${descTot.skus} SKUs` : '' },
-          tabelas: [{ cols: ['Categoria', 'SKUs', 'Valor'], linhas: desc.map((r) => [r.categoria, r.skus, r.valor]) }] });
+          tabelas: [{ cols: ['Category', 'SKUs', 'Value'], linhas: desc.map((r) => [r.categoria, r.skus, r.valor]) }] });
 
     /* ── 31 · Collections ─────────────────────────────────────────── */
     const col = await db.query(
@@ -319,28 +339,28 @@ function register(app) {
          LEFT JOIN cin7_mirror.sales_orders o ON upper(c.reference) = o.order_number
         WHERE c.collected_at >= date_trunc('month', current_date) - interval '8 months'
         GROUP BY 1,2 ORDER BY 2`);
-    add({ n: 31, titulo: 'Collections Collected', estado: 'PRONTO', tipo: 'tabela',
-          nota: 'O "não faturado" é recalculado agora: pedido faturado depois deixa de contar, então ele muda com o tempo. Para o KPI ser estável precisa ser congelado no fechamento.',
-          tabelas: [{ cols: ['Mês', 'Coletados', 'Sem fatura', '%'],
+    add({ n: 31, titulo: 'Collections Collected', estado: 'READY', tipo: 'tabela',
+          nota: 'The uninvoiced count is recalculated live: an order invoiced later stops counting, so the number drifts. To be stable it has to be frozen at month end.',
+          tabelas: [{ cols: ['Month', 'Collected', 'Uninvoiced', '%'],
                       linhas: col.map((r) => [r.mes, r.total, r.sem_fatura,
                         r.total ? (100 * r.sem_fatura / r.total).toFixed(2) + '%' : '—']) }] });
 
     /* ── Os que ainda não têm de onde sair ────────────────────────── */
     const pendentes = [
-      { n: 6,  titulo: 'CONTAINERS — recebidos vs reservados', estado: 'CONSTRUIR', nota: 'Ninguém registra a chegada. rapid_inv.container_plan tem o formato certo e está vazia; po_lines.is_received nunca foi marcado em 1.466 linhas.' },
-      { n: 8,  titulo: 'MOVEMENT — Main ↔ Gateway', estado: 'CONSTRUIR', nota: 'A tabela public.gateway_daily existe e a digitação parou em 29/01/2026. Retomar o registro e guardar a tarifa por palete.' },
-      { n: 9,  titulo: 'COST IN por armazém', estado: 'CONECTAR', nota: 'Precisa do relatório "Stock Movement Summary" do Cin7. Ele está solto na raiz do repo e o loader descartou as colunas de custo.' },
-      { n: 10, titulo: 'COST IN — tendência do ano', estado: 'CONECTAR', nota: 'Sete exports mensais do mesmo relatório. stock_movements só começa em 09/06/2026.' },
-      { n: 12, titulo: 'COST OUT — tendência do ano', estado: 'CONECTAR', nota: 'cogs_amount existe no ERP desde sempre; o espelho só puxou de junho. Backfill via API.' },
-      { n: 13, titulo: 'BRANCH TRANSFERS — frete', estado: 'CONECTAR', nota: 'Custo de frete é do TMS, outro projeto Supabase. O espelho de transferências tem 6.722 de 50.210 linhas.' },
-      { n: 14, titulo: 'NEW CARRIER — XFM', estado: 'CONECTAR', nota: 'Não existe transportadora em lugar nenhum deste banco. Nem o Cin7 traz: /saleList não tem campo de carrier nem de custo.' },
-      { n: 15, titulo: 'NEW CARRIER — AusPost / StarTrack', estado: 'CONECTAR', nota: 'Mesma ligação do 14. public.deliveries_daily não separa transferência de filial e parou em 01/06/2026.' },
-      { n: 18, titulo: 'Monthly Sales — este ano vs o anterior', estado: 'CONECTAR', nota: 'A coluna deste ano sai hoje; a do ano passado precisa dos CSVs anteriores a agosto/2025.' },
-      { n: 20, titulo: 'Damaged / Faulty — abertura e fechamento', estado: 'CONSTRUIR', nota: 'O fechamento sai hoje. A abertura precisa da foto do dia anterior — a captura começou em 29/08/2026.' },
-      { n: 22, titulo: 'Top 10 em estoque baixo em 6 meses', estado: 'CONSTRUIR', nota: 'Precisa de seis meses de saldo diário. A captura começou em 29/08/2026, então este slide existe a partir de fevereiro de 2027.' },
-      { n: 23, titulo: 'Faulty — valor reclamado', estado: 'CONSTRUIR', nota: 'Não há tabela nem coluna de claim de garantia nos três schemas. "Value into Faulty" já sai; "Value Claimed" não.' },
-      { n: 26, titulo: 'Weekly File', estado: 'CONECTAR', nota: 'É curadoria humana, não filtro: o proxy por SLA dá 379 onde o deck traz 77. Ou importa a planilha, ou escreve a regra com quem a preenche.' },
-      { n: 32, titulo: 'Faulty WH — claims por fornecedor', estado: 'MANUAL', nota: 'Narrativa escrita. Sem tabela de claims, não há o que automatizar.' },
+      { n: 6,  titulo: 'CONTAINERS — received vs booked', estado: 'BUILD', nota: 'Nobody records the arrival. The container plan table has the right shape and is empty, and is_received was never ticked on any of the 1,466 PO lines.' },
+      { n: 8,  titulo: 'MOVEMENT — Main ↔ Gateway', estado: 'BUILD', nota: 'The gateway_daily table exists and data entry stopped on 29 Jan 2026. It needs the daily record resumed, and the per-pallet rate stored with it.' },
+      { n: 9,  titulo: 'COST IN by warehouse', estado: 'CONNECT', nota: 'Needs the Cin7 "Stock Movement Summary" report. It is sitting loose in the repo root and the loader threw away the cost columns.' },
+      { n: 10, titulo: 'COST IN — year to date', estado: 'CONNECT', nota: 'Seven monthly exports of the same report. Stock movements only start on 9 June 2026.' },
+      { n: 12, titulo: 'COST OUT — year to date', estado: 'CONNECT', nota: 'COGS has always been in the ERP; the mirror only pulled it from June. Needs a backfill through the API.' },
+      { n: 13, titulo: 'BRANCH TRANSFERS — freight', estado: 'CONNECT', nota: 'Freight cost lives in the TMS, a separate Supabase project. The transfer mirror holds 6,722 of 50,210 lines.' },
+      { n: 14, titulo: 'NEW CARRIER — XFM', estado: 'CONNECT', nota: 'There is no carrier anywhere in this database, and Cin7 does not carry one either — the sale list has no carrier and no freight cost.' },
+      { n: 15, titulo: 'NEW CARRIER — AusPost / StarTrack', estado: 'CONNECT', nota: 'Same connection as XFM. The deliveries table does not separate branch transfers and stopped on 1 June 2026.' },
+      { n: 18, titulo: 'Monthly Sales — this year vs last', estado: 'CONNECT', nota: 'This year\'s column comes out today; last year\'s needs the CSV exports from before August 2025.' },
+      { n: 20, titulo: 'Damaged / Faulty — opening and closing', estado: 'BUILD', nota: 'Closing comes out today. Opening needs the previous day\'s snapshot, and the capture started on 29 Aug 2026.' },
+      { n: 22, titulo: 'Top 10 products on low stock over 6 months', estado: 'BUILD', nota: 'Needs six months of daily stock levels. The capture started on 29 Aug 2026, so this slide exists from February 2027.' },
+      { n: 23, titulo: 'Faulty — value claimed', estado: 'BUILD', nota: 'There is no warranty-claim table or column anywhere. "Value into Faulty" already comes out; "Value Claimed" does not.' },
+      { n: 26, titulo: 'Weekly File', estado: 'CONNECT', nota: 'This is human curation, not a filter: the closest SLA proxy returns 379 where the deck shows 77. Either import the spreadsheet, or write the rule with whoever fills it in.' },
+      { n: 32, titulo: 'Faulty WH — claims by supplier', estado: 'MANUAL', nota: 'Written narrative. With no claims table there is nothing to automate.' },
     ];
     pendentes.forEach(add);
 

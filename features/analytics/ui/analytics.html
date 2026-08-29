@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=20">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="/features/analytics/ui/analytics.css?v=3">
+<link rel="stylesheet" href="/features/analytics/ui/analytics.css?v=20260829">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -18,10 +18,10 @@
 <header class="sp-header">
   <div class="sp-header-inner">
     <span class="sp-brand"><span class="sp-logo">M</span> Monthly Review</span>
-    <select id="dkMes" title="Mês do relatório"></select>
+    <select id="dkMonth" title="Report month"></select>
     <span class="sp-gap"></span>
     <span class="dk-key" id="dkKey"></span>
-    <div class="sp-status"><span class="sp-dot fresh" id="dkDot"></span><span id="dkStatus">carregando…</span></div>
+    <div class="sp-status"><span class="sp-dot fresh" id="dkDot"></span><span id="dkStatus">loading…</span></div>
   </div>
 </header>
 
@@ -30,14 +30,18 @@
        A tela anterior tinha quatro que eu inventei — "The Month", "Money
        Sitting Still", "Operations", "Release Now". O relatório de verdade tem
        33 slides numa ordem estabelecida há sete meses, e a reunião segue essa
-       ordem. Uma aba é um corte novo; aqui não se corta nada. -->
+       ordem. Uma aba é um corte novo; aqui não se corta nada.
+
+       O texto da tela é em INGLÊS, como o resto do app: o relatório é lido
+       pela direção e o deck que ele reproduz é em inglês. Os comentários do
+       código seguem em português, que é a língua de quem mantém isto. -->
   <section class="sp-view is-on">
     <div class="dk-intro" id="dkIntro"></div>
-    <div id="dkBody"><div class="sp-loading">Montando o relatório…</div></div>
+    <div id="dkBody"><div class="sp-loading">Building the report…</div></div>
   </section>
 </main>
 
 <div class="sp-toast" id="toast"></div>
-<script src="/features/analytics/ui/analytics.js?v=3"></script>
+<script src="/features/analytics/ui/analytics.js?v=20260829"></script>
 </body>
 </html>
