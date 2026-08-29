@@ -45,7 +45,15 @@
         /* gap:0 and stretch, not gap:20 and start — the rail is a wall against the edge
            of the page, not a card floating in it. flex:1 makes it reach the footer without
            hardcoding the header and footer heights. */
-        .home-shell { display:grid; grid-template-columns:248px minmax(0,1fr); gap:0; align-items:stretch; flex:1; }
+        /* UMA coluna.
+           A de 248px era da barra lateral de quando ela vivia dentro desta
+           página. Ela saiu para shared/rail.js e passou a ser um elemento do
+           body, empurrando a página por padding — mas a coluna morta ficou, e
+           o rail.css a anulava por cima. Ou seja: o layout desta página só
+           funcionava porque outro arquivo desfazia o que este declarava.
+           Sem o rail — e é assim que o dashboard vai para a main — o painel
+           caía dentro dos 248px e a tela virava uma tira. */
+        .home-shell { display:grid; grid-template-columns:minmax(0,1fr); gap:0; align-items:stretch; flex:1; }
         
         .sb-sprite { position:absolute; width:0; height:0; overflow:hidden; }
         

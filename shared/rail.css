@@ -111,7 +111,11 @@ html.rl-min .rl-grp-sep{display:block;height:1px;background:#26334a;margin:7px 1
 
 /* A home tinha o rail dentro de um grid de duas colunas. Com o rail fixo,
    ela passa a ser uma coluna só — sem precisar mexer no home.css. */
-html.rl-on .home-shell{grid-template-columns:minmax(0,1fr)!important}
+/* Removido: `html.rl-on .home-shell{grid-template-columns:minmax(0,1fr)!important}`.
+   Ele existia para anular uma coluna de 248px que o home.css declarava para
+   uma barra lateral que já não vive lá dentro. Consertado na origem, este
+   override virou código morto — e um !important a menos entre os 52 que o
+   CLAUDE.md manda não aumentar. */
 html.rl-on .sb{display:none!important}
 
 /* Grupos que abrem e fecham. Vale a pena porque são 6 grupos e 16 itens: quem
