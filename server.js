@@ -395,6 +395,8 @@ try {
 if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   try {
     require('./features/analytics/routes/analytics-routes').register(app);
+    // O gerador do Inventory Report mensal — o deck, na ordem dele.
+    require('./features/analytics/routes/deck-routes').register(app);
     // Branch Replenishment: a única rota deste repo que ESCREVE no Cin7 fora do
     // WMS. Cria com Status ORDERED — a ordem existe, o estoque não se move.
     require('./features/replenishment/routes/replenishment-routes')

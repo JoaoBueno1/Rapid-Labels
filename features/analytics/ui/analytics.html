@@ -7,10 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=20">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="analytics.css?v=2">
+<link rel="stylesheet" href="/features/analytics/ui/analytics.css?v=3">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -18,36 +18,26 @@
 <header class="sp-header">
   <div class="sp-header-inner">
     <span class="sp-brand"><span class="sp-logo">M</span> Monthly Review</span>
-    <nav class="sp-tabs" id="tabs">
-      <button class="sp-tab is-on" data-view="month">The Month</button>
-      <button class="sp-tab" data-view="stuck">Money Sitting Still</button>
-      <button class="sp-tab" data-view="ops">Operations</button>
-      <button class="sp-tab" data-view="release">Release Now <span class="sp-pip" id="pipRel"></span></button>
-    </nav>
-    <div class="sp-status"><span class="sp-dot fresh"></span><span id="statusText">live from Cin7</span></div>
+    <select id="dkMes" title="Mês do relatório"></select>
+    <span class="sp-gap"></span>
+    <span class="dk-key" id="dkKey"></span>
+    <div class="sp-status"><span class="sp-dot fresh" id="dkDot"></span><span id="dkStatus">carregando…</span></div>
   </div>
 </header>
 
 <main class="sp-main">
-  <section class="sp-view is-on" data-view="month"><div id="monthBody"><div class="sp-loading">Loading…</div></div></section>
-  <section class="sp-view" data-view="stuck"><div id="stuckBody"><div class="sp-loading">Loading…</div></div></section>
-  <section class="sp-view" data-view="ops"><div id="opsBody"><div class="sp-loading">Loading…</div></div></section>
-  <section class="sp-view" data-view="release">
-    <div class="sp-bar">
-      <button class="sp-chip is-on" data-kind="">Everything</button>
-      <button class="sp-chip" data-kind="BRANCH">Branch orders</button>
-      <button class="sp-chip" data-kind="PROJECT">Project orders</button>
-      <span class="sp-gap"></span><span class="sp-count" id="relCount"></span>
-    </div>
-    <div id="relBody"><div class="sp-loading">Loading…</div></div>
+  <!-- Sem abas.
+       A tela anterior tinha quatro que eu inventei — "The Month", "Money
+       Sitting Still", "Operations", "Release Now". O relatório de verdade tem
+       33 slides numa ordem estabelecida há sete meses, e a reunião segue essa
+       ordem. Uma aba é um corte novo; aqui não se corta nada. -->
+  <section class="sp-view is-on">
+    <div class="dk-intro" id="dkIntro"></div>
+    <div id="dkBody"><div class="sp-loading">Montando o relatório…</div></div>
   </section>
 </main>
 
-<aside class="sp-side" id="side">
-  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose">&times;</button></header>
-  <div class="sp-side-body" id="sideBody"></div>
-</aside>
 <div class="sp-toast" id="toast"></div>
-<script src="analytics.js?v=3"></script>
+<script src="/features/analytics/ui/analytics.js?v=3"></script>
 </body>
 </html>
