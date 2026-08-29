@@ -49,11 +49,16 @@
 .rp-grid th.srt.on .ar { opacity: 1; color: var(--acc-d); }
 
 /* row states */
-.rp-grid tbody tr.rp-nomain td { background: color-mix(in srgb, var(--xl-bad) 42%, #fff); }
-.rp-grid tbody tr.rp-nomain td.g-ord { background: color-mix(in srgb, var(--xl-bad) 24%, #fffbe9); }
+/* Linha sem estoque no Main.
+   Era um rosa a 42% do vermelho do Excel — forte o bastante para brigar com o
+   texto e, num monitor de brilho baixo como os do armazém, escuro o bastante
+   para o número preto perder contraste. #FEE2E2 é o "danger subtle" do design
+   system: o vermelho continua reconhecível e o texto por cima mantém 12:1. */
+.rp-grid tbody tr.rp-nomain td { background: #fee2e2; }
+.rp-grid tbody tr.rp-nomain td.g-ord { background: #fef0d9; }
 .rp-grid tbody tr.rp-line { cursor: pointer; }
 .rp-grid tbody tr.rp-line:hover td { background: color-mix(in srgb, var(--acc-soft) 55%, #fff); }
-.rp-grid tbody tr.rp-nomain:hover td { background: color-mix(in srgb, var(--xl-bad) 34%, #fff); }
+.rp-grid tbody tr.rp-nomain:hover td { background: #fcd2d2; }
 .rp-grid tbody tr.rp-open td { box-shadow: inset 0 0 0 1px var(--acc); }
 
 /* inline marks — small, calm, not a whole-row wash */
@@ -61,7 +66,14 @@
 .rp-mk.low  { background: var(--xl-warn); color: var(--xl-warn-ink); }
 .rp-mk.over { background: #e6e9ef; color: var(--mut); }
 .rp-mk.it   { background: #dbeafe; color: #1e40af; }
-.rp-neg { color: var(--xl-bad-ink); font-weight: 700; }
+/* Negativo. Agora ele aparece SÓ no SOH — o Cover deixou de dizer "short",
+   que era a mesma informação contada duas vezes em colunas diferentes.
+   #991B1B é o "danger text" do design system: 8,6:1 no branco e 7,4:1 sobre
+   o #fee2e2 da linha sem Main, que é onde ele mais aparece. */
+.rp-neg { color: #991b1b; font-weight: 700; }
+/* Zero é o caso comum e não é notícia: cinza, para o olho passar por cima e
+   parar só nos que têm número. */
+.rp-grid td.num .rp-zero { color: var(--mut-2); font-weight: 400; }
 
 /* editable cells */
 .rp-in { width: 100%; box-sizing: border-box; border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 6px; font: 13px var(--mono); text-align: center; background: #fff; color: var(--ink); }
@@ -276,15 +288,17 @@ td.rp-cover{white-space:nowrap;text-align:left;padding-left:8px!important;
 /* Uma leitura = uma linha da célula. Grid de quatro colunas para os números
    alinharem verticalmente entre as duas leituras: é o alinhamento que deixa
    comparar B e R de relance, não a ordem em que estão escritos. */
-.rp-cv{display:grid;grid-template-columns:17px 46px 56px 1fr;align-items:center;
+/* A leitura é identificada por uma BARRA de cor, não por uma letra.
+   A letra gastava 17px de uma coluna apertada para dizer o que a cor já diz,
+   e ainda pedia que o usuário decorasse que B é filial e R é rep. A barra é
+   pré-atentiva: distingue-se sem ser lida. */
+.rp-cv{display:grid;grid-template-columns:9px 52px 58px 1fr;align-items:center;
   font:600 11px/16px var(--mono);height:16px}
 .rp-cv s{text-decoration:none}
 /* A etiqueta precisa ser lida como COR, não como letra minúscula: a 8,5px
    num quadrado de 11px a cor não se distingue de um artefato de renderização.
    14x13 com peso 700 já lê à distância de trabalho. */
-.rp-cv .t{display:inline-block;width:14px;height:13px;border-radius:3px;
-  font:700 9px/13px var(--sans);font-style:normal;text-align:center;
-  margin-right:3px}
+.rp-cv .t{display:inline-block;width:4px;height:12px;border-radius:2px;margin-right:5px}
 .rp-cv b{font-weight:600;color:var(--ink);text-align:right}
 .rp-cv u{text-decoration:none;color:var(--acc);padding-left:5px;text-align:right}
 
@@ -292,11 +306,13 @@ td.rp-cover{white-space:nowrap;text-align:left;padding-left:8px!important;
    Âmbar é o rep — a demanda que existe mas embarcou do Main, e que a conta
    por local não enxerga. Em Brisbane isso é 48% das linhas.
 
-   O âmbar é o tom suave (#FEF3C7 do design system) e não o amarelo puro do
-   Excel: a etiqueta se repete em TODA linha, e amarelo cheio em 156 linhas
-   grita mais alto que os selos low/over, que são o alerta de verdade. */
-.rp-cv.is-br  .t{background:#dbeafe;color:#1e40af}
-.rp-cv.is-rep .t{background:#fef3c7;color:#92400e}
+   São os tons CHEIOS (#2563EB e #B45309) e não os suaves: numa barra de 4px
+   um tom claro desaparece em monitor de brilho baixo, que é o do armazém.
+   As duas estão longe no matiz — azul contra laranja queimado — e não só no
+   claro/escuro, para sobreviver a quem enxerga cor de forma diferente. */
+.rp-cv.is-br  .t{background:#2563eb}
+.rp-cv.is-rep .t{background:#b45309}
+.rp-cv.is-none .t{background:var(--line-2)}
 .rp-cv.is-none b,.rp-cv.is-none u{color:var(--mut-2)}
 .rp-cv.is-none .t{opacity:.5}
 
@@ -308,10 +324,10 @@ td.rp-cover{white-space:nowrap;text-align:left;padding-left:8px!important;
 .rp-coverkey span{color:var(--mut)}
 /* A amostra da etiqueta na legenda, com a mesma cor da tabela — legenda que
    não usa a cor que explica não explica nada. */
-.rp-cvkey .t{display:inline-block;min-width:14px;padding:0 3px;border-radius:3px;
-  font:700 8.5px/14px var(--sans);font-style:normal;text-align:center}
-.rp-cvkey.is-br  .t{background:#dbeafe;color:#1e40af}
-.rp-cvkey.is-rep .t{background:#fef3c7;color:#92400e}
+.rp-cvkey .t{display:inline-block;width:4px;height:12px;border-radius:2px;
+  vertical-align:-2px;margin-right:3px}
+.rp-cvkey.is-br  .t{background:#2563eb}
+.rp-cvkey.is-rep .t{background:#b45309}
 .rp-coverkey .sep{display:inline-block;width:1px;height:11px;
   background:var(--line-2);margin:0 7px}
 .rp-key-to{color:var(--acc);font-weight:700;font-family:var(--mono)}
@@ -368,11 +384,69 @@ td.rp-cover .rp-mk{font-style:normal;margin-left:3px}
 
 /* As duas colunas de média. A cor do cabeçalho é a MESMA das etiquetas do
    Cover, senão são dois sistemas de cor para a mesma distinção. */
-.rp-grid th[data-k="avgBranch"]{box-shadow:inset 0 -2px 0 #1e40af}
-.rp-grid th[data-k="avgRep"]{box-shadow:inset 0 -2px 0 #92400e}
-td.rp-avgb,td.rp-avgr{position:relative}
-/* O ponto marca qual das duas o motor está usando. Discreto de propósito: é
-   contexto para quem procura, não alerta. */
-.rp-drv{font-style:normal;font-size:8px;color:var(--acc);margin-left:4px;
-  vertical-align:2px}
-.rp-coverkey .rp-drv{margin-left:0;margin-right:3px}
+/* O cabeçalho de cada média leva a mesma barra de cor da leitura no Cover. */
+.rp-grid th[data-k="avgBranch"]{box-shadow:inset 0 -2px 0 #2563eb}
+.rp-grid th[data-k="avgRep"]{box-shadow:inset 0 -2px 0 #b45309}
+/* Qual das duas vira quantidade sugerida: fundo levíssimo na célula, em vez
+   de um ponto ao lado do número. O ponto competia com o número pelo espaço
+   de uma coluna que já era justa. */
+td.rp-avgb.is-driver,td.rp-avgr.is-driver{background:#f1f6ff}
+
+/* ── painel lateral: as duas médias, lado a lado ──────────────────────
+   Espelha as duas colunas da planilha, com a mesma barra de cor. Lado a lado
+   e não uma sob a outra porque a informação é a DIFERENÇA entre elas, e
+   diferença se lê comparando, não rolando. */
+.rp-two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.rp-half h4{display:flex;align-items:center;gap:6px;margin:0 0 5px;
+  font:700 11.5px/16px var(--sans);color:var(--ink-2)}
+.rp-half h4 span{font:400 10.5px/16px var(--sans);color:var(--mut-2)}
+.rp-bar{display:inline-block;width:4px;height:12px;border-radius:2px;flex:none}
+.rp-bar.is-br{background:#2563eb}
+.rp-bar.is-rep{background:#b45309}
+.rp-mini{width:100%;border-collapse:collapse}
+.rp-mini td{padding:2px 0;font:400 11.5px/17px var(--sans);
+  border-bottom:1px solid var(--line);vertical-align:baseline}
+.rp-mini td.n{text-align:right;font-family:var(--mono);white-space:nowrap}
+.rp-mini td.n b{font-weight:700;font-size:12px;color:var(--ink)}
+.rp-mini td.n i{font-style:normal;font-size:9.5px;color:var(--mut-2);margin-left:2px}
+.rp-mini-tot td{border-top:1px solid var(--line-2);border-bottom:0;font-weight:700;padding-top:4px}
+.rp-mini-sep td{border-bottom:0;padding-top:6px;font-size:10px}
+.rp-mini-dim td{color:var(--mut)}
+.rp-mini-dim td.n b{font-weight:400;color:var(--mut)}
+.rp-gap{padding:7px 9px;background:var(--sunken);border-radius:5px;
+  border:1px solid var(--line);line-height:16px}
+
+/* ── quadro do que está em andamento ──────────────────────────────────
+   Fica abaixo dos cartões e sempre visível. Os cartões dizem quanto falta
+   repor; este diz o que já foi começado, que é o que evita duas pessoas
+   montarem o mesmo pedido. */
+.rp-board{margin:2px 2px 18px;border:1px solid var(--line-2);border-radius:9px;
+  background:#fff;overflow:hidden}
+.rp-board-head{display:flex;align-items:baseline;gap:9px;padding:9px 13px;
+  border-bottom:1px solid var(--line);background:var(--sunken)}
+.rp-board-head b{font:700 12.5px var(--sans);color:var(--ink)}
+.rp-board-head span{font:400 11.5px var(--sans);color:var(--mut)}
+.rp-board-note{margin-left:auto;font-size:10.5px !important;color:var(--mut-2) !important}
+.rp-board-empty{padding:16px 13px;font:400 12px var(--sans);color:var(--mut-2)}
+.rp-board-tbl{width:100%;border-collapse:collapse}
+.rp-board-tbl th{text-align:left;padding:6px 13px;font:700 10px var(--sans);
+  letter-spacing:.05em;text-transform:uppercase;color:var(--mut-2);
+  border-bottom:1px solid var(--line)}
+.rp-board-tbl th.n,.rp-board-tbl td.n{text-align:right}
+.rp-board-tbl td{padding:7px 13px;font:400 12.5px var(--sans);
+  border-bottom:1px solid var(--line)}
+.rp-board-tbl tr:last-child td{border-bottom:0}
+.rp-board-tbl tr[data-code]{cursor:pointer}
+.rp-board-tbl tr[data-code]:hover td{background:var(--acc-soft)}
+.rp-board-tbl td.em{font-weight:600;color:var(--ink)}
+
+/* O estágio. A cor separa quem ESPERA alguém de quem ainda está sendo
+   escrito: âmbar é fila parada, azul é trabalho em curso, verde é fechado. */
+.rp-bs{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;
+  border-radius:11px;font:700 10.5px/17px var(--sans)}
+.rp-bs i{font-style:normal;font-weight:400;font-size:10px;opacity:.75}
+.rp-bs.st-draft{background:#dbeafe;color:#1e40af}
+.rp-bs.st-submitted{background:#fef3c7;color:#92400e}
+.rp-bs.st-ready_to_check{background:#fed7aa;color:#9a3412}
+.rp-bs.st-approved{background:#dcfce7;color:#166534}
+.rp-bs.is-none{background:transparent;color:var(--mut-2);font-weight:400;padding-left:0}

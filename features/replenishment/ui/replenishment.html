@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=3">
 <link rel="stylesheet" href="/shared/rail.css?v=4">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=43">
+<link rel="stylesheet" href="replenishment.css?v=45">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -43,6 +43,11 @@
       <span class="sp-count" id="landingNote"></span>
     </div>
     <div class="sp-tiles" id="branchTiles"><div class="sp-loading">Loading branches…</div></div>
+
+    <!-- O que está em andamento. Fica SEMPRE visível e abaixo dos cartões:
+         os cartões dizem quanto falta repor, este diz o que já foi começado —
+         e é isso que evita duas pessoas montarem o mesmo pedido. -->
+    <div class="rp-board" id="rpBoard"></div>
   </div>
 
   <!-- branch workspace (hidden until a branch is picked) -->
@@ -59,7 +64,6 @@
       <input type="search" id="gridSearch" placeholder="Find on sheet…" style="max-width:190px">
       <button class="sp-btn is-primary" id="btnLoadSuggest">Load suggested</button>
       <button class="sp-btn is-ghost" id="btnCols" title="Choose columns" style="font-size:13px">Columns</button>
-      <span class="sp-count" id="gridCount"></span>
       <button class="sp-btn is-ghost" id="btnReset" title="Start this plan over" style="font-size:13px">Start over</button>
     </div>
 
@@ -235,6 +239,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js"></script>
-<script src="replenishment-app.js?v=50"></script>
+<script src="replenishment-app.js?v=53"></script>
 </body>
 </html>

@@ -84,6 +84,11 @@
   };
   const BRANCHES = (RC && RC.BRANCHES) || [];   // guarded: init() shows a status if the engine is missing
   const VARIANT = { MEL: true, HBA: true };
+  /* O nome do depósito no Cin7, por filial. O espelho de vendas grava
+     location_name e não o código, e Sunshine Coast tem sufixo lá e as outras
+     não — foi o que já quebrou um join neste projeto. */
+  const LOCAL = { SYD: 'Sydney', MEL: 'Melbourne', BNE: 'Brisbane', CNS: 'Cairns',
+                  CFS: 'Coffs Harbour', HBA: 'Hobart', SCS: 'Sunshine Coast Warehouse' };
   const DAILY_MAX = 12;
 
   // SKU de embalagem: 652 dos 8.515 ativos terminam em -Carton<N>. A filial não
@@ -287,11 +292,87 @@
         ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}</div>`;
     }).join('');
     $('landingNote').textContent = `${BRANCHES.length} branches · engine target ${SET.abc ? 'ABC (A10·B8·C6 wk)' : SET.weeks + ' wk'}`;
+    renderBoard();
     $('branchTiles').querySelectorAll('.sp-tile').forEach(t => {
       const go = () => openBranch(t.dataset.code);
       t.addEventListener('click', go);
       t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     });
+  }
+
+  /* ═══ O QUADRO DO QUE ESTÁ EM ANDAMENTO ══════════════════════════════
+   *
+   * Os cartões acima dizem quanto FALTA repor. Este diz o que já foi
+   * começado — e é essa a informação que evita duas pessoas montarem o mesmo
+   * pedido, ou um plano ficar parado em "submitted" a semana inteira sem
+   * ninguém notar.
+   *
+   * Weekly e Daily aparecem JUNTOS, um ao lado do outro por filial: são dois
+   * fluxos com estágios diferentes (o diário pula o check do gerente) e olhar
+   * um de cada vez é como se perde o que está pendente no outro.
+   *
+   * LIMITE, dito na tela: o rascunho mora no localStorage deste navegador.
+   * Este quadro mostra o que ESTE computador tem em andamento. O que já foi
+   * enviado ao Cin7 vem do servidor e é o mesmo para todos — e é por isso que
+   * as duas coisas aparecem separadas, e não somadas numa contagem só.
+   */
+  function readDraft(code, mode) {
+    try {
+      const d = JSON.parse(localStorage.getItem(`rp.draft.${code}.${mode}`) || 'null');
+      if (!d || !Array.isArray(d.lines) || !d.lines.length) return null;
+      return { stage: d.stage || 'draft', week: d.week || '',
+               lines: d.lines.length,
+               units: d.lines.reduce((n, l) => n + (Number(mode === 'weekly' && l.invQty != null ? l.invQty : l.ask) || 0), 0) };
+    } catch (_) { return null; }
+  }
+
+  function renderBoard() {
+    const el = $('rpBoard'); if (!el) return;
+    const linhas = BRANCHES.map(b => ({ b, weekly: readDraft(b.code, 'weekly'), daily: readDraft(b.code, 'daily') }))
+      .filter(x => x.weekly || x.daily);
+
+    if (!linhas.length) {
+      el.innerHTML = `<div class="rp-board-empty">
+        Nothing in progress on this computer. Pick a branch above to start one.</div>`;
+      return;
+    }
+    // A ordem é por urgência: o que espera alguém vem antes do que ainda está
+    // sendo escrito. Um plano parado em "submitted" é o que trava a fila.
+    const peso = { submitted: 0, ready_to_check: 1, draft: 2, approved: 3 };
+    const pior = (x) => Math.min(...[x.weekly, x.daily].filter(Boolean).map(d => peso[d.stage] ?? 9));
+    linhas.sort((a, b) => pior(a) - pior(b) || a.b.name.localeCompare(b.b.name));
+
+    const pastilha = (d, modo) => {
+      if (!d) return `<span class="rp-bs is-none">—</span>`;
+      const espera = d.stage === 'submitted' ? 'the inventory team'
+                   : d.stage === 'ready_to_check' ? 'the manager' : null;
+      return `<span class="rp-bs st-${d.stage}" title="${esc(modo)} · ${n0(d.lines)} lines · ${n0(d.units)} units${
+        espera ? ` · waiting on ${espera}` : ''}">${esc(STAGE_LABEL[d.stage] || d.stage)}<i>${n0(d.lines)}</i></span>`;
+    };
+
+    const esperando = linhas.filter(x => pior(x) <= 1).length;
+    el.innerHTML = `
+      <div class="rp-board-head">
+        <b>In progress</b>
+        <span>${esperando ? `${n0(esperando)} waiting on someone` : 'nothing is waiting'}</span>
+        <span class="rp-board-note">drafts live on this computer · placed orders are shared</span>
+      </div>
+      <table class="rp-board-tbl"><thead><tr>
+        <th>Branch</th><th>Weekly</th><th>Daily</th><th class="n">Units</th><th></th>
+      </tr></thead><tbody>
+      ${linhas.map(x => {
+        const u = (x.weekly ? x.weekly.units : 0) + (x.daily ? x.daily.units : 0);
+        return `<tr data-code="${esc(x.b.code)}" data-mode="${x.weekly ? 'weekly' : 'daily'}">
+          <td class="em">${esc(x.b.name)}</td>
+          <td>${pastilha(x.weekly, 'Weekly')}</td>
+          <td>${pastilha(x.daily, 'Daily')}</td>
+          <td class="n">${n0(u)}</td>
+          <td class="n"><button class="ui-act">Open</button></td></tr>`;
+      }).join('')}
+      </tbody></table>`;
+    el.querySelectorAll('tr[data-code]').forEach(tr => tr.addEventListener('click', () => {
+      S.mode = tr.dataset.mode; openBranch(tr.dataset.code);
+    }));
   }
 
   // ═══ BRANCH WORKSPACE ══════════════════════════════════════════════
@@ -440,11 +521,12 @@
          duas é justamente o que ele precisa ver para decidir.
          Com as duas na tela, o seletor deixa de ser sobre o que MOSTRAR e
          passa a ser só sobre o que a SUGESTÃO usa. */
-      // 92px cortava o próprio cabeçalho ("BRANCH AV…") — que é a mesma
-      // queixa que originou esta rodada, agora na linha de cima.
+      // O estoque vem primeiro e as médias logo ao lado: a pergunta é "tenho
+      // isto e vendo aquilo", e ler nessa ordem é uma comparação; com uma
+      // coluna no meio vira duas leituras separadas.
+      { key: 'soh', label: 'SOH', w: 72, align: 'num', group: 'stk', sortable: true, def: true },
       { key: 'avgBranch', label: 'Branch Avg', w: 110, align: 'num', group: 'stk', sortable: true, def: true },
       { key: 'avgRep', label: 'Rep Avg', w: 96, align: 'num', group: 'stk', sortable: true, def: true },
-      { key: 'soh', label: 'SOH', w: 64, align: 'num', group: 'stk', sortable: true, def: true },
       // In Transit deixa de ser coluna: vira marca cinza no SOH, com o TR no
       // painel. Ela custava 82px para dizer, quase sempre, "·".
       // 168px comportava as duas leituras lado a lado no limite, e por isso
@@ -466,7 +548,21 @@
     return c;
   }
   function defVis(mode) { return new Set(catalog(mode).filter(c => c.def).map(c => c.key)); }
-  function loadVis(mode) { try { const s = JSON.parse(localStorage.getItem('rp.cols.' + mode) || 'null'); if (Array.isArray(s) && s.length) return new Set(s); } catch (_) {} return defVis(mode); }
+  function loadVis(mode) {
+    try {
+      const s = JSON.parse(localStorage.getItem('rp.cols.' + mode) || 'null');
+      if (Array.isArray(s) && s.length) {
+        const set = new Set(s);
+        /* A coluna 'avg' virou duas: avgBranch e avgRep. Quem já tinha uma
+           escolha de colunas salva ficava com um conjunto que não menciona
+           nenhuma das novas — e as duas simplesmente não apareciam, sem erro
+           nenhum. Foi exatamente isso que aconteceu. */
+        if (set.has('avg')) { set.delete('avg'); set.add('avgBranch'); set.add('avgRep'); }
+        return set;
+      }
+    } catch (_) {}
+    return defVis(mode);
+  }
   function saveVis(mode) { try { localStorage.setItem('rp.cols.' + mode, JSON.stringify([...S.vis[mode]])); } catch (_) {} }
   function visibleCols() {
     const set = S.vis[S.mode] || defVis(S.mode);
@@ -542,9 +638,10 @@
         try { back.setSelectionRange(keep.start, keep.end); } catch (_) { /* number inputs recusam */ }
       }
     }
-    const total = rows.reduce((s, l) => s + finalQty(l), 0);
-    // Contador vazio some: "0 lines · 0 units" ocupa espaço para não dizer nada.
-    $('gridCount').textContent = rows.length ? `${rows.length} line${rows.length === 1 ? '' : 's'} · ${n0(total)} units` : '';
+    // O contador de linhas e unidades saiu do cabeçalho: nenhum dos dois muda
+    // uma decisão. Quantas linhas se vê rolando, e o total de unidades só
+    // importa na hora de enviar — e ali ele aparece, no botão.
+    updateCount();
     wireGrid();
   }
   function cell(l, c) {
@@ -570,10 +667,11 @@
       case 'avgBranch': {
         const b = l.storedAvg != null ? l.storedAvg : 0;
         const usa = usaBranch(l);
+        // Sem o ponto: ele apertava uma coluna que já estava justa para dizer
+        // algo que o Settings já diz, e que não muda a decisão da linha.
         return wrap(
-          (b > 0 ? n1(b) : '<span class="rp-sub">—</span>')
-          + (usa ? '<i class="rp-drv" title="This is the average the suggestion is using">●</i>' : ''),
-          ' rp-avgb',
+          (b > 0 ? n1(b) : '<span class="rp-sub">—</span>'),
+          ' rp-avgb' + (usa ? ' is-driver' : ''),
           b > 0 ? `${n1(b)} a month shipped out of this branch's own depot.`
                 : "Nothing shipped out of this branch's own depot in the window.");
       }
@@ -582,9 +680,8 @@
         const usa = !usaBranch(l);
         const quantos = `${l.repCount || 0} of the branch's ${(S.repAvgInfo && S.repAvgInfo.count) || 0} reps sold it.`;
         return wrap(
-          (r > 0 ? n1(r) : '<span class="rp-sub">—</span>')
-          + (usa && r > 0 ? '<i class="rp-drv" title="This is the average the suggestion is using">●</i>' : ''),
-          ' rp-avgr',
+          (r > 0 ? n1(r) : '<span class="rp-sub">—</span>'),
+          ' rp-avgr' + (usa && r > 0 ? ' is-driver' : ''),
           r > 0 ? `${n1(r)} a month sold by this branch's reps, wherever it shipped from. ${quantos}`
                 : 'No rep of this branch sold it in the window.');
       }
@@ -592,7 +689,14 @@
         // In Transit era uma coluna de 82px que quase sempre dizia "·". Vira
         // marca aqui, e o painel mostra o TR — que é o que o usuário quer ver.
         const t = l.inTransit ? `<span class="rp-transit" title="${n0(l.inTransit)} on the way to this branch — open the row to see the TR">▸${n0(l.inTransit)}</span>` : '';
-        return wrap((l.soh < 0 ? `<span class="rp-neg">${n0(l.soh)}</span>` : n0(l.soh)) + t);
+        // O negativo mora aqui e só aqui. O Cover parou de repeti-lo como
+        // "short": duas colunas dizendo a mesma coisa de formas diferentes
+        // fazem o usuário procurar a diferença entre elas.
+        const v = l.soh < 0 ? `<span class="rp-neg">${n0(l.soh)}</span>`
+                : l.soh === 0 ? '<span class="rp-zero">0</span>' : n0(l.soh);
+        return wrap(v + t, '', l.soh < 0
+          ? `${n0(l.soh)} — this branch has sold more than it had. Nothing to count on here.`
+          : `${n0(l.soh)} on hand at this branch.`);
       }
       case 'pallet': return wrap(l.pallet ? n0(l.pallet) : '<span class="rp-sub">—</span>', '', l.pallet ? `${n0(l.pallet)} per pallet` : 'No pallet quantity on file for this 5DC');
       case 'inTransit': return wrap(l.inTransit ? n0(l.inTransit) : '<span class="rp-sub">·</span>');
@@ -617,40 +721,49 @@
         const wk = (base) => base > 0 ? (l.soh + l.inTransit) / (base / RC.WEEKS_IN_MONTH) : null;
         const after = (base) => (base > 0 && q > 0)
           ? (l.soh + l.inTransit + q) / (base / RC.WEEKS_IN_MONTH) : null;
-        // Cobertura negativa é o estoque já vendido a mais: "−753 semanas" não
-        // informa nada e ainda ocupa a largura de quatro números. Vira um sinal.
-        const num = (v) => v == null ? '<span class="rp-sub">n/a</span>'
-          : v < 0 ? '<span class="rp-neg">short</span>'
+        /* Cobertura negativa é estoque já vendido a mais. Ela dizia "short"
+           aqui, e isso repetia — em vermelho e noutra coluna — o que o SOH
+           negativo já diz. Duas maneiras de contar a mesma coisa fazem o
+           usuário procurar a diferença entre elas. Agora o Cover cala e o
+           número negativo aparece só onde ele nasce: no SOH.
+           Sem média não há cobertura, e "—" é mais honesto que "n/a": não é
+           erro, é que não há o que dividir. */
+        const num = (v) => v == null ? '<span class="rp-sub">—</span>'
+          : v < 0 ? '<span class="rp-sub">—</span>'
           : v >= 999 ? '99+w' : n1(v) + 'w';
 
         const bBase = l.storedAvg != null ? l.storedAvg : l.avg;
         const bNow = wk(bBase), bTo = after(bBase);
         const rNow = l.repAvg > 0 ? wk(l.repAvg) : null, rTo = after(l.repAvg);
 
-        const mk = bNow == null ? '' : (bNow * 7 < 7 ? '<i class="rp-mk low">low</i>' : bNow > 12 ? '<i class="rp-mk over">over</i>' : '');
+        /* Sem letra e sem cápsula.
+           A letra B/R gastava 17px de uma coluna apertada para dizer o que a
+           cor já diz, e as cápsulas low/over eram um terceiro alfabeto na
+           mesma célula — o número de semanas contra o alvo já é o alerta.
+           Quem quiser o detalhe clica na linha: o painel tem as duas médias
+           com o nome de cada rep. */
+        const linha = (cls, now, to, tip) => `<span class="rp-cv ${cls}" title="${esc(tip)}"
+            ><i class="t"></i><b>${num(now)}</b><u>${to == null ? '' : `›${num(to)}`}</u></span>`;
 
-        const linha = (cls, tag, now, to, tip, extra) => `<span class="rp-cv ${cls}" title="${esc(tip)}"
-            ><i class="t">${tag}</i><b>${num(now)}</b><u>${to == null ? '' : `›${num(to)}`}</u><s>${extra || ''}</s></span>`;
-
-        // O selo low/over vai DENTRO da primeira leitura. Solto depois das duas
-        // ele virava uma terceira caixa de linha e levava a célula a 68px — o
-        // dobro do que a linha reserva.
-        const b1 = linha('is-br', 'B', bNow, bTo, `Branch shipments: ${n1(bBase || 0)} a month.`
-          + (bTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(bTo)} weeks.`), mk);
+        const b1 = linha('is-br', bNow, bTo, `Branch shipments: ${n1(bBase || 0)} a month.`
+          + (bTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(bTo)} weeks.`));
 
         /* As duas leituras SEMPRE, e não só num modo. A segunda aparece mesmo
            quando não há venda por rep: sem ela a linha muda de altura conforme
            o SKU e a coluna deixa de alinhar, e "nenhum rep vendeu isto" é uma
            resposta, não um vazio. */
         const b2 = l.repAvg > 0
-            ? linha('is-rep', 'R', rNow, rTo, `This branch's reps sold ${n1(l.repAvg)} a month, wherever it shipped from.`
-                + (rTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(rTo)} weeks.`), '')
-            : linha('is-rep is-none', 'R', null, null, 'No rep of this branch sold this product in the window.', '')
-                .replace('<span class="rp-sub">n/a</span>', '—');
+            ? linha('is-rep', rNow, rTo, `This branch's reps sold ${n1(l.repAvg)} a month, wherever it shipped from.`
+                + (rTo == null ? '' : ` With ${n0(q)} units, cover goes to ${n1(rTo)} weeks.`))
+            : linha('is-rep is-none', null, null, 'No rep of this branch sold this product in the window.');
 
         return `<td class="num rp-cover${b2 ? ' is-two' : ''}">${b1}${b2}</td>`;
       }
-      case 'main': return wrap(n0(l.mainGw), '', `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
+      case 'main': return wrap(
+        l.mainGw <= 0 ? `<span class="rp-neg">${n0(l.mainGw)}</span>` : n0(l.mainGw), '',
+        l.mainGw <= 0
+          ? 'Nothing in Main or Gateway to send today. The line is not blocked — stock may be on the way.'
+          : `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
       case 'ask':
         return wrap(askEditable() ? `<input class="rp-in big" data-k="ask" value="${clampInt(l.ask) || ''}" inputmode="numeric">` : `<span class="rp-lock">${n0(clampInt(l.ask))}</span>`);
       case 'invQty': {
@@ -741,15 +854,15 @@
   function coverLegend() {
     const el = $('rpCoverKey'); if (!el) return;
     el.style.display = '';
-    el.innerHTML = `<span class="rp-cvkey is-br"><i class="t">B</i></span>`
+    el.innerHTML = `<span class="rp-cvkey is-br"><i class="t"></i></span>`
       + `<b>Branch</b><span>what shipped out of this branch's own depot</span>`
       + `<i class="sep"></i>`
-      + `<span class="rp-cvkey is-rep"><i class="t">R</i></span>`
+      + `<span class="rp-cvkey is-rep"><i class="t"></i></span>`
       + `<b>Reps</b><span>what this branch's reps sold, wherever it shipped from</span>`
       + `<i class="sep"></i>`
       + `<span class="rp-key-to">›&nbsp;4.2w</span><span>where cover lands with the quantity you type</span>`
       + `<i class="sep"></i>`
-      + `<span class="rp-drv">●</span><span>the average the suggestion is using — set it in Settings</span>`;
+      + `<span>the column with the tinted background is the average the suggestion uses</span>`;
   }
 
   function repaintCover(tr, l) {
@@ -762,8 +875,11 @@
     td.innerHTML = src.innerHTML; td.title = src.title || '';
   }
   function lineByRow(tr) { if (!tr) return null; const code = tr.getAttribute('data-code'); return code ? S.lines.find(l => l.code === code) : null; }
-  function updateCount() { const rows = visibleLines(); const total = rows.reduce((s, l) => s + finalQty(l), 0);
-    $('gridCount').textContent = rows.length ? `${rows.length} line${rows.length === 1 ? '' : 's'} · ${n0(total)} units` : ''; }
+  // O cabeçalho dizia "129 lines · 738 units" o tempo todo. Nenhum dos dois
+  // muda uma decisão: quantas linhas se vê rolando, e o total de unidades só
+  // importa na hora de enviar — onde ele aparece de novo, no botão.
+  // O elemento saiu do HTML; a função fica porque quem digita chama por ela.
+  function updateCount() {}
 
   // ── load suggested (merge, write-protected) ──────────────────────────
   // A régua também se escolhe AQUI, e não só no Settings: é neste clique que a
@@ -904,7 +1020,7 @@
     $('sideBody').innerHTML = `
       <div class="rp-side-code">${esc(line.code)}</div>
       <div class="rp-side-name">${esc(line.name || '')}</div>
-      <div class="sp-panel" id="sideReps"><h4>Who sells it <span>loading…</span></h4><div class="in"><div class="rp-sub">…</div></div></div>
+      <div class="sp-panel" id="sideReps"><div class="in"><div class="rp-sub">loading…</div></div></div>
       <div class="sp-panel" style="margin-top:14px"><h4>Across branches <span>avg / mo · SOH · on the way</span></h4><div class="in" style="padding:0">
         <table><thead><tr><th>Branch</th><th class="n">Avg</th><th class="n">SOH</th><th class="n">In transit</th></tr></thead><tbody>
         ${across.map(x => `<tr class="${x.here ? 'rp-side-here' : ''}"><td>${esc(x.name)}${x.here ? ' •' : ''}</td><td class="n">${x.a ? n1(x.a) : '·'}</td><td class="n ${x.soh < 0 ? 'rp-neg' : ''}">${n0(x.soh)}</td><td class="n">${x.it ? n0(x.it) : '·'}</td></tr>`).join('')}
@@ -996,27 +1112,71 @@
   // Quem vende este SKU, e por qual local ele saiu. É a resposta para "por que
   // a média da minha filial é baixa se eu vendo isso" — a venda está no rep,
   // o despacho está no Main.
+  /* As DUAS médias, cada uma na sua tabela, na janela do Settings.
+   *
+   * Era um "Who sells it" que listava todo rep de toda filial com unidades,
+   * pedidos e a data do último — e a data do último pedido não muda nenhuma
+   * decisão desta tela: quem está aqui já sabe que precisa repor, e quer
+   * saber QUANTO por mês, não QUANDO foi a última vez.
+   *
+   * A separação em duas tabelas espelha as duas colunas da planilha: uma é a
+   * venda dos reps desta filial, a outra é o que saiu do depósito dela. A
+   * diferença entre as duas é o que a filial vende e o Main entrega por ela —
+   * em Brisbane, 48% das linhas.
+   */
   async function loadSideReps(sku) {
     const box = $('sideReps'); if (!box) return;
+    const code = S.branch ? S.branch.code : '';
+    const nome = S.branch ? S.branch.name : '';
     try {
-      const qs = new URLSearchParams({ sku, branch: S.branch ? S.branch.code : '', months: SET.salesMonths || 6 });
+      const qs = new URLSearchParams({ sku, branch: code, months: SET.salesMonths || 6 });
       const d = await fetch(`/api/replenishment/sku-detail?${qs}`).then(r => r.json());
       if (d.error) throw new Error(d.error);
-      const mine = (d.by_rep || []).filter(r => r.branch_code === (S.branch && S.branch.code));
-      const other = (d.by_rep || []).filter(r => r.branch_code !== (S.branch && S.branch.code));
-      const mineQty = mine.reduce((n, r) => n + Number(r.qty), 0);
-      const row = (r, cls) => `<tr class="${cls}"><td>${esc(r.sales_rep)}</td>
-        <td class="rp-sub">${esc(branchName(r.branch_code))}</td>
-        <td class="n">${n0(r.qty)}</td><td class="n">${n0(r.orders)}</td>
-        <td class="n rp-sub">${esc(dmy(r.last_order))}</td></tr>`;
-      box.innerHTML = `<h4>Who sells it <span>last ${d.months} months</span></h4><div class="in" style="padding:0">
-        <table><thead><tr><th>Sales rep</th><th>Branch</th><th class="n">Units</th><th class="n">Orders</th><th class="n">Last</th></tr></thead>
-        <tbody>${mine.map(r => row(r, 'rp-side-here')).join('')}${other.map(r => row(r, '')).join('')}</tbody></table></div>
-        <div class="in rp-sub" style="padding-top:8px">
-          <b>${n0(mineQty)}</b> units sold by this branch's ${mine.length} rep(s) — ${n1(mineQty / d.months)}/month.
-          ${(d.by_location || []).length ? 'Shipped from: ' + d.by_location.slice(0, 4).map(l => `${esc(l.location_name)} ${n0(l.qty)}`).join(' · ') : ''}</div>`;
+      const m = d.months || SET.salesMonths || 6;
+
+      const reps = (d.by_rep || []).filter(r => r.branch_code === code)
+        .map(r => ({ ...r, mes: Number(r.qty) / m }))
+        .sort((a, b) => b.mes - a.mes);
+      const repTotal = reps.reduce((n, r) => n + r.mes, 0);
+
+      // O depósito desta filial no espelho, e para onde mais o produto saiu.
+      const alvo = LOCAL[code] || nome;
+      const locs = (d.by_location || []).map(l => ({ ...l, mes: Number(l.qty) / m }));
+      const daFilial = locs.find(l => l.location_name === alvo);
+      const outros = locs.filter(l => l.location_name !== alvo).sort((a, b) => b.mes - a.mes);
+      const locTotal = daFilial ? daFilial.mes : 0;
+
+      const vazio = (t) => `<tr><td colspan="2" class="rp-sub">${t}</td></tr>`;
+      box.innerHTML = `
+        <div class="rp-two">
+          <div class="rp-half">
+            <h4><i class="rp-bar is-rep"></i>Rep Avg <span>${esc(nome)} · ${m} months</span></h4>
+            <table class="rp-mini"><tbody>
+              ${reps.length ? reps.map(r => `<tr><td>${esc(r.sales_rep)}</td>
+                   <td class="n"><b>${n1(r.mes)}</b><i>/mo</i></td></tr>`).join('')
+                : vazio('No rep of this branch sold it in the window.')}
+              ${reps.length > 1 ? `<tr class="rp-mini-tot"><td>${reps.length} reps</td>
+                   <td class="n"><b>${n1(repTotal)}</b><i>/mo</i></td></tr>` : ''}
+            </tbody></table>
+          </div>
+          <div class="rp-half">
+            <h4><i class="rp-bar is-br"></i>Branch Avg <span>${esc(nome)} · ${m} months</span></h4>
+            <table class="rp-mini"><tbody>
+              <tr><td>Out of ${esc(alvo)}</td><td class="n"><b>${n1(locTotal)}</b><i>/mo</i></td></tr>
+              ${outros.length ? `<tr class="rp-mini-sep"><td colspan="2" class="rp-sub">also shipped from</td></tr>`
+                + outros.slice(0, 4).map(l => `<tr class="rp-mini-dim"><td>${esc(l.location_name)}</td>
+                     <td class="n"><b>${n1(l.mes)}</b><i>/mo</i></td></tr>`).join('') : ''}
+            </tbody></table>
+          </div>
+        </div>
+        ${repTotal > 0 && locTotal >= 0 ? `<div class="in rp-sub rp-gap">${
+          repTotal > locTotal * 1.15
+            ? `The reps sell <b>${n1(repTotal - locTotal)}</b> a month more than this branch ships — that difference goes out of Main on its behalf.`
+            : locTotal > repTotal * 1.15
+              ? `This branch ships <b>${n1(locTotal - repTotal)}</b> a month more than its own reps sell — the rest is other reps ordering from here.`
+              : 'The two readings agree.'}</div>` : ''}`;
     } catch (e) {
-      box.innerHTML = `<h4>Who sells it</h4><div class="in rp-sub">Could not load — ${esc(e.message)}</div>`;
+      box.innerHTML = `<h4>Averages</h4><div class="in rp-sub">Could not load — ${esc(e.message)}</div>`;
     }
   }
 
