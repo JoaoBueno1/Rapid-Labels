@@ -432,6 +432,7 @@
                 if (!window.__whBoardTimer) window.__whBoardTimer = setInterval(loadWarehouseBoard, 60000);
 
                 // Weekly trend chart (refresh every 5 min — it moves slowly)
+                window.reloadWhChart = loadPipelineChart;   // o seletor de depósito repinta
                 loadPipelineChart();
                 if (!window.__whChartTimer) window.__whChartTimer = setInterval(loadPipelineChart, 300000);
 
@@ -502,11 +503,34 @@
         document.addEventListener('fullscreenchange', _onFsChange);
         document.addEventListener('webkitfullscreenchange', _onFsChange);
 
-        // ── Pipeline trend chart: ORDERS COMPLETED per day (bars) ──
-        //  Counts orders shipped/completed each day (by fulfilled_date) for Main
-        //  Warehouse. Source: pick_anomaly_orders (scanner fetches
-        //  saleList?Location=Main Warehouse → Main-only, full history). Continuous
-        //  calendar so weekends show as 0 (no shipping then).
+        /* ── Pipeline trend chart: ORDERS COMPLETED per day ──
+         *
+         * The chart now follows the same warehouse selector as the flow board
+         * above it. That needed two sources, because neither covers both jobs:
+         *
+         *   Main only (the default, and the wall display)
+         *     pick_anomaly_orders — what the scanner fetched with
+         *     saleList?Location=Main Warehouse. Main-only by construction, but
+         *     it carries the anomaly counts, so the bars can show error rates.
+         *     Nothing about the default view changes.
+         *
+         *   Any branch, or all of them
+         *     cin7_mirror.sales_history_line by invoice_date + location_name.
+         *     Measured against the scanner on Main over 16 days: 1.305 against
+         *     1.205 invoices, 13% median difference per day — same shape, so
+         *     switching sources does not make Main jump. It has every branch,
+         *     which the scanner feed simply does not.
+         *
+         * When the scope leaves Main, EVERY series comes from the invoice feed,
+         * including Main's. Drawing Main from the scanner next to branches from
+         * invoices would put two different measures on the same axis and invite
+         * a comparison that is not valid.
+         *
+         * The invoice feed lags about a day — the note under the chart says so,
+         * because a short last bar reads as "we shipped less today".
+         *
+         * Continuous calendar so weekends show as 0 (no shipping then).
+         */
         async function loadPipelineChart(_retry) {
             try {
                 if (!window.Chart) {                       // Chart.js not parsed yet — retry briefly
@@ -537,8 +561,46 @@
                         counts[o.fulfilled_date] = (counts[o.fulfilled_date] || 0) + 1;
                         if ((o.anomaly_picks || 0) > 0) errCounts[o.fulfilled_date] = (errCounts[o.fulfilled_date] || 0) + 1; });
                 };
-                await pullEntity('sale', salesCounts, salesErrCounts);
-                await pullEntity('assembly', fgCounts, fgErrCounts);
+                const focoWh = window.__whFocus || 'Main Warehouse';
+                const soMain = focoWh === 'Main Warehouse';
+
+                // Só puxa o scanner quando ele é a fonte: numa filial ele não
+                // tem nada a dizer, e a chamada seria desperdício.
+                if (soMain) {
+                    await pullEntity('sale', salesCounts, salesErrCounts);
+                    await pullEntity('assembly', fgCounts, fgErrCounts);
+                }
+
+                /* Fora do Main, uma série por depósito, da mesma fonte.
+                   Conta invoice_number distinto: uma fatura pode ter muitas
+                   linhas, e contar linhas transformaria um pedido grande em
+                   vários pedidos. */
+                const porWh = {};       // { 'Sydney': { '2026-08-27': 12, … } }
+                if (!soMain) {
+                    let acc = [], from = 0;
+                    for (;;) {
+                        const r = await sb.schema('cin7_mirror').from('sales_history_line')
+                            .select('invoice_date,invoice_number,location_name')
+                            .gte('invoice_date', lo).lte('invoice_date', hi)
+                            .range(from, from + 999);
+                        if (r.error) break;
+                        acc.push(...(r.data || []));
+                        if (!r.data || r.data.length < 1000) break;
+                        from += 1000;
+                    }
+                    const vistos = {};
+                    for (const x of acc) {
+                        const w = x.location_name; if (!w || !x.invoice_date) continue;
+                        // Project/Gateway/Ghost/Faulty não são depósito de venda
+                        // e o board acima já os deixa de fora — mantê-los aqui
+                        // faria o gráfico contradizer os cartões.
+                        if (/project|gateway|ghost|faulty|damaged/i.test(w)) continue;
+                        if (focoWh !== '__all__' && w !== focoWh) continue;
+                        const k = w + '|' + x.invoice_date + '|' + x.invoice_number;
+                        if (vistos[k]) continue; vistos[k] = 1;
+                        (porWh[w] ??= {})[x.invoice_date] = ((porWh[w] || {})[x.invoice_date] || 0) + 1;
+                    }
+                }
 
                 // ── transfers dispatched from Main to a BRANCH (stock_transfer movements) ──
                 // cin7_mirror.stock_movements type='stock_transfer' (dispatch, same source
@@ -570,14 +632,36 @@
 
                 const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                 const labels = [], salesData = [], salesErr = [], trBranchData = [], fgData = [], fgErr = [];
+                const chaves = [];
                 for (let i = DAYS - 1; i >= 0; i--) {
                     const d = aestDate(i);
                     const key = d.toISOString().slice(0, 10);
+                    chaves.push(key);
                     labels.push(`${dow[d.getUTCDay()]} ${d.getUTCDate()}`);
                     salesData.push(salesCounts[key] || 0); salesErr.push(salesErrCounts[key] || 0);
                     trBranchData.push(trBranchByDay[key] ? trBranchByDay[key].size : 0);
                     fgData.push(fgCounts[key] || 0); fgErr.push(fgErrCounts[key] || 0);
                 }
+
+                /* Uma cor por depósito, estável entre recarregamentos: a cor de
+                   Sydney tem que ser a mesma amanhã, ou a leitura recomeça do
+                   zero a cada visita. Main fica no verde que ele já tinha. */
+                const COR_WH = {
+                    'Main Warehouse': 'rgba(34,197,94,.85)',
+                    'Sydney': 'rgba(59,130,246,.85)',
+                    'Brisbane': 'rgba(139,92,246,.85)',
+                    'Melbourne': 'rgba(236,72,153,.85)',
+                    'Cairns': 'rgba(245,158,11,.85)',
+                    'Coffs Harbour': 'rgba(20,184,166,.85)',
+                    'Hobart': 'rgba(168,85,247,.85)',
+                    'Sunshine Coast Warehouse': 'rgba(249,115,22,.85)',
+                };
+                const corDe = (w, i) => COR_WH[w] || `hsl(${(i * 47) % 360} 62% 55%)`;
+
+                const nomeCurto = (w) => String(w).replace(/ Warehouse$/, '');
+                const whOrdenados = Object.keys(porWh)
+                    .sort((a, b) => Object.values(porWh[b]).reduce((x, y) => x + y, 0)
+                                  - Object.values(porWh[a]).reduce((x, y) => x + y, 0));
                 const pct = (e, t) => t ? Math.round(100 * e / t) : 0;
                 const cv = document.getElementById('pipelineChart');
                 if (!cv) return;
@@ -586,11 +670,17 @@
                     type: 'bar',
                     data: {
                         labels,
-                        datasets: [
+                        datasets: soMain
+                          ? [
                             { label: 'Sales orders', data: salesData, stack: 'wh', backgroundColor: 'rgba(34,197,94,.8)', borderRadius: 3 },
                             { label: 'TR — branches', data: trBranchData, stack: 'wh', backgroundColor: 'rgba(59,130,246,.85)', borderRadius: 3 },
                             { label: 'FG / Assembly', data: fgData, stack: 'wh', backgroundColor: 'rgba(139,92,246,.85)', borderRadius: 3 },
-                        ],
+                          ]
+                          : whOrdenados.map((w, i) => ({
+                              label: nomeCurto(w), stack: 'wh', borderRadius: 3,
+                              backgroundColor: corDe(w, i),
+                              data: chaves.map(k => (porWh[w] || {})[k] || 0),
+                            })),
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
@@ -601,6 +691,10 @@
                                 callbacks: {
                                     label: (c) => {
                                         const i = c.dataIndex, l = c.dataset.label;
+                                        // Fora do Main a fonte é a fatura, que não
+                                        // carrega contagem de anomalia — prometer
+                                        // "0 errors" ali seria inventar.
+                                        if (!soMain) return `${l}: ${c.parsed.y} invoices`;
                                         if (l === 'TR — branches') return `TR branches: ${trBranchData[i]}`;
                                         if (l.startsWith('FG')) return `FG: ${fgData[i]} · ${fgErr[i]} errors (${pct(fgErr[i], fgData[i])}%)`;
                                         return `Sales: ${salesData[i]} · ${salesErr[i]} errors (${pct(salesErr[i], salesData[i])}%)`;
@@ -615,7 +709,9 @@
                     },
                 });
                 const note = document.getElementById('whChartNote');
-                if (note) note.textContent = `· Main Warehouse · Sales + TR (branches) + FG per day · last ${DAYS} days`;
+                if (note) note.textContent = soMain
+                    ? `· Main Warehouse · Sales + TR (branches) + FG per day · last ${DAYS} days`
+                    : `· ${focoWh === '__all__' ? `${whOrdenados.length} warehouses` : nomeCurto(focoWh)} · invoices per day · last ${DAYS} days · this feed lags about a day, so the last bar fills in later`;
                 // The 5-min rebuild recreates the chart with the light palette — re-apply the
                 // dark wall palette if we're in fullscreen, or the axes vanish on the navy.
                 const _fsCard = document.getElementById('whPipelineCard');
@@ -1263,7 +1359,14 @@
             sel.value = focus || MAIN;
             sel.dataset.built = '1';
         }
-        function setWhFocus(v) { window.__whFocus = v; if (window.reloadWhBoard) window.reloadWhBoard(); }
+        function setWhFocus(v) {
+            window.__whFocus = v;
+            if (window.reloadWhBoard) window.reloadWhBoard();
+            // O gráfico segue o mesmo seletor. Sem esta linha ele continuava
+            // no Main enquanto os cartões acima já falavam de outra filial —
+            // dois números diferentes no mesmo cartão, sem nada explicando.
+            if (window.reloadWhChart) window.reloadWhChart();
+        }
 
         // Paint one exception tile: value + sub + a severity class (crit/warn), muted when zero.
         function setExc(id, n, sub, sev) {
