@@ -33,9 +33,11 @@
 
 -- A janela móvel, num lugar só. Ela ancora no último mês COM DADO, não em
 -- now(): ancorar no relógio faz a média encolher sozinha quando o sync atrasa.
+-- SECURITY DEFINER também aqui: ela é chamada de dentro das outras e lê
+-- cin7_mirror. Deixá-la INVOKER faria a permissão depender de quem chama.
 CREATE OR REPLACE FUNCTION public._rp_window(p_months INT)
 RETURNS DATE
-LANGUAGE sql STABLE
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, cin7_mirror
 AS $$
   SELECT (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
           - (GREATEST(p_months, 1) - 1) * interval '1 month')::DATE;
