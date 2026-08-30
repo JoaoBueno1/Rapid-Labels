@@ -296,11 +296,12 @@ app.post('/api/pipeline-sync', async (req, res) => {
 //
 // Mesmo guarda do app.listen lá embaixo, e pelo mesmo motivo: na Vercel isto
 // não é um agendador, é um agendador POR INSTÂNCIA QUENTE. Medido em
-// cin7_mirror.sync_runs (25–27/08/2026): 59, 33 e 35 execuções/dia contra as
-// 24 que o cron `35 * * * *` agenda, e as assinaturas mm:ss mais frequentes
-// foram 27:49 (15×) e 27:50 (10×) — nenhuma no minuto 35. Cron não deriva um
-// segundo por vez; setInterval deriva. Eram pelo menos duas instâncias com
-// relógios próprios.
+// cin7_mirror.sync_runs (25–27/08/2026): 59, 33 e 42 execuções/dia contra as
+// 24 que o cron `35 * * * *` agenda — e ZERO delas no minuto 35. Duas
+// assinaturas mm:ss se repetem de hora em hora, uma por instância: 27:49–50
+// (25×, de 25/08 07:27 em diante) e 31:33 (4×, 27/08 das 12h às 15h). Cron
+// não deriva um segundo por vez; setInterval deriva. Eram várias instâncias
+// quentes, cada uma com seu relógio.
 //
 // E não era ocioso: _runPipelineSync → detectCompleted (order-pipeline-sync.js:
 // 547-600) marca COMPLETED todo SO/TR ausente da própria busca. A trava
