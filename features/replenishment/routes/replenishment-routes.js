@@ -39,6 +39,65 @@ function register(app, db) {
     }
   };
 
+  // ── Leitura sem senha de banco ──────────────────────────────────────────
+  // Estas rotas nasceram falando direto com o Postgres, o que exigia
+  // SUPABASE_DB_PASSWORD em cada máquina e na Vercel — e sem a variável a tela
+  // caía no `catch` e trocava a régua do rep pela do local em silêncio.
+  //
+  // A agregação virou função no banco (features/replenishment/db/
+  // 001_replenishment_rpc.sql) e a leitura passa por aqui, com a chave que o
+  // repo já tem. Mesmo padrão do excel-sync, que funciona de qualquer máquina.
+  const SB = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const SB_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
+
+  const sbH = (schema, extra) => Object.assign(
+    { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+    schema ? { 'Accept-Profile': schema, 'Content-Profile': schema } : {}, extra || {});
+
+  // O PostgREST devolve NO MÁXIMO 1000 linhas e NÃO avisa que cortou: a
+  // resposta truncada é indistinguível de um resultado pequeno. branch-averages
+  // do Sydney bate nesse teto hoje. Paginar aqui não é otimização, é correção —
+  // e é o mesmo erro que já custou uma análise inteira no excel-sync.
+  const PAGE = 1000;
+
+  async function sbGet(path, schema) {
+    const r = await fetch(`${SB}/rest/v1/${path}`,
+      { headers: sbH(schema), signal: AbortSignal.timeout(60000) });
+    if (!r.ok) throw new Error(`Supabase ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    return r.json();
+  }
+
+  async function sbAll(path, schema) {
+    const out = [];
+    for (let off = 0; ; off += PAGE) {
+      const sep = path.includes('?') ? '&' : '?';
+      const b = await sbGet(`${path}${sep}limit=${PAGE}&offset=${off}`, schema);
+      out.push(...b);
+      if (b.length < PAGE) return out;
+    }
+  }
+
+  async function sbRpc(fn, args) {
+    const out = [];
+    for (let off = 0; ; off += PAGE) {
+      const r = await fetch(`${SB}/rest/v1/rpc/${fn}?limit=${PAGE}&offset=${off}`,
+        { method: 'POST', headers: sbH(null), body: JSON.stringify(args || {}),
+          signal: AbortSignal.timeout(120000) });
+      if (!r.ok) throw new Error(`Supabase rpc ${fn} ${r.status}: ${(await r.text()).slice(0, 200)}`);
+      const b = await r.json();
+      if (!Array.isArray(b)) return b;
+      out.push(...b);
+      if (b.length < PAGE) return out;
+    }
+  }
+
+  async function sbPatch(path, schema, body) {
+    const r = await fetch(`${SB}/rest/v1/${path}`,
+      { method: 'PATCH', headers: sbH(schema, { Prefer: 'return=minimal' }),
+        body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(`Supabase patch ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  }
+
   const headers = () => ({
     'api-auth-accountid': process.env.CIN7_ACCOUNT_ID,
     'api-auth-applicationkey': process.env.CIN7_API_KEY,
@@ -280,23 +339,20 @@ function register(app, db) {
       mudou.push({ id: r.id, status: t.Status, done: t.CompletionDate ? String(t.CompletionDate).slice(0, 10) : null });
     }
     if (mudou.length) {
-      await db.tx(async (c) => {
-        for (const m of mudou) {
-          await c.query(
-            `UPDATE rapid_inv.replenishment_order
-                SET cin7_status = $1, cin7_status_at = now(), cin7_completed = $2 WHERE id = $3`,
-            [m.status, m.done, m.id]);
-        }
-      }, 'refresh-transfer-status');
+      const agora = new Date().toISOString();
+      for (const m of mudou) {
+        await sbPatch(`replenishment_order?id=eq.${encodeURIComponent(m.id)}`, 'rapid_inv',
+          { cin7_status: m.status, cin7_status_at: agora, cin7_completed: m.done });
+      }
     }
     // Carimba a hora da leitura em TODAS as que foram consultadas, inclusive
     // as que não mudaram: "lido agora e continua ORDERED" é informação, e sem
     // o carimbo ela ficaria indistinguível de "nunca foi lido".
     const idsLidos = abertos.filter((r) => porTask[String(r.cin7_task_id).toLowerCase()]).map((r) => r.id);
     if (idsLidos.length) {
-      await db.tx(async (c) => c.query(
-        `UPDATE rapid_inv.replenishment_order SET cin7_status_at = now()
-          WHERE id = ANY($1) AND cin7_status IS NOT NULL`, [idsLidos]), 'stamp-transfer-read');
+      const lista = idsLidos.map((x) => `"${String(x).replace(/"/g, '')}"`).join(',');
+      await sbPatch(`replenishment_order?id=in.(${lista})&cin7_status=not.is.null`, 'rapid_inv',
+        { cin7_status_at: new Date().toISOString() });
     }
     const idx = mudou.reduce((m, x) => (m[x.id] = x, m), {});
     return rows.map((r) => {
@@ -309,17 +365,15 @@ function register(app, db) {
   }
 
   app.get(`${R}/orders`, wrap(async (req, res) => {
-    const p = [], where = ['1=1'];
-    if (req.query.branch) { p.push(req.query.branch); where.push(`branch_code = $${p.length}`); }
-    if (req.query.mode) { p.push(req.query.mode); where.push(`mode = $${p.length}`); }
-    let rows = await db.query(
-      `SELECT id, op_key, branch_code, branch_name, mode, week_ending, total_units, line_count,
-              from_location, to_location, status, cin7_task_id, cin7_number, error,
-              cin7_status, cin7_status_at, cin7_completed,
-              created_by, created_at, ordered_at, lines
-         FROM rapid_inv.replenishment_order
-        WHERE ${where.join(' AND ')}
-        ORDER BY created_at DESC LIMIT 200`, p);
+    const f = [];
+    if (req.query.branch) f.push(`branch_code=eq.${encodeURIComponent(req.query.branch)}`);
+    if (req.query.mode) f.push(`mode=eq.${encodeURIComponent(req.query.mode)}`);
+    let rows = await sbGet(
+      'replenishment_order?select=id,op_key,branch_code,branch_name,mode,week_ending,total_units,'
+      + 'line_count,from_location,to_location,status,cin7_task_id,cin7_number,error,'
+      + 'cin7_status,cin7_status_at,cin7_completed,created_by,created_at,ordered_at,lines'
+      + (f.length ? '&' + f.join('&') : '')
+      + '&order=created_at.desc&limit=200', 'rapid_inv');
 
     // `fresh=0` existe para quem só quer o registro sem gastar a cota do Cin7.
     if (req.query.fresh !== '0') rows = await refrescarStatus(rows);
@@ -345,31 +399,13 @@ function register(app, db) {
   app.get(`${R}/averages`, wrap(async (req, res) => {
     const months = asInt(req.query.months, 6, 1, 13);
     const location = (req.query.location || '').trim();
-    const p = [months];
-    let where = `order_date >= (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
-                                - ($1::int - 1) * interval '1 month')`;
-    if (location) { p.push(location); where += ` AND location_name = $${p.length}`; }
-
-    const [rows, cover, span] = await Promise.all([
-      db.query(`
-        SELECT sku_key, min(sku) AS sku, min(product_name) AS name,
-               location_name,
-               sum(qty_signed)                       AS qty,
-               round(sum(qty_signed) / $1::numeric, 2) AS avg_month,
-               count(DISTINCT order_number)          AS orders,
-               count(DISTINCT to_char(order_date, 'YYYY-MM')) AS months_with_sales
-          FROM cin7_mirror.v_sales_demand_line
-         WHERE ${where}
-         GROUP BY sku_key, location_name
-        HAVING sum(qty_signed) <> 0
-         ORDER BY sum(qty_signed) DESC
-         LIMIT 4000`, p),
-      db.query(`SELECT ym, linhas, pedidos, skus, reps, qty FROM public.v_cin7_sales_history_coverage
-                 ORDER BY ym DESC LIMIT 13`),
-      db.one(`SELECT min(order_date)::text AS first_day, max(order_date)::text AS last_day,
-                     count(DISTINCT to_char(order_date,'YYYY-MM')) AS months
-                FROM cin7_mirror.v_sales_demand_line`),
+    const [rows, cover, spanRows] = await Promise.all([
+      sbRpc('replenishment_averages', { p_months: months, p_location: location || null }),
+      sbGet('v_cin7_sales_history_coverage?select=ym,linhas,pedidos,skus,reps,qty'
+            + '&order=ym.desc&limit=13', 'public'),
+      sbRpc('replenishment_span', {}),
     ]);
+    const span = spanRows[0] || {};
 
     // O mês corrente quase nunca está fechado. Incluí-lo como mês cheio puxa a
     // média para baixo, e é o tipo de erro que ninguém percebe.
@@ -394,26 +430,7 @@ function register(app, db) {
    */
   app.get(`${R}/reps`, wrap(async (req, res) => {
     const months = asInt(req.query.months, 13, 1, 13);
-    const rows = await db.query(`
-      WITH base AS (
-        SELECT sales_rep, location_name, count(DISTINCT order_number) AS orders,
-               max(order_date) AS last_order
-          FROM cin7_mirror.v_sales_demand_line
-         WHERE order_date >= (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
-                              - ($1::int - 1) * interval '1 month')
-         GROUP BY 1, 2),
-      tot AS (SELECT sales_rep, sum(orders) AS total, max(last_order) AS last_order FROM base GROUP BY 1),
-      rk AS (SELECT b.*, t.total, t.last_order AS rep_last,
-                    row_number() OVER (PARTITION BY b.sales_rep ORDER BY b.orders DESC) AS pos
-               FROM base b JOIN tot t ON t.sales_rep = b.sales_rep)
-      SELECT r1.sales_rep AS rep, r1.location_name AS branch_1, r1.orders AS orders_1,
-             round(100.0 * r1.orders / r1.total, 1) AS pct_1,
-             r2.location_name AS branch_2, r2.orders AS orders_2,
-             round(100.0 * COALESCE(r2.orders, 0) / r1.total, 1) AS pct_2,
-             r1.total AS orders_total, r1.rep_last::date::text AS last_order
-        FROM rk r1 LEFT JOIN rk r2 ON r2.sales_rep = r1.sales_rep AND r2.pos = 2
-       WHERE r1.pos = 1
-       ORDER BY r1.location_name, r1.total DESC`, [months]);
+    const rows = await sbRpc('replenishment_reps', { p_months: months });
 
     // O limite inferior de Wilson a 95%. Sem ele, "54% de 144 pedidos" parece
     // uma alocação e é empate. O piso muda com a vantagem: 100% precisa de 6
@@ -439,7 +456,7 @@ function register(app, db) {
     });
     // A decisão humana entra por cima. A inferência continua no payload, ao
     // lado, para a tela poder mostrar as duas e sinalizar quando discordam.
-    const saved = await db.query(`SELECT * FROM rapid_inv.sales_rep_branch`);
+    const saved = await sbAll('sales_rep_branch?select=*', 'rapid_inv');
     const byRep = saved.reduce((m, r) => (m[r.sales_rep] = r, m), {});
     const withDecision = out.map((r) => {
       const d = byRep[r.rep];
@@ -477,41 +494,18 @@ function register(app, db) {
     const location = (req.query.location || '').trim();
     if (!branch) return res.status(400).json({ error: 'branch é obrigatório' });
 
-    const reps = await db.query(
-      `SELECT sales_rep FROM rapid_inv.sales_rep_branch WHERE branch_code = $1 AND is_active`, [branch]);
+    const reps = await sbAll(
+      `sales_rep_branch?select=sales_rep&branch_code=eq.${encodeURIComponent(branch)}`
+      + '&is_active=is.true', 'rapid_inv');
     const names = reps.map((r) => r.sales_rep);
 
-    const win = `order_date >= (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
-                                - ($1::int - 1) * interval '1 month')`;
-    const [byRep, byLoc] = await Promise.all([
-      names.length ? db.query(
-        `SELECT sku_key, sum(qty_signed) AS qty, count(DISTINCT order_number) AS orders,
-                count(DISTINCT sales_rep) AS reps
-           FROM cin7_mirror.v_sales_demand_line
-          WHERE ${win} AND sales_rep = ANY($2)
-          GROUP BY 1`, [months, names]) : [],
-      location ? db.query(
-        `SELECT sku_key, sum(qty_signed) AS qty
-           FROM cin7_mirror.v_sales_demand_line
-          WHERE ${win} AND location_name = $2
-          GROUP BY 1`, [months, location]) : [],
-    ]);
+    // O FULL OUTER JOIN vive na função do banco agora. O `for` que reinseria
+    // os SKUs que a filial vendeu pelo local sem nenhum rep dela ter tocado
+    // virou parte do JOIN: mesma resposta, uma volta a menos, e a regra deixa
+    // de estar escrita em dois lugares.
+    const rows = await sbRpc('replenishment_branch_averages',
+      { p_branch: branch, p_months: months, p_location: location || null });
 
-    const loc = byLoc.reduce((m, r) => (m[r.sku_key] = Number(r.qty), m), {});
-    const rows = byRep.map((r) => ({
-      sku_key: r.sku_key,
-      rep_avg: Math.round((Number(r.qty) / months) * 100) / 100,
-      loc_avg: Math.round(((loc[r.sku_key] || 0) / months) * 100) / 100,
-      orders: Number(r.orders), reps: Number(r.reps),
-    }));
-    // SKUs que a filial vendeu pelo local mas nenhum rep dela tocou: o inverso
-    // do buraco, e vale aparecer para ninguém achar que a régua do rep é
-    // sempre maior.
-    for (const [k, q] of Object.entries(loc)) {
-      if (!rows.some((x) => x.sku_key === k)) {
-        rows.push({ sku_key: k, rep_avg: 0, loc_avg: Math.round((q / months) * 100) / 100, orders: 0, reps: 0 });
-      }
-    }
     res.json({ branch, months, rep_count: names.length, reps: names, rows });
   }));
 
@@ -521,23 +515,9 @@ function register(app, db) {
     const branch = (req.query.branch || '').trim().toUpperCase();
     const months = asInt(req.query.months, 6, 1, 13);
     if (!sku) return res.status(400).json({ error: 'sku é obrigatório' });
-    const win = `order_date >= (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
-                                - ($2::int - 1) * interval '1 month')`;
     const [byRep, byLoc] = await Promise.all([
-      db.query(`
-        SELECT d.sales_rep, COALESCE(a.branch_code, '—') AS branch_code,
-               sum(d.qty_signed) AS qty, count(DISTINCT d.order_number) AS orders,
-               max(d.order_date)::date::text AS last_order
-          FROM cin7_mirror.v_sales_demand_line d
-          LEFT JOIN rapid_inv.sales_rep_branch a ON a.sales_rep = d.sales_rep
-         WHERE d.sku_key = $1 AND ${win}
-         GROUP BY 1, 2 HAVING sum(d.qty_signed) <> 0
-         ORDER BY 3 DESC`, [sku, months]),
-      db.query(`
-        SELECT location_name, sum(qty_signed) AS qty
-          FROM cin7_mirror.v_sales_demand_line
-         WHERE sku_key = $1 AND ${win}
-         GROUP BY 1 HAVING sum(qty_signed) <> 0 ORDER BY 2 DESC`, [sku, months]),
+      sbRpc('replenishment_sku_by_rep', { p_sku: sku, p_months: months }),
+      sbRpc('replenishment_sku_by_location', { p_sku: sku, p_months: months }),
     ]);
     res.json({ sku, branch, months, by_rep: byRep, by_location: byLoc });
   }));
@@ -547,19 +527,37 @@ function register(app, db) {
     const rep = req.params.rep;
     const { branch_code, note, is_active, inferred } = req.body || {};
     const actor = (req.get('x-sp-user') || req.body?._as || 'anon').toString().slice(0, 120);
-    const row = await db.one(`
-      INSERT INTO rapid_inv.sales_rep_branch
-        (sales_rep, branch_code, note, is_active, inferred_branch, inferred_pct, inferred_orders, decided_by, decided_at)
-      VALUES ($1, $2, $3, COALESCE($4, true), $5, $6, $7, $8, now())
-      ON CONFLICT (sales_rep) DO UPDATE
-        SET branch_code = EXCLUDED.branch_code, note = EXCLUDED.note,
-            is_active = EXCLUDED.is_active, decided_by = EXCLUDED.decided_by,
-            decided_at = now()
-      RETURNING *`,
-      [rep, branch_code || null, note || null,
-       typeof is_active === 'boolean' ? is_active : null,
-       (inferred && inferred.branch) || null, (inferred && inferred.pct) || null,
-       (inferred && inferred.orders) || null, actor]);
+    // Um upsert do PostgREST (Prefer: resolution=merge-duplicates) substitui a
+    // LINHA INTEIRA, e o SQL original de propósito não fazia isso: no conflito
+    // ele mexe em cinco colunas e deixa inferred_branch/pct/orders como
+    // estavam. Sobrescrever apagaria a inferência que a tela mostra ao lado da
+    // decisão humana — justamente o par que permite ver quando discordam.
+    // Por isso: PATCH se já existe, POST se é a primeira vez.
+    const chave = `sales_rep=eq.${encodeURIComponent(rep)}`;
+    const existe = await sbGet(`sales_rep_branch?select=sales_rep&${chave}`, 'rapid_inv');
+    const decisao = {
+      branch_code: branch_code || null,
+      note: note || null,
+      is_active: typeof is_active === 'boolean' ? is_active : true,
+      decided_by: actor,
+      decided_at: new Date().toISOString(),
+    };
+    if (existe.length) {
+      await sbPatch(`sales_rep_branch?${chave}`, 'rapid_inv', decisao);
+    } else {
+      const r = await fetch(`${SB}/rest/v1/sales_rep_branch`, {
+        method: 'POST',
+        headers: sbH('rapid_inv', { Prefer: 'return=minimal' }),
+        body: JSON.stringify(Object.assign({ sales_rep: rep }, decisao, {
+          inferred_branch: (inferred && inferred.branch) || null,
+          inferred_pct: (inferred && inferred.pct) || null,
+          inferred_orders: (inferred && inferred.orders) || null,
+        })),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!r.ok) throw new Error(`Supabase insert ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    }
+    const [row] = await sbGet(`sales_rep_branch?select=*&${chave}`, 'rapid_inv');
     res.json({ ok: true, row });
   }));
 
