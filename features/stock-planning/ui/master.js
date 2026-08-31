@@ -19,7 +19,20 @@
   const n2 = (v) => (v == null || isNaN(v)) ? '' : (Math.round(v * 100) / 100).toLocaleString('en-AU');
   const debounce = (fn, ms = 220) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
-  const S = { q: '', status: '', gap: '', conflict: false, offset: 0, rows: [], total: 0, counts: null };
+  /* PAGE 100 e não 300 com "load more" que empilhava.
+     A lista crescia sem parar — 300, 600, 900 linhas no mesmo DOM — e a tela
+     ficava mais pesada a cada clique justamente quando havia mais para ler.
+     Página de tamanho fixo com ida e volta é o que se usa para conferir dado:
+     você sabe onde está e consegue voltar. */
+  const PAGE = 100;
+  const S = { q: '', status: '', gap: '', conflict: false, page: 0, rows: [], total: 0, counts: null };
+
+  // O rótulo de cada filtro sai do próprio botão do menu: um lugar só para o
+  // texto, senão a barra e o menu passam a chamar a mesma coisa de dois nomes.
+  const rotulo = (gap) => {
+    const b = document.querySelector(`.ms-fi[data-gap="${gap}"]`);
+    return b ? b.dataset.rotulo || b.textContent.replace(/\s*\(\d[\d,]*\)$/, '') : gap;
+  };
 
   /**
    * O coração da tela. Recebe os dois lados e devolve a célula já classificada.
@@ -132,9 +145,9 @@
     $('#msGrid').querySelectorAll('tr.ms-row').forEach((tr) => tr.addEventListener('click', () => openSide(tr.dataset.sku)));
   }
 
-  async function load(more) {
-    S.offset = more ? S.offset + 300 : 0;
-    const qs = new URLSearchParams({ limit: 300, offset: S.offset });
+  async function load(manterPagina) {
+    if (!manterPagina) S.page = 0;
+    const qs = new URLSearchParams({ limit: PAGE, offset: S.page * PAGE });
     if (S.q) qs.set('q', S.q);
     if (S.status) qs.set('status', S.status);
     if (S.gap) qs.set('gap', S.gap);
@@ -142,15 +155,46 @@
     $('#msCount').textContent = 'loading…';
     const d = await fetch(`/api/stock-planning/master-stock?${qs}`).then((r) => r.json());
     if (d.error) { $('#msCount').textContent = d.error; return; }
-    S.rows = more ? S.rows.concat(d.rows) : d.rows;
-    S.total = d.total; S.counts = d.counts;
+    S.rows = d.rows; S.total = d.total; S.counts = d.counts;
     render();
-    $('#msCount').textContent = `${n0(S.rows.length)} of ${n0(d.total)} · ${d.ms} ms`;
-    $('#msMore').style.display = S.rows.length < d.total ? '' : 'none';
+    // Volta ao topo: paginar e continuar no meio da página anterior faz a
+    // pessoa achar que o botão não funcionou.
+    const sc = $('.ms-scroll'); if (sc) sc.scrollTop = 0;
+    const de = S.total ? S.page * PAGE + 1 : 0;
+    const ate = Math.min(S.total, (S.page + 1) * PAGE);
+    $('#msCount').textContent = S.total
+      ? `${n0(de)}–${n0(ate)} of ${n0(S.total)} · ${d.ms} ms`
+      : `nothing matches · ${d.ms} ms`;
+    pintarPaginacao();
     paintChips(d.counts);
+    pintarFiltroAtivo();
     $('#statusDot').className = 'sp-dot fresh';
     $('#statusText').textContent =
       `${n0(d.counts.total)} SKUs · ${n0(d.counts.active)} active · ${n0(d.counts.deprecated)} deprecated · ${n0(d.counts.file_only)} only in the file`;
+  }
+
+  function pintarPaginacao() {
+    const paginas = Math.max(1, Math.ceil(S.total / PAGE));
+    $('#msPage').textContent = S.total ? `page ${n0(S.page + 1)} of ${n0(paginas)}` : '';
+    $('#msPrev').disabled = S.page <= 0;
+    $('#msNext').disabled = S.page + 1 >= paginas;
+    $('.ms-pg').style.visibility = S.total > PAGE ? '' : 'hidden';
+  }
+
+  /* O filtro ligado tem de aparecer FORA do menu. Escondido dentro de um botão
+     ele some da vista, e a pessoa lê "1.230 of 11.259" sem saber por quê —
+     e passa a duvidar do número em vez de duvidar do filtro. */
+  function pintarFiltroAtivo() {
+    const nome = S.conflict ? 'Cin7 and the file differ' : (S.gap ? rotulo(S.gap) : '');
+    const el = $('#msActive');
+    el.innerHTML = nome
+      ? `<button class="ms-act" id="msActiveBtn" title="Click to clear">${esc(nome)} <i>×</i></button>`
+      : '';
+    const b = $('#msActiveBtn');
+    if (b) b.addEventListener('click', () => { S.gap = ''; S.conflict = false; load(); });
+    const n = (S.gap ? 1 : 0) + (S.conflict ? 1 : 0);
+    $('#msFilterN').textContent = n ? ` · ${n}` : '';
+    $('#msFilterBtn').classList.toggle('is-on', n > 0);
   }
 
   // A contagem no chip é o que o torna útil: um filtro que devolve 0 ou tudo
@@ -165,12 +209,21 @@
       disc: c.pol_disc, runout: c.pol_runout, cin7dead: c.pol_cin7dead, cin7live: c.pol_cin7live };
     document.querySelectorAll('[data-gap]').forEach((b) => {
       const n = map[b.dataset.gap];
+      // O rótulo puro fica guardado: a contagem entra no texto e o nome do
+      // filtro precisa continuar recuperável para a marca na barra.
+      if (!b.dataset.rotulo) b.dataset.rotulo = b.textContent.trim();
       // A marca é explícita e não "o texto já tem dígito": o rótulo
-      // "Carton SKU, qty 0" tem um dígito próprio e ficava sem contagem.
-      if (n != null && !b.dataset.counted) { b.dataset.counted = '1'; b.textContent = `${b.textContent} (${n0(n)})`; }
+      // "Carton SKU, quantity 0" tem um dígito próprio e ficava sem contagem.
+      if (n != null) b.innerHTML = `${esc(b.dataset.rotulo)}<b>${n0(n)}</b>`;
       b.classList.toggle('is-on', S.gap === b.dataset.gap);
+      // Um filtro que devolve zero fica visível mas apagado: esconder faria a
+      // pessoa procurar um botão que ela lembra de ter visto.
+      b.classList.toggle('is-zero', n === 0);
     });
-    $('#msConflict').classList.toggle('is-on', S.conflict);
+    const cf = $('#msConflict');
+    if (!cf.dataset.rotulo) cf.dataset.rotulo = cf.textContent.trim();
+    if (c.conflict_n != null) cf.innerHTML = `${esc(cf.dataset.rotulo)}<b>${n0(c.conflict_n)}</b>`;
+    cf.classList.toggle('is-on', S.conflict);
   }
 
   function openSide(key) {
@@ -389,11 +442,29 @@
 
   $('#msQ').addEventListener('input', debounce((e) => { S.q = e.target.value; load(); }));
   $('#msStatus').addEventListener('change', (e) => { S.status = e.target.value; load(); });
-  document.querySelectorAll('[data-gap]').forEach((b) => b.addEventListener('click', () => {
-    S.gap = S.gap === b.dataset.gap ? '' : b.dataset.gap; load();
+
+  const painel = $('#msFilterPanel'), botao = $('#msFilterBtn');
+  const abrir = (v) => { painel.hidden = !v; botao.setAttribute('aria-expanded', String(v)); };
+  botao.addEventListener('click', (e) => { e.stopPropagation(); abrir(painel.hidden); });
+  painel.addEventListener('click', (e) => e.stopPropagation());
+  // Clicar fora fecha, Esc fecha. Um menu que só fecha no próprio botão prende
+  // a tela atrás dele.
+  document.addEventListener('click', () => abrir(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrir(false); });
+
+  document.querySelectorAll('.ms-fi[data-gap]').forEach((b) => b.addEventListener('click', () => {
+    // Um filtro de cada vez, e o conflito é do mesmo conjunto: dois ligados ao
+    // mesmo tempo davam um resultado que ninguém sabia explicar.
+    S.gap = S.gap === b.dataset.gap ? '' : b.dataset.gap;
+    S.conflict = false;
+    abrir(false); load();
   }));
-  $('#msConflict').addEventListener('click', () => { S.conflict = !S.conflict; load(); });
-  $('#msMore').addEventListener('click', () => load(true));
+  $('#msConflict').addEventListener('click', () => {
+    S.conflict = !S.conflict; S.gap = ''; abrir(false); load();
+  });
+  $('#msClear').addEventListener('click', () => { S.gap = ''; S.conflict = false; abrir(false); load(); });
+  $('#msPrev').addEventListener('click', () => { if (S.page > 0) { S.page--; load(true); } });
+  $('#msNext').addEventListener('click', () => { S.page++; load(true); });
   $('#sideClose').addEventListener('click', () => $('#side').classList.remove('is-on'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#side').classList.remove('is-on'); });
 

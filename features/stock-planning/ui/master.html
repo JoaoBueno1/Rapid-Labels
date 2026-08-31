@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=21">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="/features/stock-planning/ui/master.css?v=20260831b">
+<link rel="stylesheet" href="/features/stock-planning/ui/master.css?v=20260831d">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -26,70 +26,93 @@
 
 <main class="sp-main">
 <section class="sp-view is-on">
-  <div class="sp-view-inner">
 
-    <!-- Uma linha só de filtros. Cada chip carrega a CONTAGEM: um filtro sem
-         número obriga a abrir para descobrir se vale a pena. -->
-    <div class="sp-bar ms-bar">
-      <input type="search" id="msQ" placeholder="SKU, 5DC or product name…" style="max-width:280px">
-      <select id="msStatus">
-        <option value="">All statuses</option>
-        <option value="Active">Active</option>
-        <option value="Deprecated">Deprecated</option>
-        <option value="Not in Cin7">Only in the file</option>
-      </select>
-      <span class="rp-sep"></span>
-      <button class="sp-chip" data-gap="dims">Missing size</button>
-      <button class="sp-chip" data-gap="weight">Missing weight</button>
-      <button class="sp-chip" data-gap="carton">Missing carton</button>
-      <button class="sp-chip" data-gap="pallet">Missing pallet</button>
-      <button class="sp-chip" data-gap="pick">Missing pickface</button>
-      <button class="sp-chip" id="msConflict">Sources disagree</button>
-      <span class="rp-sep"></span>
-      <span class="ms-grp">Looks wrong:</span>
-      <button class="sp-chip" data-gap="dimunit">Size in mm</button>
-      <button class="sp-chip" data-gap="stocknodim">Stock, no size</button>
-      <button class="sp-chip" data-gap="packsku">Carton SKU, qty 0</button>
-      <button class="sp-chip" data-gap="locator">Locator not a bin</button>
-      <button class="sp-chip" data-gap="cartonbad">Carton name vs BOM</button>
-      <button class="sp-chip" data-gap="filedim">File size in mm</button>
-      <button class="sp-chip" data-gap="voldefault">Volume is the 48cm default</button>
-      <span class="rp-sep"></span>
-      <button class="sp-chip" data-gap="cube">Cube is trustworthy</button>
-      <span class="rp-sep"></span>
-      <button class="sp-chip" data-gap="bom">Assembled</button>
-      <span class="rp-sep"></span>
-      <!-- A política. Estava só dentro do painel: achar o que alguém já tinha
-           configurado exigia abrir SKU por SKU em 11.259 linhas. -->
-      <span class="ms-grp">How it behaves here:</span>
-      <button class="sp-chip" data-gap="decided">Set by hand</button>
-      <button class="sp-chip" data-gap="disc">Discontinued</button>
-      <button class="sp-chip" data-gap="runout">Run-out</button>
-      <button class="sp-chip" data-gap="nobranch">Not for branches</button>
-      <button class="sp-chip" data-gap="noplan">Not in planning</button>
-      <button class="sp-chip" data-gap="nogw">Not from Gateway</button>
-      <button class="sp-chip" data-gap="cin7dead">Cin7 says dead, we still sell</button>
-      <button class="sp-chip" data-gap="cin7live">We say dead, Cin7 says active</button>
-      <span class="sp-gap"></span>
-      <span class="sp-count" id="msCount"></span>
+  <!-- A barra carrega só o que se usa a cada minuto: buscar, escolher o que o
+       Cin7 diz, e abrir os filtros. O resto morava aqui em 15 botões e virava
+       parede — quem procura um SKU não estava procurando "Volume is the 48cm
+       default". -->
+  <div class="sp-bar ms-bar">
+    <input type="search" id="msQ" placeholder="SKU, 5DC or product name…" style="max-width:280px">
+    <select id="msStatus">
+      <option value="">All statuses</option>
+      <option value="Active">Active</option>
+      <option value="Deprecated">Deprecated</option>
+      <option value="Not in Cin7">Only in the file</option>
+    </select>
+    <div class="ms-fw">
+      <button class="sp-btn" id="msFilterBtn" aria-expanded="false">Filters<span id="msFilterN"></span></button>
+
+      <!-- Um menu, agrupado pelo que a pessoa está tentando fazer. Cada linha
+           traz a contagem: filtro sem número obriga a abrir para descobrir se
+           vale. -->
+      <div class="ms-fp" id="msFilterPanel" hidden>
+        <div class="ms-fp-hd">
+          <span>One at a time. Click the active one to clear it.</span>
+          <button class="ui-act" id="msClear">Clear</button>
+        </div>
+
+        <div class="ms-fp-g">Missing data</div>
+        <button class="ms-fi" data-gap="dims">No size</button>
+        <button class="ms-fi" data-gap="weight">No weight</button>
+        <button class="ms-fi" data-gap="carton">No carton quantity</button>
+        <button class="ms-fi" data-gap="pallet">No pallet quantity</button>
+        <button class="ms-fi" data-gap="pick">No pickface</button>
+
+        <div class="ms-fp-g">Sources disagree</div>
+        <button class="ms-fi" id="msConflict">Cin7 and the file differ</button>
+
+        <div class="ms-fp-g">Looks wrong — to clean up, nothing is hidden</div>
+        <button class="ms-fi" data-gap="dimunit">Size in mm</button>
+        <button class="ms-fi" data-gap="stocknodim">Has stock, no size</button>
+        <button class="ms-fi" data-gap="packsku">Carton SKU, quantity 0</button>
+        <button class="ms-fi" data-gap="locator">Locator is not a bin</button>
+        <button class="ms-fi" data-gap="cartonbad">Carton name vs BOM</button>
+        <button class="ms-fi" data-gap="filedim">File size in mm</button>
+        <button class="ms-fi" data-gap="voldefault">Volume is the 48cm default</button>
+
+        <div class="ms-fp-g">How it behaves in our tools</div>
+        <button class="ms-fi" data-gap="decided">Set by hand here</button>
+        <button class="ms-fi" data-gap="disc">Discontinued</button>
+        <button class="ms-fi" data-gap="runout">Run-out</button>
+        <button class="ms-fi" data-gap="nobranch">Not for branches</button>
+        <button class="ms-fi" data-gap="noplan">Not in planning</button>
+        <button class="ms-fi" data-gap="nogw">Not from Gateway</button>
+
+        <div class="ms-fp-g">Disagrees with Cin7 — to look at together</div>
+        <button class="ms-fi" data-gap="cin7dead">Cin7 says Deprecated, we still sell it</button>
+        <button class="ms-fi" data-gap="cin7live">We call it dead, Cin7 says Active</button>
+
+        <div class="ms-fp-g">Other</div>
+        <button class="ms-fi" data-gap="bom">Assembled (has a BOM)</button>
+        <button class="ms-fi" data-gap="cube">Cube is trustworthy</button>
+      </div>
     </div>
 
-    <!-- A legenda fica ACIMA da tabela e não num rodapé: sem ela as cores são
-         enfeite, e o ponto inteiro desta tela é saber de onde veio cada número. -->
-    <div class="ms-legend">
-      <span><i class="k k-cin7"></i>only in Cin7</span>
-      <span><i class="k k-file"></i>only in the product file</span>
-      <span><i class="k k-rst"></i>only in Re-Stock</span>
-      <span><i class="k k-conf"></i>both have it and they disagree — both values shown</span>
-      <span class="ms-plain">no colour = the sources agree</span>
-      <span class="ms-plain">· the <b>Looks wrong</b> filters flag data to clean later — nothing is corrected or hidden</span>
-    </div>
+    <!-- O filtro ligado sai do menu e vem para a barra: filtro escondido é
+         filtro esquecido, e a pessoa passa a duvidar do número na tela. -->
+    <span id="msActive"></span>
 
-    <div class="sp-scroll ms-scroll"><table class="sp-grid ms-grid" id="msGrid"></table></div>
+    <span class="sp-gap"></span>
+    <span class="sp-count" id="msCount"></span>
+  </div>
 
-    <div class="sp-foot">
-      <span id="msFoot"></span><span class="sp-gap"></span>
-      <button class="sp-btn is-ghost" id="msMore" style="display:none">Load more</button>
+  <div class="ms-legend">
+    <span><i class="k k-cin7">12.5</i>only in Cin7</span>
+    <span><i class="k k-file">12.5</i>only in the product file</span>
+    <span><i class="k k-rst">12.5</i>only in Re-Stock</span>
+    <span><i class="k k-conf">12.5 · 7</i>they disagree — both values, each with its source</span>
+    <span class="ms-plain">no colour = the sources agree</span>
+  </div>
+
+  <div class="sp-scroll ms-scroll"><table class="sp-grid ms-grid" id="msGrid"></table></div>
+
+  <div class="sp-foot">
+    <span class="ms-hint">Click a row to open it — that is where you set how the SKU behaves in our tools.</span>
+    <span class="sp-gap"></span>
+    <div class="ms-pg">
+      <button class="sp-btn is-ghost" id="msPrev">‹ Prev</button>
+      <span id="msPage"></span>
+      <button class="sp-btn is-ghost" id="msNext">Next ›</button>
     </div>
   </div>
 </section>
@@ -101,6 +124,6 @@
 </aside>
 
 <div class="sp-toast" id="toast"></div>
-<script src="/features/stock-planning/ui/master.js?v=20260831b"></script>
+<script src="/features/stock-planning/ui/master.js?v=20260831c"></script>
 </body>
 </html>

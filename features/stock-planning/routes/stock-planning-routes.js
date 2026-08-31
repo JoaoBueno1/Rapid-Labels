@@ -885,7 +885,15 @@ function register(app) {
                      count(*) FILTER (WHERE lifecycle_status = 'DISCONTINUED')::int pol_disc,
                      count(*) FILTER (WHERE lifecycle_status = 'RUN_OUT')::int pol_runout,
                      count(*) FILTER (WHERE cin7_dead_we_alive)::int pol_cin7dead,
-                     count(*) FILTER (WHERE cin7_alive_we_dead)::int pol_cin7live
+                     count(*) FILTER (WHERE cin7_alive_we_dead)::int pol_cin7live,
+                     -- O "as fontes discordam" é o único filtro sem contagem
+                     -- no menu, e filtro sem número obriga a abrir para saber
+                     -- se vale. Mesma expressão do WHERE, ou os dois mentem.
+                     count(*) FILTER (WHERE
+                       (cin7_length IS NOT NULL AND file_length IS NOT NULL AND abs(cin7_length - file_length) / greatest(cin7_length, 1) > 0.02)
+                    OR (cin7_cost   IS NOT NULL AND file_cost   IS NOT NULL AND abs(cin7_cost - file_cost) / greatest(cin7_cost, 0.01) > 0.05)
+                    OR (cin7_pick   IS NOT NULL AND file_pick   IS NOT NULL AND upper(btrim(cin7_pick)) <> upper(btrim(file_pick)))
+                    OR (cin7_carton IS NOT NULL AND file_carton IS NOT NULL AND cin7_carton <> file_carton))::int conflict_n
                 FROM rapid_inv.v_master_stock`),
     ]);
     res.json({ rows, total: tot.n, counts, limit, offset, ms: Date.now() - t0 });
