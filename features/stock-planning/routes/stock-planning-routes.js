@@ -976,6 +976,7 @@ function register(app) {
     if (!supplier) return res.status(400).json({ error: 'supplier is required' });
     if (!lines.length) return res.status(400).json({ error: 'send at least one line' });
     const actor = actorOf(req);
+    if (db.mode() === 'rpc') return res.status(501).json({ error: 'Escrita com transação ainda não habilitada no transporte por service key — rode a migration 029 (função rapid_inv dedicada). Máquinas com SUPABASE_DB_PASSWORD já fazem esta ação.' });
     const out = await db.tx(async (c) => {
       const cart = await cartOf(c, supplier, actor, req.body.scope);
       const feitas = [];
@@ -1091,6 +1092,7 @@ function register(app) {
     const PREFIXO = 'TEST-CART-';
     if (String(req.body.prefix || '') !== PREFIXO)
       return res.status(400).json({ error: 'this endpoint only removes the end-to-end test fixtures' });
+    if (db.mode() === 'rpc') return res.status(501).json({ error: 'Escrita com transação ainda não habilitada no transporte por service key — rode a migration 029.' });
     const out = await db.tx(async (c) => {
       const a = await c.query(`DELETE FROM rapid_inv.po_lines WHERE po_number LIKE $1 RETURNING id`, [PREFIXO + '%']);
       const b = await c.query(`DELETE FROM rapid_inv.buy_cart WHERE supplier_code = 'TESTE' RETURNING id`);
@@ -1610,6 +1612,7 @@ function register(app) {
       `SELECT * FROM cin7_mirror.sale_lines WHERE order_number = $1 ORDER BY line_no`, [number]);
     if (!lines.length) return res.status(404).json({ error: `sem linhas sincronizadas para ${number}` });
 
+    if (db.mode() === 'rpc') return res.status(501).json({ error: 'Import de pedido ainda não habilitado no transporte por service key — rode a migration 029 (função rapid_inv dedicada). Máquinas com SUPABASE_DB_PASSWORD já fazem esta ação.' });
     try {
       const out = await db.tx(async (c) => {
         const project = (await c.query(

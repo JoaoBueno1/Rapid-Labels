@@ -442,18 +442,21 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
        Registrar assim mesmo é certo (a tela explica o erro por requisição),
        mas o boot tem de dizer o que vai acontecer. */
     const spdb = require('./features/stock-planning/lib/sp-db');
-    if (!spdb.temCredencial()) {
+    const spMode = spdb.mode();
+    if (spMode === 'none') {
       console.warn('');
       console.warn('  ┌───────────────────────────────────────────────────────────────┐');
       console.warn('  │  SEM CREDENCIAL DE BANCO — Inventory Management não vai abrir │');
       console.warn('  └───────────────────────────────────────────────────────────────┘');
       console.warn('  Sem estas telas: Stock Planning · Projects · Purchase Orders ·');
       console.warn('  Master Stock · Monthly Review. Elas carregam e ficam vazias.');
-      console.warn('  (Branch Replenishment funciona: ele lê por RPC e não usa senha.)');
       console.warn('');
-      console.warn('  Falta no .env: SUPABASE_DB_PASSWORD junto de SUPABASE_URL,');
-      console.warn('  ou SUPABASE_DB_URL sozinho. Copie de outra máquina que funcione.');
+      console.warn('  Falta no .env: SUPABASE_URL + SUPABASE_SERVICE_KEY (transporte por');
+      console.warn('  service key, sem senha), ou SUPABASE_DB_PASSWORD/SUPABASE_DB_URL (pg direto).');
       console.warn('');
+    } else if (spMode === 'rpc') {
+      console.log('  Inventory Management: transporte por service key (sem senha do banco).');
+      console.log('  Requer a migration features/stock-planning/db/028_sp_exec.sql aplicada no banco.');
     }
     require('./features/stock-planning/routes/stock-planning-routes').register(app);
     app.use('/planning', express.static(path.join(__dirname, 'features/stock-planning/ui'), { index: 'planning.html' }));
