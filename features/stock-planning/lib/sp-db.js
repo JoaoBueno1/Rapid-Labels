@@ -90,4 +90,16 @@ async function close() {
   if (pool) { await pool.end(); pool = null; }
 }
 
-module.exports = { getPool, query, one, tx, close };
+/* Tem credencial? Sem conectar, só olhando o ambiente.
+ *
+ * Existe por causa de 31/08: numa máquina sem SUPABASE_DB_PASSWORD, TODAS as
+ * telas de Inventory Management pararam de funcionar — e o servidor subiu
+ * imprimindo "✅ Stock Planning routes montadas". A marca verde no boot fez o
+ * problema parecer regressão de código do fim de semana, e a investigação
+ * começou pelo lugar errado.
+ *
+ * Uma falha de configuração precisa se anunciar no boot, não no primeiro
+ * clique de quem foi usar a tela. */
+function temCredencial() { return config() !== null; }
+
+module.exports = { getPool, query, one, tx, close, temCredencial };

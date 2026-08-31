@@ -418,6 +418,26 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
 // Ligado por padrão desde que entrou no menu lateral; STOCK_PLANNING_ENABLED=0 desliga.
 if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   try {
+    /* O aviso ANTES do registro, não depois.
+       Em 31/08 uma máquina sem SUPABASE_DB_PASSWORD viu todas as telas de
+       Inventory Management vazias, enquanto o boot dizia "✅ montadas". As
+       rotas estavam montadas mesmo — o que faltava era com o que responder.
+       Registrar assim mesmo é certo (a tela explica o erro por requisição),
+       mas o boot tem de dizer o que vai acontecer. */
+    const spdb = require('./features/stock-planning/lib/sp-db');
+    if (!spdb.temCredencial()) {
+      console.warn('');
+      console.warn('  ┌───────────────────────────────────────────────────────────────┐');
+      console.warn('  │  SEM CREDENCIAL DE BANCO — Inventory Management não vai abrir │');
+      console.warn('  └───────────────────────────────────────────────────────────────┘');
+      console.warn('  Sem estas telas: Stock Planning · Projects · Purchase Orders ·');
+      console.warn('  Master Stock · Monthly Review. Elas carregam e ficam vazias.');
+      console.warn('  (Branch Replenishment funciona: ele lê por RPC e não usa senha.)');
+      console.warn('');
+      console.warn('  Falta no .env: SUPABASE_DB_PASSWORD junto de SUPABASE_URL,');
+      console.warn('  ou SUPABASE_DB_URL sozinho. Copie de outra máquina que funcione.');
+      console.warn('');
+    }
     require('./features/stock-planning/routes/stock-planning-routes').register(app);
     app.use('/planning', express.static(path.join(__dirname, 'features/stock-planning/ui'), { index: 'planning.html' }));
     // Projects e Purchase Orders saíram de dentro do Stock Planning para
