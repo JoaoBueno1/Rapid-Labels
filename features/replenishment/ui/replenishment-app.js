@@ -143,6 +143,9 @@
     sort: { key: null, dir: 1 }, search: '', vis: { weekly: null, daily: null }, sideSku: null,
     // Divergências entre a leitura emendada e o total que o servidor informa.
     emenda: [],
+    // A régua viva de TODAS as filiais, por código. S.repAvg é a janela para a
+    // filial aberta; os cartões da tela inicial precisam das sete.
+    avgLive: {}, avgLiveInfo: {},
   };
   const BRANCHES = (RC && RC.BRANCHES) || [];   // guarded: init() shows a status if the engine is missing
   const DEPOTS = (RC && RC.DEPOTS) || [];       // Main e Project: origem, não destino
@@ -216,40 +219,64 @@
   // quando a filial está sem estoque o pedido despacha do Main e a venda some
   // da conta dela. Em Brisbane isso é +175%, e 635 SKUs vendem pelo rep com
   // ZERO pelo local: a média por local diz "não vende" e o motor nem sugere.
-  async function loadRepAvg() {
-    S.repAvg = {}; S.repAvgInfo = null;
-    if (!S.branch) return;
-    try {
-      /* depotOf e não S.branch.name: o nome de exibição de Sunshine Coast é
-         "Sunshine Coast" e o depósito no Cin7 é "Sunshine Coast Warehouse".
-         Mandando o nome de exibição, loc_avg voltava ZERO para os 914 SKUs
-         dessa filial — e zero na régua do local é "não vende", que é o
-         contrário de 13.845 unidades/mês. */
-      const qs = new URLSearchParams({ branch: S.branch.code, location: depotOf(S.branch.code), months: SET.salesMonths || 6 });
-      const d = await fetch(`/api/replenishment/branch-averages?${qs}`).then(r => r.json());
-      if (d.error) throw new Error(d.error);
-      d.rows.forEach(r => { S.repAvg[r.sku_key] = r; });
-      S.repAvgInfo = { months: d.months, reps: d.reps || [], count: d.rep_count,
-                       breakdown: d.rep_breakdown || [], orphans: d.orphans || [],
-                       totals: d.totals || null, location: d.location };
-      S.repAvgErro = null;
-    } catch (e) {
-      /* Falhar aqui NÃO pode ser silencioso.
-         O catch vazio de antes deixava S.repAvg = {} e a tela seguia com a
-         régua do local, sem um sinal. Medido em Sydney: o padrão cai de 56
-         para 11 linhas e o modo rep vai a ZERO — e parece que "não há o que
-         repor". Foi assim que a falta de senha de banco numa máquina passou
-         por regressão de código. */
-      S.repAvgErro = e.message;
-      console.error('[replenishment] a régua do rep não carregou:', e.message);
+  /* A régua viva de UMA filial. `depotOf` e não `S.branch.name`: o nome de
+     exibição de Sunshine Coast é "Sunshine Coast" e o depósito no Cin7 é
+     "Sunshine Coast Warehouse" — mandando o de exibição, loc_avg voltava ZERO
+     para os 914 SKUs dela, e zero em régua de demanda é "não vende". */
+  async function fetchBranchAvg(code) {
+    const qs = new URLSearchParams({ branch: code, location: depotOf(code), months: SET.salesMonths || 6 });
+    const d = await fetch(`/api/replenishment/branch-averages?${qs}`).then(r => r.json());
+    if (d.error) throw new Error(d.error);
+    const porSku = {};
+    d.rows.forEach(r => { porSku[r.sku_key] = r; });
+    return { porSku, info: { months: d.months, reps: d.reps || [], count: d.rep_count,
+                             breakdown: d.rep_breakdown || [], orphans: d.orphans || [],
+                             totals: d.totals || null, location: d.location } };
+  }
+
+  /* AS SETE FILIAIS, não só a aberta.
+     Os cartões da tela inicial calculam a sugestão de CADA filial trocando
+     S.branch e chamando o mesmo motor. Carregando a régua só da filial aberta,
+     na tela inicial não há filial aberta nenhuma — e os sete cartões
+     mostravam ZERO. Zero ali é "está tudo abastecido", que é a leitura mais
+     cara possível de um erro de carregamento.
+     Sete chamadas em paralelo ao nosso próprio servidor; a página já traz
+     15.301 linhas de estoque e 11.259 produtos. */
+  async function loadRepAvg(codes) {
+    const alvos = codes && codes.length ? codes : BRANCHES.map(b => b.code);
+    const res = await Promise.all(alvos.map(async (code) => {
+      try { return { code, ...(await fetchBranchAvg(code)) }; }
+      catch (e) { return { code, erro: e.message }; }
+    }));
+    const falhou = [];
+    for (const r of res) {
+      if (r.erro) { falhou.push(`${r.code}: ${r.erro}`); S.avgLive[r.code] = {}; S.avgLiveInfo[r.code] = null; continue; }
+      S.avgLive[r.code] = r.porSku; S.avgLiveInfo[r.code] = r.info;
     }
+    /* Falhar aqui NÃO pode ser silencioso.
+       O catch vazio de antes deixava a régua vazia e a tela seguia sem sinal.
+       Medido em Sydney: o padrão cai de 56 para 11 linhas e o modo rep vai a
+       ZERO — e parece que "não há o que repor". Foi assim que a falta de
+       variável de ambiente numa máquina passou por regressão de código. */
+    S.repAvgErro = falhou.length ? falhou.join(' · ') : null;
+    if (falhou.length) console.error('[replenishment] régua não carregou:', S.repAvgErro);
+    apontarRegua();
+  }
+
+  // S.repAvg / S.repAvgInfo são a janela para a filial ABERTA. O resto do
+  // código continua lendo por esses nomes; quem troca de filial troca a janela.
+  function apontarRegua() {
+    const c = S.branch && S.branch.code;
+    S.repAvg = (c && S.avgLive[c]) || {};
+    S.repAvgInfo = (c && S.avgLiveInfo[c]) || null;
   }
 
   // Recarregar a régua não basta: as linhas já na tela foram construídas com o
   // valor antigo, e enterGrid() só redesenha o que elas têm. Sem costurar, a
   // segunda leitura do Cover não aparecia ao trocar a regra no Settings.
   async function refreshRepAvg() {
-    await loadRepAvg();
+    // Só a filial aberta: trocar a janela de meses não precisa rebuscar as sete.
+    await loadRepAvg(S.branch ? [S.branch.code] : null);
     S.lines.forEach(l => {
       const r = S.repAvg[String(l.code).toUpperCase()];
       l.repAvg = r ? r.rep_avg : null; l.locAvg = r ? r.loc_avg : null; l.repCount = r ? r.reps : 0;
@@ -350,7 +377,9 @@
        dado. A régua padrão continua sendo a da filial — só que certa.
        O valor da tabela antiga segue disponível como `tableAvg`, para o painel
        poder mostrar a diferença em vez de escondê-la. */
-    const viva = S.repAvg[k] || null;
+    // Pela filial do argumento e não pela aberta: branchSuggestedCount troca
+    // S.branch para contar cada cartão, e ler S.repAvg daria a régua errada.
+    const viva = (S.avgLive[branch.code] || {})[k] || null;
     const tableAvg = avgRow ? pickAvg(avgRow, branch) : 0;
     const stored = viva ? Number(viva.loc_avg || 0) : 0;
     const fromRep = viva ? Number(viva.rep_avg || 0) : 0;
@@ -626,7 +655,8 @@
 
   function openBranch(code) {
     const branch = BRANCHES.find(b => b.code === code); if (!branch) return;
-    S.branch = branch; S.sort = { key: null, dir: 1 }; S.search = ''; $('gridSearch').value = '';
+    S.branch = branch; apontarRegua();
+    S.sort = { key: null, dir: 1 }; S.search = ''; $('gridSearch').value = '';
     S.vis.weekly = loadVis('weekly'); S.vis.daily = loadVis('daily');
     $('branchLanding').style.display = 'none'; $('branchGrid').style.display = '';
     $('gridTitle').textContent = branch.name;
@@ -1889,7 +1919,12 @@ The branch column is the decision that was recorded; the columns after it are wh
     try { if (window.supabaseReady) await window.supabaseReady; } catch (_) {}
     if (!sb() || !RC) { setStatus('bad', 'Supabase or engine not available'); return; }
     wire();
-    try { await loadBase(); renderLanding(); }
+    /* A régua das sete filiais entra ANTES do primeiro desenho.
+       Os cartões da tela inicial calculam a sugestão de cada filial com o
+       mesmo motor da grade — sem a régua carregada eles somam zero, e zero ali
+       lê-se "está tudo abastecido". É a leitura mais cara possível de um dado
+       que ainda não chegou. */
+    try { await loadBase(); await loadRepAvg(); renderLanding(); }
     catch (e) { console.error(e); setStatus('bad', 'Load failed: ' + e.message); toast('Load failed: ' + e.message, true); }
   })();
 })();
