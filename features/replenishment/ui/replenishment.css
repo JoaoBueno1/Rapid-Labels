@@ -23,16 +23,17 @@
    linha grande: quantidade de SKU sob a regra do Settings. Duas grandezas
    empilhadas (SKU e unidades/mês) faziam o olho comparar o que não se compara.
    A que está mandando na sugestão ganha o fundo. */
-.rp-tk { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line); }
-.rp-tk-r { display: flex; align-items: baseline; gap: 8px; padding: 2px 6px; border-radius: 5px; }
-.rp-tk-r span { font: 400 11.5px var(--sans); color: var(--mut-2); flex: 1; }
-.sp-tile .rp-tk-r b { font: 700 13px/1 var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.rp-tk { margin-top: 7px; }
+.rp-tk-r { display: flex; align-items: baseline; gap: 8px; padding: 1px 6px; border-radius: 5px; }
+.rp-tk-r span { font: 600 12px var(--sans); color: var(--mut-2); flex: 1; }
+.sp-tile .rp-tk-r b { display: block; font: 700 24px/1.15 var(--sans); letter-spacing: -.02em;
+  color: var(--ink); font-variant-numeric: tabular-nums; }
 .rp-tk-r.is-driver { background: var(--acc-soft); }
 .sp-tile .rp-tk-r.is-driver span, .sp-tile .rp-tk-r.is-driver b { color: var(--acc-d); }
 
 /* A lista de reps é só a lista. Quem é desta filial, e nada mais — o quanto
    cada um vendeu não muda decisão aqui, e vive no painel de dentro. */
-.rp-tk-reps { margin-top: 6px; font: 400 11px/1.45 var(--sans); color: var(--mut-3); }
+.rp-tk-reps { margin-top: 7px; font: 400 11px/1.45 var(--sans); color: var(--mut-3); }
 
 /* Zero é o estado saudável. Quando aparece, é venda fora de toda régua. */
 .rp-tk-orphan { margin-top: 5px; font: 700 9.5px var(--sans); color: #92400E;

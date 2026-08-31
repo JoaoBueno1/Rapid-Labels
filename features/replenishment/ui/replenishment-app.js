@@ -511,8 +511,6 @@
        E os nomes têm um segundo trabalho: rep novo que ninguém alocou some da
        régua da filial em silêncio. Vendo a lista, você percebe e aloca. */
     $('branchTiles').innerHTML = BRANCHES.map(b => {
-      const sug = S.loaded ? branchSuggestedCount(b.code) : 0;
-      const cls = sug > 40 ? 'bad' : sug > 15 ? 'warn' : 'good';
       const inf = S.avgLiveInfo[b.code];
       const usaRep = SET.demand === 'rep' || SET.demand === 'rep_then_branch';
       // A MESMA unidade da linha de cima: quantidade de SKU sob a regra do
@@ -520,23 +518,27 @@
       // grandezas empilhadas fazem o olho comparar o que não se compara.
       const nBranch = S.loaded ? branchCountFor(b.code, 'branch') : 0;
       const nRep = S.loaded ? branchCountFor(b.code, 'rep') : 0;
+      // A cor do cartão segue a régua que está mandando: era o número da regra
+      // configurada que a definia, e ele saiu.
+      const nDriver = usaRep ? nRep : nBranch;
       // Só os nomes. O quanto cada rep vendeu não muda decisão nenhuma nesta
       // tela — o que ela responde é "quem é desta filial" e "está faltando
       // alguém". Número por rep vive no painel de dentro.
       const nomes = ((inf && inf.breakdown) || []).map(r => r.sales_rep);
+      const cls = nDriver > 40 ? 'bad' : nDriver > 15 ? 'warn' : 'good';
       const reguas = inf ? `
         <div class="rp-tk">
           <div class="rp-tk-r${usaRep ? '' : ' is-driver'}"><span>Branch</span><b>${n0(nBranch)}</b></div>
           <div class="rp-tk-r${usaRep ? ' is-driver' : ''}"><span>Reps</span><b>${n0(nRep)}</b></div>
+          <div class="rp-tile-sub">SKUs to restock (cover &lt; ${SET.cutDays}d)</div>
           ${nomes.length ? `<div class="rp-tk-reps">${esc(nomes.join(', '))}</div>` : ''}
           ${(inf.orphans || []).length ? `<div class="rp-tk-orphan" title="${
             esc(inf.orphans.map(o => o.sales_rep).join(', '))}">${n0(inf.orphans.length)} rep(s) with no branch</div>` : ''}
         </div>` : (S.repAvgErro ? '<div class="rp-tk rp-tk-bad">demand did not load</div>' : '');
       return `<div class="sp-tile ${cls}" data-code="${b.code}" role="button" tabindex="0">
-        <span>${esc(b.name)}</span><b>${sug}</b>
-        <div class="rp-tile-sub">SKUs to restock (cover &lt; ${SET.cutDays}d)</div>
-        ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}
-        ${reguas}</div>`;
+        <span>${esc(b.name)}</span>
+        ${reguas}
+        ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}</div>`;
     }).join('');
     $('landingNote').textContent = `${BRANCHES.length} branches · engine target ${SET.abc ? 'ABC (A10·B8·C6 wk)' : SET.weeks + ' wk'}`;
     renderBoard();
