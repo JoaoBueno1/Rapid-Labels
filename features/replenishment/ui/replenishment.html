@@ -64,18 +64,13 @@
       <input type="search" id="gridSearch" placeholder="Find on sheet…" style="max-width:190px">
       <button class="sp-btn is-primary" id="btnLoadSuggest">Load suggested</button>
       <button class="sp-btn is-ghost" id="btnCols" title="Choose columns" style="font-size:13px">Columns</button>
+      <button class="sp-btn is-ghost" id="btnExport" title="Export CSV (Cin7 format): SKU · Name · Quantity · Comments" style="font-size:13px">Export CSV</button>
       <button class="sp-btn is-ghost" id="btnReset" title="Start this plan over" style="font-size:13px">Start over</button>
     </div>
 
     <!-- stage / timeline -->
     <div class="rp-note" id="rpDailyNote" style="display:none"></div>
       <div class="rp-stage" id="rpStage"></div>
-
-    <!-- As DUAS RÉGUAS, uma embaixo da outra. Em cima a da filial, que é a que
-         manda; embaixo a dos reps dela, com os nomes. Os nomes existem para
-         duas coisas: conferir o número (uma soma sem parcelas não se confere)
-         e enxergar quem está faltando na alocação. -->
-    <div class="rp-rulers" id="rpRulers" style="display:none"></div>
 
     <!-- the working grid (weekly / daily) -->
     <div class="sp-scroll rp-scroll" id="rpScroll"><table class="sp-grid rp-grid" id="rpGrid"></table></div>
@@ -175,38 +170,17 @@
 
       <div class="rp-set">
         <div class="rp-set-h">Demand</div>
-        <div class="sp-row2">
-          <label class="sp-field"><span>Sales window</span>
-            <select id="setSalesMonths">
-              <option value="3">Last 3 months</option>
-              <option value="6">Last 6 months</option>
-              <option value="12">Last 12 months</option>
-            </select>
-            <small>Every number on the sheet is read over this window — the average, the cover, and the suggestion.
-              Sales swing about 2&times; across the year, so this alone moves the average by up to 47%.</small>
-          </label>
-          <!-- Eram cinco opções, e duas delas só decidiam o que MOSTRAR.
-               Agora a planilha mostra as duas médias sempre, lado a lado, e
-               este seletor faz uma coisa só: escolhe qual delas vira a
-               quantidade sugerida. -->
-          <label class="sp-field"><span>Which average the suggestion uses</span>
-            <select id="setDemand">
-              <option value="branch_then_rep">Branch, fall back to reps</option>
-              <option value="branch">Branch shipments</option>
-              <option value="rep">This branch's reps</option>
-            </select>
-            <small>Both averages are always on the sheet, in their own columns — this only picks the one that
-              becomes a suggested quantity. <b>Branch</b> is what shipped out of this branch's own depot.
-              <b>Reps</b> is what the branch's sales reps sold, wherever it shipped from: when a branch runs out,
-              the order goes from Main and the sale leaves the branch's count. Measured over 6 months:
-              Brisbane +175%, Sydney +80%, Sunshine +50%; Cairns, Coffs and Hobart barely move, because Main is
-              too far to cover for them.<br>
-              The fall-back matters: in 1,891 of 6,861 branch-SKU pairs only the reps sold it, so
-              <b>branch only</b> would suggest nothing for those. The reverse case is just 202 pairs, which is why
-              "reps, fall back to branch" is gone — it differed from <b>reps</b> in 3% of rows and cost a fourth
-              option to read.</small>
-          </label>
-        </div>
+        <label class="sp-field"><span>Sales window</span>
+          <select id="setSalesMonths">
+            <option value="3">Last 3 months</option>
+            <option value="6">Last 6 months</option>
+            <option value="12">Last 12 months</option>
+          </select>
+          <small>Every number on the sheet is read over this window — the average, the cover, and the suggestion.
+            Sales swing about 2&times; across the year, so this alone moves the average by up to 47%.<br>
+            <b>Which average</b> (branch shipments vs the branch's reps) is chosen right in the
+            <b>Load suggested</b> dialog — with the line/unit count of each option in front of you — not here.</small>
+        </label>
         <label class="rp-check"><input type="checkbox" id="setCartons"> Round suggested QTY up to full cartons</label>
       </div>
 
@@ -247,6 +221,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js?v=20260831"></script>
-<script src="replenishment-app.js?v=20260831p"></script>
+<script src="replenishment-app.js?v=20260901a"></script>
 </body>
 </html>

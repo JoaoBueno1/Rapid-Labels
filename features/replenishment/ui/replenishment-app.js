@@ -734,6 +734,7 @@
     const draft = S.stage === 'draft';
     $('gridSearch').style.display = gridding ? '' : 'none';
     $('btnCols').style.display = gridding ? '' : 'none';
+    $('btnExport').style.display = gridding ? '' : 'none';
     $('btnReset').style.display = gridding ? '' : 'none';
     const showLoad = S.view === 'weekly' && draft;
     $('btnLoadSuggest').style.display = showLoad ? '' : 'none';
@@ -1933,6 +1934,27 @@ The branch column is the decision that was recorded; the columns after it are wh
     if (v === 'branches') closeSide();
     if (v === 'averages') { renderAverages(); closeSide(); }
   }
+  // ── CSV export (formato do Cin7: SKU · Name · Quantity · Comments) ────
+  // SKU = Rapid Code · Name = Product · Quantity = Branch Ask · Comments = stock locator.
+  // Só as linhas com Branch Ask > 0: é arquivo de pedido, linha sem quantidade não entra.
+  function exportCSV() {
+    const rows = (S.lines || []).filter(l => clampInt(l.ask) > 0);
+    if (!rows.length) { toast('Nada para exportar — preencha o Branch Ask', true); return; }
+    const q = v => { const s = String(v == null ? '' : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const out = [['SKU', 'Name', 'Quantity', 'Comments'].join(',')]
+      .concat(rows.map(l => [q(l.code), q(l.name), clampInt(l.ask), q(l.loc || '')].join(',')));
+    const csv = out.join('\r\n') + '\r\n';   // vírgula + CRLF, aspas só quando precisa — como o CSV do Cin7
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const d = new Date(), p2 = n => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `branch_replenishment_${(S.branch && S.branch.code) || 'branch'}_${stamp}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`Exportado: ${rows.length} linha${rows.length === 1 ? '' : 's'}`);
+  }
+
   function wire() {
     document.querySelectorAll('.sp-tab').forEach(b => b.addEventListener('click', () => showTop(b.dataset.view)));
     $('btnBack').addEventListener('click', renderLanding);
@@ -1940,6 +1962,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     $('btnSettings').addEventListener('click', openSettings);
     $('btnLoadSuggest').addEventListener('click', openLoadModal);
     $('btnCols').addEventListener('click', openCols);
+    $('btnExport').addEventListener('click', exportCSV);
     $('btnReset').addEventListener('click', startOver);
     $('loadConfirm').addEventListener('click', doLoad);
     $('sideClose').addEventListener('click', closeSide);
