@@ -1392,8 +1392,22 @@
       </div></div>
       <div class="sp-panel"><h4>Comment</h4><div class="in">
         <textarea class="rp-side-txt" id="sideComment" ${S.stage === 'approved' ? 'disabled' : ''} placeholder="note for this line…">${esc(line.comment || '')}</textarea>
+      </div></div>
+      <div class="sp-panel"><h4>Master Stock policy <span>this SKU · saves &amp; audits in Master Stock</span></h4><div class="in">
+        <label class="rp-pol"><input type="checkbox" id="polRepl"${S.blocked.has(sku) ? '' : ' checked'}> <span>Include this SKU in Branch Replenishment</span></label>
+        <textarea class="rp-side-txt" id="polNote" placeholder="Reason it is blocked here (shows in Master Stock)…">${esc(S.blockedNote[sku] || '')}</textarea>
+        <div class="rp-pol-row"><button class="sp-btn is-primary" id="polSave" disabled>Save to Master Stock</button><span class="rp-sub" id="polMsg"></span></div>
       </div></div>`;
     const ta = $('sideComment'); if (ta) ta.addEventListener('input', () => { line.comment = ta.value; const inp = document.querySelector(`#rpGrid tr[data-code="${cssEsc(line.code)}"] input[data-k="comment"]`); if (inp) inp.value = ta.value; }); if (ta) ta.addEventListener('change', saveDraft);
+    // Política do Master Stock, deste SKU só. Save habilita quando muda; grava via a
+    // API do stock-planning (persiste em sku_settings + trigger de auditoria).
+    const chk = $('polRepl'), pnote = $('polNote'), psave = $('polSave'), pmsg = $('polMsg');
+    if (psave && chk) {
+      const orig = { on: !S.blocked.has(sku), note: S.blockedNote[sku] || '' };
+      const refl = () => { psave.disabled = (chk.checked === orig.on) && ((pnote.value || '') === orig.note); };
+      chk.addEventListener('change', refl); pnote.addEventListener('input', refl);
+      psave.addEventListener('click', () => savePolicy(sku, chk.checked, pnote.value || '', psave, pmsg, orig, refl));
+    }
     $('side').classList.add('is-on');
     // Depois de o painel existir: loadSideReps procura #sideReps no DOM, e
     // chamado antes ele não achava nada e voltava calado.
@@ -1423,6 +1437,31 @@
     }
   }
   function closeSide() { S.sideSku = null; $('side').classList.remove('is-on'); document.querySelectorAll('#rpGrid tr.rp-open').forEach(t => t.classList.remove('rp-open')); }
+
+  // Grava a política deste SKU no Master Stock (use_in_replenishment + nota), pela API do
+  // stock-planning — que persiste em rapid_inv.sku_settings e dispara o trigger de auditoria
+  // (quem/quando). Client-side; o servidor usa a service key. Reversível (é só destravar).
+  async function savePolicy(sku, includeInRepl, note, btn, msg, orig, refl) {
+    btn.disabled = true; if (msg) msg.textContent = 'saving…';
+    try {
+      const r = await fetch(`/api/stock-planning/sku-policy/${encodeURIComponent(sku)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-sp-user': (localStorage.getItem('rp.user') || 'branch') },
+        body: JSON.stringify({ use_in_replenishment: includeInRepl, policy_note: note || null }),
+      });
+      if (!r.ok) { const t = await r.text().catch(() => ''); let m = t; try { m = JSON.parse(t).error || t; } catch (_) {} throw new Error((m || ('HTTP ' + r.status)).slice(0, 160)); }
+      // Reflete localmente para a grade e o painel não mentirem até o próximo reload.
+      if (includeInRepl) S.blocked.delete(sku); else S.blocked.add(sku);
+      if (note) S.blockedNote[sku] = note; else delete S.blockedNote[sku];
+      if (orig) { orig.on = includeInRepl; orig.note = note; } if (refl) refl();
+      renderGrid();
+      if (msg) msg.textContent = 'saved · Master Stock updated';
+      toast(includeInRepl ? 'SKU incluído na reposição (salvo no Master Stock)' : 'SKU bloqueado na reposição (salvo no Master Stock)');
+    } catch (e) {
+      if (msg) msg.textContent = 'erro: ' + e.message; btn.disabled = false;
+      toast('Falha ao salvar política: ' + e.message, true);
+    }
+  }
 
 
   // ── colocar o pedido no Cin7 ────────────────────────────────────────────

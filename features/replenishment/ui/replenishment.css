@@ -161,6 +161,10 @@
 .rp-eta { display: inline-block; font: 600 11px var(--sans); background: var(--xl-incoming); color: #2c5a2c; border-radius: 4px; padding: 1px 7px; }
 .rp-side-here { background: var(--acc-soft); }
 .rp-side-txt { width: 100%; box-sizing: border-box; min-height: 68px; border: 1px solid var(--line-2); border-radius: 7px; padding: 8px 10px; font: 12.5px var(--sans); resize: vertical; }
+/* Master Stock policy toggle no painel lateral */
+.rp-pol { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; cursor: pointer; }
+.rp-pol input { flex: none; }
+.rp-pol-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 
 /* column chooser */
 .rp-cols-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
