@@ -11,9 +11,40 @@
 .rp-note, .rp-sub { color: var(--mut-2); font-weight: 400; font-size: 12px; }
 .rp-sub { font-size: 11px; }
 .sp-tiles { padding: 14px 2px; }
+/* O cartão passou a carregar as duas réguas e os nomes dos reps. 178px (o
+   mínimo compartilhado) cortava tudo; 230 dá para ler sem virar coluna única
+   em tela larga. Só aqui — as outras telas não mudaram de conteúdo. */
+#branchTiles.sp-tiles { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 .sp-tile { cursor: pointer; transition: box-shadow .15s, transform .15s; }
 .sp-tile:hover { box-shadow: 0 4px 14px rgba(20,28,41,.10); transform: translateY(-1px); }
 .rp-tile-sub { font-size: 11.5px; color: var(--mut-2); margin-top: 4px; }
+/* ── o cartão dividido no meio ──
+   Em cima o que a filial despachou, embaixo o que os reps dela venderam. As
+   duas leituras do MESMO número, por filial, na primeira tela. A que está
+   mandando na sugestão ganha o fundo; a outra fica presente e apagada — some
+   faria a comparação desaparecer justamente onde ela serve. */
+.rp-tk { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line); }
+.rp-tk-r { display: flex; align-items: baseline; gap: 6px; padding: 2px 5px; border-radius: 5px; }
+.rp-tk-r span { font: 700 9px var(--sans); letter-spacing: .05em; text-transform: uppercase;
+  color: var(--mut-3); width: 44px; flex: none; }
+.rp-tk-r b { font: 700 13px/1 var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.rp-tk-r i { font: 400 10px var(--sans); font-style: normal; color: var(--mut-3); }
+.rp-tk-r.is-driver { background: var(--acc-soft); }
+.rp-tk-r.is-driver span, .rp-tk-r.is-driver b { color: var(--acc-d); }
+
+.rp-tk-reps { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.rp-tk-reps span { display: inline-flex; align-items: baseline; gap: 4px; cursor: help;
+  font: 400 10px var(--sans); color: var(--mut-2);
+  background: var(--sunken); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+.rp-tk-reps span b { font: 600 9.5px var(--mono); color: var(--mut-3); font-variant-numeric: tabular-nums; }
+.rp-tk-more { font-weight: 600; }
+
+/* Zero é o estado saudável. Quando aparece, é venda fora de toda régua. */
+.rp-tk-orphan { margin-top: 5px; font: 700 9.5px var(--sans); color: #92400E;
+  background: #FEF3C7; border: 1px solid #FDE68A; border-radius: 5px; padding: 2px 6px; }
+.rp-tk-bad { font: 700 10.5px var(--sans); color: #991B1B;
+  background: #FEE2E2; border: 1px solid #FECACA; border-radius: 5px; padding: 3px 7px; }
+
 .rp-tile-var { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--acc-d); background: var(--acc-soft); border-radius: 4px; padding: 1px 6px; margin-top: 6px; }
 
 /* segmented sub-tabs (Weekly | Daily | History) */

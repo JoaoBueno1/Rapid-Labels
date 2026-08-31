@@ -493,13 +493,39 @@
   // ═══ LANDING ═══════════════════════════════════════════════════════
   function renderLanding() {
     $('branchLanding').style.display = ''; $('branchGrid').style.display = 'none'; closeSide();
+    /* CADA CARTÃO É DIVIDIDO NO MEIO.
+       Em cima o que a filial DESPACHOU; embaixo o que os reps dela VENDERAM,
+       com os nomes. As duas leituras lado a lado, por filial, na primeira
+       tela — é aqui que se compara, não depois de entrar numa delas.
+       E os nomes têm um segundo trabalho: rep novo que ninguém alocou some da
+       régua da filial em silêncio. Vendo a lista, você percebe e aloca. */
     $('branchTiles').innerHTML = BRANCHES.map(b => {
       const sug = S.loaded ? branchSuggestedCount(b.code) : 0;
       const cls = sug > 40 ? 'bad' : sug > 15 ? 'warn' : 'good';
+      const inf = S.avgLiveInfo[b.code];
+      const t = inf && inf.totals;
+      const usaRep = SET.demand === 'rep' || SET.demand === 'rep_then_branch';
+      // 4 nomes e o resto contado: sete chips num cartão de 178px viram
+      // parede, e o que importa é reconhecer quem falta, não ler todos.
+      const bd = (inf && inf.breakdown) || [];
+      const mostra = bd.slice(0, 4), resto = bd.length - mostra.length;
+      const reguas = t ? `
+        <div class="rp-tk">
+          <div class="rp-tk-r${usaRep ? '' : ' is-driver'}">
+            <span>Branch</span><b>${n0(t.loc_units)}</b><i>/mo · ${n0(t.loc_skus)} SKUs</i></div>
+          <div class="rp-tk-r${usaRep ? ' is-driver' : ''}">
+            <span>Reps</span><b>${n0(t.rep_units)}</b><i>/mo · ${n0(t.rep_skus)} SKUs</i></div>
+          <div class="rp-tk-reps">${mostra.map(r => `<span title="${esc(r.sales_rep)} — ${n1(r.units_month)} a month">${
+            esc(String(r.sales_rep).split(' ')[0])}<b>${Number(r.units) > 0 ? n0(r.units_month) : '—'}</b></span>`).join('')}${
+            resto > 0 ? `<span class="rp-tk-more" title="${esc(bd.slice(4).map(r => r.sales_rep).join(', '))}">+${resto}</span>` : ''}</div>
+          ${(inf.orphans || []).length ? `<div class="rp-tk-orphan" title="${
+            esc(inf.orphans.map(o => o.sales_rep).join(', '))}">${n0(inf.orphans.length)} rep(s) with no branch</div>` : ''}
+        </div>` : (S.repAvgErro ? '<div class="rp-tk rp-tk-bad">demand did not load</div>' : '');
       return `<div class="sp-tile ${cls}" data-code="${b.code}" role="button" tabindex="0">
         <span>${esc(b.name)}</span><b>${sug}</b>
         <div class="rp-tile-sub">SKUs to restock (cover &lt; ${SET.cutDays}d)</div>
-        ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}</div>`;
+        ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}
+        ${reguas}</div>`;
     }).join('');
     $('landingNote').textContent = `${BRANCHES.length} branches · engine target ${SET.abc ? 'ABC (A10·B8·C6 wk)' : SET.weeks + ' wk'}`;
     renderBoard();
