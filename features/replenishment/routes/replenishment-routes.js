@@ -495,19 +495,46 @@ function register(app, db) {
     const location = (req.query.location || '').trim();
     if (!branch) return res.status(400).json({ error: 'branch é obrigatório' });
 
-    const reps = await sbAll(
-      `sales_rep_branch?select=sales_rep&branch_code=eq.${encodeURIComponent(branch)}`
-      + '&is_active=is.true', 'rapid_inv');
-    const names = reps.map((r) => r.sales_rep);
+    /* Tudo numa ida só: a tela desenha o painel das duas réguas antes da
+       primeira linha da grade, e não pode pagar três round-trips para isso.
 
-    // O FULL OUTER JOIN vive na função do banco agora. O `for` que reinseria
-    // os SKUs que a filial vendeu pelo local sem nenhum rep dela ter tocado
-    // virou parte do JOIN: mesma resposta, uma volta a menos, e a regra deixa
-    // de estar escrita em dois lugares.
-    const rows = await sbRpc('replenishment_branch_averages',
-      { p_branch: branch, p_months: months, p_location: location || null });
+       `quebra` é o que torna a régua do rep AUDITÁVEL. Dizer "pelos reps desta
+       filial dá 18.900" sem dizer QUAIS reps somaram isso é pedir para o
+       usuário confiar num número que ele não pode conferir — e ele é a única
+       pessoa que sabe se falta alguém na lista.
 
-    res.json({ branch, months, rep_count: names.length, reps: names, rows });
+       `orfaos` devolve zero hoje (a alocação foi fechada em 28/08/2026). Está
+       aqui para o dia em que entrar gente nova: rep não alocado some da régua
+       da filial em silêncio, e a soma encolhe sem motivo visível. */
+    const [rows, quebra, orfaos] = await Promise.all([
+      // O FULL OUTER JOIN vive na função do banco agora. O `for` que reinseria
+      // os SKUs que a filial vendeu pelo local sem nenhum rep dela ter tocado
+      // virou parte do JOIN: mesma resposta, uma volta a menos, e a regra deixa
+      // de estar escrita em dois lugares.
+      sbRpc('replenishment_branch_averages',
+        { p_branch: branch, p_months: months, p_location: location || null }),
+      sbRpc('replenishment_branch_reps', { p_branch: branch, p_months: months }),
+      sbRpc('replenishment_reps_orphan', { p_months: months }),
+    ]);
+
+    /* Os dois totais somados AQUI e não no navegador, pelo mesmo motivo de
+       sempre: se a tela somar o que recebeu, ela mede a página e chama de
+       total. Aqui `rows` é o conjunto inteiro, então a soma é a soma. */
+    const soma = (campo) => rows.reduce((a, r) => a + Number(r[campo] || 0), 0);
+    const conta = (campo) => rows.filter((r) => Number(r[campo] || 0) > 0).length;
+
+    res.json({
+      branch, months, location: location || null,
+      rep_count: quebra.length,
+      reps: quebra.map((r) => r.sales_rep),      // compatível com quem já lia
+      rep_breakdown: quebra,
+      orphans: orfaos,
+      totals: {
+        loc_skus: conta('loc_avg'), loc_units: Math.round(soma('loc_avg')),
+        rep_skus: conta('rep_avg'), rep_units: Math.round(soma('rep_avg')),
+      },
+      rows,
+    });
   }));
 
   /** O detalhe de um SKU numa filial: quem vendeu, quanto, e por qual local. */
@@ -562,7 +589,22 @@ function register(app, db) {
     res.json({ ok: true, row });
   }));
 
-  console.log('✅ Branch Replenishment routes registered (Cin7 write: ORDERED only)');
+  /* AVISO ALTO no boot, e não um erro por requisição.
+     As duas réguas da tela saem daqui agora. Sem SUPABASE_URL ou sem chave,
+     TODAS as médias vêm vazias — e uma filial sem média nenhuma parece "não há
+     o que repor", que é indistinguível de estar tudo abastecido. Foi assim que
+     uma máquina sem variável de ambiente passou por regressão de código.
+     Falhar na inicialização, visível, é o único jeito de isso não voltar. */
+  if (!SB || !SB_KEY) {
+    console.warn('\n⚠️  Branch Replenishment: falta ' +
+      [!SB && 'SUPABASE_URL', !SB_KEY && 'SUPABASE_SERVICE_KEY (ou SUPABASE_ANON_KEY)']
+        .filter(Boolean).join(' e ') +
+      '.\n    As médias por filial e por rep vão vir VAZIAS nesta máquina, e a tela\n' +
+      '    vai parecer que não há nada a repor. Copie o .env antes de usar.\n');
+  }
+
+  console.log('✅ Branch Replenishment routes registered (Cin7 write: ORDERED only)'
+    + (SB && SB_KEY ? '' : ' — SEM CREDENCIAL: médias vazias'));
 }
 
 module.exports = { register };

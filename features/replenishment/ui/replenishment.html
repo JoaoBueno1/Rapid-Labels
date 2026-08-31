@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=21">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=20260831b">
+<link rel="stylesheet" href="replenishment.css?v=20260831d">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -70,6 +70,12 @@
     <!-- stage / timeline -->
     <div class="rp-note" id="rpDailyNote" style="display:none"></div>
       <div class="rp-stage" id="rpStage"></div>
+
+    <!-- As DUAS RÉGUAS, uma embaixo da outra. Em cima a da filial, que é a que
+         manda; embaixo a dos reps dela, com os nomes. Os nomes existem para
+         duas coisas: conferir o número (uma soma sem parcelas não se confere)
+         e enxergar quem está faltando na alocação. -->
+    <div class="rp-rulers" id="rpRulers" style="display:none"></div>
 
     <!-- the working grid (weekly / daily) -->
     <div class="sp-scroll rp-scroll" id="rpScroll"><table class="sp-grid rp-grid" id="rpGrid"></table></div>
@@ -241,6 +247,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js?v=20260831"></script>
-<script src="replenishment-app.js?v=20260831e"></script>
+<script src="replenishment-app.js?v=20260831i"></script>
 </body>
 </html>

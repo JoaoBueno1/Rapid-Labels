@@ -32,7 +32,14 @@
   // ABC desligado por padrao: os degraus 10/8/6 vieram de quando a media era
 // uma coluna importada. Com 13 meses de historico e janela escolhivel, a
 // cobertura pura e mais honesta — quem quiser os degraus liga no Settings.
-  const DEMAND_LABEL = { branch: 'branch shipments', rep: 'branch reps', branch_then_rep: 'branch, then reps' };
+  // As quatro regras, nomeadas. Faltavam duas: o rodapé mostrava o código cru
+  // ("rep_then_branch") para quem escolhesse uma delas.
+  const DEMAND_LABEL = {
+    branch: 'branch only', rep: 'reps only',
+    branch_then_rep: 'branch, reps fill the gaps',
+    rep_then_branch: 'reps, branch fills the gaps',
+    both: 'the larger of the two',
+  };
 
   /* Migração dos modos que saíram.
      'both' nunca foi regra de sugestão — o motor caía em 'branch' com ele, e
@@ -213,11 +220,18 @@
     S.repAvg = {}; S.repAvgInfo = null;
     if (!S.branch) return;
     try {
-      const qs = new URLSearchParams({ branch: S.branch.code, location: S.branch.name, months: SET.salesMonths || 6 });
+      /* depotOf e não S.branch.name: o nome de exibição de Sunshine Coast é
+         "Sunshine Coast" e o depósito no Cin7 é "Sunshine Coast Warehouse".
+         Mandando o nome de exibição, loc_avg voltava ZERO para os 914 SKUs
+         dessa filial — e zero na régua do local é "não vende", que é o
+         contrário de 13.845 unidades/mês. */
+      const qs = new URLSearchParams({ branch: S.branch.code, location: depotOf(S.branch.code), months: SET.salesMonths || 6 });
       const d = await fetch(`/api/replenishment/branch-averages?${qs}`).then(r => r.json());
       if (d.error) throw new Error(d.error);
       d.rows.forEach(r => { S.repAvg[r.sku_key] = r; });
-      S.repAvgInfo = { months: d.months, reps: d.reps || [], count: d.rep_count };
+      S.repAvgInfo = { months: d.months, reps: d.reps || [], count: d.rep_count,
+                       breakdown: d.rep_breakdown || [], orphans: d.orphans || [],
+                       totals: d.totals || null, location: d.location };
       S.repAvgErro = null;
     } catch (e) {
       /* Falhar aqui NÃO pode ser silencioso.
@@ -239,6 +253,7 @@
     S.lines.forEach(l => {
       const r = S.repAvg[String(l.code).toUpperCase()];
       l.repAvg = r ? r.rep_avg : null; l.locAvg = r ? r.loc_avg : null; l.repCount = r ? r.reps : 0;
+      l.storedAvg = r ? Number(r.loc_avg || 0) : 0;
     });
   }
 
@@ -325,8 +340,20 @@
   function buildRow(code) {
     const branch = S.branch, k = String(code || '').trim().toUpperCase(); if (!k) return null;
     const p = S.prod[k] || {}, avgRow = S.avgBy[k] || null, stock = S.stock[branch.code] || {};
-    const stored = avgRow ? pickAvg(avgRow, branch) : 0;
-    const fromRep = (S.repAvg[k] && S.repAvg[k].rep_avg) || 0;
+    /* AS DUAS RÉGUAS VÊM DA MESMA FONTE E DA MESMA JANELA.
+       Antes não vinham: `stored` saía de branch_avg_monthly_sales — uma tabela
+       carregada à mão, de 29/07/2026, com 481 SKUs para Sydney — e `fromRep`
+       saía da RPC ao vivo, com 1.192. Comparar as duas era comparar relógios
+       diferentes, e a regra padrão ("branch, senão rep") escolhia entre elas
+       linha a linha, misturando um número de um mês atrás com um de hoje.
+       Agora `loc_avg` e `rep_avg` saem da MESMA chamada, mesma janela, mesmo
+       dado. A régua padrão continua sendo a da filial — só que certa.
+       O valor da tabela antiga segue disponível como `tableAvg`, para o painel
+       poder mostrar a diferença em vez de escondê-la. */
+    const viva = S.repAvg[k] || null;
+    const tableAvg = avgRow ? pickAvg(avgRow, branch) : 0;
+    const stored = viva ? Number(viva.loc_avg || 0) : 0;
+    const fromRep = viva ? Number(viva.rep_avg || 0) : 0;
     // A régua escolhida MANDA no número que vira compra. Sem esta linha o
     // painel mostrava a diferença e o motor continuava comprando pela régua
     // antiga — a tela ficaria informando e não decidindo.
@@ -363,7 +390,7 @@
       gwBlocked: !!(S.gwOff && S.gwOff.has(k)),
       allowedDespiteCin7: !!(S.allow && S.allow.has(k)),
       repAvg: ra ? ra.rep_avg : null, locAvg: ra ? ra.loc_avg : null, repCount: ra ? ra.reps : 0,
-      storedAvg: stored,
+      storedAvg: stored, tableAvg,
       loc: p.stock_locator || '', avg, soh: avail, inTransit, mainGw, mainOnly, gw, canSend, syd,
       tier, target, weeks, mainAvg, sug, coverWeeks,
       // invComment e flag nascem aqui para o rascunho salvo já ter o formato
@@ -376,8 +403,25 @@
   // porta dos fundos, no "Load suggested".
   function suggestionUniverse() {
     const out = [];
+    /* O UNIVERSO DE CANDIDATOS vem das duas fontes, não só da tabela.
+       Ele era `S.avg` — as 4.644 linhas de branch_avg_monthly_sales, carregadas
+       à mão. Um SKU que a filial vende hoje e que não estava naquela planilha
+       nunca era sequer avaliado: as médias podiam estar vivas e certas, e ele
+       continuava fora da sugestão porque não existia na lista de entrada.
+       Medido em Sydney: 816 SKUs pela régua da filial e 1.175 pela dos reps,
+       contra 498 na tabela.
+       A união é por chave em maiúscula porque as duas fontes escrevem o código
+       com caixa diferente, e sem normalizar o mesmo SKU entrava duas vezes. */
+    const universo = new Map();
     for (const r of S.avg) {
-      const c0 = String(r.product || '').trim(); if (!c0) continue;
+      const c = String(r.product || '').trim();
+      if (c) universo.set(c.toUpperCase(), c);
+    }
+    for (const k of Object.keys(S.repAvg || {})) {
+      if (!universo.has(k)) universo.set(k, (S.prod[k] && S.prod[k].sku) || k);
+    }
+    for (const c0 of universo.values()) {
+      if (!c0) continue;
       const p = S.prod[c0.toUpperCase()] || {}; if (RC.isExcludedProduct(c0, p.name)) continue;
       if (isPackSku(c0) || escondePorDeprecated(p, c0.toUpperCase())) continue;
       // O MESMO corte do autocomplete. Aplicar num só deixaria o produto
@@ -517,6 +561,63 @@
   // a régua muda no Settings, e escrito só na entrada da filial o rótulo
   // ficava velho enquanto os números já eram outros. Em Brisbane isso é a
   // diferença entre 20 e 396 sugestões — o pior tipo de rodapé errado.
+  /* AS DUAS RÉGUAS, desenhadas.
+     Em cima a da filial — o que saiu deste depósito — porque é ela que manda
+     na sugestão. Embaixo a dos reps da filial — o que a filial vendeu, saindo
+     de onde saísse — com os nomes e o que cada um somou.
+     Os nomes não são enfeite: uma soma sem as parcelas não se confere, e a
+     única pessoa que sabe se falta alguém na lista é quem lê a tela. */
+  function writeRulers() {
+    const el = $('rpRulers'); if (!el) return;
+    const inf = S.repAvgInfo;
+    if (!S.branch) { el.style.display = 'none'; return; }
+    if (S.repAvgErro) {
+      el.style.display = '';
+      el.innerHTML = `<div class="rp-ruler rp-ruler-bad">
+        <span class="rp-ruler-k">No ruler</span>
+        <span class="rp-ruler-w"><b>The demand figures did not load</b> — every SKU below is showing
+        zero demand, which is <b>not</b> the same as nothing to send. Do not order from this screen
+        until it loads. <span class="rp-sub">${esc(S.repAvgErro)}</span></span></div>`;
+      return;
+    }
+    if (!inf || !inf.totals) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const t = inf.totals;
+    const usandoRep = SET.demand === 'rep' || SET.demand === 'rep_then_branch';
+    // A diferença contra a tabela antiga, quando ela existe. Some quando o
+    // usuário não tem mais nada carregado à mão — e some de propósito: um
+    // aviso que nunca desliga vira parte do fundo.
+    const daTabela = S.lines.length
+      ? S.lines.reduce((a, l) => a + Number(l.tableAvg || 0), 0) : null;
+
+    const chip = (r) => `<span class="rp-rep${Number(r.units) > 0 ? '' : ' is-quiet'}"
+      title="${esc(r.sales_rep)} — ${n1(r.units_month)} a month · ${n0(r.units)} units, ${n0(r.orders)} orders and ${n0(r.skus)} SKUs across ${inf.months} months${
+        r.note ? '\n' + esc(r.note) : ''}">${esc(r.sales_rep)}<b>${Number(r.units) > 0 ? n0(r.units_month) : '—'}</b></span>`;
+
+    el.innerHTML = `
+      <div class="rp-ruler${usandoRep ? '' : ' is-driver'}">
+        <span class="rp-ruler-k">Branch</span>
+        <span class="rp-ruler-v">${n0(t.loc_units)}<i>units / month</i></span>
+        <span class="rp-ruler-n">${n0(t.loc_skus)} SKUs</span>
+        <span class="rp-ruler-w">what shipped out of ${esc(inf.location || S.branch.name)} · live · ${inf.months}m${
+          daTabela ? ` · the old loaded table said ${n0(daTabela)} for the lines on screen` : ''}</span>
+        ${usandoRep ? '' : '<span class="rp-ruler-tag">driving the suggestion</span>'}
+      </div>
+      <div class="rp-ruler${usandoRep ? ' is-driver' : ''}">
+        <span class="rp-ruler-k">By its reps</span>
+        <span class="rp-ruler-v">${n0(t.rep_units)}<i>units / month</i></span>
+        <span class="rp-ruler-n">${n0(t.rep_skus)} SKUs</span>
+        <span class="rp-ruler-w">what ${esc(S.branch.name)} sold, wherever it shipped from · ${n0(inf.count)} reps · the chips below add up to this</span>
+        ${usandoRep ? '<span class="rp-ruler-tag">driving the suggestion</span>' : ''}
+        <div class="rp-reps">${(inf.breakdown || []).map(chip).join('')}</div>
+        ${(inf.orphans || []).length ? `<div class="rp-orphan">
+          <b>${n0(inf.orphans.length)} rep${inf.orphans.length === 1 ? '' : 's'} not allocated to any branch</b> —
+          ${inf.orphans.slice(0, 6).map(o => `${esc(o.sales_rep)} (${n0(o.units)}${
+            o.top_location ? ', mostly ' + esc(o.top_location) : ''})`).join(' · ')}.
+          Their sales are missing from every branch ruler until someone allocates them.</div>` : ''}
+      </div>`;
+  }
+
   function writeScope() {
     const el = $('gridScope'); if (!el) return;
     const ruler = `${DEMAND_LABEL[SET.demand] || SET.demand} · ${SET.salesMonths}m`;
@@ -536,16 +637,18 @@
     S.view = v;
     document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
     closeSide();
-    if (v === 'history') { showHistory(); return; }
+    if (v === 'history') { const r = $('rpRulers'); if (r) r.style.display = 'none'; showHistory(); return; }
     S.mode = v; S.stage = 'draft'; S.lines = [];
     const d = loadDraft();
     if (d && d.lines && d.lines.length) restoreDraft(d);
     S.mode = v; enterGrid();
     // Assíncrono de propósito: a grade não espera por isto para aparecer.
-    refreshRepAvg().then(renderGrid);
+    // writeRulers vem junto: o painel só tem número depois desta chamada.
+    refreshRepAvg().then(() => { renderGrid(); writeRulers(); });
   }
   function enterGrid() {
     $('rpScroll').style.display = ''; $('rpHistory').style.display = 'none'; $('rpStage').style.display = ''; $('rpFoot').style.display = '';
+    const rul = $('rpRulers'); if (rul) rul.style.display = '';
     // O diário tem regra própria e ela precisa estar na tela, não no treinamento.
     const note = $('rpDailyNote');
     if (note) {
@@ -557,7 +660,7 @@
     setControls(); renderStage(); renderGrid();
   }
   function setControls() {
-    writeScope();
+    writeScope(); writeRulers();
     const gridding = S.view !== 'history';
     const draft = S.stage === 'draft';
     $('gridSearch').style.display = gridding ? '' : 'none';
@@ -1068,21 +1171,35 @@
     $('loadMsg').innerHTML = `<b>${toAdd.length}</b> suggested line${toAdd.length === 1 ? '' : 's'} for <b>${esc(S.branch.name)}</b> under ${SET.cutDays}d cover.` +
       (S.lines.length ? ` Your ${S.lines.length} existing line${S.lines.length === 1 ? '' : 's'} stay untouched.` : '');
     // Os dois lados calculados de verdade, não estimados.
-    const cBranch = loadCountFor('branch'), cRep = loadCountFor('rep');
+    /* AS QUATRO REGRAS, cada uma com o número que ela realmente produz — não
+       estimado, calculado. É neste clique que a diferença aparece, e escolher
+       com os quatro números na frente é diferente de escolher num menu.
+       As duas do meio são as que se usam de verdade: régua principal com a
+       outra cobrindo o buraco. "Só filial" deixa de fora o que o Main mandou
+       em nome dela; "só reps" ignora o que a filial despachou sozinha. */
+    const REGRAS = [
+      ['branch', 'Branch only',
+        'What shipped out of this branch. Ignores what Main sent on its behalf.'],
+      ['branch_then_rep', 'Branch, reps fill the gaps',
+        'The branch figure when there is one; its reps cover the SKUs the branch never shipped itself.'],
+      ['rep_then_branch', 'Reps, branch fills the gaps',
+        'What the branch sold, wherever it shipped from; the branch figure covers what no rep touched.'],
+      ['rep', 'Reps only',
+        'What this branch sold, wherever it shipped from. Ignores branch-only movement.'],
+    ];
     const box = $('loadBasis');
-    if (box) box.innerHTML = `
-      <label class="rp-basis${SET.demand !== 'rep' ? ' is-on' : ''}">
-        <input type="radio" name="lbasis" value="branch"${SET.demand !== 'rep' ? ' checked' : ''}>
-        <b>By branch shipments</b><span>${n0(cBranch.n)} lines · ${n0(cBranch.units)} units</span>
-        <small>What went out of this branch. Misses what Main shipped on its behalf.</small></label>
-      <label class="rp-basis${SET.demand === 'rep' ? ' is-on' : ''}">
-        <input type="radio" name="lbasis" value="rep"${SET.demand === 'rep' ? ' checked' : ''}>
-        <b>By this branch's reps</b><span>${n0(cRep.n)} lines · ${n0(cRep.units)} units</span>
-        <small>What the branch sold, wherever it shipped from.</small></label>`;
+    if (box) box.innerHTML = REGRAS.map(([v, titulo, texto]) => {
+      const c = loadCountFor(v);
+      const on = SET.demand === v;
+      return `<label class="rp-basis${on ? ' is-on' : ''}">
+        <input type="radio" name="lbasis" value="${v}"${on ? ' checked' : ''}>
+        <b>${esc(titulo)}</b><span>${n0(c.n)} lines · ${n0(c.units)} units</span>
+        <small>${esc(texto)}</small></label>`;
+    }).join('');
     box && box.querySelectorAll('input[name=lbasis]').forEach(r => r.addEventListener('change', () => {
       SET.demand = r.value; saveSet();
       // Recarrega para as quantidades já virem preenchidas pela régua escolhida.
-      refreshRepAvg().then(() => { openLoadModal(); });
+      refreshRepAvg().then(() => { writeScope(); writeRulers(); renderGrid(); openLoadModal(); });
     }));
     $('loadConfirm').textContent = toAdd.length ? `Load ${toAdd.length}` : 'Nothing to add';
     $('loadConfirm').disabled = !toAdd.length;
