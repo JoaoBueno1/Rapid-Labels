@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=21">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="/features/stock-planning/ui/master.css?v=20260831">
+<link rel="stylesheet" href="/features/stock-planning/ui/master.css?v=20260831b">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -58,6 +58,18 @@
       <button class="sp-chip" data-gap="cube">Cube is trustworthy</button>
       <span class="rp-sep"></span>
       <button class="sp-chip" data-gap="bom">Assembled</button>
+      <span class="rp-sep"></span>
+      <!-- A política. Estava só dentro do painel: achar o que alguém já tinha
+           configurado exigia abrir SKU por SKU em 11.259 linhas. -->
+      <span class="ms-grp">How it behaves here:</span>
+      <button class="sp-chip" data-gap="decided">Set by hand</button>
+      <button class="sp-chip" data-gap="disc">Discontinued</button>
+      <button class="sp-chip" data-gap="runout">Run-out</button>
+      <button class="sp-chip" data-gap="nobranch">Not for branches</button>
+      <button class="sp-chip" data-gap="noplan">Not in planning</button>
+      <button class="sp-chip" data-gap="nogw">Not from Gateway</button>
+      <button class="sp-chip" data-gap="cin7dead">Cin7 says dead, we still sell</button>
+      <button class="sp-chip" data-gap="cin7live">We say dead, Cin7 says active</button>
       <span class="sp-gap"></span>
       <span class="sp-count" id="msCount"></span>
     </div>
@@ -89,6 +101,6 @@
 </aside>
 
 <div class="sp-toast" id="toast"></div>
-<script src="/features/stock-planning/ui/master.js?v=20260831"></script>
+<script src="/features/stock-planning/ui/master.js?v=20260831b"></script>
 </body>
 </html>

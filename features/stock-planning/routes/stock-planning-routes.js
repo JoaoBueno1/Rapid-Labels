@@ -826,7 +826,22 @@ function register(app) {
                    cartonfix: 'carton_qty_in_bom',
                    cartonbad: 'flag_carton_name_mismatch',
                    filedim: 'flag_file_dim_unit', voldefault: 'flag_volume_default',
-                   cube: 'cube_trustworthy' };
+                   cube: 'cube_trustworthy',
+                   /* A política, como filtro. Sem isto ela só existia dentro do
+                      painel: para achar o que alguém configurou era preciso
+                      abrir SKU por SKU em 11.259 linhas. Configuração que não
+                      se vê de fora é configuração que ninguém confere. */
+                   decided:  'policy_decided',
+                   nobranch: 'NOT use_in_replenishment',
+                   noplan:   'NOT use_in_planning',
+                   nogw:     'NOT use_in_gateway',
+                   disc:     `lifecycle_status = 'DISCONTINUED'`,
+                   runout:   `lifecycle_status = 'RUN_OUT'`,
+                   // As duas discordâncias com o Cin7. A primeira é a que
+                   // importa: 2.507 SKUs que o ERP dá como mortos e a empresa
+                   // ainda vende.
+                   cin7dead: 'cin7_dead_we_alive',
+                   cin7live: 'cin7_alive_we_dead' };
     if (GAPS[req.query.gap]) where.push(`${GAPS[req.query.gap]}`);
     if (req.query.conflict === '1') {
       where.push(`((cin7_length IS NOT NULL AND file_length IS NOT NULL AND abs(cin7_length - file_length) / greatest(cin7_length, 1) > 0.02)
@@ -862,7 +877,15 @@ function register(app) {
                      count(*) FILTER (WHERE flag_carton_name_mismatch)::int flag_cartonbad,
                      count(*) FILTER (WHERE flag_file_dim_unit)::int flag_filedim,
                      count(*) FILTER (WHERE flag_volume_default)::int flag_voldefault,
-                     count(*) FILTER (WHERE cube_trustworthy)::int flag_cube
+                     count(*) FILTER (WHERE cube_trustworthy)::int flag_cube,
+                     count(*) FILTER (WHERE policy_decided)::int pol_decided,
+                     count(*) FILTER (WHERE NOT use_in_replenishment)::int pol_nobranch,
+                     count(*) FILTER (WHERE NOT use_in_planning)::int pol_noplan,
+                     count(*) FILTER (WHERE NOT use_in_gateway)::int pol_nogw,
+                     count(*) FILTER (WHERE lifecycle_status = 'DISCONTINUED')::int pol_disc,
+                     count(*) FILTER (WHERE lifecycle_status = 'RUN_OUT')::int pol_runout,
+                     count(*) FILTER (WHERE cin7_dead_we_alive)::int pol_cin7dead,
+                     count(*) FILTER (WHERE cin7_alive_we_dead)::int pol_cin7live
                 FROM rapid_inv.v_master_stock`),
     ]);
     res.json({ rows, total: tot.n, counts, limit, offset, ms: Date.now() - t0 });

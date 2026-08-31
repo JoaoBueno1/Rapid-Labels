@@ -76,6 +76,18 @@
 .ms-blk{font:600 8.5px/13px var(--sans);font-style:normal;background:var(--line);
   color:var(--mut);border-radius:3px;padding:0 4px;margin-left:3px;vertical-align:1px;cursor:help}
 
+/* ── a política do SKU, na linha ──
+   Neutra por padrão: isto é um ESTADO, não um alerta para resolver hoje.
+   Só "vs Cin7" ganha cor, porque é o único caso em que a marca de alguém está
+   contradizendo o ERP de propósito e vale ser visto de longe. */
+.ms-pol{font:600 8.5px/13px var(--sans);font-style:normal;border-radius:3px;
+  padding:0 4px;margin-left:3px;vertical-align:1px;cursor:help;white-space:nowrap}
+.ms-pol--disc{background:var(--line-2);color:var(--mut-2);border:1px solid var(--line-3)}
+.ms-pol--run {background:#FEF3C7;color:#92400E;border:1px solid #FDE68A}
+.ms-pol--off {background:var(--line);color:var(--mut);border:1px solid var(--line-2)}
+.ms-pol--set {background:#DCFCE7;color:#166534;border:1px solid #BBF7D0}
+.ms-pol--vs  {background:#DBEAFE;color:#1E40AF;border:1px solid #BFDBFE}
+
 /* ── A política do produto ────────────────────────────────────────────
    Ela é uma camada NOSSA e a tela precisa deixar isso óbvio: o que o Cin7 diz
    fica visivelmente separado do que nós decidimos, porque os dois podem

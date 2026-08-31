@@ -55,10 +55,42 @@
     ['flag_carton_name_mismatch', 'name≠BOM', 'The number in the SKU name and the quantity in the BOM disagree — one of the two is wrong'],
     ['flag_locator_junk', 'loc?', 'Stock locator is not a bin: it is "0" or a process word like BOM or PRODUCTION'],
   ];
+  /* A política do SKU, visível na grade e não só dentro do painel.
+     São 11.259 linhas: para saber o que alguém já configurou era preciso abrir
+     SKU por SKU. Configuração que não se vê de fora ninguém confere.
+     A ordem é a mesma de policy_flag na view — as duas telas desenham a mesma
+     bandeira, e quem muda uma tem de mudar a outra. */
+  const POL = [
+    ['lifecycle_status', 'DISCONTINUED', 'disc', 'DISC',
+      'Discontinued in Master Stock. Still shows in Stock Planning and Branch Replenishment — there is stock to decide about — but it does not pull a purchase.'],
+    ['lifecycle_status', 'RUN_OUT', 'run', 'RUN-OUT',
+      'Run-out in Master Stock. Sell what is left; not reordered.'],
+  ];
+  const politica = (r) => {
+    const out = [];
+    for (const [campo, valor, cls, txt, tip] of POL)
+      if (r[campo] === valor) { out.push(`<i class="ms-pol ms-pol--${cls}" title="${esc(tip)}">${txt}</i>`); break; }
+    if (r.use_in_replenishment === false)
+      out.push(`<i class="ms-pol ms-pol--off" title="Not offered or suggested in Branch Replenishment${
+        r.replenishment_note || r.policy_note ? ' — ' + esc(r.replenishment_note || r.policy_note) : ''}">no branch</i>`);
+    if (r.use_in_planning === false)
+      out.push('<i class="ms-pol ms-pol--off" title="Out of Stock Planning: no projection, no alert, no buy suggestion">no planning</i>');
+    if (r.use_in_gateway === false)
+      out.push('<i class="ms-pol ms-pol--off" title="Gateway stock does not count as sendable for this SKU">no gateway</i>');
+    // Quem foi configurado à mão ganha um ponto: é a diferença entre "ninguém
+    // olhou" e "alguém decidiu que fica assim".
+    if (r.policy_decided)
+      out.push(`<i class="ms-pol ms-pol--set" title="Set by hand${r.settings_updated_by ? ' by ' + esc(r.settings_updated_by) : ''}${
+        r.settings_updated_at ? ' on ' + esc(String(r.settings_updated_at).slice(0, 10)) : ''}">set</i>`);
+    // A discordância com o Cin7, onde ela muda o comportamento.
+    if (r.cin7_dead_we_alive && r.policy_decided)
+      out.push('<i class="ms-pol ms-pol--vs" title="Cin7 says Deprecated; someone here said it is still usable — so it stays available in Branch Replenishment">vs Cin7</i>');
+    return out.join('');
+  };
+
   const flags = (r) => FLAGS.filter(([k]) => r[k])
     .map(([, t, tip]) => `<i class="ms-flag" title="${esc(tip)}">${t}</i>`).join('')
-    + (r.use_in_replenishment === false
-        ? `<i class="ms-blk" title="Not sent to branches${r.replenishment_note ? ' — ' + esc(r.replenishment_note) : ''}">no branch</i>` : '')
+    + politica(r)
     + (r.bom_components
         ? `<i class="ms-bom" title="Assembled from ${r.bom_components} component${r.bom_components > 1 ? 's' : ''}${
             r.carton_qty_in_bom ? ` — and this is where its pack size of ${n0(r.bom_first_qty)} is recorded, since carton quantity is 0` : ''}">BOM ${r.bom_components}</i>`
@@ -128,7 +160,9 @@
     const map = { dims: c.gap_dims, weight: c.gap_weight, carton: c.gap_carton, pallet: c.gap_pallet, pick: c.gap_pick,
       dimunit: c.flag_dimunit, packsku: c.flag_packsku, locator: c.flag_locator, stocknodim: c.flag_stocknodim,
       bom: c.flag_bom, cartonbad: c.flag_cartonbad,
-      filedim: c.flag_filedim, voldefault: c.flag_voldefault, cube: c.flag_cube };
+      filedim: c.flag_filedim, voldefault: c.flag_voldefault, cube: c.flag_cube,
+      decided: c.pol_decided, nobranch: c.pol_nobranch, noplan: c.pol_noplan, nogw: c.pol_nogw,
+      disc: c.pol_disc, runout: c.pol_runout, cin7dead: c.pol_cin7dead, cin7live: c.pol_cin7live };
     document.querySelectorAll('[data-gap]').forEach((b) => {
       const n = map[b.dataset.gap];
       // A marca é explícita e não "o texto já tem dígito": o rótulo
