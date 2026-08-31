@@ -41,7 +41,12 @@
      pares filial-SKU, 3%. Quem tinha aquele modo perde a diferença em 3% das
      linhas, e ganha um seletor com três opções em vez de cinco. */
   const DEMAND_MIGRA = { both: 'branch', rep_then_branch: 'rep' };
-  const DEFAULTS = { weeks: 6, cutDays: 25, abc: false, avgSource: 'branch', period: 'stored', avgRound: 'pure', cartons: false,
+  /* `period` saiu daqui. Ele era lido e escrito contra um #setPeriod que não
+     existe no HTML desde que os dois seletores viraram um só — zero
+     ocorrências no arquivo. Deixá-lo no DEFAULTS fazia o delete da migração
+     ser desfeito na linha seguinte pelo Object.assign, e o campo morto
+     ressuscitava a cada carga. */
+  const DEFAULTS = { weeks: 6, cutDays: 25, abc: false, avgSource: 'branch', avgRound: 'pure', cartons: false,
     // demand: qual das duas médias vira quantidade sugerida. Não decide mais o
     // que a planilha MOSTRA — as duas estão sempre lá, cada uma na sua coluna.
     // O padrão é o fallback porque em 1.891 de 6.861 pares filial-SKU só o rep
@@ -70,13 +75,45 @@
     // E os dois modos que saíram do seletor. Sem isto, quem tem 'both' salvo
     // fica com um <select> que não casa com nenhuma opção e volta em branco.
     if (DEMAND_MIGRA[raw.demand]) raw.demand = DEMAND_MIGRA[raw.demand];
+
+    /* avgSource ficou ÓRFÃO e mudava o número em silêncio.
+       Ele perdeu o <select> quando os dois seletores viraram um só, mas
+       continuou sendo lido pelo pickAvg — e sem migração. Qualquer navegador
+       que apertou Apply antes daquela mudança guardou 'rep_then_branch' até
+       hoje, e não havia campo nenhum na tela que mostrasse isso.
+       Medido em Sydney, modo branch: 'branch' dá 11 linhas / 958 un e
+       'rep_then_branch' dá 38 / 1.988 — 3,5x, invisível.
+       Foi uma das duas causas de duas máquinas discordarem no mesmo commit.
+       Agora ele é forçado ao padrão: quem decide a régua é `demand`, que tem
+       seletor, e um segundo botão escondido decidindo a mesma coisa é a
+       definição de configuração fantasma. */
+    if (raw.avgSource && raw.avgSource !== DEFAULTS.avgSource) {
+      console.warn(`[replenishment] avgSource="${raw.avgSource}" salvo neste navegador `
+        + `foi trocado por "${DEFAULTS.avgSource}": o campo não existe mais na tela `
+        + `e mudava os números sem aparecer.`);
+    }
+    raw.avgSource = DEFAULTS.avgSource;
+    delete raw.period;   // mesma história: lido, sem elemento no HTML desde f87e34e
     // 'up' saiu do seletor. computeBranchTarget JÁ faz Math.ceil no alvo, então
     // arredondar a média para cima antes era um teto em cima de outro: média
     // 0,2 virava 1 e alvo 2 — dois anos de estoque parado. Medido em Sydney,
     // 'up' AUMENTAVA as linhas (236 -> 240) e inflava 208 unidades. Não é
     // preferência, é defeito; por isso migra em vez de continuar oferecendo.
     if (raw.avgRound === 'up') raw.avgRound = 'pure';
-    return Object.assign({}, DEFAULTS, raw);
+    const migrado = Object.assign({}, DEFAULTS, raw);
+
+    /* Grava de volta.
+       Sem isto a migração roda em memória e o localStorage guarda o valor
+       velho para sempre — e migração que não persiste não é migração, é
+       contorno repetido a cada carga. Pior: quem inspeciona o rp.set para
+       comparar duas máquinas vê o valor antigo e conclui que a migração não
+       funcionou. Foi exatamente o que aconteceu quando fui testar. */
+    try {
+      if (JSON.stringify(migrado) !== JSON.stringify(raw)) {
+        localStorage.setItem('rp.set', JSON.stringify(migrado));
+      }
+    } catch (_) { /* modo privado — a migração vale para esta sessão */ }
+    return migrado;
   }
   function saveSet() { try { localStorage.setItem('rp.set', JSON.stringify(SET)); } catch (_) {} }
 
@@ -143,10 +180,20 @@
     try {
       const qs = new URLSearchParams({ branch: S.branch.code, location: S.branch.name, months: SET.salesMonths || 6 });
       const d = await fetch(`/api/replenishment/branch-averages?${qs}`).then(r => r.json());
-      if (d.error) return;
+      if (d.error) throw new Error(d.error);
       d.rows.forEach(r => { S.repAvg[r.sku_key] = r; });
       S.repAvgInfo = { months: d.months, reps: d.reps || [], count: d.rep_count };
-    } catch (_) { /* a tela continua com a régua do local */ }
+      S.repAvgErro = null;
+    } catch (e) {
+      /* Falhar aqui NÃO pode ser silencioso.
+         O catch vazio de antes deixava S.repAvg = {} e a tela seguia com a
+         régua do local, sem um sinal. Medido em Sydney: o padrão cai de 56
+         para 11 linhas e o modo rep vai a ZERO — e parece que "não há o que
+         repor". Foi assim que a falta de senha de banco numa máquina passou
+         por regressão de código. */
+      S.repAvgErro = e.message;
+      console.error('[replenishment] a régua do rep não carregou:', e.message);
+    }
   }
 
   // Recarregar a régua não basta: as linhas já na tela foram construídas com o
@@ -889,6 +936,18 @@
   function coverLegend() {
     const el = $('rpCoverKey'); if (!el) return;
     el.style.display = '';
+    /* Se a régua do rep não carregou, a tela DIZ. Antes ela caía na régua do
+       local calada, e o usuário lia 11 linhas onde deveria ver 56 — sem nada
+       na tela sugerindo que faltava metade da conta. */
+    if (S.repAvgErro) {
+      el.innerHTML = `<span class="rp-cvkey is-rep"><i class="t"></i></span>`
+        + `<b>Rep demand did not load</b>`
+        + `<span>The sheet is falling back to what shipped out of this branch, which is a `
+        + `smaller number — not fewer things to send. Reload; if it persists: ${esc(S.repAvgErro)}</span>`;
+      el.classList.add('is-bad');
+      return;
+    }
+    el.classList.remove('is-bad');
     el.innerHTML = `<span class="rp-cvkey is-br"><i class="t"></i></span>`
       + `<b>Branch</b><span>what shipped out of this branch's own depot</span>`
       + `<i class="sep"></i>`
@@ -1555,7 +1614,6 @@ The branch column is the decision that was recorded; the columns after it are wh
     if ($('setDemand')) $('setDemand').value = SET.demand;
     if ($('setSalesMonths')) $('setSalesMonths').value = String(SET.salesMonths);
     if ($('setAvgSource')) $('setAvgSource').value = SET.avgSource;
-    if ($('setPeriod')) $('setPeriod').value = SET.period;
     $('setAvgRound').value = SET.avgRound; $('setCartons').checked = SET.cartons;
     if ($('setMinAvg')) $('setMinAvg').value = SET.minAvg;
     const rows = S.avg.map(r => ({ code: r.product, tot: BRANCHES.reduce((s, b) => s + pickAvg(r, b), 0) })).filter(r => r.tot > 0).sort((a, b) => b.tot - a.tot).slice(0, 60);
@@ -1567,7 +1625,6 @@ The branch column is the decision that was recorded; the columns after it are wh
   function applySettings() {
     SET.weeks = Math.max(1, Number($('setWeeks').value) || 6); SET.cutDays = Math.max(1, Number($('setCutDays').value) || 25);
     SET.abc = $('setAbc').checked; if ($('setAvgSource')) SET.avgSource = $('setAvgSource').value;
-    if ($('setPeriod')) SET.period = $('setPeriod').value;
     SET.avgRound = $('setAvgRound').value; SET.cartons = $('setCartons').checked;
     if ($('setMinAvg')) SET.minAvg = Math.max(0, Number($('setMinAvg').value) || 0);
     const basisBefore = SET.demand, monthsBefore = SET.salesMonths;

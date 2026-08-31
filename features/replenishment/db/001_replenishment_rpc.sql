@@ -131,7 +131,17 @@ AS $$
          round(COALESCE(l.qty, 0) / GREATEST(p_months, 1)::NUMERIC, 2),
          COALESCE(r.orders, 0),
          COALESCE(r.reps, 0)
-    FROM por_rep r FULL OUTER JOIN por_local l ON l.sku_key = r.sku_key;
+    FROM por_rep r FULL OUTER JOIN por_local l ON l.sku_key = r.sku_key
+   /* ORDER BY obrigatório, e não estético.
+      A rota lê em páginas de 1000 (limit/offset) e Sydney devolve 1.238
+      linhas — duas páginas. Sem ordenação, o Postgres não promete a mesma
+      sequência entre as duas execuções: se o plano mudar entre a página 1 e a
+      página 2, a emenda repete linhas e perde outras. Medido forçando planos
+      diferentes: 37 SKUs de Sydney somem. E somem em SILÊNCIO — a tela mostra
+      1.201 linhas com cara de completa.
+      Em 12 execuções seguidas não disparou, que é exatamente o que torna esse
+      tipo de defeito caro: ele espera a tabela crescer ou a estatística virar. */
+  ORDER BY 1;
 $$;
 
 -- ───────────────────────────────────────────────────────────────────

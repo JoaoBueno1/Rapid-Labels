@@ -472,3 +472,8 @@ td.rp-avgb.is-driver,td.rp-avgr.is-driver{background:#f1f6ff}
 .rp-hist-bar b{color:var(--ink-2)}
 .rp-hist-warn{padding:7px 12px;margin-bottom:9px;border-radius:7px;
   background:#fef3c7;color:#92400e;font:400 11.5px/17px var(--sans)}
+/* A legenda vira aviso quando a régua do rep não carrega. Âmbar e não
+   vermelho: os números na tela não estão errados, estão incompletos. */
+.rp-coverkey.is-bad{background:#fef3c7;border-top-color:#92400e;color:#92400e}
+.rp-coverkey.is-bad b{color:#92400e}
+.rp-coverkey.is-bad span{color:#92400e}

@@ -410,12 +410,29 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   }
 }
 
-// ── Stock Planning (substitui o Excel Rapid-Inventory SKU) ──
-// Feature isolada e atrás de flag. API em /api/stock-planning/*; a tela é
-// montada em /planning. Fala direto com o Postgres porque o schema rapid_inv
-// não é exposto pelo PostgREST. Nada mais no site é tocado, e sem
-// STOCK_PLANNING_ENABLED=1 nem carrega.
-// Ligado por padrão desde que entrou no menu lateral; STOCK_PLANNING_ENABLED=0 desliga.
+/* ── Stock Planning (substitui o Excel Rapid-Inventory SKU) ──
+   API em /api/stock-planning/*; a tela é montada em /planning.
+
+   Fala direto com o Postgres, o que exige SUPABASE_DB_PASSWORD. Este comentário
+   dizia que era "porque o schema rapid_inv não é exposto pelo PostgREST", e
+   isso está ERRADO — medido em 31/08 com a chave anon, a mesma que o navegador
+   já carrega:
+
+     rapid_inv.sales_rep_branch   200, com linhas
+     rapid_inv.sku_settings       200, com linhas
+     rapid_inv.v_sp_lines         200, com linhas
+     cin7_mirror.v_sales_demand_line  200, com linhas
+
+   O que o PostgREST recusa não é o schema, é AGREGAR:
+     ?select=qty_signed.sum()  →  PGRST123 "Use of aggregate functions is not allowed"
+
+   A distinção não é acadêmica. Ela custou um dia: numa máquina sem a senha,
+   TODAS estas telas abriram vazias, e a premissa errada escrita aqui mandava
+   procurar no lugar errado. O replenishment já saiu dessa dependência descendo
+   a agregação para funções SECURITY DEFINER (features/replenishment/db/001) —
+   o mesmo caminho serve para o resto quando valer a pena.
+
+   Sem STOCK_PLANNING_ENABLED=1 nem carrega; =0 desliga. */
 if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   try {
     /* O aviso ANTES do registro, não depois.
