@@ -16,6 +16,7 @@
    o número já filtrado, e de lá se volta pelos projetos que esperam a carga. */
 
 const S = { projects: { q:'', status:'ACTIVE', rep:'', branch:'', only:'', offset:0, limit:400, col:{} } };
+let pjTotal = 0, pjCortado = null;
 
 /* O editor de célula do sp-core.js grava e devolve a linha atualizada. O que
    fazer depois é de cada página: aqui, remendar a linha em memória e
@@ -81,9 +82,12 @@ async function loadProjects() {
   $('#pjCount').textContent = 'loading…';
   try {
     const d = await api('/lines?' + qs);
-    pjRows = d.rows;
+    // Acumula ao paginar: sem isto o "Load more" trocava a página e o pedido
+    // partido na borda nunca se juntava.
+    pjRows = p.offset ? pjRows.concat(d.rows) : d.rows;
+    pjTotal = d.total;
     const by = new Map();
-    for (const r of d.rows) {
+    for (const r of pjRows) {
       const k = r.project_id || r.sales_order;
       if (!by.has(k)) by.set(k, { key:k, id:r.project_id, so:r.sales_order, cu:r.customer, rf:r.reference,
                                   rp:r.rep, dt:r.order_date, wh:r.warehouse_note,
@@ -91,7 +95,17 @@ async function loadProjects() {
       by.get(k).lines.push(r);
     }
     pjOrders = [...by.values()];
-    $('#pjCount').textContent = `${n0(pjOrders.length)} orders · ${n0(d.rows.length)} of ${n0(d.total)} lines`;
+    /* O ÚLTIMO grupo pode estar partido: a página corta por linha, não por
+       pedido. Medido: o SO 277178 aparecia como "48 lines · 2.864 ordered ·
+       2.437 to pick" quando tem 115 linhas, 6.511 e 6.061 — o cabeçalho somava
+       meia venda e não dizia que era meia. Marcar o grupo é o mínimo; o Load
+       more é o que deixa a pessoa fechar a conta. */
+    pjCortado = pjRows.length < pjTotal ? (pjOrders[pjOrders.length - 1] || {}).key : null;
+    const mais = $('#pjMore');
+    if (mais) {
+      mais.style.display = pjRows.length < pjTotal ? '' : 'none';
+      mais.textContent = `Load ${n0(Math.min(p.limit, pjTotal - pjRows.length))} more`;
+    }
     renderProjects();
   } catch (e) { $('#pjCount').textContent=''; toast(e.message, true); }
 }
@@ -143,7 +157,9 @@ function renderProjects() {
         ${branchChip(o)}
         <span class="sep"></span><span class="dt">${d10(o.dt)}</span>
         <span class="rt">
-          <span class="mt">${lines.length} lines · ${n0(qty)} ordered · ${n0(pick)} to pick</span>
+          <span class="mt"${o.key === pjCortado ? ' title="This sales order sits on the page boundary — part of it has not been loaded yet. Use Load more."' : ''}
+            >${lines.length} lines · ${n0(qty)} ordered · ${n0(pick)} to pick${
+              o.key === pjCortado ? ' <b class="pj-part">partial</b>' : ''}</span>
           ${o.id?`<button class="ui-act" data-project="${o.id}">Open</button>`:''}
         </span></div></td></tr>
       ${lines.map(r=>`<tr class="sp-ln ${lineState(r)}" data-row="${r.id}">
@@ -157,11 +173,23 @@ function renderProjects() {
     </tbody>`;
   }).join('');
   $('#pjGrid').innerHTML = head + (bodies || `<tbody><tr><td colspan="${LN.length}"><div class="sp-empty">Nothing matches those filters.</div></td></tr></tbody>`);
+  /* A busca do topo e os chips vão ao servidor; ESTA linha de filtros é de
+     navegador e só enxerga o que foi carregado. Filtrar Pick="no draw" mostrava
+     43 linhas de 2.039 reais, com o contador acima ainda dizendo "400 of 5.593"
+     — dois números na mesma tela, nenhum descrevendo o que estava embaixo. */
+  const ativo = LN.some(([k]) => (f[k] || '').trim());
+  const vis = pjOrders.reduce((n, o) => n + o.lines.filter(keep).length, 0);
+  $('#pjCount').textContent = ativo
+    ? `${n0(vis)} of ${n0(pjRows.length)} loaded · column filter, not a search (${n0(pjTotal)} total)`
+    : `${n0(pjOrders.length)} orders · ${n0(pjRows.length)} of ${n0(pjTotal)} lines`;
 }
 
-on('#pjSearch', 'input', debounce(e => { S.projects.q = e.target.value; loadProjects(); }));
-on('#pjStatus', 'change', e => { S.projects.status = e.target.value; loadProjects(); });
-on('#pjRep', 'change', e => { S.projects.rep = e.target.value; loadProjects(); });
+// Trocar de filtro volta ao começo: continuar de offset 400 num conjunto novo
+// pularia as 400 primeiras linhas dele.
+on('#pjSearch', 'input', debounce(e => { S.projects.q = e.target.value; S.projects.offset = 0; loadProjects(); }));
+on('#pjStatus', 'change', e => { S.projects.status = e.target.value; S.projects.offset = 0; loadProjects(); });
+on('#pjRep', 'change', e => { S.projects.rep = e.target.value; S.projects.offset = 0; loadProjects(); });
+on('#pjMore', 'click', () => { S.projects.offset = pjRows.length; loadProjects(); });
 on('#pjBranch', 'change', e => { S.projects.branch = e.target.value; S.projects.offset = 0; loadProjects(); });
 on('#pjFilters', 'click', e => { e.currentTarget.classList.toggle('is-on'); renderProjects(); });
 $$('.sp-view[data-view=projects] .sp-chip').forEach(c => c.addEventListener('click', () => {

@@ -178,29 +178,17 @@
         ${r.in_file ? 'in the product file' : 'not in the product file'}
         ${r.source_sheets ? '<br>Sheets: ' + esc([].concat(r.source_sheets).join(', ')) : ''}</div></div>
 
-      <!-- A única parte desta tela que ESCREVE. Fica no fim de propósito: o
-           painel existe para conferir de onde vem cada número, e a decisão
-           vem depois de olhar, não antes. -->
-      <div class="sp-panel is-edit"><h4>Decisions <span>this product, everywhere</span></h4><div class="in">
-        <label class="ms-sw">
-          <input type="checkbox" id="msRepl" data-sku="${esc(r.sku_key)}"${r.use_in_replenishment ? ' checked' : ''}>
-          <span>Can be sent to a branch</span>
-        </label>
-        <p class="ms-hint">Off means Branch Replenishment stops suggesting it and stops offering it
-          when someone types. Nothing else changes — it can still be bought and still counts as stock.</p>
-        ${r.replenishment_note ? `<p class="ms-note">${esc(r.replenishment_note)}</p>` : ''}
-        <label class="ms-fl"><span>Lifecycle</span>
-          <select id="msLife" data-sku="${esc(r.sku_key)}">
-            <option value="ACTIVE"${r.lifecycle_status === 'ACTIVE' ? ' selected' : ''}>Active — buy normally</option>
-            <option value="RUN_OUT"${r.lifecycle_status === 'RUN_OUT' ? ' selected' : ''}>Run-out — sell what is left, do not reorder</option>
-            <option value="DISCONTINUED"${r.lifecycle_status === 'DISCONTINUED' ? ' selected' : ''}>Discontinued — dead</option>
-          </select></label>
-        <p class="ms-hint">${r.has_settings
-          ? 'This product already has settings of its own.'
-          : 'This product has no settings yet — saving here creates them.'}</p>
-      </div></div>`;
+      <!-- A política deste produto dentro do NOSSO sistema.
+           Nada aqui é escrito no Cin7: é uma camada que diz como esta linha se
+           comporta nas ferramentas de Inventory Management. Por isso ela pode
+           discordar do ERP de propósito, e quando discorda a tela mostra os
+           dois lados. -->
+      <div class="sp-panel is-edit" id="msPolicy">
+        <h4>How this product behaves here <span>our system only — never written to Cin7</span></h4>
+        <div class="in"><div class="rp-sub">loading…</div></div>
+      </div>`;
     $('#side').classList.add('is-on');
-    wireDecisions(key);
+    carregarPolitica(key);
   }
 
   /* Os dois controles gravam.
@@ -209,27 +197,7 @@
      dois são a primeira escrita da tela, e por isso trazem o cabeçalho de
      auditoria: sem ele a mudança fica atribuída a "planner" e ninguém sabe
      quem decidiu tirar um produto da reposição. */
-  async function salvar(el, sku, corpo) {
-    if (el.disabled) return;
-    el.disabled = true;
-    try {
-      const r = await fetch(`/api/stock-planning/sku-settings/${encodeURIComponent(sku)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json',
-                   'x-sp-user': localStorage.getItem('sp.who') || 'planner' },
-        body: JSON.stringify(corpo),
-      });
-      const b = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(b.error || `HTTP ${r.status}`);
-      // A linha da grade em memória acompanha, senão a tela contradiz o banco
-      // até alguém recarregar.
-      const i = S.rows.findIndex((x) => x.sku_key === sku);
-      if (i >= 0) S.rows[i] = { ...S.rows[i], ...b, has_settings: true };
-      aviso('Saved');
-      return b;
-    } catch (e) { aviso('Not saved: ' + e.message, true); throw e; }
-    finally { el.disabled = false; }
-  }
+
 
   let avisoT;
   function aviso(msg, bad) {
@@ -239,20 +207,151 @@
     clearTimeout(avisoT); avisoT = setTimeout(() => { el.className = 'sp-toast'; }, bad ? 5000 : 2000);
   }
 
-  function wireDecisions(sku) {
-    const rep = $('#msRepl');
-    if (rep) rep.addEventListener('change', async (e) => {
-      const v = e.target.checked;
-      try { await salvar(e.target, sku, { use_in_replenishment: v }); }
-      catch (_) { e.target.checked = !v; }   // desfaz na tela se o servidor recusou
+  /* O painel de política: carrega, deixa editar, e só grava no Save.
+     A versão anterior gravava a cada clique de checkbox — três decisões
+     viravam três gravações, três linhas de auditoria, e nenhum instante em que
+     desistir. Política é um conjunto e se grava como conjunto. */
+  let polEstado = null, polSku = null;
+
+  async function carregarPolitica(sku) {
+    polSku = sku;
+    const box = $('#msPolicy'); if (!box) return;
+    try {
+      const d = await (await fetch(`/api/stock-planning/sku-policy/${encodeURIComponent(sku)}`)).json();
+      if (d.error) throw new Error(d.error);
+      if (polSku !== sku) return;              // o usuário já abriu outra linha
+      polEstado = { ...d.policy };
+      pintarPolitica(d);
+    } catch (e) {
+      box.innerHTML = `<h4>How this product behaves here</h4>
+        <div class="in rp-sub">Could not load: ${esc(e.message)}</div>`;
+    }
+  }
+
+  const USOS = [
+    ['use_in_replenishment', 'Branch Replenishment',
+     'Can be suggested when a branch is restocked. Off means it never appears in the suggestions and cannot be typed in either.'],
+    ['use_in_planning', 'Stock Planning',
+     'Counts in the weekly projection and in the alerts. Off means it stops driving buy suggestions.'],
+    ['use_in_gateway', 'Gateway',
+     'Can be suggested for the Gateway warehouse.'],
+  ];
+
+  const CICLOS = [
+    ['ACTIVE', 'Active', 'Bought and stocked normally.'],
+    ['RUN_OUT', 'Run-out', 'Sell what is left, do not reorder. Still shows everywhere, flagged.'],
+    ['DISCONTINUED', 'Discontinued',
+     'Dead. It does NOT disappear from Stock Planning or Branch Replenishment — it shows there with a flag, so a decision on remaining stock is still possible.'],
+  ];
+
+  function pintarPolitica(d) {
+    const p = polEstado, box = $('#msPolicy');
+    // O desacordo com o Cin7 fica em cima, porque é o que muda a leitura de
+    // tudo abaixo dele.
+    const discorda = p.cin7_says_dead_we_say_alive
+      ? `<p class="ms-disc">Cin7 has this <b>Deprecated</b>, and here it is still <b>Active</b>.
+           Nothing is wrong with that — it just means someone should decide.</p>`
+      : p.cin7_says_alive_we_say_dead
+      ? `<p class="ms-disc">Cin7 still has this <b>Active</b>, and here it is <b>Discontinued</b>.
+           Our call wins inside this system; Cin7 is untouched.</p>`
+      : '';
+
+    box.innerHTML = `<h4>How this product behaves here <span>our system only — never written to Cin7</span></h4>
+      <div class="in">
+        ${discorda}
+        <div class="ms-cin7row">
+          <span>Cin7 says</span>
+          <b class="ms-c7 ${p.cin7_deprecated ? 'is-dep' : ''}">${esc(p.cin7_status || '—')}</b>
+          <i>read-only, from the ERP</i>
+        </div>
+
+        <label class="ms-fl"><span>Lifecycle — our call</span>
+          <select id="polLife">
+            ${CICLOS.map(([v, r]) => `<option value="${v}"${p.lifecycle_status === v ? ' selected' : ''}>${r}</option>`).join('')}
+          </select></label>
+        <p class="ms-hint" id="polLifeHint">${esc((CICLOS.find((c) => c[0] === p.lifecycle_status) || CICLOS[0])[2])}</p>
+
+        <div class="ms-uses">
+          ${USOS.map(([k, rot, aj]) => `<label class="ms-sw" title="${esc(aj)}">
+            <input type="checkbox" data-use="${k}"${p[k] ? ' checked' : ''}>
+            <span>${rot}</span></label>
+            <p class="ms-hint ms-hint-in">${esc(aj)}</p>`).join('')}
+        </div>
+
+        <label class="ms-fl"><span>Why</span>
+          <input id="polNote" maxlength="200" placeholder="reason, so the next person knows"
+                 value="${esc(p.policy_note || '')}"></label>
+
+        <div class="ms-save">
+          <button class="sp-btn is-primary" id="polSave" disabled>Save</button>
+          <span class="ms-save-st" id="polSt">${p.settings_updated_at
+            ? `last changed ${esc(dmy(p.settings_updated_at))} by ${esc(p.settings_updated_by || '—')}`
+            : 'never configured — the defaults apply'}</span>
+        </div>
+      </div>
+
+      <div class="in ms-hist">
+        <h5>History</h5>
+        ${d.historico.length
+          ? `<ul>${d.historico.map((h) => `<li>
+              <b>${esc(dmyTime(h.quando))}</b> · ${esc(h.quem)}
+              <span>${h.campos.map((c) => `${esc(c.campo)}: ${esc(String(c.de ?? '—'))} → <b>${esc(String(c.para ?? '—'))}</b>`).join(' · ')}</span>
+            </li>`).join('')}</ul>`
+          : `<p class="rp-sub">No change recorded.<br>
+             The audit only started writing on ${esc(d.historico_desde)} — before that a swallowed
+             error left the log empty, so "nothing here" can also mean "changed earlier".</p>`}
+      </div>`;
+    ligarPolitica();
+  }
+
+  const dmy = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+  const dmyTime = (v) => { const d = dmy(v); const t = /T(\d{2}:\d{2})/.exec(String(v || '')); return d + (t ? ' ' + t[1] : ''); };
+
+  function ligarPolitica() {
+    const marcarSujo = () => {
+      const b = $('#polSave'); if (!b) return;
+      b.disabled = false; b.textContent = 'Save';
+      $('#polSt').textContent = 'not saved yet';
+    };
+    const lf = $('#polLife');
+    if (lf) lf.addEventListener('change', () => {
+      const c = CICLOS.find((x) => x[0] === lf.value);
+      if (c) $('#polLifeHint').textContent = c[2];
+      marcarSujo();
     });
-    const lf = $('#msLife');
-    if (lf) lf.addEventListener('change', async (e) => {
-      const antes = S.rows.find((x) => x.sku_key === sku)?.lifecycle_status || 'ACTIVE';
-      try { await salvar(e.target, sku, { lifecycle_status: e.target.value }); render(); }
-      catch (_) { e.target.value = antes; }
+    document.querySelectorAll('#msPolicy [data-use]').forEach((c) => c.addEventListener('change', marcarSujo));
+    const nt = $('#polNote'); if (nt) nt.addEventListener('input', marcarSujo);
+
+    const sv = $('#polSave');
+    if (sv) sv.addEventListener('click', async () => {
+      if (sv.disabled) return;
+      sv.disabled = true; sv.textContent = 'Saving…';
+      const corpo = { lifecycle_status: $('#polLife').value, policy_note: $('#polNote').value.trim() || null };
+      document.querySelectorAll('#msPolicy [data-use]').forEach((c) => { corpo[c.dataset.use] = c.checked; });
+      try {
+        const r = await fetch(`/api/stock-planning/sku-policy/${encodeURIComponent(polSku)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json',
+                     'x-sp-user': localStorage.getItem('sp.who') || 'planner' },
+          body: JSON.stringify(corpo),
+        });
+        const b = await r.json();
+        if (!r.ok) throw new Error(b.error || `HTTP ${r.status}`);
+        // A grade em memória acompanha, senão a linha contradiz o painel até
+        // alguém recarregar.
+        const i = S.rows.findIndex((x) => x.sku_key === polSku);
+        if (i >= 0) S.rows[i] = { ...S.rows[i], ...b, has_settings: true };
+        render();
+        aviso('Saved');
+        await carregarPolitica(polSku);        // recarrega para o histórico aparecer
+      } catch (e) {
+        aviso('Not saved: ' + e.message, true);
+        sv.disabled = false; sv.textContent = 'Save';
+      }
     });
   }
+
+
 
   $('#msQ').addEventListener('input', debounce((e) => { S.q = e.target.value; load(); }));
   $('#msStatus').addEventListener('change', (e) => { S.status = e.target.value; load(); });

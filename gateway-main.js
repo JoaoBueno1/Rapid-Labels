@@ -170,12 +170,42 @@ $('drClose').onclick = closeDrawer;
 $('drawerBack').onclick = closeDrawer;
 
 // ─── boot ──────────────────────────────────────────────────────────────
+/* Quem é você — no modal da própria tela, não no prompt() do navegador.
+   prompt() é modal NATIVO: ele congela a thread de JS até alguém responder. A
+   página inteira ficava parada antes de desenhar a primeira linha — medido em
+   navegador sem interação, 40 s sem responder e sem uma falha de rede sequer.
+   E as regras do repo já proíbem alert()/confirm() nativos pela mesma razão.
+   Agora a tela carrega por baixo e o nome é pedido por cima; nada é gravado
+   antes de o nome existir, porque boot() espera a promessa. */
+function pedirNome() {
+  return new Promise((resolve) => {
+    modal('Who is at this station?',
+      `<div class="gw-field">
+         <label for="gwWho">Your name</label>
+         <input class="gw-input" id="gwWho" autocomplete="off" placeholder="e.g. Sam">
+         <div class="hint">Recorded against everything you do here. Stored on this machine only.</div>
+       </div>`,
+      [{ label: 'Start', cls: 'gw-btn-primary', onClick: () => {
+        const v = ($('gwWho').value || '').trim();
+        if (!v) { $('gwWho').focus(); return; }   // sem nome não passa
+        state.user = v;
+        localStorage.setItem('gatewayUser', v);
+        closeModal();
+        resolve(v);
+      } }]);
+    const i = $('gwWho');
+    if (i) {
+      i.focus();
+      // Enter faz o que o botão faz: quem digita o nome não quer pegar o mouse.
+      i.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); $('modalFoot').querySelector('button').click(); }
+      });
+    }
+  });
+}
+
 async function boot() {
-  if (!state.user) {
-    const who = prompt('Your name (recorded against everything you do here):', '');
-    state.user = (who || '').trim() || 'unknown';
-    localStorage.setItem('gatewayUser', state.user);
-  }
+  if (!state.user) await pedirNome();
   $('whoami').textContent = state.user;
 
   document.querySelectorAll('.gw-tab').forEach(t => {

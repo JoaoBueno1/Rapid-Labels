@@ -264,7 +264,23 @@
     { code: 'CNS', name: 'Cairns',         avgField: 'avg_mth_cairns',         avgRepField: 'avg_rep_cairns' },
     { code: 'CFS', name: 'Coffs Harbour',  avgField: 'avg_mth_coffs_harbour',  avgRepField: 'avg_rep_coffs_harbour' },
     { code: 'HBA', name: 'Hobart',         avgField: 'avg_mth_hobart',         avgRepField: 'avg_rep_hobart' },
-    { code: 'SCS', name: 'Sunshine Coast', avgField: 'avg_mth_sunshine_coast', avgRepField: 'avg_rep_sunshine_coast' }
+    { code: 'SCS', name: 'Sunshine Coast', avgField: 'avg_mth_sunshine_coast', avgRepField: 'avg_rep_sunshine_coast',
+      // `warehouse` existe porque o nome de exibição NÃO é o nome do depósito
+      // no Cin7. A aba de médias mandava location="Sunshine Coast" e recebia
+      // ZERO linhas — o dado diz "Sunshine Coast Warehouse". Uma filial que
+      // vende 19.593 linhas em 12 meses aparecia vazia, e vazio lido como
+      // "não vende" é decisão de reposição errada. Só as que divergem
+      // declaram; as outras seis batem com o nome.
+      warehouse: 'Sunshine Coast Warehouse' }
+  ];
+
+  /* Os dois depósitos que NÃO são destino de reposição e por isso não estão em
+     BRANCHES — mas que a aba de conferência precisa poder filtrar: Main
+     despacha 74.655 linhas em 12 meses e Project 9.813, e até agora só o modo
+     "all branches" os alcançava. */
+  const DEPOTS = [
+    { code: '__MAIN__', name: 'Main Warehouse',    warehouse: 'Main Warehouse' },
+    { code: '__PROJ__', name: 'Project Warehouse', warehouse: 'Project Warehouse' },
   ];
 
   // Field names for Main warehouse avg.
@@ -507,6 +523,7 @@
     EXCLUDED_NAME_PATTERNS,
     CIN7_LOCATION_MAP,
     BRANCHES,
+    DEPOTS,
     MAIN_AVG_FIELD,
     MAIN_AVG_REP_FIELD,
 

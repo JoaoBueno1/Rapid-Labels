@@ -739,17 +739,48 @@ module.exports = function registerGatewayInventoryRoutes(app, sb) {
   // monthly sales — and it never suggests more than Gateway can actually
   // supply. recommended / selected / actual stay three different numbers all
   // the way through; this endpoint only produces the first.
+  /* Lê a tabela inteira, em páginas de 1.000, com ordem total.
+     O `.order(chave)` não é detalhe: a paginação por offset sem ordenação
+     estável repete e perde linhas, e a perda é silenciosa — foi exatamente
+     assim que 37 SKUs de Sydney sumiram da reposição. `guarda` corta em 60
+     páginas para nenhum erro de filtro virar laço infinito. */
+  async function readAll(build, chave) {
+    const out = [];
+    for (let i = 0, guarda = 0; guarda < 60; guarda++, i += 1000) {
+      const { data, error } = await build().order(chave, { ascending: true }).range(i, i + 999);
+      if (error) return { data: null, error };
+      out.push(...(data || []));
+      if (!data || data.length < 1000) return { data: out, error: null };
+    }
+    return { data: out, error: null };
+  }
+
   app.get('/api/gateway/recommendations', async (req, res) => {
     try {
       const weeksTarget = Number(req.query.weeks) || 4;
       const limit = Math.min(Number(req.query.limit) || 100, 500);
 
+      /* PostgREST devolve no máximo 1.000 linhas e NÃO avisa que cortou.
+         Estas três leituras eram `.select()` cru: Main Warehouse tem 4.801
+         linhas em stock_snapshot e branch_avg_monthly_sales tem 4.644 — vinham
+         1.000 de cada. Efeito medido: dos 494 SKUs do Gateway, só 94 achavam
+         estoque do Main. R1031-WH-TRI aparecia "Main 0 · cover 0 wk" em
+         vermelho sugerindo mandar 40 unidades, com 12.246 no Main, em 10 bins.
+         20 das 28 recomendações não deveriam existir; 56 verdadeiras não
+         apareciam. Um número faltando vira zero, e zero aqui é urgência.
+         `readAll` pagina com ordem estável — sem `.order()` o Postgres pode
+         devolver a mesma linha em duas páginas e nenhuma em outra. */
       const [gw, mainRows, avg] = await Promise.all([
         sb.from('gateway_v_sku_balance').select('sku,product_name,five_dc,qty_available,oldest_received_on,oldest_age_days,shelves'),
-        sb.schema(CIN7).from('stock_snapshot').select('sku,on_hand').eq('location_name', 'Main Warehouse'),
-        sb.from('branch_avg_monthly_sales').select('product,avg_mth_main,avg_sales_main,avg_transfer_main'),
+        readAll(() => sb.schema(CIN7).from('stock_snapshot').select('sku,on_hand').eq('location_name', 'Main Warehouse'), 'id'),
+        readAll(() => sb.from('branch_avg_monthly_sales').select('product,avg_mth_main,avg_sales_main,avg_transfer_main'), 'product'),
       ]);
+      // Os TRÊS erros são testados. Só o do Gateway era: se o estoque do Main
+      // falhasse, `data` vinha null, todo main virava 0 e a tela mostrava a
+      // mesma lista errada — sem estado de erro. Vazio ≠ erro.
       if (gw.error) return pgFail(res, gw.error);
+      if (mainRows.error) return pgFail(res, mainRows.error);
+      if (avg.error) return pgFail(res, avg.error);
 
       const mainBySku = {};
       for (const r of mainRows.data || []) {

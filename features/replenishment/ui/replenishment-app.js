@@ -134,8 +134,16 @@
     avg: [], avgBy: {}, ranks: null, stock: {}, inT: {}, prod: {}, prodList: [], pallet: {}, repAvg: {}, repAvgInfo: null, loaded: false,
     branch: null, view: 'weekly', mode: 'weekly', stage: 'draft', lines: [],
     sort: { key: null, dir: 1 }, search: '', vis: { weekly: null, daily: null }, sideSku: null,
+    // Divergências entre a leitura emendada e o total que o servidor informa.
+    emenda: [],
   };
   const BRANCHES = (RC && RC.BRANCHES) || [];   // guarded: init() shows a status if the engine is missing
+  const DEPOTS = (RC && RC.DEPOTS) || [];       // Main e Project: origem, não destino
+  // O nome do depósito no Cin7, que nem sempre é o nome que a tela mostra.
+  const depotOf = (code) => {
+    const b = BRANCHES.concat(DEPOTS).find(x => x.code === code);
+    return b ? (b.warehouse || b.name) : '';
+  };
   const VARIANT = { MEL: true, HBA: true };
   /* O nome do depósito no Cin7, por filial. O espelho de vendas grava
      location_name e não o código, e Sunshine Coast tem sufixo lá e as outras
@@ -150,6 +158,17 @@
   // oferecidos nem sugeridos aqui.
   const isPackSku = sku => /carton|(-|\s)(ctn|pk)\d*$/i.test(String(sku || ''));
 
+  /* O saldo do Gateway que PODE ser enviado. Marcar "não usar no Gateway" no
+     Master Stock tem de tirar o número da conta, não só desenhar um aviso:
+     senão o motor continua sugerindo em cima de um estoque que ninguém vai
+     separar de lá. Sem marca nenhuma isto devolve o saldo inteiro — hoje é o
+     caso de 100% do catálogo, então nada muda até alguém decidir. */
+  const gwStock = k => (S.gwOff && S.gwOff.has(k)) ? 0 : Number((S.stock.GATEWAY && S.stock.GATEWAY[k]) || 0);
+
+  // Deprecated no Cin7 esconde o produto — a não ser que alguém tenha aberto o
+  // Master Stock e dito que ainda vale. A marca do usuário vence o ERP.
+  const escondePorDeprecated = (p, k) => p.status === 'Deprecated' && !(S.allow && S.allow.has(k));
+
   const locBucket = name => {
     const n = String(name || '').toLowerCase();
     if (n.startsWith('main')) return 'MAIN'; if (n.startsWith('gateway')) return 'GATEWAY';
@@ -159,12 +178,28 @@
     if (n.startsWith('sunshine')) return 'SCS'; return null;
   };
 
+  /* Emenda páginas de 1.000 e CONFERE o resultado contra o total que o próprio
+     PostgREST informa (`count: 'exact'`).
+     Paginar sem conferir publica um número que ninguém validou: o rodapé diz
+     "Live · 15.301 stock rows" e essa frase é lida como fato. Duas rodadas
+     completas hoje não perderam uma linha — mas o sync roda 24×/dia e faz
+     TRUNCATE commitado sozinho antes de reinserir em ~31 lotes, cada um sua
+     transação. Existe janela em que o leitor vê a tabela pela metade, e uma
+     resposta parcial é tão convincente quanto uma completa. `.order()` não
+     fecha essa janela — leitura ordenada de tabela meio-vazia devolve metade,
+     ordenada. O que fecha é comparar com o total e DIZER quando não bate.
+     `S.emenda` guarda a divergência para o rodapé. */
   async function fetchAll(from, sel, opts) {
-    let out = [], i = 0;
+    let out = [], i = 0, total = null;
     for (;;) {
-      const q = (opts && opts.schema ? sb().schema(opts.schema) : sb()).from(from).select(sel).range(i, i + 999);
-      const { data, error } = await q; if (error) throw error;
+      const q = (opts && opts.schema ? sb().schema(opts.schema) : sb())
+        .from(from).select(sel, { count: 'exact' }).range(i, i + 999);
+      const { data, error, count } = await q; if (error) throw error;
+      if (total == null && count != null) total = count;
       out = out.concat(data || []); if (!data || data.length < 1000) break; i += 1000;
+    }
+    if (total != null && out.length !== total) {
+      (S.emenda || (S.emenda = [])).push({ tabela: from, emendado: out.length, esperado: total });
     }
     return out;
   }
@@ -229,10 +264,18 @@
        funcionando como sempre funcionou, só sem esse corte — e o rodapé do
        autocomplete deixa de prometer que ele existe. */
     S.blocked = new Set(); S.blockedNote = {};
+    S.allow = new Set(); S.gwOff = new Set(); S.lifeFlag = {};
     try {
       const r = await fetch('/api/stock-planning/replenishment-blocked');
       if (r.ok) { const b = await r.json();
-        S.blocked = new Set(b.keys || []); S.blockedNote = b.notes || {}; }
+        S.blocked = new Set(b.keys || []); S.blockedNote = b.notes || {};
+        // Quem alguém liberou de propósito, mesmo o Cin7 dizendo Deprecated.
+        S.allow = new Set(b.allow || []);
+        // Quem não pode sair do Gateway: o saldo de lá some do pool de envio.
+        S.gwOff = new Set(b.gateway_off || []);
+        // DISCONTINUED e RUN-OUT: aparecem com bandeira, não somem. Um item
+        // aposentado ainda tem saldo, e é sobre esse saldo que se decide.
+        S.lifeFlag = b.flags || {}; }
     } catch (_) { /* segue sem o corte */ }
     S.prod = {}; S.prodList = prod;
     prod.forEach(p => { if (p.sku) S.prod[String(p.sku).toUpperCase()] = p; });
@@ -249,7 +292,14 @@
       if (k && v > 0) S.pallet[k] = v;
     }
     S.stock = buckets; S.inT = inT; S.ranks = RC.computeAbcRanks(avg); S.loaded = true;
-    setStatus('fresh', `Live · ${n0(stock.length)} stock rows · ${n0(avg.length)} SKUs with averages`);
+    // Se a emenda não bateu com o total do servidor, o rodapé diz isso em vez
+    // de anunciar um número redondo que ninguém conferiu.
+    if (S.emenda && S.emenda.length) {
+      const e = S.emenda[0];
+      setStatus('bad', `Partial read — ${e.tabela} returned ${n0(e.emendado)} of ${n0(e.esperado)} rows. Reload before ordering.`);
+    } else {
+      setStatus('fresh', `Live · ${n0(stock.length)} stock rows · ${n0(avg.length)} SKUs with averages`);
+    }
   }
   function setStatus(level, text) {
     const d = $('statusDot'); if (d) d.className = 'sp-dot ' + (level === 'loading' ? 'stale' : level === 'bad' ? 'dead' : 'fresh');
@@ -290,7 +340,7 @@
     const avail = Number(stock[k] || 0);
     const inTransit = Number((S.inT[branch.code] && S.inT[branch.code][k]) || 0);
     const mainOnly = Number((S.stock.MAIN && S.stock.MAIN[k]) || 0);
-    const gw = Number((S.stock.GATEWAY && S.stock.GATEWAY[k]) || 0);
+    const gw = gwStock(k);
     const mainGw = mainOnly + gw;
     const syd = Number((S.stock.SYD && S.stock.SYD[k]) || 0);
     const pallet = Number(S.pallet[k] || 0);   // por SKU, não por 5DC
@@ -307,6 +357,11 @@
     return {
       code: p.sku || code, dc: p.attribute1 || '', name: p.name || '', ctn: p.carton_quantity || 0,
       pallet, deprecated: p.status === 'Deprecated',
+      // A bandeira do Master Stock viaja com a linha: ela é gravada no
+      // rascunho e a grade a desenha sem consultar o índice de novo.
+      life: (S.lifeFlag && S.lifeFlag[k]) || '',
+      gwBlocked: !!(S.gwOff && S.gwOff.has(k)),
+      allowedDespiteCin7: !!(S.allow && S.allow.has(k)),
       repAvg: ra ? ra.rep_avg : null, locAvg: ra ? ra.loc_avg : null, repCount: ra ? ra.reps : 0,
       storedAvg: stored,
       loc: p.stock_locator || '', avg, soh: avail, inTransit, mainGw, mainOnly, gw, canSend, syd,
@@ -324,7 +379,7 @@
     for (const r of S.avg) {
       const c0 = String(r.product || '').trim(); if (!c0) continue;
       const p = S.prod[c0.toUpperCase()] || {}; if (RC.isExcludedProduct(c0, p.name)) continue;
-      if (isPackSku(c0) || p.status === 'Deprecated') continue;
+      if (isPackSku(c0) || escondePorDeprecated(p, c0.toUpperCase())) continue;
       // O MESMO corte do autocomplete. Aplicar num só deixaria o produto
       // bloqueado para quem digita e liberado para quem clica em "Load
       // suggested" — que é o buraco que já existe hoje entre os dois caminhos.
@@ -726,6 +781,18 @@
     updateCount();
     wireGrid();
   }
+  // Um chip só, e o título explica o que ele muda. Duas marcas na mesma linha
+  // brigariam por 8px numa coluna que já é a mais apertada da grade.
+  function lifeChip(l) {
+    if (l.life === 'DISCONTINUED')
+      return '<span class="rp-life rp-life--disc" title="Discontinued in Master Stock. It still ships while there is stock; it is not reordered.">DISC</span>';
+    if (l.life === 'RUN_OUT')
+      return '<span class="rp-life rp-life--run" title="Run-out in Master Stock. Selling what is left; not reordered.">RUN-OUT</span>';
+    if (l.gwBlocked)
+      return '<span class="rp-life rp-life--gw" title="Master Stock says this one is not picked from Gateway — only Main stock counts as sendable.">MAIN ONLY</span>';
+    return '';
+  }
+
   function cell(l, c) {
     const g = c.group, gc = (g === 'ord' ? ' g-ord' : g === 'pack' ? ' g-pack' : '') + (IDCLS[c.key] || '');
     const base = c.align === 'num' ? 'num' : c.align === 'code' ? 'code txt' : 'txt';
@@ -737,7 +804,11 @@
       // do texto inteiro desdobrado para dimensionar a linha, e a linha ia a
       // 72px por causa de um nome de 421px de altura que estava clampado a 30.
       // Medido: tirando o -webkit-box do <td>, a mesma linha cai para 37px.
-      case 'code': return wrap(`<div class="rp-clamp">${esc(l.code)}</div>`);
+      /* A bandeira do Master Stock vive aqui, colada no código. O item
+         DESCONTINUADO não some da reposição — ele ainda tem saldo, e alguém
+         precisa decidir o que fazer com esse saldo. Some seria esconder a
+         decisão. */
+      case 'code': return wrap(`<div class="rp-clamp">${esc(l.code)}</div>` + lifeChip(l));
       // rp-name é o que autoriza a quebra em duas linhas. Sem a classe o nome
       // volta a cortar, porque a regra geral da grade é nowrap.
       case 'name': return wrap(`<div class="rp-clamp">${esc(l.name)}</div>`, ' rp-name', l.name);
@@ -1048,7 +1119,8 @@
     for (const p of S.prodList) {
       // Deprecated não entra: 2.744 de 11.259 no catálogo, e a filial não deve
       // pedir o que a empresa já aposentou.
-      if (p.status === 'Deprecated') { hidDep++; continue; }
+      const kk = String(p.sku || '').toUpperCase();
+      if (escondePorDeprecated(p, kk)) { hidDep++; continue; }
       if (isPackSku(p.sku)) { hidPack++; continue; }
       // Decisão explícita de alguém no Master Stock. Vem ANTES do corte por
       // estoque: um produto desligado de propósito não deve reaparecer só
@@ -1056,8 +1128,7 @@
       if (S.blocked && S.blocked.has(String(p.sku || '').toUpperCase())) { hidBlk++; continue; }
       // Nem o que Main+Gateway não tem: pedir o que ninguém pode mandar só
       // gera uma linha que morre no check. São 5.909 dos 8.515 ativos.
-      const kk = String(p.sku || '').toUpperCase();
-      if (((S.stock.MAIN && S.stock.MAIN[kk]) || 0) + ((S.stock.GATEWAY && S.stock.GATEWAY[kk]) || 0) <= 0) { hidNoMain++; continue; }
+      if (((S.stock.MAIN && S.stock.MAIN[kk]) || 0) + gwStock(kk) <= 0) { hidNoMain++; continue; }
       const sku = kk.toLowerCase(), dc = String(p.attribute1 || '').toLowerCase(), nm = String(p.name || '').toLowerCase();
       if (sku.startsWith(q) || dc.startsWith(q)) starts.push(p);
       else if (sku.includes(q) || dc.includes(q) || nm.includes(q)) contains.push(p);
@@ -1067,7 +1138,7 @@
     const items = starts.concat(contains).slice(0, 25); acState.items = items; acState.sel = items.length ? 0 : -1;
     const ac = $('rpAc');
     ac.innerHTML = items.length ? items.map((p, i) => {
-      const k = String(p.sku).toUpperCase(), main = (S.stock.MAIN && S.stock.MAIN[k] || 0) + (S.stock.GATEWAY && S.stock.GATEWAY[k] || 0);
+      const k = String(p.sku).toUpperCase(), main = (S.stock.MAIN && S.stock.MAIN[k] || 0) + gwStock(k);
       return `<div data-sku="${esc(p.sku)}" class="${i === acState.sel ? 'sel' : ''}"><span class="sku">${esc(p.sku)}</span>${p.attribute1 ? `<span class="dc">${esc(p.attribute1)}</span>` : ''}<span class="nm">${esc(p.name || '')}</span><span class="st">Main ${n0(main)}</span></div>`;
     }).join('') : '<div class="none">No product matches</div>';
     // Esconder em silêncio faria o usuário procurar um código que existe e
@@ -1109,7 +1180,8 @@
       const it = Number((S.inT[b.code] && S.inT[b.code][sku]) || 0);
       return { code: b.code, name: b.name, soh, a, it, here: b.code === S.branch.code };
     });
-    const mainSoh = Number((S.stock.MAIN && S.stock.MAIN[sku]) || 0), gwSoh = Number((S.stock.GATEWAY && S.stock.GATEWAY[sku]) || 0);
+    const mainSoh = Number((S.stock.MAIN && S.stock.MAIN[sku]) || 0), gwSoh = gwStock(sku);
+    const gwReal = Number((S.stock.GATEWAY && S.stock.GATEWAY[sku]) || 0);
     const mainAvg = avgRow ? RC.pickMainAvg(avgRow) : 0;
     $('sideBody').innerHTML = `
       <div class="rp-side-code">${esc(line.code)}</div>
@@ -1121,7 +1193,9 @@
         </tbody></table></div></div>
       <div class="sp-panel"><h4>Main &amp; Gateway <span>the send pool</span></h4><div class="in">
         <div class="rp-kv"><span>Main SOH</span><b>${n0(mainSoh)}</b></div>
-        <div class="rp-kv"><span>Gateway SOH</span><b>${n0(gwSoh)}</b></div>
+        <div class="rp-kv"><span>Gateway SOH</span><b>${n0(gwSoh)}</b>${
+          S.gwOff && S.gwOff.has(sku)
+            ? `<span class="rp-sub" title="Master Stock excludes this SKU from the Gateway pool">not sendable${gwReal ? ` — ${n0(gwReal)} sits there` : ''}</span>` : ''}</div>
         <div class="rp-kv"><span>Main+Gateway</span><b>${n0(mainSoh + gwSoh)}</b></div>
         <div class="rp-kv"><span>Main avg / mo</span><b>${n1(mainAvg)}</b></div>
         <div id="sideBins" class="rp-kv"><span>Main bins</span><b class="rp-sub">loading…</b></div>
@@ -1519,8 +1593,12 @@ The branch column is the decision that was recorded; the columns after it are wh
   // Uma barra de filtro só, montada conforme o modo — três barras diferentes
   // ensinariam três lugares para procurar a mesma coisa.
   function avBar(opts) {
+    // Os dois depósitos só aparecem onde a pergunta é "de onde saiu" (a janela
+    // medida). No modo "o que o motor usa" eles não são coluna, e oferecê-los
+    // devolveria uma tabela sempre vazia.
+    const lista = BRANCHES.concat(opts.window ? DEPOTS : []);
     const br = `<select id="avBranch"><option value="">All branches</option>` +
-      BRANCHES.map(b => `<option value="${esc(b.code)}"${AV.branch === b.code ? ' selected' : ''}>${esc(b.name)}</option>`).join('') + '</select>';
+      lista.map(b => `<option value="${esc(b.code)}"${AV.branch === b.code ? ' selected' : ''}>${esc(b.name)}</option>`).join('') + '</select>';
     const win = [3, 6, 12].map(m => `<button class="sp-chip${AV.months === m ? ' is-on' : ''}" data-avm="${m}">${m}m</button>`).join('');
     return `<div class="sp-bar rp-avbar">
       ${opts.search ? `<input type="search" id="avSearch" placeholder="Filter SKU or product…" style="max-width:250px" value="${esc(AV.q)}">` : ''}
@@ -1564,7 +1642,8 @@ The branch column is the decision that was recorded; the columns after it are wh
   async function avMeasured() {
     $('avBody').innerHTML = avBar({ search: true, branch: true, window: true }) + '<div class="rp-hist-empty">Loading…</div>';
     avWire();
-    const bn = (BRANCHES.find(b => b.code === AV.branch) || {}).name || '';
+    // O nome do DEPÓSITO, não o da filial: "Sunshine Coast" não existe no dado.
+    const bn = depotOf(AV.branch);
     const qs = new URLSearchParams({ months: AV.months }); if (bn) qs.set('location', bn);
     let d;
     try { d = await fetch(`/api/replenishment/averages?${qs}`).then(r => r.json()); }
@@ -1572,6 +1651,8 @@ The branch column is the decision that was recorded; the columns after it are wh
       `<div class="rp-hist-empty">Could not load.<br><span class="rp-sub">${esc(e.message)}</span></div>`; avWire(); return; }
     let rows = d.rows || [];
     if (AV.q) { const q = AV.q.toLowerCase(); rows = rows.filter(r => (r.sku + ' ' + (r.name || '')).toLowerCase().includes(q)); }
+    // Contado sobre o conjunto FILTRADO e ANTES do corte de 600.
+    const distintos = new Set(rows.map(r => r.sku_key || r.sku)).size;
     const total = rows.length; rows = rows.slice(0, 600);
     const sp = d.span || {};
     $('avBody').innerHTML = avBar({ search: true, branch: true, window: true }) +
@@ -1588,7 +1669,13 @@ The branch column is the decision that was recorded; the columns after it are wh
          <td class="num ${r.months_with_sales < AV.months / 2 ? 'rp-thin' : ''}"
              title="${r.months_with_sales} of the ${AV.months} months in the window had a sale">${r.months_with_sales} / ${AV.months}</td></tr>`).join('') +
        '</tbody></table></div>';
-    $('avCount').textContent = `${n0(total)} SKUs · ${AV.months}m${bn ? ' · ' + esc(bn) : ' · all branches'}`;
+    /* Contava LINHAS (pares SKU × local) e escrevia "SKUs": 8.600 linhas são
+       3.065 SKUs distintos. E o "4,000" de antes não era medição nenhuma — era
+       o LIMIT da função, que saiu. Agora diz as duas coisas, e diz que a
+       tabela mostra 600. */
+    $('avCount').textContent = `${n0(distintos)} SKUs · ${n0(total)} SKU×location rows`
+      + (total > 600 ? ' · showing 600' : '')
+      + ` · ${AV.months}m${bn ? ' · ' + esc(bn) : ' · all branches'}`;
     avWire();
   }
 

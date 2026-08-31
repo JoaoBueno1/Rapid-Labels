@@ -75,3 +75,32 @@
    alguém, não um problema a consertar. */
 .ms-blk{font:600 8.5px/13px var(--sans);font-style:normal;background:var(--line);
   color:var(--mut);border-radius:3px;padding:0 4px;margin-left:3px;vertical-align:1px;cursor:help}
+
+/* ── A política do produto ────────────────────────────────────────────
+   Ela é uma camada NOSSA e a tela precisa deixar isso óbvio: o que o Cin7 diz
+   fica visivelmente separado do que nós decidimos, porque os dois podem
+   discordar e nenhum dos dois está errado por isso. */
+.ms-cin7row{display:flex;align-items:center;gap:8px;padding:6px 9px;margin-bottom:11px;
+  background:var(--sunken);border-radius:5px;font:400 11.5px var(--sans);color:var(--mut)}
+.ms-c7{font:700 11.5px var(--sans);color:var(--ink-2)}
+.ms-c7.is-dep{color:#92400e}
+.ms-cin7row i{margin-left:auto;font-style:normal;font-size:10px;color:var(--mut-2)}
+.ms-disc{margin:0 0 10px;padding:7px 10px;border-radius:5px;background:#fef3c7;
+  color:#92400e;font:400 11.5px/17px var(--sans)}
+.ms-disc b{font-weight:700}
+.ms-uses{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.ms-uses .ms-sw{margin-top:9px}
+.ms-uses .ms-sw:first-child{margin-top:0}
+.ms-hint-in{margin:1px 0 0 23px}
+.ms-save{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:11px;
+  border-top:1px solid var(--line)}
+.ms-save-st{font:400 11px var(--sans);color:var(--mut-2)}
+/* O histórico. Vazio não é o mesmo que "nunca mudou" — a auditoria só passou a
+   gravar em 31/08, e o painel diz isso em vez de deixar concluir. */
+.ms-hist h5{margin:0 0 6px;font:700 11px var(--sans);color:var(--mut-2);
+  letter-spacing:.04em;text-transform:uppercase}
+.ms-hist ul{margin:0;padding:0;list-style:none}
+.ms-hist li{padding:5px 0;border-bottom:1px solid var(--line);font:400 11px/16px var(--sans)}
+.ms-hist li:last-child{border-bottom:0}
+.ms-hist li b{color:var(--ink-2)}
+.ms-hist li span{display:block;color:var(--mut);margin-top:1px}

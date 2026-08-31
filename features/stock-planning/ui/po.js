@@ -30,7 +30,7 @@ function vesselColor(v) {
 const S = {
   tab: 'lines',
   pos:  { q:'', supplier:'', open:true, overdue:false },
-  alloc:{ q:'', supplier:'', only:'pending' },
+  alloc:{ q:'', supplier:'', only:'pending', offset:0, rows:[] },
   cont: { q:'', supplier:'', type:'40GP', pick:new Set() },
   branches: [], suppliers: [],
 };
@@ -221,29 +221,40 @@ async function openAllocation(id) {
    é regra do sistema (005) e não descuido, mas ninguém tinha onde ver isso. */
 async function loadAlloc() {
   const a = S.alloc;
-  const qs = new URLSearchParams({ limit: 300, only: a.only });
+  const qs = new URLSearchParams({ limit: 300, offset: a.offset, only: a.only });
   if (a.q) qs.set('q', a.q);
   if (a.supplier) qs.set('supplier', a.supplier);
-  estado($('#alGrid'), 'carregando', 'Loading allocations…');
-  $('#alCount').textContent = 'loading…';
+  if (!a.offset) { estado($('#alGrid'), 'carregando', 'Loading allocations…'); $('#alCount').textContent = 'loading…'; }
   try {
     const d = await api('/pos/allocations?' + qs);
+    // Acumula ao paginar. Sem isto o "Load more" trocava a página em vez de
+    // continuar a lista, e 1.466 linhas ficavam eternamente em 300.
+    a.rows = a.offset ? a.rows.concat(d.rows) : d.rows;
     $('#alTiles').innerHTML = `
       ${cartao(n0(d.counts.total), 'Open PO lines', 'not yet received')}
       ${cartao(n0(d.counts.pending), 'With no branch', 'the remainder is Main by default', d.counts.pending ? 'warn' : '')}
       ${cartao(n0(d.counts.units_pending), 'Units unallocated', 'across those lines')}
       ${cartao(n0(d.counts.over_count), 'Over-allocated', 'more promised than the line carries', d.counts.over_count ? 'bad' : '')}`;
-    if (!d.rows.length) {
+    if (!a.rows.length) {
       $('#alCount').textContent = '0 lines';
+      $('#alMore').style.display = 'none';
       return estado($('#alGrid'), 'vazio', 'Every open line matching these filters already has a branch.');
     }
-    $('#alCount').textContent = `${n0(d.rows.length)} lines · ${d.ms} ms`;
+    /* "300 lines" era tudo o que o rodapé dizia, sobre 1.466. E os quatro
+       cartões acima usam WHERE próprio (só "não recebido"), então filtrando
+       por um fornecedor a grade mostrava 300 e o cartão continuava em 1.466 —
+       dois números da mesma tela que pareciam a mesma coisa. `filtered` é o
+       total DESTE filtro. */
+    const falta = d.counts.filtered - a.rows.length;
+    $('#alCount').textContent = `${n0(a.rows.length)} of ${n0(d.counts.filtered)} lines` + ` · ${d.ms} ms`;
+    $('#alMore').style.display = falta > 0 ? '' : 'none';
+    $('#alMore').textContent = `Load ${n0(Math.min(300, falta))} more`;
     $('#alGrid').innerHTML = `<thead><tr>
         <th style="width:92px">PO #</th><th style="width:190px">SKU</th><th style="width:92px">Supplier</th>
         <th style="width:92px">Due</th><th class="n" style="width:78px">QTY</th>
         <th class="n" style="width:88px">Allocated</th><th class="n" style="width:96px">No branch</th>
         <th>Split</th><th style="width:96px"></th></tr></thead>
-      <tbody>${d.rows.map(r => `<tr data-po="${r.po_line_id}"${r.over_allocated ? ' class="al-over"' : ''}>
+      <tbody>${a.rows.map(r => `<tr data-po="${r.po_line_id}"${r.over_allocated ? ' class="al-over"' : ''}>
         <td class="mono">${esc(r.po_number)}</td>
         <td class="mono">${esc(r.sku)}</td>
         <td>${esc(r.supplier_code || '')}</td>
@@ -262,9 +273,12 @@ async function loadAlloc() {
     $('#alCount').textContent = '';
   }
 }
-on('#alSearch', 'input', debounce(e => { S.alloc.q = e.target.value; loadAlloc(); }));
-on('#alSupplier', 'change', e => { S.alloc.supplier = e.target.value; loadAlloc(); });
-on('#alOnly', 'change', e => { S.alloc.only = e.target.value; loadAlloc(); });
+// Qualquer troca de filtro volta ao começo: continuar de offset 300 num
+// conjunto novo pularia as 300 primeiras linhas do novo filtro.
+on('#alSearch', 'input', debounce(e => { S.alloc.q = e.target.value; S.alloc.offset = 0; loadAlloc(); }));
+on('#alSupplier', 'change', e => { S.alloc.supplier = e.target.value; S.alloc.offset = 0; loadAlloc(); });
+on('#alOnly', 'change', e => { S.alloc.only = e.target.value; S.alloc.offset = 0; loadAlloc(); });
+on('#alMore', 'click', () => { S.alloc.offset = S.alloc.rows.length; loadAlloc(); });
 on('#alGrid', 'click', e => { const b = e.target.closest('[data-alloc]'); if (b) openAllocation(+b.dataset.alloc); });
 
 /* Mesma marcação do tile() do Stock Planning — b/em/small, não b/span/i.
@@ -345,9 +359,15 @@ function renderCont() {
         : kgSel ? `<span>${n0(kgSel)} kg of ${n0(tipo.payload_kg)} kg payload.</span>` : ''}
     </div>`;
 
+  /* O resumo agora é do LIVRO INTEIRO (a rota soma em SQL, sem LIMIT). Antes
+     era somado sobre as 500 linhas devolvidas e a aba anunciava 588,8 m³ ≈ 10
+     contêineres para um livro de 1.692,6 m³ ≈ 29. Se a grade ainda não trouxe
+     tudo, o rodapé diz — e o número do cubo continua sendo o do livro. */
   const s = d.summary;
   $('#ctCount').textContent = `${n0(s.cubed)} of ${n0(s.lines)} lines can be cubed`
-    + ` · ${n1(s.cbm)} m³` + (s.no_cube ? ` · ${n0(s.no_cube)} cannot` : '') + ` · ${d.ms} ms`;
+    + ` · ${n1(s.cbm)} m³` + (s.no_cube ? ` · ${n0(s.no_cube)} cannot` : '')
+    + (s.rows_returned < s.lines ? ` · grid shows the first ${n0(s.rows_returned)}` : '')
+    + ` · ${d.ms} ms`;
 
   if (!d.rows.length) return estado($('#ctGrid'), 'vazio', 'No open purchase order line matches these filters.');
   $('#ctGrid').innerHTML = `<thead><tr>
@@ -454,11 +474,19 @@ on('#ctPlans', 'change', async (e) => {
     const naLista = new Set((contData?.rows || []).map(r => String(r.id)));
     const doPlano = d.lines.map(l => String(l.po_line_id)).filter(Boolean);
     S.cont.pick = new Set(doPlano.filter(x => naLista.has(x)));
+    /* "no longer open" era um palpite disfarçado de fato: `naLista` só tinha
+       as linhas da PÁGINA carregada, então uma linha aberta que estava além do
+       corte era anunciada como recebida. Avisar errado é pior que não avisar.
+       Agora o texto separa as duas causas — e só afirma "recebida" quando a
+       grade de fato carregou o livro inteiro. */
     const faltam = doPlano.length - S.cont.pick.size;
+    const carregouTudo = (contData?.summary?.rows_returned ?? 0) >= (contData?.summary?.lines ?? 0);
     renderCont();
-    toast(faltam
-      ? `"${d.plan.name}" reopened — ${S.cont.pick.size} of ${doPlano.length} lines; ${faltam} are no longer open`
-      : `"${d.plan.name}" reopened with ${S.cont.pick.size} lines`);
+    toast(!faltam
+      ? `"${d.plan.name}" reopened with ${S.cont.pick.size} lines`
+      : carregouTudo
+        ? `"${d.plan.name}" reopened — ${S.cont.pick.size} of ${doPlano.length} lines; ${faltam} are no longer open`
+        : `"${d.plan.name}" reopened — ${S.cont.pick.size} of ${doPlano.length} lines; ${faltam} are not in the lines loaded here (widen the filter to reach them)`);
   } catch (err) { toast(err.message, true); }
 });
 

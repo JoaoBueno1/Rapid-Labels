@@ -22,10 +22,16 @@
 --
 -- Depois disto, replenishment não precisa de senha em lugar nenhum.
 --
--- O SQL abaixo é o MESMO que estava embutido em replenishment-routes.js. Não
--- foi "melhorado" de passagem: a janela móvel, o HAVING, o LIMIT 4000 e a
--- ordenação são idênticos, para que a tela não mude de resposta junto com o
--- transporte. Uma coisa de cada vez.
+-- O SQL abaixo nasceu IDÊNTICO ao que estava embutido em
+-- replenishment-routes.js — janela móvel, HAVING, LIMIT e ordenação — para que
+-- a tela não mudasse de resposta junto com o transporte. Uma coisa de cada vez.
+--
+-- 2026-08-31: o LIMIT 4000 de replenishment_averages foi removido, com
+-- desempate na ordenação. Ele vinha do código antigo e era o próprio rótulo da
+-- tela ("4,000 SKUs"); o real é 8.600 pares em 6 meses. O porquê completo está
+-- na função. O motor de sugestão NÃO lê este endpoint (usa
+-- branch_avg_monthly_sales e /branch-averages), então nenhum TR mudou — o que
+-- mudou é a aba de conferência parar de mentir.
 --
 -- COMO APLICAR: colar no SQL Editor do Supabase (o projeto do Labels) e rodar.
 -- É idempotente — CREATE OR REPLACE, pode rodar de novo sem medo.
@@ -66,8 +72,26 @@ AS $$
      AND (p_location IS NULL OR p_location = '' OR d.location_name = p_location)
    GROUP BY d.sku_key, d.location_name
   HAVING sum(d.qty_signed) <> 0
-   ORDER BY sum(d.qty_signed) DESC
-   LIMIT 4000;
+   -- O LIMIT 4000 saiu daqui, e o desempate entrou no mesmo gesto.
+   --
+   -- O teto era o próprio rótulo da tela: "4,000 SKUs · 6m · all branches" era
+   -- o LIMIT, não a medição. Reais: 8.600 pares SKU×local em 6m (6.559 em 3m,
+   -- 11.028 em 12m — as TRÊS janelas da aba passavam do teto). Contando SKU
+   -- distinto, que é o que o rótulo alega: 1.643 devolvidos contra 3.065.
+   -- O piso da resposta era 10 unidades em 6 meses, e os 114 pares de saldo
+   -- negativo (devolução, crédito) ficavam 100% de fora. Reproduzido:
+   -- R-SM35 / Main Warehouse tem 40 pedidos em 6 meses e não aparecia — quem
+   -- filtrasse "R-SM35" via só Sunshine Coast e concluía que o Main não vende.
+   --
+   -- O desempate NÃO é opcional. Sem o teto a rota emenda 9-12 páginas em vez
+   -- de 4, e as fronteiras caem dentro de grupos empatados de 12, 26, 71 e 214
+   -- linhas: ordem instável entre páginas perde linha em silêncio. É
+   -- exatamente o bug dos 37 SKUs de Sydney, com mais páginas para errar.
+   --
+   -- E ordenar por sku_key em vez do volume seria REGRESSÃO, não conserto:
+   -- trocaria os 4.000 de maior volume pelos 4.000 primeiros do alfabeto numa
+   -- tela cujo assunto é volume.
+   ORDER BY sum(d.qty_signed) DESC, d.sku_key, d.location_name;
 $$;
 
 -- ───────────────────────────────────────────────────────────────────

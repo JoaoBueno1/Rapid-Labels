@@ -14,6 +14,12 @@ const { projectSku, buildAlerts } = require('../lib/planning-engine');
 const { weekEnding, shortLabel, toISODate } = require('../lib/week');
 
 const MAX_PAGE = 500;
+/* A aba de contêiner é a exceção deliberada ao MAX_PAGE: ela não pagina, ela
+   PLANEJA — o usuário arrasta linhas para dentro de um navio, e um livro
+   cortado em 500 de 1.466 produz um plano que não cabe na realidade. Constante
+   própria de propósito: subir o MAX_PAGE compartilhado mudaria de uma vez o
+   teto de todas as rotas paginadas, que é outra decisão. */
+const MAX_CONTAINER_LINES = 3000;
 
 // O horizonte de planejamento, em semanas. UMA fonte para /planning, /alerts e
 // /buy-recommendation: quando eles discordam, a mesma linha ganha aviso de
@@ -603,6 +609,11 @@ function register(app) {
         wk_avg: s.wk_avg, target_cover_weeks: s.target_cover_weeks,
         lifecycle_status: s.lifecycle_status, superseded_by: s.superseded_by,
         lifecycle_note: s.lifecycle_note, cin7_status: s.cin7_status, wk_avg_input: s.wk_avg_input,
+        // A política do Master Stock viaja com a linha. O planejador precisa
+        // ver que este SKU está fora da reposição de filial ANTES de decidir
+        // comprar para ela.
+        use_in_replenishment: s.use_in_replenishment !== false,
+        policy_flag: s.policy_flag || null, policy_note: s.policy_note || null,
         soh: sf ? sqty : Number(s.soh_available), on_order: Number(s.soh_on_order),
         // O que o escopo trocou, dito por linha — para a tela poder mostrar o
         // número do arquivo ao lado e o planejador ver a diferença.
@@ -1062,59 +1073,98 @@ function register(app) {
      separadas: o que está em aberto, para quem vai, e como isso vira carga. */
 
   /** Aba 2 — alocação: uma linha por linha de PO, com o que já foi repartido. */
-  /* As decisões por produto, gravadas a partir do Master Stock.
+  /* ── A POLÍTICA DE UM PRODUTO ────────────────────────────────────────
+   * O Master Stock é uma camada NOSSA: diz como o produto se comporta dentro
+   * do Inventory Management e nunca escreve no Cin7. Por isso ele pode
+   * discordar do ERP de propósito — o Cin7 diz o que o produto é, isto diz o
+   * que a gente faz com ele.
    *
-   * UPSERT e não UPDATE, e a diferença não é estilo: v_master_stock cobre os
-   * 11.307 SKUs do catálogo e sku_settings tem 3.634. Um UPDATE simples
-   * devolveria 404 em 7.673 deles — exatamente os que ninguém configurou
-   * ainda, que são os que mais precisam de uma primeira decisão.
-   *
-   * lifecycle_source fica MANUAL para o sync do Cin7 nunca sobrescrever a
-   * escolha de uma pessoa; é a mesma regra da rota de ciclo de vida.
+   * GRAVA TUDO DE UMA VEZ, com botão. A versão anterior salvava a cada
+   * clique de checkbox: três decisões viravam três gravações, três linhas de
+   * auditoria e nenhum momento em que o usuário pudesse desistir. Uma
+   * política é um conjunto, e se grava como conjunto.
    */
-  app.patch(`${R}/sku-settings/:sku`, wrap(async (req, res) => {
+  app.get(`${R}/sku-policy/:sku`, wrap(async (req, res) => {
+    const key = String(req.params.sku || '').trim().toUpperCase();
+    const [pol, hist] = await Promise.all([
+      db.one(`SELECT * FROM rapid_inv.v_sku_policy WHERE sku_key = $1`, [key]),
+      // O histórico vem do audit_log, que só voltou a gravar em 025 — antes
+      // disso um EXCEPTION engolia o erro e o log ficou vazio desde que
+      // nasceu. Um SKU sem histórico aqui pode ser "nunca mudou" OU "mudou
+      // antes do conserto", e a tela diz isso em vez de fingir que é o
+      // primeiro caso.
+      db.query(
+        `SELECT changed_at, action, user_email,
+                old_value, new_value
+           FROM rapid_inv.audit_log
+          WHERE table_name = 'sku_settings' AND record_id = $1
+          ORDER BY changed_at DESC LIMIT 40`, [key]),
+    ]);
+    if (!pol) return res.status(404).json({ error: 'SKU não existe no catálogo do Cin7' });
+
+    /* O histórico só interessa nos campos de política. Um diff cru de
+       to_jsonb traz updated_at e wk_avg junto, e aí ninguém lê o log. */
+    const CAMPOS = {
+      lifecycle_status: 'Lifecycle',
+      use_in_replenishment: 'Branch Replenishment',
+      use_in_planning: 'Stock Planning',
+      use_in_gateway: 'Gateway',
+      policy_note: 'Note',
+      replenishment_note: 'Replenishment note',
+    };
+    const mudancas = hist.map((h) => {
+      const a = h.old_value || {}, b = h.new_value || {};
+      const campos = Object.keys(CAMPOS)
+        .filter((k) => String(a[k] ?? '') !== String(b[k] ?? ''))
+        .map((k) => ({ campo: CAMPOS[k], de: a[k], para: b[k] }));
+      return { quando: h.changed_at, quem: h.user_email || 'desconhecido', acao: h.action, campos };
+    }).filter((m) => m.campos.length || m.acao === 'INSERT');
+
+    res.json({ policy: pol, historico: mudancas, historico_desde: '2026-08-31' });
+  }));
+
+  app.put(`${R}/sku-policy/:sku`, wrap(async (req, res) => {
     const key = String(req.params.sku || '').trim().toUpperCase();
     if (!key) return res.status(400).json({ error: 'sku is required' });
     const actor = actorOf(req);
+
+    const b = req.body || {};
     const campos = {};
-    if ('use_in_replenishment' in req.body) campos.use_in_replenishment = !!req.body.use_in_replenishment;
-    if ('replenishment_note' in req.body)   campos.replenishment_note = req.body.replenishment_note || null;
-    if ('lifecycle_status' in req.body) {
-      const v = String(req.body.lifecycle_status || '').toUpperCase();
+    for (const f of ['use_in_replenishment', 'use_in_planning', 'use_in_gateway']) {
+      if (f in b) campos[f] = !!b[f];
+    }
+    if ('lifecycle_status' in b) {
+      const v = String(b.lifecycle_status || '').toUpperCase();
       if (!['ACTIVE', 'RUN_OUT', 'DISCONTINUED'].includes(v))
         return res.status(400).json({ error: 'lifecycle_status must be ACTIVE, RUN_OUT or DISCONTINUED' });
       campos.lifecycle_status = v;
     }
-    if (!Object.keys(campos).length) return res.status(400).json({ error: 'nothing to update' });
+    if ('policy_note' in b) campos.policy_note = b.policy_note || null;
+    if (!Object.keys(campos).length) return res.status(400).json({ error: 'nothing to save' });
 
     const row = await db.tx(async (c) => {
-      // O sku precisa vir do catálogo: sku_settings.sku é NOT NULL e a chave
-      // é derivada dele, então inserir só a key deixaria a linha inconsistente.
+      // Sem isto o audit_log grava user_email nulo e o histórico não diz quem.
+      await c.query(`SELECT set_config('rapid_inv.user_email', $1, true)`, [actor]);
+
       const [p] = (await c.query(
         `SELECT sku FROM cin7_mirror.products WHERE upper(btrim(sku)) = $1 LIMIT 1`, [key])).rows;
-      const sku = p ? p.sku : key;
-      /* is_planned = FALSE na inserção, e isto NÃO é detalhe.
-       *
-       * A coluna tem default true, e ela é o WHERE de v_sp_planning_skus. Sem
-       * esta linha, marcar "não mandar para filial" num SKU qualquer do
-       * catálogo o ADICIONA ao arquivo de planejamento de compra — duas
-       * decisões opostas pelo mesmo clique. Peguei isso porque o modo "sem
-       * previsão" do Supply Planning foi de 647 para 649 depois dos meus
-       * testes: os dois SKUs que eu tinha tocado eram -CartonNN, exatamente o
-       * que não pode entrar. No UPDATE ela não aparece, porque quem já está
-       * no arquivo deve continuar.
-       */
+      if (!p) throw new Error('SKU não existe no catálogo do Cin7');
+
+      /* is_planned = FALSE na inserção. Ela tem default true e é o WHERE de
+         v_sp_planning_skus: sem cravar, configurar a política de um SKU
+         qualquer o ADICIONA ao arquivo de compra — duas decisões opostas pelo
+         mesmo clique. No UPDATE não se mexe, porque quem já está deve ficar. */
       const cols = ['sku', 'is_planned', ...Object.keys(campos), 'settings_updated_at', 'settings_updated_by'];
-      const vals = [sku, false, ...Object.values(campos)];
+      const vals = [p.sku, false, ...Object.values(campos)];
       const ph = vals.map((_, i) => `$${i + 1}`).concat(['now()', `$${vals.length + 1}`]);
       const set = [...Object.keys(campos).map((k, i) => `${k} = $${i + 3}`),
                    'settings_updated_at = now()', `settings_updated_by = $${vals.length + 1}`];
-      if (campos.lifecycle_status) { set.push(`lifecycle_source = 'MANUAL'`, 'lifecycle_set_at = now()'); }
-      const q = `INSERT INTO rapid_inv.sku_settings (${cols.join(',')}) VALUES (${ph.join(',')})
-                 ON CONFLICT (sku_key) DO UPDATE SET ${set.join(', ')}
-                 RETURNING sku_key, sku, use_in_replenishment, replenishment_note,
-                           lifecycle_status, settings_updated_at, settings_updated_by`;
-      return (await c.query(q, [...vals, actor])).rows[0];
+      if (campos.lifecycle_status) set.push(`lifecycle_source = 'MANUAL'`, 'lifecycle_set_at = now()');
+
+      await c.query(
+        `INSERT INTO rapid_inv.sku_settings (${cols.join(',')}) VALUES (${ph.join(',')})
+         ON CONFLICT (sku_key) DO UPDATE SET ${set.join(', ')}`, [...vals, actor]);
+      return (await c.query(`SELECT * FROM rapid_inv.v_sku_policy WHERE sku_key = $1`, [key])).rows[0];
     }, actor);
     res.json(row);
   }));
@@ -1125,12 +1175,40 @@ function register(app) {
    * navegador pelo PostgREST, e o schema rapid_inv não é exposto lá — uma
    * coluna em sku_settings é invisível para ela sem um endpoint. Devolve só a
    * lista de chaves, que é pequena e cabe num payload. */
+  /* A política do Master Stock, na forma que a Branch Replenishment consome.
+     Um fetch só: a tela carrega isto junto do resto e não pode pagar três
+     idas ao servidor para desenhar a primeira linha.
+
+     `allow` merece explicação. O Cin7 marca 2.744 SKUs como Deprecated e a
+     reposição os esconde — o que está certo por padrão e errado quando a
+     empresa ainda vende o item e o ERP é que está atrasado. A marca do usuário
+     tem de poder vencer o ERP, senão o painel só sabe dizer "não". O critério
+     de "o usuário decidiu" é settings_updated_at: ele só é gravado quando
+     alguém abre o painel e clica em Save. Default nenhum entra aqui. */
   app.get(`${R}/replenishment-blocked`, wrap(async (req, res) => {
     const rows = await db.query(
-      `SELECT sku_key, replenishment_note FROM rapid_inv.sku_settings
-        WHERE NOT use_in_replenishment`);
-    res.json({ keys: rows.map((r) => r.sku_key), notes: rows.reduce((m, r) =>
-      (r.replenishment_note ? (m[r.sku_key] = r.replenishment_note) : 0, m), {}) });
+      `SELECT sku_key, replenishment_note, policy_note, lifecycle_status,
+              use_in_replenishment, use_in_gateway,
+              (settings_updated_at IS NOT NULL) AS decidido
+         FROM rapid_inv.sku_settings
+        WHERE NOT use_in_replenishment
+           OR NOT use_in_gateway
+           OR lifecycle_status IN ('DISCONTINUED', 'RUN_OUT')
+           OR settings_updated_at IS NOT NULL`);
+    const keys = [], allow = [], gatewayOff = [], notes = {}, flags = {};
+    for (const r of rows) {
+      if (!r.use_in_replenishment) {
+        keys.push(r.sku_key);
+        const n = r.replenishment_note || r.policy_note;
+        if (n) notes[r.sku_key] = n;
+      } else if (r.decidido) {
+        allow.push(r.sku_key);              // vence o Deprecated do Cin7
+      }
+      if (!r.use_in_gateway) gatewayOff.push(r.sku_key);
+      if (r.lifecycle_status === 'DISCONTINUED' || r.lifecycle_status === 'RUN_OUT')
+        flags[r.sku_key] = r.lifecycle_status;
+    }
+    res.json({ keys, notes, allow, gateway_off: gatewayOff, flags });
   }));
 
   app.get(`${R}/pos/allocations`, wrap(async (req, res) => {
@@ -1145,9 +1223,14 @@ function register(app) {
     if (req.query.only === 'over')    where.push(`over_allocated`);
     const w = where.join(' AND ');
     const limit = asInt(req.query.limit, 300, 1, MAX_PAGE);
-    const [rows, counts] = await Promise.all([
+    // OFFSET existe agora. Sem ele a grade parava em 300 de 1.466 e o estado
+    // vazio ainda afirmava "Every open line matching these filters already has
+    // a branch" — completude declarada sobre uma página.
+    const offset = asInt(req.query.offset, 0, 0, 1e6);
+    const [rows, counts, [filtered]] = await Promise.all([
       db.query(`SELECT * FROM rapid_inv.v_sp_po_allocation
-                 WHERE ${w} ORDER BY due_date NULLS LAST, po_number, line_no LIMIT ${limit}`, p),
+                 WHERE ${w} ORDER BY due_date NULLS LAST, po_number, line_no
+                 LIMIT ${limit} OFFSET ${offset}`, p),
       db.one(`SELECT count(*)::int total,
                      count(*) FILTER (WHERE unallocated_qty > 0)::int pending,
                      -- "over" e palavra reservada (funcao de janela); o alias
@@ -1156,6 +1239,11 @@ function register(app) {
                      coalesce(sum(unallocated_qty) FILTER (WHERE unallocated_qty > 0), 0)::numeric units_pending
                 FROM rapid_inv.v_sp_po_allocation
                WHERE po_line_id IN (SELECT id FROM rapid_inv.po_lines WHERE NOT coalesce(is_received,false))`),
+      // O total do MESMO filtro que a grade está mostrando. Os quatro cartões
+      // acima ignoram supplier/q/only de propósito (são o retrato do livro
+      // aberto); sem este número separado, filtrar por um fornecedor deixava a
+      // grade em 300 e o cartão em 1.466, e os dois pareciam a mesma coisa.
+      db.query(`SELECT count(*)::int n FROM rapid_inv.v_sp_po_allocation WHERE ${w}`, p),
     ]);
     // As alocações existentes de cada linha da página, num SELECT só.
     const ids = rows.map((r) => r.po_line_id);
@@ -1167,7 +1255,8 @@ function register(app) {
         ORDER BY a.po_line_id, a.seq`, [ids]) : [];
     const byLine = al.reduce((m, a) => ((m[a.po_line_id] = m[a.po_line_id] || []).push(a), m), {});
     res.json({ rows: rows.map((r) => ({ ...r, allocations: byLine[r.po_line_id] || [] })),
-               counts, ms: Date.now() - t0 });
+               counts: { ...counts, filtered: Number(filtered.n) },
+               limit, offset, ms: Date.now() - t0 });
   }));
 
   /** Quem está esperando esta PO.
@@ -1226,24 +1315,45 @@ function register(app) {
          LEFT JOIN rapid_inv.v_sp_po_committed cm ON cm.po_line_id = pl.id
         WHERE ${where.join(' AND ')}
         ORDER BY pl.due_date NULLS LAST, pl.po_number, pl.line_no
-        LIMIT ${asInt(req.query.limit, 500, 1, MAX_PAGE)}`, p);
+        LIMIT ${asInt(req.query.limit, MAX_CONTAINER_LINES, 1, MAX_CONTAINER_LINES)}`, p);
     const types = await db.query(
       `SELECT * FROM rapid_inv.container_type WHERE is_active ORDER BY sort_order`);
-    // O resumo do que ESTA página conseguiu cubar, e do que não conseguiu.
-    // Sai daqui e não do front porque a razão de cada recusa está no banco.
-    const cubed = rows.filter((r) => r.cbm != null);
+    /* O resumo é do LIVRO INTEIRO, não da página.
+       Ele era somado em JS sobre as linhas devolvidas, e as linhas paravam em
+       500 de 1.466: a aba anunciava 588,8 m³ ≈ 10 contêineres quando o livro
+       aberto tem 1.692,6 m³ ≈ 29. O corte era por data — outubro e novembro
+       sumiam inteiros. Quem planeja espaço em navio decidia sobre um terço
+       da carga achando que via tudo.
+       Agora a soma desce para o SQL, sobre o mesmo WHERE e sem LIMIT. */
+    const [tot] = await db.query(
+      `WITH l AS (
+         SELECT CASE WHEN c.cbm_carton IS NOT NULL AND c.carton_qty > 0
+                     THEN round((ceil(pl.qty / c.carton_qty) * c.cbm_carton)::numeric, 3) END AS cbm,
+                CASE WHEN c.kg_unit IS NOT NULL THEN pl.qty * c.kg_unit END AS kg,
+                c.cube_basis, c.cube_disputed
+           FROM rapid_inv.po_lines pl
+           LEFT JOIN rapid_inv.v_sp_cube c ON c.sku_key = pl.sku_key
+          WHERE ${where.join(' AND ')})
+       SELECT count(*)::int lines,
+              count(*) FILTER (WHERE cbm IS NOT NULL)::int cubed,
+              coalesce(sum(cbm), 0)::numeric cbm,
+              count(*) FILTER (WHERE cbm IS NOT NULL AND cube_basis = 'measured')::int measured,
+              coalesce(sum(cbm) FILTER (WHERE cube_basis = 'measured'), 0)::numeric measured_cbm,
+              count(*) FILTER (WHERE cbm IS NOT NULL AND cube_disputed)::int disputed,
+              count(*) FILTER (WHERE cbm IS NULL)::int no_cube,
+              count(*) FILTER (WHERE kg IS NULL)::int no_weight
+         FROM l`, p);
+    const r1 = (v) => Math.round(Number(v) * 10) / 10;
     res.json({
       rows, types, ms: Date.now() - t0,
       summary: {
-        lines: rows.length,
-        cubed: cubed.length,
-        cbm: Math.round(cubed.reduce((a, r) => a + Number(r.cbm), 0) * 10) / 10,
-        measured: cubed.filter((r) => r.cube_basis === 'measured').length,
-        measured_cbm: Math.round(cubed.filter((r) => r.cube_basis === 'measured')
-          .reduce((a, r) => a + Number(r.cbm), 0) * 10) / 10,
-        disputed: cubed.filter((r) => r.cube_disputed).length,
-        no_cube: rows.filter((r) => r.cbm == null).length,
-        no_weight: rows.filter((r) => r.kg == null).length,
+        lines: Number(tot.lines), cubed: Number(tot.cubed), cbm: r1(tot.cbm),
+        measured: Number(tot.measured), measured_cbm: r1(tot.measured_cbm),
+        disputed: Number(tot.disputed),
+        no_cube: Number(tot.no_cube), no_weight: Number(tot.no_weight),
+        // Quantas linhas o navegador realmente recebeu. Se for menos que
+        // `lines`, a tela tem de dizer isso — e não somar por cima.
+        rows_returned: rows.length,
       },
     });
   }));
@@ -1627,10 +1737,17 @@ function register(app) {
       total: all.length, skus: skuList.length, bySeverity, byCode,
       bySegment, muted_count: skuList.length - visible.length, visible_count: visible.length,
       bySupplier: Object.values(bySupplier).sort((a, b) => b.critical - a.critical || b.skus - a.skus),
-      alerts: all.slice(0, asInt(req.query.limit, 400, 1, 2000)),
+      /* DOIS cortes, DOIS parâmetros. Eram um só: a tela pedia limit=1200
+         para a lista de SKUs e com isso cortava também os alertas em 1.200 de
+         3.479 — e como o corte é por rank decrescente, os 2.192 MEDIUM
+         inteiros ficavam de fora. Os tiles (`byCode`) são somados sobre o
+         conjunto INTEIRO e o filtro roda no navegador sobre a fatia: clicar em
+         "Undated demand · 194" caía em "Nothing matches". */
+      alerts: all.slice(0, asInt(req.query.alert_limit || req.query.limit, 4000, 1, 8000)),
+      alerts_returned: Math.min(all.length, asInt(req.query.alert_limit || req.query.limit, 4000, 1, 8000)),
       // O mudo sai da LISTA, nunca da contagem: quem confere o número uma vez
       // e não fecha, para de confiar na tela.
-      skuList: (req.query.muted === '1' ? skuList : visible).slice(0, asInt(req.query.limit, 1200, 1, 3000)),
+      skuList: (req.query.muted === '1' ? skuList : visible).slice(0, asInt(req.query.limit, 3000, 1, 6000)),
     });
   }));
 
@@ -1750,19 +1867,24 @@ function register(app) {
 
   app.get(`${R}/overview/inbound`, wrap(async (req, res) => {
     const t0 = Date.now();
-    const [byWeek, bySupplier, overdue] = await Promise.all([
+    const [byWeek, bySupplier, overdue, overdueTotal] = await Promise.all([
       db.query(`SELECT * FROM rapid_inv.v_sp_inbound_week ORDER BY week_ending`),
       db.query(`SELECT * FROM rapid_inv.v_sp_inbound_supplier ORDER BY value_aud DESC NULLS LAST`),
-      db.query(`SELECT * FROM rapid_inv.v_sp_inbound_overdue ORDER BY due_date LIMIT 60`),
+      // 87 linhas atrasadas hoje, e o cartão logo acima da tabela diz "87".
+      // Com LIMIT 60 as duas coisas na MESMA tela discordavam.
+      db.query(`SELECT * FROM rapid_inv.v_sp_inbound_overdue ORDER BY due_date, po_number, sku LIMIT 400`),
+      db.one(`SELECT count(*)::int n FROM rapid_inv.v_sp_inbound_overdue`),
     ]);
-    res.json({ byWeek, bySupplier, overdue, ms: Date.now() - t0 });
+    res.json({ byWeek, bySupplier, overdue, overdue_total: Number(overdueTotal.n), ms: Date.now() - t0 });
   }));
 
   app.get(`${R}/overview/demand-book`, wrap(async (req, res) => {
     const t0 = Date.now();
     const [byWeek, tba, held, undated] = await Promise.all([
       db.query(`SELECT * FROM rapid_inv.v_sp_demand_week ORDER BY week_ending LIMIT 60`),
-      db.query(`SELECT * FROM rapid_inv.v_sp_tba_customer ORDER BY tba_units DESC LIMIT 40`),
+      // 84 clientes com data por confirmar. LIMIT 40 escondia metade da
+      // pergunta que a aba existe para responder.
+      db.query(`SELECT * FROM rapid_inv.v_sp_tba_customer ORDER BY tba_units DESC, customer LIMIT 200`),
       db.query(`SELECT * FROM rapid_inv.v_sp_held_aging ORDER BY band_order`),
       db.one(`SELECT count(*)::int skus, sum(qty)::numeric units FROM rapid_inv.v_sp_undated_demand`),
     ]);
@@ -1774,16 +1896,24 @@ function register(app) {
     const [summary, rows] = await Promise.all([
       db.query(`SELECT verdict, count(*)::int skus, round(sum(stock_value_aud)::numeric,0) value_aud
                   FROM rapid_inv.v_sp_demand_signal GROUP BY 1 ORDER BY 2 DESC`),
+      /* `, sku_key` no ORDER BY não é enfeite: as linhas 120 e 121 empatam em
+         abs(gap)=14,78, e sem desempate a mesma consulta pode devolver uma ou
+         outra. Ordenar por abs(gap) também apagava uma classe inteira de
+         veredito — "runs out earlier than the grid says" tem 53 linhas e só 2
+         sobreviviam nas 120 primeiras. Por isso o default sobe para o
+         conjunto todo (776 hoje) e o total viaja junto. */
       db.query(`SELECT * FROM rapid_inv.v_sp_wkavg_drift
                  WHERE typed > 0 AND reading IS NOT NULL AND reading <> 'in line'
-                 ORDER BY abs(gap) DESC NULLS LAST LIMIT $1`, [asInt(req.query.limit, 120, 1, 500)]),
+                 ORDER BY abs(gap) DESC NULLS LAST, sku_key LIMIT $1`,
+               [asInt(req.query.limit, 1000, 1, 3000)]),
     ]);
     const [age] = await db.query(`
       SELECT count(*) FILTER (WHERE days_since_touched > 180)::int stale_180,
              count(*) FILTER (WHERE days_since_touched > 365)::int stale_365,
+             count(*) FILTER (WHERE reading IS NOT NULL AND reading <> 'in line')::int drift_total,
              round(avg(days_since_touched))::int avg_days
         FROM rapid_inv.v_sp_wkavg_drift WHERE typed > 0`);
-    res.json({ summary, rows, age, window_weeks: 9, ms: Date.now() - t0 });
+    res.json({ summary, rows, total: Number(age.drift_total), age, window_weeks: 9, ms: Date.now() - t0 });
   }));
 
   /**
@@ -1795,9 +1925,11 @@ function register(app) {
     const t0 = Date.now();
     const [totals, rows, conflicts] = await Promise.all([
       db.query(`SELECT * FROM rapid_inv.v_sp_dead_stock_totals ORDER BY 1`),
+      // 280 linhas com dinheiro parado. Mostrar 150 sem dizer de quantas é
+      // esconder metade do dinheiro numa tela cujo assunto é o dinheiro.
       db.query(`SELECT * FROM rapid_inv.v_sp_dead_stock
-                 WHERE soh_available > 0 ORDER BY stock_value_aud DESC LIMIT $1`,
-               [asInt(req.query.limit, 150, 1, 800)]),
+                 WHERE soh_available > 0 ORDER BY stock_value_aud DESC, sku LIMIT $1`,
+               [asInt(req.query.limit, 400, 1, 1500)]),
       db.query(`SELECT * FROM rapid_inv.v_sp_lifecycle_conflicts ORDER BY conflict, sku LIMIT 100`),
     ]);
     const [supplier] = [await db.query(`
@@ -1805,7 +1937,9 @@ function register(app) {
              round(sum(stock_value_aud)::numeric,0) value_aud
         FROM rapid_inv.v_sp_dead_stock WHERE soh_available > 0 AND supplier_code IS NOT NULL
        GROUP BY 1 ORDER BY value_aud DESC`)];
-    res.json({ totals, rows, conflicts, supplier, ms: Date.now() - t0 });
+    const [{ total }] = await db.query(
+      `SELECT count(*)::int total FROM rapid_inv.v_sp_dead_stock WHERE soh_available > 0`);
+    res.json({ totals, rows, total, conflicts, supplier, ms: Date.now() - t0 });
   }));
 
   app.patch(`${R}/skus/:sku/lifecycle`, wrap(async (req, res) => {
@@ -2095,8 +2229,18 @@ function register(app) {
     if (req.query.sku) { p.push(req.query.sku.toUpperCase()); where.push(`sku = $${p.length}`); }
     if (req.query.branch) { p.push(req.query.branch); where.push(`branch_code = $${p.length}`); }
     const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    res.json(await db.query(
-      `SELECT * FROM rapid_inv.v_sp_incoming_branch ${w} ORDER BY week_ending, branch_code LIMIT 2000`, p));
+    // Teto e total juntos. Um LIMIT sem o total ao lado é uma lista que se
+    // apresenta como completa — 1.330 linhas hoje contra teto de 2.000, e no
+    // dia em que passar ninguém fica sabendo.
+    const [rows, [{ total }]] = await Promise.all([
+      db.query(`SELECT * FROM rapid_inv.v_sp_incoming_branch ${w}
+                 ORDER BY week_ending, branch_code, sku LIMIT 2000`, p),
+      db.query(`SELECT count(*)::int total FROM rapid_inv.v_sp_incoming_branch ${w}`, p),
+    ]);
+    // Array quando cabe inteiro: os consumidores de hoje esperam array e não
+    // podem quebrar. Passando do teto, vira objeto e quem ler `.length` recebe
+    // undefined em vez de um número errado — falha alto, não em silêncio.
+    res.json(rows.length < 2000 ? rows : { rows, total, truncated: true });
   }));
 
   console.log('✅ Stock Planning routes montadas em /api/stock-planning');

@@ -180,10 +180,14 @@ async function ovRisk() {
             <span class="l">${dSh(w.week_ending)}</span></div>`).join('')}</div></div>
       </div>
       <div class="sp-panel">
-        <h4>The exposed SKUs <span>soonest first</span></h4>
+        <h4>The exposed SKUs <span>soonest first${
+          // A rota mandou as 182 inteiras e o navegador cortava em 150, com o
+          // cartão logo acima dizendo "182 SKUs run out within 13 weeks". Duas
+          // contagens da mesma coisa na mesma tela.
+          d.rows.length < d.exposed ? ` · showing ${n0(d.rows.length)} of ${n0(d.exposed)}` : ''}</span></h4>
         <table><thead><tr><th>SKU</th><th>Supplier</th><th class="n">Week</th><th class="n">Runs out</th>
           <th class="n">Stock now</th><th class="n">Wk/Avg</th><th class="n">Incoming</th><th class="n">Draws</th></tr></thead>
-        <tbody>${d.rows.slice(0,150).map(r=>`<tr class="click" data-sku="${esc(r.sku_key)}" data-sup="${esc(r.supplier||'')}">
+        <tbody>${d.rows.map(r=>`<tr class="click" data-sku="${esc(r.sku_key)}" data-sup="${esc(r.supplier||'')}">
           <td class="em mono">${esc(r.sku)}</td><td>${esc(r.supplier||'')}</td>
           <td class="n">+${r.week_index}</td><td class="n">${d10(r.week_ending)}</td>
           <td class="n" ${r.soh<=0?'style="color:#9c0006;font-weight:600"':''}>${n0(r.soh)}</td>
@@ -296,7 +300,8 @@ async function ovSignal() {
         ${d.age ? tile(n0(d.age.stale_365),'Untouched over a year',`average across all of them: ${n0(d.age.avg_days)} days since anyone edited the number`,'warn') : ''}
       </div>
       <div class="sp-panel">
-        <h4>Wk/Avg against actual sales
+        <h4>Wk/Avg against actual sales${d.total && d.rows.length < d.total
+            ? ` <b class="sp-part">${n0(d.rows.length)} of ${n0(d.total)}</b>` : ''}
           <span>Wk/Avg is typed by hand — 837 blocks checked in the workbook, not one formula. It drives every purchase and had never been measured.
           Window: last ${d.window_weeks} complete weeks, project orders excluded so draws are not counted twice.</span></h4>
         <table><thead><tr><th>SKU</th><th>Supplier</th><th class="n">Typed</th><th class="n">Actual/week</th>
@@ -556,10 +561,15 @@ function renderSupply() {
       : r.lifecycle_status === 'DISCONTINUED'
         ? `<span class="ui-tag ui-tag--neutral lc-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Discontinued')}">DISC</span>`
         : '';
+    // Fora da reposição de filial por decisão de alguém. Aparece aqui porque a
+    // compra é decidida nesta tela: comprar para uma filial que não recebe o
+    // item é o erro que esta marca evita.
+    const noBr = r.use_in_replenishment === false
+      ? `<span class="ui-tag ui-tag--neutral lc-mark" title="${esc(r.policy_note || 'Master Stock: not sent to branches')}">NO BRANCH</span>` : '';
     const sup = r.superseded_by
         ? `<span class="sup-to">→ <b data-goto="${esc(r.superseded_by)}">${esc(r.superseded_by)}</b></span>` : '';
     const skuRow = `<tr class="sk ${lc}" data-sku="${esc(r.sku_key)}">
-      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${badgeMark(r)}${bomMark(r)}${sup}${r.line?`<span class="sp-line" title="Product line">${esc(r.line)}</span>`:''}</td>
+      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${noBr}${badgeMark(r)}${bomMark(r)}${sup}${r.line?`<span class="sp-line" title="Product line">${esc(r.line)}</span>`:''}</td>
       <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}${
         r.file_soh!=null&&r.file_soh!==r.soh
           ? `<span class="meas" title="the whole company holds ${n0(r.file_soh)}">${n0(r.file_soh)}</span>` : ''}</td>
@@ -988,13 +998,21 @@ function renderBuy() {
     <div class="sp-panel">
       <h4>By supplier <span>a purchase order per supplier — and the start of a container</span></h4>
       <table><thead><tr><th>Supplier</th><th class="n">SKUs</th><th class="n">Units</th><th class="n">Value</th><th class="n">Late</th><th class="n"></th></tr></thead>
-      <tbody>${d.bySupplier.map(s=>`<tr class="click" data-sup="${esc(s.supplier)}">
+      <tbody>${d.bySupplier.map(s=>{
+        // `s.skus` vem do conjunto INTEIRO; o clique manda só o que está em
+        // `d.rows`, que a rota cortou. Hoje cabe (341 SKUs), mas o título
+        // prometia um número que o botão não necessariamente entrega.
+        const naPagina = d.rows.filter(x=>x.supplier===s.supplier).length;
+        return `<tr class="click" data-sup="${esc(s.supplier)}">
         <td class="em">${esc(s.supplier)}</td><td class="n">${s.skus}</td><td class="n">${n0(s.units)}</td>
         <td class="n">${aud(s.value_aud)}</td>
         <td class="n"${s.late?' style="color:#9c0006;font-weight:600"':''}>${s.late||''}</td>
         <td class="n"><button class="sp-btn is-ghost add-all" data-addall="${esc(s.supplier)}"
-          title="Put all ${s.skus} suggested lines for ${esc(s.supplier)} in the cart">add all</button></td>
-        </tr>`).join('')}</tbody></table>
+          title="${naPagina < s.skus
+            ? `Puts the ${naPagina} lines loaded here in the cart — ${s.supplier} has ${s.skus} suggested in total; open the supplier to load the rest`
+            : `Put all ${s.skus} suggested lines for ${esc(s.supplier)} in the cart`}"
+          >add all${naPagina < s.skus ? ` (${naPagina})` : ''}</button></td>
+        </tr>`;}).join('')}</tbody></table>
     </div>
     <div class="sp-panel">
       <h4>What to order <span>soonest order date first · every number here comes from the same cascade as the week grid</span></h4>
@@ -1095,7 +1113,13 @@ let alData = null;
 S.alerts.group = 'sku'; S.alerts.code = ''; S.alerts.crit = false;
 
 async function loadAlerts() {
-  const qs = new URLSearchParams({ limit:1200 });
+  /* Sem `limit` de propósito. O parâmetro era UM e cortava DUAS listas: pedir
+     1.200 SKUs cortava também os alertas em 1.200 de 3.479 — e como o corte é
+     por rank decrescente, os 2.192 MEDIUM sumiam inteiros. Os tiles são
+     somados no servidor sobre o conjunto todo, então clicar em
+     "Undated demand · 194" caía em "Nothing matches". Os defaults da rota
+     (4.000 alertas · 3.000 SKUs) cobrem o real de hoje com folga. */
+  const qs = new URLSearchParams();
   if (S.alerts.muted) qs.set('muted','1');
   if (S.alerts.supplier) qs.set('supplier', S.alerts.supplier);
   $('#alBody').innerHTML = '<div class="sp-loading">Calculating…</div>';
@@ -1137,12 +1161,18 @@ function alFacts(s) {
     `<span class="alf-i"><em>${k}</em><b class="${t}">${v}</b></span>`).join('')}</div>`;
 }
 
+// Diz que cortou, e de quanto. Um rodapé que só conta o que está na tela
+// afirma completude sem ter olhado o total.
+function alCorte(mostrados, total) {
+  return (total && mostrados < total) ? ` — showing ${n0(mostrados)} of ${n0(total)}` : '';
+}
+
 function renderAlerts() {
   const g = S.alerts.group;
   if (g === 'flat') {
     const rows = alData.alerts.filter(a =>
       (!S.alerts.code || a.code === S.alerts.code) && (!S.alerts.crit || a.severity === 'CRITICAL'));
-    $('#alCount').textContent = `${n0(rows.length)} alerts`;
+    $('#alCount').textContent = `${n0(rows.length)} alerts` + alCorte(alData.alerts.length, alData.total);
     const seg = alData.bySegment || {};
     const segBar = Object.keys(seg).length
       ? `<div class="al-segs">${['Buy now','No forecast','Order soon','Top up','Fix record','Review','Dead SKUs']
@@ -1163,7 +1193,8 @@ function renderAlerts() {
       if (s.first_stockout) b.stockout++;
     }
     const list = [...by.values()].sort((a,b)=>b.critical-a.critical||b.skus.length-a.skus.length);
-    $('#alCount').textContent = `${n0(skus.length)} SKUs across ${list.length} suppliers`;
+    $('#alCount').textContent = `${n0(skus.length)} SKUs across ${list.length} suppliers`
+      + alCorte(alData.skuList.length, S.alerts.muted ? alData.skus : alData.visible_count);
     const seg = alData.bySegment || {};
     const segBar = Object.keys(seg).length
       ? `<div class="al-segs">${['Buy now','No forecast','Order soon','Top up','Fix record','Review','Dead SKUs']
@@ -1181,6 +1212,7 @@ function renderAlerts() {
   } else {
     const skus = alFilter(alData.skuList);
     $('#alCount').textContent = `${n0(skus.length)} SKUs · ${n0(skus.reduce((n,s)=>n+s._shown.length,0))} exceptions`
+      + alCorte(alData.skuList.length, S.alerts.muted ? alData.skus : alData.visible_count)
       + (alData.muted_count ? ` · ${n0(alData.muted_count)} silenced` : '');
     const seg = alData.bySegment || {};
     const segBar = Object.keys(seg).length
@@ -1189,9 +1221,9 @@ function renderAlerts() {
       : '';
     $('#alBody').innerHTML = alTiles() + segBar +
       `<div class="sp-panel"><table><tbody>${skus.map(s=>alSkuRow(s)).join('')}</tbody></table>
-       ${alData.muted_count?`<div class="in al-muted" title="Nenhum deles vendeu uma unidade em 52 semanas, e a regra não olha o ciclo de vida: 125 dos silenciados estão marcados ACTIVE.">
-         <b>${n0(alData.muted_count)} SKUs silenciados</b> — estoque 0, sem previsão, sem venda em 52 semanas, sem PO e sem draw.
-         <button class="ui-act" id="alShowMuted">${S.alerts.muted?'Ocultar':'Mostrar'}</button></div>`:''}</div>`;
+       ${alData.muted_count?`<div class="in al-muted" title="None of them sold a single unit in 52 weeks, and the rule does not look at lifecycle: 125 of the silenced ones are marked ACTIVE.">
+         <b>${n0(alData.muted_count)} SKUs silenced</b> — zero stock, no forecast, no sale in 52 weeks, no PO and no draw.
+         <button class="ui-act" id="alShowMuted">${S.alerts.muted?'Hide':'Show'}</button></div>`:''}</div>`;
   }
 }
 function alSkuRow(s) {

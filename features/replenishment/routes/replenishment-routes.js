@@ -79,7 +79,7 @@ function register(app, db) {
 
   async function sbRpc(fn, args) {
     const out = [];
-    for (let off = 0; ; off += PAGE) {
+    for (let off = 0, guarda = 0; guarda < 60; off += PAGE, guarda++) {
       const r = await fetch(`${SB}/rest/v1/rpc/${fn}?limit=${PAGE}&offset=${off}`,
         { method: 'POST', headers: sbH(null), body: JSON.stringify(args || {}),
           signal: AbortSignal.timeout(120000) });
@@ -89,6 +89,7 @@ function register(app, db) {
       out.push(...b);
       if (b.length < PAGE) return out;
     }
+    return out;
   }
 
   async function sbPatch(path, schema, body) {

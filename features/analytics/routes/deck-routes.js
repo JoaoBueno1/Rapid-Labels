@@ -177,7 +177,10 @@ function register(app) {
     ]);
     add({ n: 4, titulo: 'PROJECTS — Top 10 Pack & Hold by cost', estado: 'READY', tipo: 'tabela',
           tabelas: [{ cols: ['SKU', 'Units', 'Cost'], linhas: ph.map((r) => [r.sku, r.qty, r.custo]) }] });
-    add({ n: 5, titulo: 'PROJECTS — Pack and Hold Analysis', estado: 'READY', tipo: 'tabela',
+    // "Top 10" no título porque é o que a tabela é. O bloco 4, imediatamente
+    // acima e com o mesmo LIMIT 10, já diz — e a diferença entre os dois
+    // títulos fazia esta parecer a lista inteira dos 121 jobs.
+    add({ n: 5, titulo: 'PROJECTS — Pack and Hold Analysis (top 10 jobs by units)', estado: 'READY', tipo: 'tabela',
           nota: 'The deck\'s "Stock Type" column (Indent / Stock / Disc.) is a human call and stays typed in.',
           tabelas: [{ cols: ['Customer', 'Job', 'Average days', 'Units'],
                       linhas: phJobs.map((r) => [`${r.customer || ''}${r.rep ? ' — ' + r.rep : ''}`, r.job || '—', r.dias, r.qty]) }] });
@@ -190,7 +193,14 @@ function register(app) {
               round(sum(value_aud)::numeric, 0) valor
          FROM rapid_inv.po_lines
         WHERE NOT coalesce(is_received, false) AND due_date IS NOT NULL
-        GROUP BY 1, 2 ORDER BY 1 LIMIT 20`);
+        -- ORDER BY 1, 2 e sem LIMIT, pelos dois motivos ao mesmo tempo.
+        -- O teto de 20 deixava A$5.666.432 de fora: 139 grupos reais contra 20
+        -- mostrados, ETA ate dezembro contra 06/set na tela. E ordenar so pela
+        -- data empata: ha 20 grupos no MESMO 2026-09-06, e duas execucoes no
+        -- mesmo segundo devolveram conjuntos diferentes (134 linhas /
+        -- A$698.828 contra 144 / A$584.082). E a classe do bug dos 37 SKUs de
+        -- Sydney: sem desempate, o corte escolhe sozinho o que mostrar.
+        GROUP BY 1, 2 ORDER BY 1, 2`);
     add({ n: 7, titulo: 'CONTAINER PIPELINE — ETA', estado: 'READY', tipo: 'tabela',
           nota: 'The vessel field is free text — 108 distinct values, including "Rushed 21-Jul, was 30th Aug" and tracking numbers. Counting containers needs that cleaned up first.',
           tabelas: [{ cols: ['ETA', 'Vessel', 'Suppliers', 'Lines', 'Units', 'Value'],
@@ -294,7 +304,9 @@ function register(app) {
       db.query(`SELECT sku, po_number, finish_date, due_date, supplier_code
                   FROM rapid_inv.po_lines
                  WHERE vessel ILIKE 'NEW%' AND NOT coalesce(is_received,false)
-                 ORDER BY finish_date NULLS LAST, sku LIMIT 30`),
+                 -- 60 linhas hoje; o bloco 25 logo abaixo já desenha 53. O
+                 -- LIMIT 30 escondia metade dos produtos novos a caminho.
+                 ORDER BY finish_date NULLS LAST, sku, po_number`),
       db.query(`SELECT sku, po_number, po_date, qty
                   FROM rapid_inv.po_lines
                  WHERE vessel ILIKE 'NEW%' AND po_date BETWEEN $1 AND $2

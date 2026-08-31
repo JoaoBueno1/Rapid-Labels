@@ -1116,13 +1116,33 @@
             const today = new Date(Date.now() + 10 * 3600000).toISOString().slice(0, 10);
             return day === today ? t : `${day.slice(8, 10)}/${day.slice(5, 7)} ${t}`;
         }
+        /* A hora de cada estágio, em LOTES.
+           Era um .in() com a lista inteira, e a lista vira querystring: 834 ids
+           (Main Warehouse, o foco padrão) dão 30.964 bytes de URL e o servidor
+           responde 400; 1.708 ids ("todos") dão 63.302 e respondem 431. O
+           supabase-js resolve a promise com erro em vez de rejeitar, então o
+           .then rodava com data null, __stageAt ficava {} e a coluna de horário
+           saía vazia para 100% das ordens, toda vez — com o .catch e o || []
+           escondendo por completo. 300 ids por lote cabem com folga. */
         function _loadStageTimes() {
             try {
                 const ids = [...new Set((window.__pipelineData || []).map(r => r.id).filter(Boolean))];
                 if (!ids.length || !window.supabase) return;
-                window.supabase.schema('cin7_mirror').from('order_stage_events').select('order_id,stage,at').in('order_id', ids)
-                    .then(({ data }) => { const m = {}; (data || []).forEach(e => { m[e.order_id + '|' + e.stage] = e.at; }); window.__stageAt = m; renderOrdersTable(); })
-                    .catch(() => {});
+                const lotes = [];
+                for (let i = 0; i < ids.length; i += 300) lotes.push(ids.slice(i, i + 300));
+                Promise.all(lotes.map(lote => window.supabase.schema('cin7_mirror')
+                    .from('order_stage_events').select('order_id,stage,at').in('order_id', lote)))
+                    .then(partes => {
+                        // Um lote que falha não pode virar "sem horário" silencioso:
+                        // se algum erro voltar, o que deu certo entra e o resto fica
+                        // sem hora — mas o erro aparece no console em vez de sumir.
+                        const erro = partes.find(p => p && p.error);
+                        if (erro) console.warn('[home] stage times, lote falhou:', erro.error.message);
+                        const m = {};
+                        partes.forEach(p => (p && p.data || []).forEach(e => { m[e.order_id + '|' + e.stage] = e.at; }));
+                        window.__stageAt = m; renderOrdersTable();
+                    })
+                    .catch(e => console.warn('[home] stage times:', e && e.message));
             } catch (e) {}
         }
 

@@ -534,6 +534,17 @@ async function fetchWarehouseRowsAll(){
     const { data, error } = await sb
       .from('warehouse_movements')
       .select('report_date, quantity_out, reference_type, stock_locator, bin, sku, reference')
+      /* ATENÇÃO — esta paginação está CORRETA POR ACIDENTE DE PLANO.
+         `report_date` tem só 109 valores distintos em 43.442 linhas: não é
+         ordem total, e paginação por offset sobre ordem parcial pode repetir e
+         perder linha. Só não perde porque existe `idx_wm_report_date` e o
+         planejador escolhe Index Scan em todos os offsets (medido em 0, 1.000,
+         20.000, 42.000 e 43.000 — nenhum nó Sort, ordem por TID). Três leituras
+         completas: 43.442 PKs distintas, zero perdidas, sum(quantity_out)
+         idêntico. Forçando `enable_indexscan=off` o mesmo código perde 1.740
+         linhas (4,0%).
+         Se esse índice for removido, isto vira perda silenciosa. O conserto,
+         nesse dia, é acrescentar uma chave de desempate ao .order(). */
       .order('report_date', { ascending: true })
       .range(fromIdx, fromIdx + pageSize - 1);
     if (error){ console.warn('fetchWarehouseRowsAll error', error); break; }

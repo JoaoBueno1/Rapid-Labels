@@ -162,6 +162,16 @@ async function sbGet(table, query = '') {
  * Paginated Supabase GET — fetches ALL rows even when > 1000.
  * Supabase REST API defaults to max 1000 rows per request.
  * This function paginates with Range headers to get everything.
+ *
+ * ATENÇÃO — correto por acidente de plano, como em
+ * features/logistics/warehouse-movements.js. Quem chama nem sempre passa
+ * ORDER, e paginação por offset sem ordem total pode repetir e perder linha.
+ * Medido: 14 páginas, 13.390 de 13.390 DISTINCT, três execuções idênticas, e
+ * /stats bate com o banco (13.356 · 32.863 · 30.989). O motivo é que o
+ * `synchronize_seqscans` nunca engata — o heap tem 13 MB contra o limiar de
+ * 64 MB (shared_buffers 256 MB), então o Seq Scan sempre começa do bloco 0.
+ * Passando de ~65 mil pedidos isso deixa de valer e vira perda silenciosa.
+ * O conserto, nesse dia, é acrescentar `&order=<pk>` a cada `query`.
  */
 async function sbGetAll(table, query = '') {
   const PAGE_SIZE = 1000;

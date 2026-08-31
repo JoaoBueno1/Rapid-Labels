@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- Absolutos: a rota é um app.get de raiz e um caminho relativo resolveria
      contra "/", devolvendo o HTML da própria página no lugar do script. -->
-<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=20">
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=21">
 <link rel="stylesheet" href="/features/stock-planning/ui/po.css?v=1">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
@@ -70,6 +70,8 @@
   <div class="sp-foot">
     <span>What is not split across branches arrives at <b>Main</b> — that is the rule, not an oversight</span><i></i>
     <span>Over-allocating <b>warns, it does not block</b>: the operation has legitimate exceptions</span>
+    <span class="sp-gap"></span>
+    <button class="sp-btn is-ghost" id="alMore" style="display:none">Load more</button>
   </div>
 </section>
 
@@ -133,6 +135,6 @@
 
 <div class="sp-toast" id="toast"></div>
 <script src="/features/stock-planning/ui/sp-core.js?v=1"></script>
-<script src="/features/stock-planning/ui/po.js?v=2"></script>
+<script src="/features/stock-planning/ui/po.js?v=3"></script>
 </body>
 </html>

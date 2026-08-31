@@ -11,7 +11,7 @@
      raiz, e um caminho relativo resolveria contra "/" — o navegador receberia
      o HTML da própria página no lugar do script, com MIME text/html, e o
      recusaria. Foi exatamente assim que /master quebrou. -->
-<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=20">
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=21">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
 <script defer src="/shared/rail.js?v=9"></script>
@@ -60,6 +60,8 @@
     <span>Click <b>PICK DATE</b> to plan the draws for a line</span><i></i>
     <span><kbd>Enter</kbd> saves · <kbd>Esc</kbd> reverts</span><i></i>
     <span>Completing a project moves no rows — it is only a status</span>
+    <span class="sp-gap"></span>
+    <button class="sp-btn is-ghost" id="pjMore" style="display:none">Load more</button>
   </div>
 </section>
 
@@ -92,6 +94,6 @@
 
 <div class="sp-toast" id="toast"></div>
 <script src="/features/stock-planning/ui/sp-core.js?v=1"></script>
-<script src="/features/stock-planning/ui/projects.js?v=1"></script>
+<script src="/features/stock-planning/ui/projects.js?v=2"></script>
 </body>
 </html>

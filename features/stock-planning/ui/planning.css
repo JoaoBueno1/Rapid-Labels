@@ -206,6 +206,11 @@ tr.sp-ord.flt td{top:56px}
 .sp-ord-in .sep{width:1px;height:12px;background:var(--line-2);flex:none}
 .sp-ord-in .rt{margin-left:auto;display:flex;align-items:center;gap:9px}
 .sp-ord-in .mt{font:500 11.5px var(--mono);color:var(--mut-2)}
+/* "parcial" — o grupo está na borda da página e a soma do cabeçalho é de meia
+   venda. Sem esta marca o número parecia o do pedido inteiro. */
+.pj-part,.sp-part{display:inline-block;margin-left:5px;padding:0 4px;border-radius:3px;
+  font:700 9.5px/14px var(--sans);letter-spacing:.03em;
+  background:#FEF3C7;color:#92400E;border:1px solid #FDE68A}
 .sp-ord-in .act{border:1px solid var(--line-2);background:#fff;border-radius:6px;padding:2px 9px;
   font-size:11.5px;color:var(--mut);font-weight:500}
 .sp-ord-in .act:hover{border-color:var(--acc);color:var(--acc)}
