@@ -46,7 +46,17 @@
     // que a planilha MOSTRA — as duas estão sempre lá, cada uma na sua coluna.
     // O padrão é o fallback porque em 1.891 de 6.861 pares filial-SKU só o rep
     // vendeu: com 'branch' puro, o motor não sugeriria nada para eles.
-    demand: 'branch_then_rep', salesMonths: 6 };
+    demand: 'branch_then_rep', salesMonths: 6,
+    // minAvg: o piso de demanda, em unidades por mês.
+    //
+    // Sem ele, 37% das linhas de Sydney (459 SKUs) vinham de itens que vendem
+    // menos de um por mês e somam 1,5% da demanda. A causa não é a régua nem o
+    // arredondamento: é o Math.ceil do computeBranchTarget, que faz QUALQUER
+    // demanda positiva virar alvo >= 1. Um item que vendeu uma unidade em seis
+    // meses ganha alvo permanente na filial, e a filial zerada vira sugestão.
+    //
+    // Medido: piso 1/mês corta 41% das linhas e custa 3% das unidades.
+    minAvg: 1 };
   let SET = loadSet();
   function loadSet() {
     let raw = {};
@@ -60,6 +70,12 @@
     // E os dois modos que saíram do seletor. Sem isto, quem tem 'both' salvo
     // fica com um <select> que não casa com nenhuma opção e volta em branco.
     if (DEMAND_MIGRA[raw.demand]) raw.demand = DEMAND_MIGRA[raw.demand];
+    // 'up' saiu do seletor. computeBranchTarget JÁ faz Math.ceil no alvo, então
+    // arredondar a média para cima antes era um teto em cima de outro: média
+    // 0,2 virava 1 e alvo 2 — dois anos de estoque parado. Medido em Sydney,
+    // 'up' AUMENTAVA as linhas (236 -> 240) e inflava 208 unidades. Não é
+    // preferência, é defeito; por isso migra em vez de continuar oferecendo.
+    if (raw.avgRound === 'up') raw.avgRound = 'pure';
     return Object.assign({}, DEFAULTS, raw);
   }
   function saveSet() { try { localStorage.setItem('rp.set', JSON.stringify(SET)); } catch (_) {} }
@@ -268,7 +284,26 @@
       if (S.blocked && S.blocked.has(c0.toUpperCase())) continue;
       const row = buildRow(c0); if (!row || row.avg <= 0) continue;
       const coverDays = Math.round(row.coverWeeks * 7);
-      row.isSuggested = (row.canSend > 0 && row.sug > 0 && coverDays < SET.cutDays);
+      // O piso tira o item lento da sugestão AUTOMÁTICA — não da planilha:
+      // quem digitar o código continua conseguindo pedir.
+      //
+      // TENTEI uma exceção aqui — "se a filial está zerada, sugere mesmo abaixo
+      // do piso" — e ela ANULOU o piso: 236 linhas, o mesmo que não ter piso,
+      // com 97 lentos voltando. O motivo é óbvio depois de medir: o item lento
+      // zerado É a linha barulhenta. Alvo 1, estoque 0, cover 0 — a exceção
+      // readmitia exatamente a população que o piso existe para tirar.
+      //
+      // O que a faria funcionar é recência, não estoque zero: "vendeu no último
+      // mês E zerou" é reposição; "está zerado há seis meses" é item que a
+      // filial não estoca. Isso precisa da data da última venda por SKU, que a
+      // RPC ainda não devolve. Fica anotado, não improvisado.
+      //
+      // Sem ela o item lento continua na planilha e pode ser pedido digitando o
+      // código — o piso tira da sugestão AUTOMÁTICA, não do alcance de quem
+      // sabe que precisa. É o min/max com mínimo zero: a filial pede, o Main
+      // atende, e ninguém espalha 459 SKUs por sete filiais.
+      const passaNoPiso = row.avg >= (SET.minAvg || 0);
+      row.isSuggested = (row.canSend > 0 && row.sug > 0 && coverDays < SET.cutDays && passaNoPiso);
       out.push(row);
     }
     out.sort((a, b) => (b.isSuggested - a.isSuggested) || (a.coverWeeks - b.coverWeeks) || (b.sug - a.sug));
@@ -1522,6 +1557,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     if ($('setAvgSource')) $('setAvgSource').value = SET.avgSource;
     if ($('setPeriod')) $('setPeriod').value = SET.period;
     $('setAvgRound').value = SET.avgRound; $('setCartons').checked = SET.cartons;
+    if ($('setMinAvg')) $('setMinAvg').value = SET.minAvg;
     const rows = S.avg.map(r => ({ code: r.product, tot: BRANCHES.reduce((s, b) => s + pickAvg(r, b), 0) })).filter(r => r.tot > 0).sort((a, b) => b.tot - a.tot).slice(0, 60);
     $('setAvgTable').innerHTML = '<thead><tr><th class="txt">Rapid Code</th><th class="num">Tier</th><th class="num">Network avg/mo</th></tr></thead><tbody>' +
       rows.map(r => `<tr><td class="code txt">${esc(r.code)}</td><td class="num"><span class="rp-tier ${(S.ranks && S.ranks.get(r.code)) || 'C'}">${(S.ranks && S.ranks.get(r.code)) || 'C'}</span></td><td class="num">${n1(r.tot)}</td></tr>`).join('') + '</tbody>';
@@ -1533,6 +1569,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     SET.abc = $('setAbc').checked; if ($('setAvgSource')) SET.avgSource = $('setAvgSource').value;
     if ($('setPeriod')) SET.period = $('setPeriod').value;
     SET.avgRound = $('setAvgRound').value; SET.cartons = $('setCartons').checked;
+    if ($('setMinAvg')) SET.minAvg = Math.max(0, Number($('setMinAvg').value) || 0);
     const basisBefore = SET.demand, monthsBefore = SET.salesMonths;
     if ($('setDemand')) SET.demand = $('setDemand').value;
     if ($('setSalesMonths')) SET.salesMonths = +$('setSalesMonths').value;
