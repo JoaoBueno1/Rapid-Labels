@@ -488,6 +488,17 @@
     const save = S.branch; S.branch = BRANCHES.find(b => b.code === code);
     const n = suggestionUniverse().filter(r => r.isSuggested).length; S.branch = save; return n;
   }
+
+  /* A contagem de SKU de uma filial por uma régua específica.
+     Mesmo motor, mesma regra do Settings (cover < cutDays, piso, sem estoque no
+     Main não conta) — é o MESMO número que o Load Suggested mostra. Contar de
+     outro jeito aqui daria dois números para a mesma pergunta na mesma tela. */
+  function branchCountFor(code, basis) {
+    const b = S.branch, d = SET.demand;
+    S.branch = BRANCHES.find(x => x.code === code); SET.demand = basis;
+    try { return suggestionUniverse().filter(r => r.isSuggested).length; }
+    finally { S.branch = b; SET.demand = d; }
+  }
   function finalQty(l) { return (S.mode === 'weekly' && l.invQty != null) ? clampInt(l.invQty) : clampInt(l.ask); }
 
   // ═══ LANDING ═══════════════════════════════════════════════════════
@@ -503,21 +514,21 @@
       const sug = S.loaded ? branchSuggestedCount(b.code) : 0;
       const cls = sug > 40 ? 'bad' : sug > 15 ? 'warn' : 'good';
       const inf = S.avgLiveInfo[b.code];
-      const t = inf && inf.totals;
       const usaRep = SET.demand === 'rep' || SET.demand === 'rep_then_branch';
-      // 4 nomes e o resto contado: sete chips num cartão de 178px viram
-      // parede, e o que importa é reconhecer quem falta, não ler todos.
-      const bd = (inf && inf.breakdown) || [];
-      const mostra = bd.slice(0, 4), resto = bd.length - mostra.length;
-      const reguas = t ? `
+      // A MESMA unidade da linha de cima: quantidade de SKU sob a regra do
+      // Settings. Unidades por mês era outra grandeza no mesmo cartão, e duas
+      // grandezas empilhadas fazem o olho comparar o que não se compara.
+      const nBranch = S.loaded ? branchCountFor(b.code, 'branch') : 0;
+      const nRep = S.loaded ? branchCountFor(b.code, 'rep') : 0;
+      // Só os nomes. O quanto cada rep vendeu não muda decisão nenhuma nesta
+      // tela — o que ela responde é "quem é desta filial" e "está faltando
+      // alguém". Número por rep vive no painel de dentro.
+      const nomes = ((inf && inf.breakdown) || []).map(r => r.sales_rep);
+      const reguas = inf ? `
         <div class="rp-tk">
-          <div class="rp-tk-r${usaRep ? '' : ' is-driver'}">
-            <span>Branch</span><b>${n0(t.loc_units)}</b><i>/mo · ${n0(t.loc_skus)} SKUs</i></div>
-          <div class="rp-tk-r${usaRep ? ' is-driver' : ''}">
-            <span>Reps</span><b>${n0(t.rep_units)}</b><i>/mo · ${n0(t.rep_skus)} SKUs</i></div>
-          <div class="rp-tk-reps">${mostra.map(r => `<span title="${esc(r.sales_rep)} — ${n1(r.units_month)} a month">${
-            esc(String(r.sales_rep).split(' ')[0])}<b>${Number(r.units) > 0 ? n0(r.units_month) : '—'}</b></span>`).join('')}${
-            resto > 0 ? `<span class="rp-tk-more" title="${esc(bd.slice(4).map(r => r.sales_rep).join(', '))}">+${resto}</span>` : ''}</div>
+          <div class="rp-tk-r${usaRep ? '' : ' is-driver'}"><span>Branch</span><b>${n0(nBranch)}</b></div>
+          <div class="rp-tk-r${usaRep ? ' is-driver' : ''}"><span>Reps</span><b>${n0(nRep)}</b></div>
+          ${nomes.length ? `<div class="rp-tk-reps">${esc(nomes.join(', '))}</div>` : ''}
           ${(inf.orphans || []).length ? `<div class="rp-tk-orphan" title="${
             esc(inf.orphans.map(o => o.sales_rep).join(', '))}">${n0(inf.orphans.length)} rep(s) with no branch</div>` : ''}
         </div>` : (S.repAvgErro ? '<div class="rp-tk rp-tk-bad">demand did not load</div>' : '');
