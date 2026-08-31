@@ -62,7 +62,7 @@
 .rp-grid td.txt, .rp-grid th.txt { text-align: left; }
 .rp-grid td.code { font-family: var(--mono); font-size: 12px; }
 /* zebra on the plain cells only (keep the amber Order zone, red no-main + blank rows intact) */
-.rp-grid tbody tr:nth-child(even):not(.rp-nomain):not(.rp-blank) td:not(.g-ord) { background: var(--zebra); }
+.rp-grid tbody tr:nth-child(even):not(.rp-nomain):not(.rp-intransit):not(.rp-blank) td:not(.g-ord) { background: var(--zebra); }
 /* colour-coded column groups */
 .rp-grid th.g-stk { background: #d7e3f4; color: #29486f; }
 .rp-grid th.g-ord { background: #fce8a8; color: #7a5b00; }
@@ -83,6 +83,12 @@
    system: o vermelho continua reconhecível e o texto por cima mantém 12:1. */
 .rp-grid tbody tr.rp-nomain td { background: #fee2e2; }
 .rp-grid tbody tr.rp-nomain td.g-ord { background: #fef0d9; }
+/* Stock a caminho da filial: linha inteira amarela, para o olho pegar rápido que algo
+   já vem (e não pedir de novo). Vence o vermelho do sem-Main — "está chegando" é o que
+   decide a ação. */
+.rp-grid tbody tr.rp-intransit td { background: color-mix(in srgb, var(--xl-warn) 40%, #fff); }
+.rp-grid tbody tr.rp-intransit td.g-ord { background: color-mix(in srgb, var(--xl-warn) 24%, #fffbe9); }
+.rp-grid tbody tr.rp-intransit:hover td { background: color-mix(in srgb, var(--xl-warn) 52%, #fff); }
 .rp-grid tbody tr.rp-line { cursor: pointer; }
 .rp-grid tbody tr.rp-line:hover td { background: color-mix(in srgb, var(--acc-soft) 55%, #fff); }
 .rp-grid tbody tr.rp-nomain:hover td { background: #fcd2d2; }

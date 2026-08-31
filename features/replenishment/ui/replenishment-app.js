@@ -478,7 +478,9 @@
       // sabe que precisa. É o min/max com mínimo zero: a filial pede, o Main
       // atende, e ninguém espalha 459 SKUs por sete filiais.
       const passaNoPiso = row.avg >= (SET.minAvg || 0);
-      row.isSuggested = (row.canSend > 0 && row.sug > 0 && coverDays < SET.cutDays && passaNoPiso);
+      // Com stock a caminho da filial, NÃO sugere: algo já está chegando e pedir de novo
+      // é o caminho para o excesso. Fica visível (amarela) se entrar por "all sellable"/manual.
+      row.isSuggested = (row.canSend > 0 && row.sug > 0 && coverDays < SET.cutDays && passaNoPiso && row.inTransit <= 0);
       out.push(row);
     }
     out.sort((a, b) => (b.isSuggested - a.isSuggested) || (a.coverWeeks - b.coverWeeks) || (b.sug - a.sug));
@@ -928,8 +930,9 @@
     }).join('') + '</tr></thead>';
     let body = rows.map(l => {
       const nomain = l.mainGw <= 0;
+      const intransit = l.inTransit > 0;   // stock a caminho → linha amarela (vence o vermelho: já vem)
       const open = S.sideSku && String(l.code).toUpperCase() === S.sideSku ? ' rp-open' : '';
-      return `<tr class="rp-line${nomain ? ' rp-nomain' : ''}${l.flag ? ' rp-flagged' : ''}${open}" data-code="${esc(l.code)}">` + C.map(c => cell(l, c)).join('') + '</tr>';
+      return `<tr class="rp-line${intransit ? ' rp-intransit' : nomain ? ' rp-nomain' : ''}${l.flag ? ' rp-flagged' : ''}${open}" data-code="${esc(l.code)}">` + C.map(c => cell(l, c)).join('') + '</tr>';
     }).join('');
     // Excel-style empty rows to fill (draft only, not while searching)
     if (S.stage === 'draft' && !S.search) {
@@ -959,8 +962,7 @@
   function lifeChip(l) {
     if (l.life === 'DISCONTINUED')
       return '<span class="rp-life rp-life--disc" title="Discontinued in Master Stock. It still ships while there is stock; it is not reordered.">DISC</span>';
-    if (l.life === 'RUN_OUT')
-      return '<span class="rp-life rp-life--run" title="Run-out in Master Stock. Selling what is left; not reordered.">RUN-OUT</span>';
+    // RUN-OUT badge removido a pedido: ocupava espaço na coluna mais apertada da grade.
     if (l.gwBlocked)
       return '<span class="rp-life rp-life--gw" title="Master Stock says this one is not picked from Gateway — only Main stock counts as sendable.">MAIN ONLY</span>';
     return '';
