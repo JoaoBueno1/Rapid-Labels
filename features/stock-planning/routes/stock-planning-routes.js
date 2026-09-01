@@ -111,18 +111,28 @@ function badgeFor(s, proj, alerts, ctx) {
     // enchimento, e dominava a tela mais que os dois casos urgentes do topo.
     badge = 'FIX FORECAST';
   }
-  // Quando a taxa medida diverge da digitada, a cascata-sombra vê ruptura onde
-  // a grade não vê — 115 linhas medidas, e em TODAS o selo está certo e a grade
-  // é que está cega (86 com Wk/Avg zerado vendendo de verdade, 29 vendendo
-  // várias vezes o digitado). Contradição sem explicação destrói a confiança na
-  // tela; por isso a linha carrega o motivo e a UI aponta para a célula que
-  // causa a divergência, que é onde está o conserto.
-  const drift = sold13 > 0 && (wkAvg === 0 || rate >= wkAvg * 1.5);
+  /* A divergência entre o selo e a grade, agora que o Wk/Avg é MEDIDO (029).
+     Antes o teste era "digitado contra venda realizada", e fazia sentido: o
+     digitado vinha de um import de Excel e não sabia da venda. Depois da 029 o
+     padrão É a venda medida — manter o teste antigo marcaria como deriva toda
+     linha em que as duas FONTES diferem, que é outra coisa e é esperada:
+
+       v_sp_sales_week (a régua)   venda normal, ex-projeto, sem estimativa
+       v_sp_history_week (sold13)   tudo, projeto e pedido não consumado junto
+
+     Um SKU cuja saída inteira é de projeto tem régua zero e sold13 alto, e está
+     CERTO: o draw de projeto entra na cascata em separado, e somá-lo à média
+     desconta a mesma obrigação duas vezes.
+
+     Sobra um caso de deriva de verdade, e ele tem dono: alguém fixou o número à
+     mão em wk_avg_override e a venda não o sustenta. */
+  const isOverride = !!s.wk_avg_is_override;
+  const drift = isOverride && sold13 > 0 && (wkAvg === 0 || rate >= wkAvg * 1.5);
   const why = !badge ? null
-    : wkAvg === 0 && sold13 > 0
-      ? `Wk/Avg está em branco e este SKU vendeu ${Math.round(sold13)} un em 13 semanas (${(sold13 / 13).toFixed(1)}/sem). A projeção acima usa o Wk/Avg, por isso não mostra ruptura.`
     : drift
-      ? `Wk/Avg digitado é ${wkAvg}; a venda medida é ${(sold13 / 13).toFixed(1)}/sem. O selo usa a medida, a projeção acima usa a digitada.`
+      ? `Wk/Avg está FIXADO à mão em ${wkAvg}; a venda medida é ${(sold13 / 13).toFixed(1)}/sem. O selo usa a medida, a projeção acima usa o valor fixado.`
+    : wkAvg === 0 && sold13 > 0
+      ? `Sem demanda normal medida em 13 semanas. As ${Math.round(sold13)} un que saíram são de projeto ou de pedido não consumado — o projeto já entra na cascata como draw, em separado.`
       : null;
 
   // SKU mudo (sem venda e sem previsão) fica sem selo de propósito: carimbar
@@ -280,14 +290,10 @@ function register(app) {
     const qty = Number(req.body.qty);
     if (!(qty > 0)) return res.status(400).json({ error: 'qty tem que ser maior que zero' });
     const actor = actorOf(req);
-    const out = await db.tx(async (c) => {
-      const [{ next }] = (await c.query(
-        `SELECT COALESCE(max(seq),0)+1 next FROM rapid_inv.project_draws WHERE line_id=$1`, [lineId])).rows;
-      return (await c.query(
-        `INSERT INTO rapid_inv.project_draws (line_id,seq,qty,planned_date,note,source,updated_by)
-         VALUES ($1,$2,$3,$4,$5,'MANUAL',$6) RETURNING *`,
-        [lineId, next, qty, toISODate(req.body.planned_date), req.body.note || null, actor])).rows[0];
-    }, actor);
+    const out = (await db.query(
+      `SELECT * FROM rapid_inv.add_manual_draw($1,$2,$3,$4,$5)`,
+      [lineId, qty, toISODate(req.body.planned_date), req.body.note || null, actor],
+      actor))[0];
     res.status(201).json(out);
   }));
 
@@ -326,21 +332,12 @@ function register(app) {
     const id = asInt(req.params.id, 0, 1, 1e12);
     const qty = Number(req.body.qty);
     const actor = actorOf(req);
-    const out = await db.tx(async (c) => {
-      const orig = (await c.query(`SELECT * FROM rapid_inv.project_draws WHERE id=$1 FOR UPDATE`, [id])).rows[0];
-      if (!orig) return null;
-      if (!(qty > 0) || qty >= Number(orig.qty)) throw new Error('a quantidade a separar tem que ser menor que a do draw');
-      await c.query(`UPDATE rapid_inv.project_draws SET qty = qty - $1, updated_by=$2 WHERE id=$3`, [qty, actor, id]);
-      const [{ next }] = (await c.query(
-        `SELECT COALESCE(max(seq),0)+1 next FROM rapid_inv.project_draws WHERE line_id=$1`, [orig.line_id])).rows;
-      const created = (await c.query(
-        `INSERT INTO rapid_inv.project_draws (line_id,seq,qty,planned_date,note,source,updated_by)
-         VALUES ($1,$2,$3,$4,$5,'SPLIT',$6) RETURNING *`,
-        [orig.line_id, next, qty, toISODate(req.body.planned_date), req.body.note || null, actor])).rows[0];
-      return { original_id: id, created };
-    }, actor);
-    if (!out) return res.status(404).json({ error: 'draw não encontrado' });
-    res.status(201).json(out);
+    const rows = await db.query(
+      `SELECT * FROM rapid_inv.split_draw($1,$2,$3,$4,$5)`,
+      [id, qty, toISODate(req.body.planned_date), req.body.note || null, actor],
+      actor);
+    if (!rows.length) return res.status(404).json({ error: 'draw não encontrado' });
+    res.status(201).json(rows[0]);
   }));
 
   // ── Projetos ────────────────────────────────────────────────────────
@@ -406,38 +403,54 @@ function register(app) {
     NETWORK:       { label: 'Every branch',          codes: ['SYD', 'BNE', 'MEL', 'CNS', 'CFS', 'HBA', 'SCS'] },
   };
 
-  /** Demanda e estoque de um conjunto de filiais, para os SKUs pedidos. */
-  async function scopeFacts(codes, keys, months) {
-    const win = `order_date >= (date_trunc('month',
-                   (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
-                 - ($3::int - 1) * interval '1 month')`;
+  /* Demanda e estoque de um conjunto de filiais, para os SKUs pedidos.
+
+     A JANELA É EM SEMANAS e a fonte é rapid_inv.v_sp_sales_week — a MESMA que
+     alimenta o Wk/Avg da empresa (migração 029). Antes eram duas contas
+     diferentes: a da empresa vinha do Excel e a da filial de uma média em
+     meses sobre v_sp_demand_scope, com venda de projeto dentro. A tela punha as
+     duas na mesma célula, uma ao lado da outra, e elas não podiam concordar
+     porque não mediam a mesma coisa. Agora medem: mesma janela, mesma exclusão
+     de projeto, mesma divisão. A única diferença passa a ser o recorte de
+     filial, que é a diferença que o planejador quer ver. */
+  async function scopeFacts(codes, keys, weeksWindow) {
+    const wks = Math.max(1, Number(weeksWindow) || 13);
     const [dem, stk] = await Promise.all([
       // A linha conta se o LOCAL é da filial OU o REP é dela. É união de
       // linhas, não soma de dois totais: somar contaria duas vezes toda venda
       // em que o rep da filial vendeu do próprio depósito.
-      db.query(`SELECT sku_key, sum(qty_signed)::numeric qty,
-                       count(*) FILTER (WHERE location_branch = ANY($2))::int by_loc,
-                       -- IS DISTINCT FROM ANY nao existe: ANY e comparador,
-                       -- nao conjunto. O certo e <> ALL, e o coalesce importa
-                       -- porque location_branch e NULL em toda venda de
-                       -- "Project Warehouse" -- sem ele a linha sumia dos dois
-                       -- lados da conta.
-                       count(*) FILTER (WHERE coalesce(location_branch, '') <> ALL($2)
-                                          AND rep_branch = ANY($2))::int by_rep
-                  FROM rapid_inv.v_sp_demand_scope
-                 WHERE sku_key = ANY($1) AND ${win}
+      //
+      // by_loc/by_rep saem em QUANTIDADE e não em contagem de linhas: o que
+      // informa é quanto da demanda daquela filial foi despachada do Main, e
+      // uma linha de 500 unidades e outra de 1 pesavam igual na contagem.
+      db.query(`SELECT sku_key,
+                       sum(qty)::numeric                                        qty,
+                       sum(qty) FILTER (WHERE location_branch = ANY($2))::numeric        by_loc,
+                       -- <> ALL e não "<> ANY": ANY é comparador, não conjunto.
+                       -- E o coalesce importa porque location_branch é NULL em
+                       -- toda venda de "Project Warehouse" — sem ele a linha
+                       -- sumia dos dois lados da conta.
+                       sum(qty) FILTER (WHERE coalesce(location_branch, '') <> ALL($2)
+                                          AND rep_branch = ANY($2))::numeric             by_rep,
+                       count(DISTINCT week_ending) FILTER (WHERE qty > 0)::int  weeks_with_sale
+                  FROM rapid_inv.v_sp_sales_week
+                 WHERE sku_key = ANY($1)
+                   AND week_ending >  (SELECT reporting_week FROM rapid_inv.planning_state WHERE id=1) - ($3::int * 7)
+                   AND week_ending <= (SELECT reporting_week FROM rapid_inv.planning_state WHERE id=1) - 7
                    AND (location_branch = ANY($2) OR rep_branch = ANY($2))
-                 GROUP BY 1`, [keys, codes, months]),
+                 GROUP BY 1`, [keys, codes, wks]),
       db.query(`SELECT upper(btrim(s.sku)) k, sum(s.available)::numeric qty
                   FROM cin7_mirror.stock_snapshot s
                   JOIN rapid_inv.warehouses w ON w.cin7_location_name = s.location_name
                  WHERE upper(btrim(s.sku)) = ANY($1) AND w.code = ANY($2)
                  GROUP BY 1`, [keys, codes]),
     ]);
-    const weeksInWindow = (months * 52) / 12;
     return {
+      weeks: wks,
       demand: dem.reduce((m, r) => (m[r.sku_key] = {
-        wk: Number(r.qty) / weeksInWindow, by_loc: r.by_loc, by_rep: r.by_rep }, m), {}),
+        wk: Math.round((Number(r.qty) / wks) * 100) / 100,
+        by_loc: Number(r.by_loc || 0), by_rep: Number(r.by_rep || 0),
+        weeks_with_sale: r.weeks_with_sale }, m), {}),
       stock: stk.reduce((m, r) => (m[r.k] = Number(r.qty), m), {}),
     };
   }
@@ -543,11 +556,18 @@ function register(app) {
     }
     const w = where.join(' AND ');
 
-    const [{ total }] = await db.query(`SELECT count(*)::int total FROM rapid_inv.v_sp_planning_skus WHERE ${w}`, p);
+    /* A contagem sai JUNTO com a pagina, por window function.
+       Eram duas consultas, e desde que o Wk/Avg passou a ser medido (029) cada
+       uma agrega 13 semanas de venda — a mesma conta cara feita duas vezes por
+       requisicao. `count(*) OVER ()` e avaliado ANTES do LIMIT, entao o total
+       continua sendo o do conjunto filtrado inteiro, nao o da pagina. */
     const skus = await db.query(
-      `SELECT * FROM rapid_inv.v_sp_planning_skus WHERE ${w}
+      `SELECT *, count(*) OVER ()::int AS _total FROM rapid_inv.v_sp_planning_skus WHERE ${w}
         ORDER BY (mths_stock IS NULL), mths_stock NULLS LAST, sku
         LIMIT ${limit} OFFSET ${offset}`, p);
+    // Zero linhas nao produz linha nenhuma, entao nao ha de onde tirar o total.
+    const total = skus.length ? Number(skus[0]._total) : 0;
+    skus.forEach((r) => { delete r._total; });
 
     // Dois SELECTs para o conjunto inteiro. Nada de uma consulta por linha.
     const keys = skus.map((s) => s.sku_key);
@@ -573,11 +593,36 @@ function register(app) {
     const drawIdx = index(draws), inIdx = index(incoming);
 
     // O escopo, quando pedido. Fora dele nada muda: a régua padrão continua
-    // sendo a média digitada e o estoque somado.
+    // sendo a média medida da empresa e o estoque somado.
     const scopeKey = String(req.query.scope || '').toUpperCase();
     const scope = SCOPES[scopeKey] || null;
-    const scopeMonths = asInt(req.query.scope_months, 6, 1, 13);
-    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, scopeMonths) : null;
+    const avgWeeks = asInt(req.query.avg_weeks, 13, 4, 104);
+    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, avgWeeks) : null;
+
+    /* A janela do Wk/Avg quando ela não é a padrão.
+       A view v_sp_planning_skus já traz a média de 13 semanas — a régua única
+       que alertas, buy e overview também leem, e é por isso que ela é fixa lá.
+       Quando o usuário pede outra janela, a conta é refeita AQUI, para a tela
+       poder cortar por 4/26/52 sem que as outras telas mudem de régua junto e
+       passem a discordar desta. O override digitado continua ganhando: quem
+       fixou um número fixou para toda janela. */
+    const AVG_DEFAULT = 13;
+    const winIdx = (avgWeeks !== AVG_DEFAULT && keys.length)
+      ? (await db.query(`SELECT sku_key, wk_avg, weeks_with_sale FROM rapid_inv.f_sp_wk_avg($2)
+                          WHERE sku_key = ANY($1)`, [keys, avgWeeks]))
+          .reduce((m, r) => (m[r.sku_key] = r, m), {})
+      : null;
+    /* A média que vale para esta linha, nesta janela. Uma função só, porque a
+       cascata, o selo e a coluna Wk/Avg têm que ler o MESMO número — quando
+       divergem, a linha diz "compre" e a projeção ao lado diz que não falta. */
+    const effWk = (s) => {
+      if (s.lifecycle_status === 'DISCONTINUED') return 0;
+      if (s.wk_avg_is_override) return Number(s.wk_avg_override || 0);
+      if (!winIdx) return Number(s.wk_avg || 0);
+      const w = winIdx[s.sku_key];
+      return w ? Number(w.wk_avg || 0) : 0;
+    };
+
     const soldIdx = sold.reduce((m, r) => (m[r.sku_key] = r, m), {});
     const leadIdx = lead.reduce((m, r) => (m[r.sku_key] = r, m), {});
 
@@ -588,15 +633,17 @@ function register(app) {
     const today = weekEnding(new Date());
 
     const rows = skus.map((s) => {
-      // Dentro de um escopo a régua é a venda MEDIDA daquele conjunto, não a
-      // média digitada — que é do arquivo inteiro e não sabe de filial.
+      // Dentro de um escopo a régua é a venda daquele conjunto de filiais.
+      // Fora dele é a da empresa. As duas saem da mesma conta desde a 029 —
+      // mesma janela, mesma exclusão de projeto —, então o que muda entre elas
+      // é só o recorte, que é a informação que o planejador quer.
       const sd = sf ? sf.demand[s.sku_key] : null;
       const sqty = sf ? (sf.stock[s.sku_key] || 0) : null;
+      const wk = sf ? (sd ? sd.wk : 0) : effWk(s);
       const proj = projectSku({
         weeks: engineWeeks,
         soh: sf ? sqty : Number(s.soh_available),
-        wkAvg: sf ? (sd ? sd.wk : 0)
-                  : (s.wk_avg == null ? null : Number(s.wk_avg)),
+        wkAvg: wk,
         incoming: inIdx[s.sku_key] || {},
         draws: drawIdx[s.sku_key] || {},
         undatedQty: Number(s.undated_qty || 0),
@@ -606,7 +653,25 @@ function register(app) {
       const alerts = buildAlerts(s.sku, proj, { todayWeek: today });
       return {
         sku: s.sku, sku_key: s.sku_key, supplier: s.supplier_code,
-        wk_avg: s.wk_avg, target_cover_weeks: s.target_cover_weeks,
+        // UM número por célula. `wk_avg` é o que a linha usa de fato; de onde
+        // ele veio viaja em `wk_avg_source`, que a tela desenha como um ponto
+        // e explica no painel — não como um segundo número colado no primeiro.
+        wk_avg: wk,
+        /* O rótulo tem que dizer a janela que a linha usou. Com avg_weeks=52 a
+           view continuava mandando 'MEASURED_13W' — o número mudava e o rótulo
+           não, que é a forma mais barata de a tela mentir. */
+        wk_avg_source: sf ? 'MEASURED_SCOPE'
+          : (winIdx && !s.wk_avg_is_override && s.lifecycle_status !== 'DISCONTINUED')
+            ? (effWk(s) > 0 ? 'MEASURED_WINDOW' : 'NO_SALES')
+            : s.wk_avg_source,
+        wk_avg_window: avgWeeks,
+        wk_avg_weeks_with_sale: sf ? (sd ? sd.weeks_with_sale : 0)
+          : (winIdx ? (winIdx[s.sku_key] ? winIdx[s.sku_key].weeks_with_sale : 0)
+                    : s.wk_avg_weeks_with_sale),
+        wk_avg_calc: s.wk_avg_calc, wk_avg_override: s.wk_avg_override,
+        wk_avg_is_override: !!s.wk_avg_is_override,
+        wk_avg_last_sale_week: s.wk_avg_last_sale_week,
+        target_cover_weeks: s.target_cover_weeks,
         lifecycle_status: s.lifecycle_status, superseded_by: s.superseded_by,
         lifecycle_note: s.lifecycle_note, cin7_status: s.cin7_status, wk_avg_input: s.wk_avg_input,
         // A política do Master Stock viaja com a linha. O planejador precisa
@@ -615,24 +680,34 @@ function register(app) {
         use_in_replenishment: s.use_in_replenishment !== false,
         policy_flag: s.policy_flag || null, policy_note: s.policy_note || null,
         soh: sf ? sqty : Number(s.soh_available), on_order: Number(s.soh_on_order),
-        // O que o escopo trocou, dito por linha — para a tela poder mostrar o
-        // número do arquivo ao lado e o planejador ver a diferença.
+        // O que o escopo trocou. NÃO vai mais para a célula ao lado do número:
+        // dois valores numa célula de 70px foi a queixa. Vai para o painel, que
+        // é onde a pergunta "e a empresa toda?" é de fato feita.
         ...(sf ? {
-          scope_wk: sd ? Math.round(sd.wk * 100) / 100 : 0,
           scope_soh: sqty,
           scope_by_loc: sd ? sd.by_loc : 0,
           scope_by_rep: sd ? sd.by_rep : 0,
-          file_wk: s.wk_avg == null ? null : Number(s.wk_avg),
-          file_soh: Number(s.soh_available),
+          company_wk: effWk(s),
+          company_soh: Number(s.soh_available),
         } : {}),
         project_orders: Number(s.project_orders), main_soh: Number(s.main_soh),
         gateway_soh: Number(s.gateway_soh), comments: s.comments,
-        cells: proj.rows.map((r) => ({
-          w: r.weekEnding, o: r.opening, i: r.incoming, s: r.expectedSales,
-          d: r.projectDraws, c: r.closing, neg: r.belowZero, low: r.belowTarget,
-        })),
+        /* `neg` e `low` so viajam quando sao VERDADE. Sao 13.500 celulas por
+           pagina (500 linhas x 27 semanas) e, em falso, os dois custavam 320 KB
+           de "false" para dizer o que a ausencia da chave ja diz. */
+        cells: proj.rows.map((r) => {
+          const c = { w: r.weekEnding, o: r.opening, i: r.incoming, s: r.expectedSales,
+                      d: r.projectDraws, c: r.closing };
+          if (r.belowZero)   c.neg = true;
+          if (r.belowTarget) c.low = true;
+          return c;
+        }),
         summary: proj.summary,
-        alerts,
+        /* A lista de excecoes NAO vai na grade. Ela custava 215 KB por pagina e
+           nenhuma tela lia: quem desenha excecao e a aba Alerts, que tem rota
+           propria. O que a grade precisa — o selo — nasce delas aqui no servidor.
+           Fica a contagem, para a linha nao perder o fato de que existem. */
+        alert_count: alerts.length,
         ...badgeFor(s, proj, alerts, {
           sold: soldIdx[s.sku_key], lead: leadIdx[s.sku_key],
           badgeWeeks, incoming: inIdx[s.sku_key] || {}, draws: drawIdx[s.sku_key] || {},
@@ -688,7 +763,7 @@ function register(app) {
     res.json({
       bom_universe: bomAll,
       scope: scope ? {
-        key: scopeKey, label: scope.label, codes: scope.codes, months: scopeMonths,
+        key: scopeKey, label: scope.label, codes: scope.codes, weeks: avgWeeks,
         // O PO chega no Main e é distribuído depois — não há uma única alocação
         // de PO por filial gravada (medido: 0 de 1.466 linhas em aberto). Então
         // no escopo de filial a coluna Incoming é do Main, e dizer isso é o que
@@ -774,23 +849,15 @@ function register(app) {
       return m;
     }, {});
 
-    // O modo BOM mostra só os montados que estão no arquivo de planejamento
-    // (is_planned). Dizer 225 sem dizer de quantos seria truncar em silêncio.
-    const bomAll = req.query.view === 'bom'
-      ? (await db.query('SELECT count(DISTINCT parent_key)::int n FROM rapid_inv.product_bom'))[0].n
-      : null;
-
+    // Esta rota devolve REALIZADO e nada mais. O bloco de escopo e o de BOM que
+    // moravam aqui vieram colados de /planning no commit a25df05 (28/08) e
+    // referenciavam `scope`, `scopeKey` e `scopeMonths`, que só existem lá:
+    // toda chamada a /planning/history morria em ReferenceError, virava 500, e
+    // o `.catch(() => null)` da tela engolia — o dropdown de back weeks parecia
+    // não fazer nada desde então. O passado não tem escopo nem BOM; a projeção
+    // tem. Manter as duas respostas com formatos diferentes é o que impede a
+    // próxima colagem.
     res.json({
-      bom_universe: bomAll,
-      scope: scope ? {
-        key: scopeKey, label: scope.label, codes: scope.codes, months: scopeMonths,
-        // O PO chega no Main e é distribuído depois — não há uma única alocação
-        // de PO por filial gravada (medido: 0 de 1.466 linhas em aberto). Então
-        // no escopo de filial a coluna Incoming é do Main, e dizer isso é o que
-        // impede o planejador de contar como se já fosse dele.
-        incoming_is_main: scopeKey !== 'MAIN' && scopeKey !== 'NETWORK',
-      } : null,
-      scopes: Object.entries(SCOPES).map(([k, v]) => ({ key: k, label: v.label })),
       reporting_week: state.reporting_week,
       weeks: weeks.map((w) => ({ week_ending: w.week_ending, label: shortLabel(w.week_ending) })),
       rows, coverage: cov, ms: Date.now() - t0,
@@ -919,13 +986,21 @@ function register(app) {
   app.patch(`${R}/skus/:sku`, wrap(async (req, res) => {
     const key = req.params.sku.toUpperCase();
     const sets = [], p = [];
-    for (const f of ['wk_avg', 'target_cover_weeks', 'comments', 'supplier_code', 'is_planned']) {
+    /* `wk_avg` deixou de ser a régua (029) e virou o registro do que o Excel
+       trouxe. Quem fixa um número à mão grava em `wk_avg_override`, e é isso
+       que a view lê antes da venda medida. Apagar o override (mandar '') faz a
+       linha VOLTAR à média medida — que é a única forma de desfazer, e por isso
+       o campo aceita null de propósito. */
+    for (const f of ['wk_avg_override', 'target_cover_weeks', 'comments', 'supplier_code', 'is_planned']) {
       if (!(f in req.body)) continue;
       let v = req.body[f];
       if (v === '') v = null;
       p.push(v); sets.push(`${f} = $${p.length}`);
     }
-    if ('wk_avg' in req.body) sets.push(`wk_avg_source = 'MANUAL'`);
+    if ('wk_avg_override' in req.body) {
+      sets.push(`wk_avg_source = ${req.body.wk_avg_override === '' || req.body.wk_avg_override == null
+        ? `'MEASURED'` : `'MANUAL'`}`);
+    }
     if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
     const actor = actorOf(req);
     p.push(actor); sets.push(`updated_by = $${p.length}`);
@@ -976,34 +1051,10 @@ function register(app) {
     if (!supplier) return res.status(400).json({ error: 'supplier is required' });
     if (!lines.length) return res.status(400).json({ error: 'send at least one line' });
     const actor = actorOf(req);
-    if (db.mode() === 'rpc') return res.status(501).json({ error: 'Escrita com transação ainda não habilitada no transporte por service key — rode a migration 029 (função rapid_inv dedicada). Máquinas com SUPABASE_DB_PASSWORD já fazem esta ação.' });
-    const out = await db.tx(async (c) => {
-      const cart = await cartOf(c, supplier, actor, req.body.scope);
-      const feitas = [];
-      for (const l of lines) {
-        const key = String(l.sku_key || l.sku || '').trim().toUpperCase();
-        const qty = Number(l.qty);
-        if (!key || !isFinite(qty) || qty <= 0) continue;
-        // Somar em vez de sobrescrever: quem clica "adicionar" duas vezes quer
-        // duas, e quem edita usa o PATCH. Sobrescrever aqui perderia a
-        // quantidade que outra pessoa acabou de pôr.
-        const r = await c.query(
-          `INSERT INTO rapid_inv.buy_cart_line
-             (cart_id, sku_key, sku, qty, qty_suggested, carton_qty, unit_cost_aud, source, note, added_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-           ON CONFLICT (cart_id, sku_key) DO UPDATE
-             SET qty = rapid_inv.buy_cart_line.qty + EXCLUDED.qty,
-                 updated_at = now(), updated_by = EXCLUDED.added_by
-           RETURNING *`,
-          [cart.id, key, l.sku || key, qty, l.qty_suggested ?? null, l.carton_qty ?? null,
-           l.unit_cost_aud ?? null, l.source === 'manual' ? 'manual' : 'suggested',
-           l.note || null, actor]);
-        feitas.push(r.rows[0]);
-      }
-      await c.query('UPDATE rapid_inv.buy_cart SET updated_at = now() WHERE id = $1', [cart.id]);
-      return { cart_id: cart.id, lines: feitas };
-    }, actor);
-    res.json(out);
+    const { result } = await db.one(
+      `SELECT rapid_inv.buy_cart_add_lines($1, $2::jsonb, $3, $4) AS result`,
+      [supplier, JSON.stringify(lines), req.body.scope || null, actor], actor);
+    res.json(result);
   }));
 
   app.patch(`${R}/cart/lines/:id`, wrap(async (req, res) => {
@@ -1046,40 +1097,10 @@ function register(app) {
     const actor = actorOf(req);
     const poNumber = String(req.body.po_number || '').trim();
     if (!poNumber) return res.status(400).json({ error: 'po_number is required' });
-    const out = await db.tx(async (c) => {
-      const cart = (await c.query(
-        `SELECT * FROM rapid_inv.buy_cart WHERE id=$1 AND status='DRAFT' FOR UPDATE`, [id])).rows[0];
-      if (!cart) throw new Error('cart is not open — it may already be confirmed');
-      const lines = (await c.query(
-        'SELECT * FROM rapid_inv.buy_cart_line WHERE cart_id=$1 ORDER BY sku', [id])).rows;
-      if (!lines.length) throw new Error('the cart is empty');
-      // O número de PO já existir é erro de quem digitou, não algo a contornar
-      // inventando um sufixo: duas POs com o mesmo número é o que estraga a
-      // conferência na chegada do contêiner.
-      const [{ n }] = (await c.query(
-        'SELECT count(*)::int n FROM rapid_inv.po_lines WHERE po_number=$1', [poNumber])).rows;
-      if (n > 0) throw new Error(`PO ${poNumber} already exists with ${n} lines`);
-      let seq = 0;
-      for (const l of lines) {
-        seq += 1;
-        await c.query(
-          // sku_key NÃO entra: em po_lines ela é GENERATED ALWAYS a partir de
-          // sku, e o Postgres recusa a inserção inteira se ela vier na lista.
-          `INSERT INTO rapid_inv.po_lines
-             (po_number, line_no, po_date, supplier_code, sku, qty, due_date,
-              value_aud, is_received, source, updated_by)
-           VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,$6,$7,false,'buy_cart',$8)`,
-          [poNumber, seq, cart.supplier_code, l.sku, l.qty,
-           toISODate(req.body.due_date) || null,
-           l.unit_cost_aud ? Number(l.unit_cost_aud) * Number(l.qty) : null, actor]);
-      }
-      await c.query(
-        `UPDATE rapid_inv.buy_cart SET status='CONFIRMED', po_number=$1,
-                confirmed_at=now(), confirmed_by=$2, updated_at=now() WHERE id=$3`,
-        [poNumber, actor, id]);
-      return { po_number: poNumber, lines: lines.length };
-    }, actor);
-    res.json(out);
+    const { result } = await db.one(
+      `SELECT rapid_inv.buy_cart_confirm($1, $2, $3, $4) AS result`,
+      [id, poNumber, toISODate(req.body.due_date) || null, actor], actor);
+    res.json(result);
   }));
 
   /* Limpeza do teste ponta a ponta.
@@ -1092,7 +1113,7 @@ function register(app) {
     const PREFIXO = 'TEST-CART-';
     if (String(req.body.prefix || '') !== PREFIXO)
       return res.status(400).json({ error: 'this endpoint only removes the end-to-end test fixtures' });
-    if (db.mode() === 'rpc') return res.status(501).json({ error: 'Escrita com transação ainda não habilitada no transporte por service key — rode a migration 029.' });
+    if (db.mode() === 'rpc') return res.status(501).json({ error: 'Limpeza do teste ponta-a-ponta só roda em máquina com SUPABASE_DB_PASSWORD (pg direto); não há função dedicada para ela.' });
     const out = await db.tx(async (c) => {
       const a = await c.query(`DELETE FROM rapid_inv.po_lines WHERE po_number LIKE $1 RETURNING id`, [PREFIXO + '%']);
       const b = await c.query(`DELETE FROM rapid_inv.buy_cart WHERE supplier_code = 'TESTE' RETURNING id`);
@@ -1175,30 +1196,17 @@ function register(app) {
     if ('policy_note' in b) campos.policy_note = b.policy_note || null;
     if (!Object.keys(campos).length) return res.status(400).json({ error: 'nothing to save' });
 
-    const row = await db.tx(async (c) => {
-      // Sem isto o audit_log grava user_email nulo e o histórico não diz quem.
-      await c.query(`SELECT set_config('rapid_inv.user_email', $1, true)`, [actor]);
-
-      const [p] = (await c.query(
-        `SELECT sku FROM cin7_mirror.products WHERE upper(btrim(sku)) = $1 LIMIT 1`, [key])).rows;
-      if (!p) throw new Error('SKU não existe no catálogo do Cin7');
-
-      /* is_planned = FALSE na inserção. Ela tem default true e é o WHERE de
-         v_sp_planning_skus: sem cravar, configurar a política de um SKU
-         qualquer o ADICIONA ao arquivo de compra — duas decisões opostas pelo
-         mesmo clique. No UPDATE não se mexe, porque quem já está deve ficar. */
-      const cols = ['sku', 'is_planned', ...Object.keys(campos), 'settings_updated_at', 'settings_updated_by'];
-      const vals = [p.sku, false, ...Object.values(campos)];
-      const ph = vals.map((_, i) => `$${i + 1}`).concat(['now()', `$${vals.length + 1}`]);
-      const set = [...Object.keys(campos).map((k, i) => `${k} = $${i + 3}`),
-                   'settings_updated_at = now()', `settings_updated_by = $${vals.length + 1}`];
-      if (campos.lifecycle_status) set.push(`lifecycle_source = 'MANUAL'`, 'lifecycle_set_at = now()');
-
-      await c.query(
-        `INSERT INTO rapid_inv.sku_settings (${cols.join(',')}) VALUES (${ph.join(',')})
-         ON CONFLICT (sku_key) DO UPDATE SET ${set.join(', ')}`, [...vals, actor]);
-      return (await c.query(`SELECT * FROM rapid_inv.v_sku_policy WHERE sku_key = $1`, [key])).rows[0];
-    }, actor);
+    // Existência do SKU: checagem read-only NA ROTA — SKU inexistente é o MESMO
+    // erro de antes (Error -> wrap -> 500), não um 500 opaco do Postgres.
+    const p = await db.one(
+      `SELECT sku FROM cin7_mirror.products WHERE upper(btrim(sku)) = $1 LIMIT 1`, [key]);
+    if (!p) throw new Error('SKU não existe no catálogo do Cin7');
+    // Escrita atômica na função dedicada: grava o actor no GUC rapid_inv.user_email,
+    // faz o INSERT ... ON CONFLICT com o MESMO conjunto dinâmico de colunas (só as
+    // enviadas), e devolve v_sku_policy. p.sku (valor do catálogo) vai para a coluna sku.
+    const row = await db.one(
+      `SELECT * FROM rapid_inv.save_sku_policy($1, $2::jsonb, $3)`,
+      [p.sku, campos, actor], actor);
     res.json(row);
   }));
 
@@ -1435,40 +1443,12 @@ function register(app) {
     if (!code) return res.status(400).json({ error: 'container type is required' });
     if (!ids.length) return res.status(400).json({ error: 'pick at least one line' });
     const actor = actorOf(req);
-    const out = await db.tx(async (c) => {
-      const t = (await c.query('SELECT 1 FROM rapid_inv.container_type WHERE code=$1', [code])).rowCount;
-      if (!t) throw new Error(`unknown container type ${code}`);
-      const plan = (await c.query(
-        `INSERT INTO rapid_inv.container_plan (name, container_code, supplier_code, eta_date, vessel, note, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *`,
-        [name, code, req.body.supplier_code || null, toISODate(req.body.eta_date) || null,
-         req.body.vessel || null, req.body.note || null, actor])).rows[0];
-      // O cubo e o peso são CONGELADOS aqui. A dimensão muda no Cin7 e um
-      // plano fechado semana passada não pode se reescrever: quem embarcou
-      // precisa ver o número em que baseou a decisão.
-      const src = await c.query(
-        `SELECT pl.id, pl.sku, pl.sku_key, pl.qty, cb.cbm_carton, cb.carton_qty, cb.kg_unit, cb.cube_source
-           FROM rapid_inv.po_lines pl
-           LEFT JOIN rapid_inv.v_sp_cube cb ON cb.sku_key = pl.sku_key
-          WHERE pl.id = ANY($1)`, [ids]);
-      let n = 0;
-      for (const l of src.rows) {
-        const cartons = (l.cbm_carton != null && l.carton_qty > 0)
-          ? Math.ceil(Number(l.qty) / Number(l.carton_qty)) : null;
-        await c.query(
-          `INSERT INTO rapid_inv.container_plan_line
-             (plan_id, po_line_id, sku_key, sku, qty, cbm_at_plan, kg_at_plan, cube_source, added_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-           ON CONFLICT (plan_id, po_line_id) DO NOTHING`,
-          [plan.id, l.id, l.sku_key, l.sku, l.qty,
-           cartons != null ? cartons * Number(l.cbm_carton) : null,
-           l.kg_unit != null ? Number(l.qty) * Number(l.kg_unit) : null,
-           l.cube_source || null, actor]);
-        n += 1;
-      }
-      return { ...plan, lines: n };
-    }, actor);
-    res.json(out);
+    const row = await db.one(
+      `SELECT rapid_inv.create_container_plan($1,$2,$3,$4,$5,$6,$7,$8) AS plan`,
+      [name, code, req.body.supplier_code || null, toISODate(req.body.eta_date) || null,
+       req.body.vessel || null, req.body.note || null, ids, actor],
+      actor);
+    res.json(row.plan);
   }));
 
   app.delete(`${R}/container-plans/:id`, wrap(async (req, res) => {
@@ -1499,31 +1479,18 @@ function register(app) {
     if (!po_number || !Array.isArray(lines) || !lines.length)
       return res.status(400).json({ error: 'informe po_number e ao menos uma linha' });
     const actor = actorOf(req);
-    const fx = await db.one(
-      `SELECT aud_per_usd FROM rapid_inv.fx_rates WHERE effective_from <= COALESCE($1::date, CURRENT_DATE)
-        ORDER BY effective_from DESC LIMIT 1`, [toISODate(po_date)]);
-    const created = await db.tx(async (c) => {
-      const [{ next }] = (await c.query(
-        `SELECT COALESCE(max(line_no),0) next FROM rapid_inv.po_lines WHERE po_number=$1`, [po_number])).rows;
-      const out = [];
-      let n = Number(next);
-      for (const l of lines) {
-        if (!l.sku || !(Number(l.qty) > 0)) continue;
-        const cost = l.unit_cost_usd == null ? null : Number(l.unit_cost_usd);
-        const usd = cost == null ? null : cost * Number(l.qty);
-        out.push((await c.query(
-          `INSERT INTO rapid_inv.po_lines
-             (po_number,line_no,po_date,supplier_code,sku,qty,due_date,vessel,unit_cost_usd,fx_used,
-              value_usd,value_aud,source,updated_by)
-           VALUES ($1,$2,COALESCE($3::date,CURRENT_DATE),$4,$5,$6,$7,$8,$9,$10,$11,$12,'MANUAL',$13)
-           RETURNING *`,
-          [po_number, ++n, toISODate(po_date), supplier_code || null, l.sku, Number(l.qty),
-           toISODate(l.due_date || due_date), l.vessel || vessel || null, cost,
-           fx ? Number(fx.aud_per_usd) : null, usd,
-           usd != null && fx ? usd / Number(fx.aud_per_usd) : null, actor])).rows[0]);
-      }
-      return out;
-    }, actor);
+    // due_date/vessel resolvidos por-linha aqui (toISODate tz-safe deste repo), exatamente
+    // como o loop antigo; a função faz o FX + line_no (max+1) atômicos lá dentro.
+    const cleanLines = lines.map((l) => ({
+      sku: l.sku, qty: l.qty, unit_cost_usd: l.unit_cost_usd,
+      due_date: toISODate(l.due_date || due_date),
+      vessel: l.vessel || vessel || null,
+    }));
+    const row = await db.one(
+      `SELECT rapid_inv.create_po_lines($1,$2,$3,$4,$5::jsonb) AS lines`,
+      [actor, po_number, toISODate(po_date), supplier_code || null, JSON.stringify(cleanLines)],
+      actor);
+    const created = (row && row.lines) || [];
     res.status(201).json({ created: created.length, lines: created });
   }));
 
@@ -1606,39 +1573,17 @@ function register(app) {
     const number = (req.body.sales_order || '').trim();
     if (!number) return res.status(400).json({ error: 'informe o número do Sales Order' });
     const actor = actorOf(req);
-    const header = await db.one(
-      `SELECT * FROM cin7_mirror.order_pipeline WHERE type='SO' AND number = $1`, [number]);
+    // 404 fica na rota: probe de existência das linhas sincronizadas (era SELECT * + !length).
     const lines = await db.query(
-      `SELECT * FROM cin7_mirror.sale_lines WHERE order_number = $1 ORDER BY line_no`, [number]);
+      `SELECT 1 FROM cin7_mirror.sale_lines WHERE order_number = $1 LIMIT 1`, [number]);
     if (!lines.length) return res.status(404).json({ error: `sem linhas sincronizadas para ${number}` });
-
-    if (db.mode() === 'rpc') return res.status(501).json({ error: 'Import de pedido ainda não habilitado no transporte por service key — rode a migration 029 (função rapid_inv dedicada). Máquinas com SUPABASE_DB_PASSWORD já fazem esta ação.' });
+    // Import atômico na função dedicada (lê header + sale_lines lá dentro). O 409 de SO
+    // duplicado (23505) e o 404 acima continuam HTTP na rota, não RAISE de 500.
     try {
-      const out = await db.tx(async (c) => {
-        const project = (await c.query(
-          `INSERT INTO rapid_inv.projects (sales_order,order_date,customer,reference,status,source,cin7_sale_id,updated_by)
-           VALUES ($1,$2,$3,$4,'ACTIVE','CIN7',$5,$6) RETURNING *`,
-          [number, header ? header.order_date : null, header ? header.customer : null,
-           header ? header.reference : (req.body.reference || null), lines[0].sale_id, actor])).rows[0];
-        let n = 0;
-        for (const l of lines) {
-          const line = (await c.query(
-            `INSERT INTO rapid_inv.project_lines
-               (project_id,line_no,date_opened,sku,qty,unit_price,item_desc,source,updated_by)
-             VALUES ($1,$2,COALESCE($3::date,CURRENT_DATE),$4,$5,$6,$7,'CIN7',$8) RETURNING id, qty_to_pick`,
-            [project.id, ++n, header ? header.order_date : null, l.sku, Number(l.quantity),
-             l.price, l.product_name, actor])).rows[0];
-          // Nasce como um draw sem data. Um pick date inventado seria pior que
-          // TBA: metade da demanda real do workbook é legitimamente sem data.
-          if (Number(line.qty_to_pick) > 0) {
-            await c.query(
-              `INSERT INTO rapid_inv.project_draws (line_id,seq,qty,planned_date,source,updated_by)
-               VALUES ($1,1,$2,NULL,'CIN7',$3)`, [line.id, Number(line.qty_to_pick), actor]);
-          }
-        }
-        return { project, lines: n };
-      }, actor);
-      res.status(201).json(out);
+      const row = await db.one(
+        `SELECT rapid_inv.import_order_project($1, $2, $3) AS result`,
+        [actor, number, req.body.reference || null], actor);
+      res.status(201).json(row.result);
     } catch (e) {
       if (e.code === '23505') return res.status(409).json({ error: `${number} já foi importado` });
       throw e;
@@ -1684,8 +1629,8 @@ function register(app) {
     // sendo a média digitada e o estoque somado.
     const scopeKey = String(req.query.scope || '').toUpperCase();
     const scope = SCOPES[scopeKey] || null;
-    const scopeMonths = asInt(req.query.scope_months, 6, 1, 13);
-    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, scopeMonths) : null;
+    const avgWeeks = asInt(req.query.avg_weeks, 13, 4, 104);
+    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, avgWeeks) : null;
     const allWeeks = weeks.map((wk, i) => ({ weekEnding: wk.week_ending, factor: Number(wk.factor), isReporting: i === 0 }));
     // A grade desenha o que o usuário pediu; o selo julga sempre na mesma régua.
     const engineWeeks = allWeeks.slice(0, horizon + 1);
@@ -1805,19 +1750,13 @@ function register(app) {
    */
   app.post(`${R}/roll-week`, wrap(async (req, res) => {
     const actor = actorOf(req);
-    const out = await db.tx(async (c) => {
-      const st = (await c.query(`SELECT * FROM rapid_inv.planning_state WHERE id=1 FOR UPDATE`)).rows[0];
-      const to = toISODate(req.body.to) || weekEnding(new Date());
-      if (to <= st.reporting_week) throw new Error(`a semana de reporte já é ${st.reporting_week}`);
-      await c.query(
-        `UPDATE rapid_inv.planning_state SET reporting_week=$1, rolled_at=now(), rolled_by=$2, updated_at=now() WHERE id=1`,
-        [to, actor]);
-      await c.query(
-        `INSERT INTO rapid_inv.planning_roll_log (from_week,to_week,rolled_by,notes) VALUES ($1,$2,$3,$4)`,
-        [st.reporting_week, to, actor, req.body.notes || null]);
-      return { from: st.reporting_week, to };
-    }, actor);
-    res.json(out);
+    // 'to' default fica em JS (weekEnding usa o relógio/regra do servidor; reproduzir em SQL
+    // arriscaria drift de fuso). A função faz o FOR UPDATE + guard + update + log atômicos.
+    const to = toISODate(req.body.to) || weekEnding(new Date());
+    const row = await db.one(
+      `SELECT rapid_inv.roll_week($1, $2, $3) AS result`,
+      [actor, to, req.body.notes || null], actor);
+    res.json(row.result);
   }));
 
   // ── Overview: cinco análises ────────────────────────────────────────
@@ -1859,8 +1798,8 @@ function register(app) {
     // sendo a média digitada e o estoque somado.
     const scopeKey = String(req.query.scope || '').toUpperCase();
     const scope = SCOPES[scopeKey] || null;
-    const scopeMonths = asInt(req.query.scope_months, 6, 1, 13);
-    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, scopeMonths) : null;
+    const avgWeeks = asInt(req.query.avg_weeks, 13, 4, 104);
+    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, avgWeeks) : null;
     const engineWeeks = weeks.map((w, i) => ({ weekEnding: w.week_ending, factor: Number(w.factor), isReporting: i === 0 }));
 
     const buckets = new Map();
@@ -1915,7 +1854,7 @@ function register(app) {
   app.get(`${R}/overview/demand-book`, wrap(async (req, res) => {
     const t0 = Date.now();
     const [byWeek, tba, held, undated] = await Promise.all([
-      db.query(`SELECT * FROM rapid_inv.v_sp_demand_week ORDER BY week_ending LIMIT 60`),
+      db.query(`SELECT * FROM rapid_inv.v_sp_sales_week ORDER BY week_ending LIMIT 60`),
       // 84 clientes com data por confirmar. LIMIT 40 escondia metade da
       // pergunta que a aba existe para responder.
       db.query(`SELECT * FROM rapid_inv.v_sp_tba_customer ORDER BY tba_units DESC, customer LIMIT 200`),
@@ -2071,15 +2010,29 @@ function register(app) {
     // sendo a média digitada e o estoque somado.
     const scopeKey = String(req.query.scope || '').toUpperCase();
     const scope = SCOPES[scopeKey] || null;
-    const scopeMonths = asInt(req.query.scope_months, 6, 1, 13);
-    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, scopeMonths) : null;
+    const avgWeeks = asInt(req.query.avg_weeks, 13, 4, 104);
+    const sf = (scope && keys.length) ? await scopeFacts(scope.codes, keys, avgWeeks) : null;
     const engineWeeks = weeks.map((w, i) => ({ weekEnding: w.week_ending, factor: Number(w.factor), isReporting: i === 0 }));
 
     const rows = [];
     for (const s of skus) {
+      /* O escopo, aplicado à CONTA e não só ao rótulo.
+         `sd` e `sqty` eram lidos lá embaixo, no objeto da resposta, e nunca
+         tinham sido declarados aqui — vieram colados de /planning junto com o
+         bloco de escopo (commit a25df05), a mesma colagem que matou
+         /planning/history. Aqui o efeito era um 500 seco em
+         /buy-recommendation?scope=MAIN.
+
+         E consertar a declaração sem consertar a CONTA seria pior: a projeção
+         abaixo usava soh_available e wk_avg da empresa inteira, e a resposta
+         carimbava "Main Warehouse" em cima. Dimensionar a compra de uma filial
+         com o estoque de todas é o erro que o escopo existe para evitar. */
+      const sd = sf ? sf.demand[s.sku_key] : null;
+      const sqty = sf ? (sf.stock[s.sku_key] || 0) : null;
       const proj = projectSku({
-        weeks: engineWeeks, soh: Number(s.soh_available),
-        wkAvg: Number(s.wk_avg), incoming: inIdx[s.sku_key] || {}, draws: drawIdx[s.sku_key] || {},
+        weeks: engineWeeks, soh: sf ? sqty : Number(s.soh_available),
+        wkAvg: sf ? (sd ? sd.wk : 0) : Number(s.wk_avg),
+        incoming: inIdx[s.sku_key] || {}, draws: drawIdx[s.sku_key] || {},
         undatedQty: Number(s.undated_qty || 0), targetCoverWeeks: s.target_cover_weeks || 7,
         projectOrders: Number(s.project_orders || 0),
       });
@@ -2138,14 +2091,16 @@ function register(app) {
         // O que o escopo trocou, dito por linha — para a tela poder mostrar o
         // número do arquivo ao lado e o planejador ver a diferença.
         ...(sf ? {
-          scope_wk: sd ? Math.round(sd.wk * 100) / 100 : 0,
           scope_soh: sqty,
           scope_by_loc: sd ? sd.by_loc : 0,
           scope_by_rep: sd ? sd.by_rep : 0,
-          file_wk: s.wk_avg == null ? null : Number(s.wk_avg),
-          file_soh: Number(s.soh_available),
+          company_wk: Number(s.wk_avg),
+          company_soh: Number(s.soh_available),
         } : {}),
-        wk_avg: Number(s.wk_avg), target_cover_weeks: s.target_cover_weeks, target_qty: target,
+        // O número que a linha de fato usou, não o da empresa por baixo dele.
+        wk_avg: sf ? (sd ? Math.round(sd.wk * 100) / 100 : 0) : Number(s.wk_avg),
+        wk_avg_source: sf ? 'MEASURED_SCOPE' : s.wk_avg_source,
+        target_cover_weeks: s.target_cover_weeks, target_qty: target,
         weeks_late: weeksLate,
         lead_weeks: lead, lead_source: s.lead_source, sd_weeks: s.sd_weeks == null ? null : Number(s.sd_weeks),
         arrival_week_index: arrival, cover_until_index: coverUntil,
@@ -2178,7 +2133,7 @@ function register(app) {
     res.json({
       bom_universe: bomAll,
       scope: scope ? {
-        key: scopeKey, label: scope.label, codes: scope.codes, months: scopeMonths,
+        key: scopeKey, label: scope.label, codes: scope.codes, weeks: avgWeeks,
         // O PO chega no Main e é distribuído depois — não há uma única alocação
         // de PO por filial gravada (medido: 0 de 1.466 linhas em aberto). Então
         // no escopo de filial a coluna Incoming é do Main, e dizer isso é o que
@@ -2233,23 +2188,16 @@ function register(app) {
     const id = asInt(req.params.id, 0, 1, 1e12);
     const items = Array.isArray(req.body.allocations) ? req.body.allocations : [];
     const actor = actorOf(req);
-    const out = await db.tx(async (c) => {
-      const line = (await c.query(`SELECT id, qty FROM rapid_inv.po_lines WHERE id = $1 FOR UPDATE`, [id])).rows[0];
-      if (!line) return null;
-      await c.query(`DELETE FROM rapid_inv.po_line_allocations WHERE po_line_id = $1`, [id]);
-      let seq = 0;
-      for (const a of items) {
-        const qty = Number(a.qty);
-        if (!(qty > 0) || !a.branch_code) continue;
-        await c.query(
-          `INSERT INTO rapid_inv.po_line_allocations
-             (po_line_id, seq, branch_code, qty, eta_date, note, source, updated_by)
-           VALUES ($1,$2,$3,$4,$5,$6,'MANUAL',$7)`,
-          [id, ++seq, a.branch_code, qty, toISODate(a.eta_date), a.note || null, actor]);
-      }
-      return true;
-    }, actor);
-    if (!out) return res.status(404).json({ error: 'PO line not found' });
+    // eta_date normalizada em JS (toISODate tz-safe) e note com || null, como o loop antigo.
+    const cleanItems = items.map((a) => ({
+      branch_code: a.branch_code, qty: a.qty,
+      eta_date: toISODate(a.eta_date), note: a.note || null,
+    }));
+    const saved = await db.one(
+      `SELECT rapid_inv.save_po_allocations($1,$2,$3::jsonb) AS ok`,
+      [actor, id, JSON.stringify(cleanItems)], actor);
+    // 404 fica na rota (leitura de existência), não RAISE dentro da função.
+    if (!saved || saved.ok !== true) return res.status(404).json({ error: 'PO line not found' });
     const summary = await db.one(`SELECT * FROM rapid_inv.v_sp_po_allocation WHERE po_line_id = $1`, [id]);
     const rows = await db.query(
       `SELECT a.*, w.name AS branch_name FROM rapid_inv.po_line_allocations a

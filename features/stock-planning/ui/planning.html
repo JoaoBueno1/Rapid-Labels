@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="planning.css?v=21">
+<link rel="stylesheet" href="planning.css?v=24">
   <link rel="stylesheet" href="/shared/rail.css?v=8">
   <link rel="stylesheet" href="/shared/ui.css?v=4">
   <script defer src="/shared/rail.js?v=9"></script>
@@ -55,12 +55,19 @@
       <option value="26" selected>26 weeks</option>
       <option value="52">52 weeks</option>
     </select>
-    <select id="spBack" title="Mostra o realizado das semanas anteriores, à esquerda da semana de reporte">
-      <option value="0">No history</option>
-      <option value="4">4 wk back</option>
-      <option value="8">8 wk back</option>
-      <option value="13">13 wk back</option>
-      <option value="26">26 wk back</option>
+    <!-- O passado cresce para a ESQUERDA da semana de reporte, e os botões
+         apontam para lá. Era um select que não dizia o que fazia. -->
+    <span class="sp-step" title="Shows what actually happened, week by week, to the left of the reporting week">
+      <button class="sp-chip" id="spBackMore" title="More history, to the left">&#9664;</button>
+      <b id="spBackLbl">no history</b>
+      <button class="sp-chip" id="spBackLess" title="Less history">&#9654;</button>
+      <button class="sp-chip is-ghost" id="spBackHome" hidden title="Back to the reporting week">now</button>
+    </span>
+    <select id="spAvg" title="The window the Wk/Avg is measured over. It is not typed — it comes from real sales, project demand excluded.">
+      <option value="4">Wk/Avg · 4 wk</option>
+      <option value="13" selected>Wk/Avg · 13 wk</option>
+      <option value="26">Wk/Avg · 26 wk</option>
+      <option value="52">Wk/Avg · 52 wk</option>
     </select>
     <button class="sp-chip" id="spSort">Risk first</button>
     <button class="sp-chip" id="spRisk">At risk only</button>
@@ -76,20 +83,23 @@
       <option value="">Planning file (buy)</option>
     </select>
     <select id="spLife"><option value="">All lifecycle</option><option value="ACTIVE">Active only</option><option value="RUN_OUT">Run-out</option><option value="DISCONTINUED">Discontinued</option></select>
-    <button class="sp-chip" id="spExpand">Show the working</button>
+    <button class="sp-chip" id="spExpand"><span class="cv">&#9656;</span>Expand all</button>
     <span class="sp-gap"></span>
     <span class="sp-count" id="spCount"></span>
   </div>
   <div class="sp-note" id="spScopeNote" hidden></div>
   <div class="sp-scroll"><table class="sp-grid sp-supply" id="spGrid"></table></div>
   <div class="sp-foot">
-    <span><i class="k k-neg"></i>projected below zero</span><i></i>
-    <span><i class="k k-low"></i>drops below target cover</span><i></i>
+    <span><i class="dot d-now"></i>order now</span><i></i>
+    <span><i class="dot d-soon"></i>order soon</span><i></i>
+    <span><i class="dot d-fix"></i>forecast fixed by hand</span><i></i>
+    <span><i class="dot d-life"></i>run-out</span><i></i>
+    <span><i class="dot d-off"></i>discontinued</span><i></i>
+    <span><i class="k k-neg"></i>below zero</span><i></i>
+    <span><i class="k k-low"></i>below target cover</span><i></i>
     <span><i class="k k-in"></i>PO arriving</span><i></i>
     <span><i class="k k-dr"></i>project draw</span><i></i>
-    <span><i class="k" style="background:var(--xl-held);border:1px solid var(--xl-warn-ink)"></i>run-out</span><i></i>
-    <span><i class="k" style="background:var(--xl-closed);border:1px solid var(--line-3)"></i>discontinued</span><i></i>
-    <span>Click a cell to see where the number comes from</span>
+    <span>Hover the dot for why · click a cell for where the number comes from</span>
   </div>
 </section>
 
@@ -145,6 +155,6 @@
 
 <div class="sp-toast" id="toast"></div>
 <script src="/features/stock-planning/ui/sp-core.js?v=1"></script>
-<script src="/features/stock-planning/ui/planning.js?v=37"></script>
+<script src="/features/stock-planning/ui/planning.js?v=42"></script>
 </body>
 </html>

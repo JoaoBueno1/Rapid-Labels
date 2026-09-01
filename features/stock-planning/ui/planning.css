@@ -502,30 +502,108 @@ tr.al-row:hover td{background:var(--card-2)}
 
 /* ─────────────────────────────────────────────────────────────────────────
    Colunas fixas da grade semanal.
-   As 7 primeiras somam 560px; a grade em 26 semanas passa de 2.000px numa
+   As 8 primeiras somam 600px; a grade em 26 semanas passa de 2.000px numa
    área de ~1.570px. O único sticky era top:0, então ao rolar para a direita
    o SKU saía da tela e sobravam números sem dono.
+
+   `table-layout:fixed` é o que muda a velocidade. Com layout automático o
+   navegador mede as ~23.500 células só para decidir a largura de cada coluna,
+   e era isso que travava a tela ao abrir. As larguras agora vêm do <colgroup>
+   que planning.js gera a partir de COLS — mesma fonte que alimenta os `left:`
+   abaixo e a constante FROZEN_PX.
+
    Escopado em .sp-supply de propósito: as grades de Projects e POs têm outra
    contagem de colunas e uma regra genérica quebraria as duas.
    ───────────────────────────────────────────────────────────────────────── */
-.sp-supply thead th:nth-child(-n+7),
-.sp-supply tr.sk td:nth-child(-n+7),
-.sp-supply tr.wrk td.lbl{position:sticky;z-index:2}
-.sp-supply thead th:nth-child(-n+7){z-index:5}
+table.sp-grid.sp-supply{table-layout:fixed;width:auto}
 
+.sp-supply thead th:nth-child(-n+8),
+.sp-supply tr.sk td:nth-child(-n+8),
+.sp-supply tr.wrk td.lbl{position:sticky;z-index:2}
+.sp-supply thead th:nth-child(-n+8){z-index:5}
+
+/* 26 · 200 · 66 · 68 · 52 · 56 · 72 · 60  =  600
+   As somas abaixo TÊM que bater com COLS em planning.js — é de lá que sai o
+   <colgroup> e a largura explícita da tabela. Quando as duas discordam, as
+   colunas congeladas param em x errado, se sobrepõem, e o realizado aparece
+   pelas frestas. */
 .sp-supply thead th:nth-child(1),.sp-supply tr.sk td:nth-child(1),
 .sp-supply tr.wrk td.lbl{left:0}
-.sp-supply thead th:nth-child(2),.sp-supply tr.sk td:nth-child(2){left:190px}
-.sp-supply thead th:nth-child(3),.sp-supply tr.sk td:nth-child(3){left:260px}
-.sp-supply thead th:nth-child(4),.sp-supply tr.sk td:nth-child(4){left:322px}
-.sp-supply thead th:nth-child(5),.sp-supply tr.sk td:nth-child(5){left:374px}
-.sp-supply thead th:nth-child(6),.sp-supply tr.sk td:nth-child(6){left:434px}
-.sp-supply thead th:nth-child(7),.sp-supply tr.sk td:nth-child(7){left:508px}
+.sp-supply thead th:nth-child(2),.sp-supply tr.sk td:nth-child(2){left:26px}
+.sp-supply thead th:nth-child(3),.sp-supply tr.sk td:nth-child(3){left:226px}
+.sp-supply thead th:nth-child(4),.sp-supply tr.sk td:nth-child(4){left:292px}
+.sp-supply thead th:nth-child(5),.sp-supply tr.sk td:nth-child(5){left:360px}
+.sp-supply thead th:nth-child(6),.sp-supply tr.sk td:nth-child(6){left:412px}
+.sp-supply thead th:nth-child(7),.sp-supply tr.sk td:nth-child(7){left:468px}
+.sp-supply thead th:nth-child(8),.sp-supply tr.sk td:nth-child(8){left:540px}
 
 /* A borda marca onde o congelado termina e o rolável começa. */
-.sp-supply thead th:nth-child(7),
-.sp-supply tr.sk td:nth-child(7),
+.sp-supply thead th:nth-child(8),
+.sp-supply tr.sk td:nth-child(8),
 .sp-supply tr.wrk td.lbl{box-shadow:1px 0 0 var(--line-3)}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   E O CONGELADO PRECISA SER OPACO.
+   Célula sem `background` é transparente, e o que rola passa POR BAIXO dela:
+   com as 13 colunas de realizado à esquerda, a coluna Mths mostrava o próprio
+   número somado a um do passado, e sobrava um pedaço de coluna encostado na
+   borda do SKU. Nunca tinha aparecido porque o histórico estava quebrado desde
+   28/08 e ninguém conseguia rolar nada para debaixo delas.
+
+   O `:not()` existe para o ciclo de vida continuar mandando na cor: as linhas
+   de run-out e descontinuado já pintam a linha inteira, e um branco aqui as
+   apagaria justamente nas colunas onde o nome do produto está.
+   ───────────────────────────────────────────────────────────────────────── */
+.sp-supply tr.sk:not(.lc-runout):not(.lc-disc) td:nth-child(-n+8){background:var(--card)}
+.sp-supply tr.bom-row td.lbl{background:var(--card)}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   O PONTO DE STATUS.
+   Substitui as cápsulas de texto que dividiam a célula do SKU. Eram até cinco
+   — selo de ação, linha de produto, ciclo de vida, BOM e sucessor — em 190px,
+   e sobrava menos espaço para o código do produto do que para os rótulos que
+   o descreviam. O texto continua existindo: está no title e no painel.
+   ───────────────────────────────────────────────────────────────────────── */
+.sp-supply td.st,.sp-supply th.c-st{padding:0;text-align:center}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+  vertical-align:0;cursor:help}
+.dot.d-now {background:var(--xl-bad-ink)}
+.dot.d-soon{background:var(--xl-warn-ink)}
+.dot.d-fix {background:#fff;box-shadow:inset 0 0 0 2px var(--xl-warn-ink)}
+.dot.d-life{background:var(--xl-held);box-shadow:inset 0 0 0 1.5px var(--xl-warn-ink)}
+.dot.d-off {background:#fff;box-shadow:inset 0 0 0 1.5px var(--line-3)}
+.sp-supply td.st{cursor:pointer}
+.sp-foot .dot{margin-right:4px;cursor:default}
+
+/* O código do produto, agora com a célula quase inteira para ele. */
+.sp-supply tr.sk td.em{overflow:hidden;text-overflow:ellipsis}
+/* Fora da reposição de filial. Um traço, não uma cápsula "NO BRANCH". */
+.sp-supply tr.sk td.em.no-branch{box-shadow:inset 3px 0 0 var(--mut-3),1px 0 0 var(--line-3)}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   O Wk/Avg e DE ONDE ele vem.
+   A célula mostrava dois números — o digitado e o medido, um com "→" na
+   frente. Em 68px isso não se lê. Agora mostra UM número; a origem é um traço
+   de 2px sob ele, e o title conta a história inteira.
+   ───────────────────────────────────────────────────────────────────────── */
+.sp-supply td.wkc{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  position:relative;cursor:help}
+.sp-supply td.wkc::after{content:'';position:absolute;left:9px;right:9px;bottom:3px;height:2px;
+  border-radius:2px;background:transparent}
+.sp-supply td.wkc.s-ok::after {background:var(--line-2)}
+.sp-supply td.wkc.s-man::after{background:var(--xl-warn-ink)}
+.sp-supply td.wkc.s-nil::after{background:repeating-linear-gradient(90deg,
+  var(--line-2),var(--line-2) 2px,transparent 2px,transparent 4px)}
+
+/* Números que carregam estado. Eram `style="color:#9c0006"` inline em cinco
+   lugares — hex cravado, e o design system proíbe os dois. */
+.sp-supply td.n.bad{color:var(--xl-bad-ink);font-weight:700}
+.sp-supply td.n.warn{color:var(--xl-warn-ink);font-weight:600}
+
+/* O sub-rótulo do cabeçalho. "Cover" sozinho não diz semanas, e era essa a
+   pergunta: o que a coluna Target queria dizer. */
+.sp-grid th small{display:block;font-size:8.5px;font-weight:600;letter-spacing:.04em;
+  color:var(--mut-3);text-transform:none;line-height:1}
 
 /* A célula que abriu o painel. Outline e não background: as células mais
    clicadas já são pintadas por neg/low/rep, e o box-shadow está ocupado
@@ -556,13 +634,9 @@ tr.al-row:hover td{background:var(--card-2)}
 .sp-supply td.wk.pastw.nodata{color:var(--line-3);font-weight:400;background:
   repeating-linear-gradient(-45deg,#f7f8fa,#f7f8fa 4px,#f1f3f5 4px,#f1f3f5 8px)}
 
-/* O selo de status. Compacto porque divide uma célula de 190px com o SKU, a
-   marca de ciclo de vida e a seta de sucessão — em 48 linhas os quatro
-   coexistem. */
-.sp-supply .bdg{margin-left:5px;font-size:9.5px;letter-spacing:.03em;vertical-align:1px}
-
-/* Quando o selo discorda da projeção, a causa é o Wk/Avg digitado. Marcar a
-   própria célula leva o olho ao conserto em vez de deixar a contradição solta. */
+/* Quando o selo discorda da projeção, a causa é um Wk/Avg fixado à mão.
+   Marcar a própria célula leva o olho ao conserto. Vale só para override: com
+   a média medida, o número da coluna É a venda e não pode divergir dela. */
 .sp-supply tr.sk td.n.drift{box-shadow:inset 0 0 0 1px var(--xl-warn-ink)}
 
 /* Os segmentos dos alertas. Contados sobre o conjunto INTEIRO, antes de
@@ -575,18 +649,19 @@ tr.al-row:hover td{background:var(--card-2)}
   font-size:12px;color:var(--mut-2);padding:9px 14px}
 .al-muted b{color:var(--ink)}
 
-/* A venda medida ao lado do Wk/Avg digitado, quando os dois discordam. O
-   digitado continua sendo o editável; este é leitura. */
-.sp-supply .meas{margin-left:4px;font:600 10px var(--mono);color:var(--xl-warn-ink)}
-.sp-supply .meas::before{content:'→ '}
+/* `.meas` era o segundo número da célula — o do arquivo ao lado do medido, com
+   um "→" na frente. Saiu da grade: dois valores numa célula de 68px foi a
+   queixa, e a comparação mudou de lugar, não de existência. Ela agora mora no
+   painel lateral, onde há espaço para dizer o que cada um dos dois é. */
 
 /* BOM — componentes sob o produto montado.
    Ficam dentro da mesma expansão do cálculo e herdam a altura de linha dela,
    porque o ganho medido daquela compactação (51 linhas visíveis contra 20) se
    perderia se o BOM abrisse linhas altas. */
-.bom-mark{background:var(--xl-info);color:var(--xl-info-ink);
-  border:1px solid var(--xl-info-ink);border-radius:3px;
-  padding:0 5px;font:700 9.5px/16px var(--sans);margin-left:4px}
+/* O montado, agora um glifo. A cápsula "BOM · build 240" custava 70px na
+   célula do SKU para dizer o que o title diz igual. */
+.bom-mark{font-style:normal;margin-left:5px;color:var(--mut-3);font-size:10px;cursor:help}
+.bom-mark.is-buildable{color:var(--xl-info-ink)}
 .sp-supply tr.bom-row td.lbl{padding-left:26px;color:var(--ink-2);
   /* A grade inteira foi apertada para 18px de linha, e foi essa compactação
      que levou o visível de 20 para 51 linhas. O BOM tem que caber nela: as
@@ -610,9 +685,9 @@ tr.al-row:hover td{background:var(--card-2)}
   background:var(--xl-info);color:var(--xl-info-ink)}
 .pj-br.is-inf{border-style:dashed;background:transparent;color:var(--mut)}
 .pj-br.is-amb{border-color:var(--xl-warn-ink);color:var(--xl-warn-ink);background:transparent;border-style:dashed}
-/* A linha de produto fica discreta: é contexto, não alerta. */
-.sp-line{margin-left:8px;font:500 9.5px/15px var(--sans);color:var(--mut-2);
-  border:1px solid var(--line-3);border-radius:3px;padding:0 4px}
+/* A linha de produto saiu da grade. Ela era a cápsula mais larga da célula —
+   "Strip Light & Extrusion" come 140 dos 190px — para dizer algo que já é um
+   filtro na barra e que aparece no painel. Continua sendo os dois. */
 
 /* O aviso do escopo. Fica entre a barra e a grade porque é condição de leitura
    da grade inteira — num rodapé ninguém lê antes de decidir. */
@@ -639,6 +714,25 @@ tr.al-row:hover td{background:var(--card-2)}
 .brk .dot{display:inline-block;width:5px;height:5px;border-radius:50%;
   background:var(--xl-info-ink);margin-left:5px;vertical-align:2px}
 .sp-loading{color:var(--mut);font:400 11px var(--sans);padding:4px 0}
+
+/* O passo do histórico. As setas apontam para onde o passado cresce — para a
+   esquerda —, e o rótulo entre elas diz onde você está. Era um <select> que
+   não dizia nem uma coisa nem outra. */
+.sp-step{display:inline-flex;align-items:center;gap:2px}
+.sp-step .sp-chip{padding:5px 8px;line-height:1}
+.sp-step .sp-chip:disabled{opacity:.35;cursor:default}
+.sp-step .sp-chip:disabled:hover{border-color:var(--line-2);color:var(--mut)}
+.sp-step b{font:600 11px var(--sans);color:var(--mut);min-width:66px;text-align:center}
+.sp-step .sp-chip.is-ghost{border-style:dashed;color:var(--acc-d);border-color:var(--acc)}
+/* `hidden` é atributo, e `display` de classe ganha dele. Sem esta linha o botão
+   "now" ficava na barra dizendo "volte para a semana atual" com zero semanas de
+   histórico carregadas — um botão que não faz nada. */
+.sp-step .sp-chip[hidden]{display:none}
+
+/* A seta do expandir. O botão dizia "Show the working", que não avisava nem que
+   era interruptor nem para que lado estava ligado. */
+#spExpand .cv{display:inline-block;width:11px;margin-right:4px;color:var(--mut-2)}
+#spExpand.is-on .cv{color:var(--acc-d)}
 
 /* O carrinho. */
 .sp-box.is-wide{width:min(1000px,96vw)}

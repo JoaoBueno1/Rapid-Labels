@@ -12,9 +12,14 @@ Análise completa em `docs/STOCK_PLANNING_01_DISCOVERY.md`, `_02_PLAN.md` e `_03
 STOCK_PLANNING_ENABLED=1 npm start      # abre http://localhost:8383/planning
 ```
 
-Precisa de `SUPABASE_DB_PASSWORD` no `.env`. O módulo fala direto com o Postgres porque o
-schema `rapid_inv` não é exposto pelo PostgREST — foi esse 42501 que deixou o dashboard
-anterior dormente por dois meses sem ninguém perceber.
+Dois transportes (`lib/sp-db.js`): com `SUPABASE_DB_PASSWORD` no `.env` fala direto com o
+Postgres; sem ela, cai no `public.sp_exec` usando só a service key. O schema `rapid_inv`
+não é exposto pelo PostgREST — foi esse 42501 que deixou o dashboard anterior dormente por
+dois meses sem ninguém perceber.
+
+**O transporte por service key classificava errado toda consulta que começa com
+comentário** e devolvia `[]` sem erro — a lista de compra inteira vinha vazia em qualquer
+máquina sem a senha. Consertado na 032; ver o cabeçalho dela.
 
 ## Scripts
 
@@ -67,9 +72,17 @@ horizonte rolante, sem coluna de banco por semana.
 
 ## Coisas que não são óbvias
 
-- **`Wk/Avg` é manual.** 837 blocos conferidos em cinco fornecedores, zero fórmulas. Não é
-  média calculada — é julgamento do planejador. Tratar como calculado mudaria a decisão de
-  compra da empresa inteira.
+- **`Wk/Avg` é MEDIDO desde a migração 029.** Este parágrafo dizia o contrário — "é
+  julgamento do planejador, tratar como calculado mudaria a decisão de compra da empresa
+  inteira" — e a leitura do banco desmentiu: `wk_avg_source = 'EXCEL_IMPORT'` em 1.951 de
+  1.951 SKUs, `updated_at` = 25/08/2026 em todos, e 609 em zero. Ninguém encostou no campo
+  desde o import. Contra a venda real, 832 dos 1.226 comparáveis erravam por 9,4
+  unidades/semana em média (92%).
+
+  Hoje o padrão é a venda das últimas 13 semanas, sem projeto (o draw já entra na cascata
+  em separado). Quem quiser fixar um número usa `wk_avg_override`, e a grade mostra a
+  linha como fixada em vez de fingir que o número saiu da venda. A janela é escolhível na
+  tela (4/13/26/52); 13 é a régua que alertas, buy e overview também leem.
 - **A cobertura em meses SOMA o compromisso de projeto**, porque ele vem negativo (662 de 854
   SKUs). Trocar por subtração inverte tudo.
 - **A aba `DALTON` do workbook contém o Main Warehouse** — o cabeçalho dela diz isso. O nome

@@ -15,7 +15,8 @@
 
 const S = {
   view: 'overview', ov: 'health',
-  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), line:'', scope:(localStorage.getItem('sp.scope')||''), weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null, sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
+  supply:   { supplier: localStorage.getItem('sp.sup') || '', q:'', view:(localStorage.getItem('sp.view')||''), line:'', scope:(localStorage.getItem('sp.scope')||''), weeks:26, risk:false, life:'', expandAll:false, open:{}, cell:null,
+              avgWeeks:+(localStorage.getItem('sp.avgw')||13), sort:(localStorage.getItem('sp.sort')||'risk'), back:+(localStorage.getItem('sp.back')||0) },
   alerts:   { muted:false, supplier:'' },
   buy:      { supplier:'', late:false },
   suppliers: [], state: null,
@@ -58,37 +59,7 @@ window.addEventListener('hashchange', () => {
 
 
 /* ── boot ───────────────────────────────────────────────────────────── */
-(async function boot() {
-  try {
-    const [st, sup, br] = await Promise.all([api('/state'), api('/suppliers'), api('/branches')]);
-    S.state = st; S.suppliers = sup; S.branches = br;
-    const src = st.soh_source === 'CIN7_LIVE' ? 'Cin7 live' : 'Excel snapshot';
-    const age = st.counts.cin7_lines_synced_at ? new Date(st.counts.cin7_lines_synced_at) : null;
-    const hrs = age ? (Date.now() - age.getTime()) / 36e5 : 99;
-    $('#statusDot').className = 'sp-dot ' + (hrs < 6 ? 'fresh' : hrs < 30 ? 'stale' : 'dead');
-    $('#statusText').textContent = `Week ${d10(st.reporting_week)} · stock from ${src}`;
-    const opts = sup.map(s => `<option value="${esc(s.code)}">${esc(s.code)} (${s.sku_count})</option>`).join('');
-    // Era "Pick a supplier…" porque a tela inteira levava 15,7s. Depois que a
-    // subconsulta LATERAL virou CTE MATERIALIZED (24×), os 1.951 SKUs saem em
-    // 616 ms — a restrição sobrevivia ao motivo dela.
-    $('#spSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
-    $('#byySupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
-    $('#alSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
-    if (S.supply.supplier) $('#spSupplier').value = S.supply.supplier;
-    if (S.supply.view) { $('#spView').value = S.supply.view; S.supply.expandAll = true; }
-    if (S.supply.back) $('#spBack').value = String(S.supply.back);
-    $('#spSort').classList.toggle('is-on', S.supply.sort === 'risk');
-    const f = await api('/filters');
-    $('#spLine').innerHTML = '<option value="">All lines</option>'
-      + (f.lines || []).map(l => `<option value="${esc(l.line)}">${esc(l.line)} (${n0(l.n)})</option>`).join('');
-    // Abre onde o link pediu. E se o link é de antes da separação, manda para
-    // a página nova em vez de cair no Overview calado.
-    const want = location.hash.replace('#', '');
-    if (MUDOU_DE_CASA[want]) return location.assign(MUDOU_DE_CASA[want]);
-    if (HASH_VIEWS.includes(want)) show(want, { fromHash: true });
-    else loadOverview();
-  } catch (e) { toast('Could not load: ' + e.message, true); }
-})();
+
 
 /* ═══ OVERVIEW ══════════════════════════════════════════════════════ */
 $('#ovTabs').addEventListener('click', e => {
@@ -385,7 +356,7 @@ async function loadSupply() {
 
   // 600 cobre o maior fornecedor inteiro. Com 300, 36 das 57 linhas vermelhas
   // do CGD ficavam fora da tela — o selo existia e ninguém via.
-  const qs = new URLSearchParams({ weeks:s.weeks, limit:500 });
+  const qs = new URLSearchParams({ weeks:s.weeks, limit:500, avg_weeks:s.avgWeeks });
   if (s.supplier) qs.set('supplier', s.supplier);
   if (s.view) qs.set('view', s.view);
   if (s.line) qs.set('line', s.line);
@@ -399,10 +370,25 @@ async function loadSupply() {
     // O passado é uma consulta separada de propósito: ele é REALIZADO e a grade
     // é PROJETADO. Misturar os dois no mesmo motor faria o realizado virar
     // entrada de uma recursão que ele não deve alimentar.
+    // O `.catch(() => null)` que morava aqui escondeu por cinco dias um 500 em
+    // toda chamada ao histórico (ReferenceError na rota, commit a25df05): o
+    // usuário escolhia "13 wk back" e não acontecia nada, sem erro na tela.
+    // Falha de histórico não pode derrubar a projeção — mas tem que APARECER.
+    const meu = ++spReq;
     const [proj, hist] = await Promise.all([
       api('/planning?' + qs),
-      s.back ? api('/planning/history?' + qs + '&back=' + s.back).catch(() => null) : null,
+      s.back
+        ? api('/planning/history?' + qs + '&back=' + s.back)
+            .catch((err) => { toast('History did not load: ' + err.message, true); return null; })
+        : null,
     ]);
+    /* Só a ÚLTIMA pergunta desenha.
+       Três cliques seguidos em "mais histórico" disparam três chamadas, e a
+       terceira não é a que volta primeiro: medido, o botão dizia "13 wk back" e
+       a grade mostrava as 4 semanas da primeira resposta. A tela e o rótulo
+       discordando é pior que a demora — o rótulo é o que o planejador lê para
+       saber o que está vendo. Vale para o campo de busca também. */
+    if (meu !== spReq) return;
     spData = proj;
     const mudou = (hist ? hist.weeks.length : 0) !== (spHist ? spHist.weeks.length : 0);
     spHist = hist;
@@ -436,6 +422,8 @@ async function loadSupply() {
 }
 let spHist = null;
 let spAnchor = false;
+// Qual pergunta está valendo. Ver o `if (meu !== spReq)` em loadSupply.
+let spReq = 0;
 // Índice por SKU para a grade não varrer o array a cada linha.
 const histFor = (k) => {
   if (!spHist) return null;
@@ -453,16 +441,17 @@ const histKnown = (src, week) => {
    zero e já dão para montar, ou seja, a tela dizia "compre" com a peça na
    prateleira. */
 const bomMark = (r) => !r.bom ? '' :
-  `<span class="ui-tag bom-mark" title="Assembled from ${r.bom.length} component${r.bom.length>1?'s':''}${
-    r.bom_build!=null ? ` — ${n0(r.bom_build)} can be built right now from what is in Main` : ''}">BOM${
-    r.soh<=0 && r.bom_build>0 ? ` · build ${n0(r.bom_build)}` : ''}</span>`;
+  `<i class="bom-mark${r.soh<=0 && r.bom_build>0 ? ' is-buildable' : ''}"
+     title="Assembled from ${r.bom.length} component${r.bom.length>1?'s':''}${
+     r.bom_build!=null ? ` — ${n0(r.bom_build)} can be built right now from what is in Main` : ''
+     }. Open the row to see them.">&#9635;</i>`;
 
 /* Os componentes ficam SOB o produto montado, dentro da mesma expansão em que
    já mora o cálculo. Cada um traz o próprio estoque, porque a lista sem o
    estoque ao lado é enciclopédia e não decisão. */
 function bomRows(r) {
   if (!r.bom || !r.bom.length) return '';
-  const colspan = 7;
+  const colspan = NFIX;
   // Marcar o gargalo só informa quando ele DISTINGUE. Com todos os componentes
   // empatados — o caso comum aqui, todos em 0 — a marca ia para 404 das 609
   // linhas e deixava de significar "olhe este".
@@ -474,7 +463,7 @@ function bomRows(r) {
         <span class="bom-qty">${n0(c.qty)}&times;</span>
         <b data-goto="${esc(c.sku)}" class="mono">${esc(c.sku)}</b>
         <span class="bom-name">${esc(c.name || '')}</span>
-        ${c.life === 'DISCONTINUED' ? '<span class="ui-tag ui-tag--neutral">DISC</span>' : ''}
+        ${c.life === 'DISCONTINUED' ? '<i class="dot d-off" title="Componente fora de linha"></i>' : ''}
         <span class="bom-soh${c.neg ? ' is-neg' : ''}"${c.neg
           ? ' title="Main is negative for this component — oversold in the ERP. It cannot build anything, and the negative itself needs fixing."' : ''
           }>Main <b>${n0(c.main)}</b>${c.soh !== c.main ? ` · all ${n0(c.soh)}` : ''}</span>
@@ -503,7 +492,7 @@ function scopeNote(sc) {
   if (!sc) { el.hidden = true; return; }
   el.hidden = false;
   el.innerHTML = `<b>${esc(sc.label)}</b> — stock and demand are this scope's`
-    + ` (${sc.codes.join(' + ')}), measured over the last ${sc.months} months`
+    + ` (${sc.codes.join(' + ')}), measured over the last ${sc.weeks} weeks`
     + ` and counting a sale when the location <em>or</em> the rep belongs here.`
     + (sc.incoming_is_main
       ? ` <span class="sp-note-warn">Incoming is still the Main Warehouse's: no purchase order is allocated to a branch yet, so what is on the water is not this scope's until someone splits it.</span>`
@@ -536,131 +525,253 @@ function markCrossings(cells) {
 // o estoque para trás, e isso é o back-test do backfill, não esta tela.
 const HPICK = { 'r-in':['recv','receipts'], 'r-out':['sold','sales'], 'r-proj':['proj','projects'] };
 
+/* -------------------------------------------------------------------------
+   AS COLUNAS FIXAS, EM UM LUGAR SO.
+   Elas eram tres verdades separadas — a largura no <th>, o `left:` no CSS e a
+   constante FROZEN_PX — e mudar uma sem as outras deixava a coluna congelada
+   sobrepondo a semana de reporte. Agora saem daqui, e o <colgroup> abaixo e o
+   que permite `table-layout:fixed`, que tira do navegador a medicao das ~23.500
+   celulas so para decidir a largura das colunas.
+   ------------------------------------------------------------------------- */
+const COLS = [
+  { k:'st',   w: 26, label:'',         title:'Status' },
+  { k:'sku',  w:200, label:'SKU' },
+  { k:'soh',  w: 66, label:'SOH',      n:true, title:'Stock on hand available' },
+  { k:'wk',   w: 68, label:'Wk/Avg',   n:true, title:'Average weekly demand — measured from real sales' },
+  { k:'mths', w: 52, label:'Mths',     n:true, title:'Months of cover the stock on hand gives' },
+  { k:'tba',  w: 56, label:'TBA',      n:true, title:'Project demand with no pick date — never lands in a week' },
+  { k:'in',   w: 72, label:'Incoming', n:true, title:'On a purchase order, arriving inside the horizon' },
+  { k:'cov',  w: 60, label:'Cover',    n:true, sub:'wks',
+    title:'Target cover, in WEEKS. How many weeks of demand this SKU should keep in stock. It is the line the projection drops below when a cell turns amber.' },
+];
+const NFIX = COLS.length;
+// A borda onde o congelado termina. Somada, nao digitada: era 560 cravado, e a
+// oitava coluna nasceria sem ninguem lembrar de refazer a soma.
+const FROZEN_PX = COLS.reduce((a, c) => a + c.w, 0);
+const WK_W = 46;
+
+/* O ponto de status. Substitui a capsula de texto que dividia a celula do SKU
+   com outras quatro marcas — em 190px, cinco chips e o codigo do produto.
+   O texto nao se perdeu: vai no title e no painel. O que se perdeu e o espaco
+   que ele custava, e a cor continua ordenando a tela igual. */
+const BADGE = {
+  'ORDER NOW':    ['now',  'ORDER NOW — sells, runs out inside the order window, nothing in transit.'],
+  'CHASE PO':     ['now',  'CHASE PO — runs out inside the window, but the order is already placed. Chase the date, do not buy again.'],
+  'NO FORECAST':  ['now',  'NO FORECAST — runs out inside the window and the buy list cannot see this SKU.'],
+  'ORDER SOON':   ['soon', 'ORDER SOON — runs out inside the horizon; there is still time to plan.'],
+  'FIX FORECAST': ['fix',  'FIX FORECAST — the Wk/Avg is pinned by hand and nothing sold this quarter.'],
+};
+const LIFE_DOT = {
+  RUN_OUT:      ['life', 'RUN-OUT — selling what is left; not reordered.'],
+  DISCONTINUED: ['off',  'DISCONTINUED — out of the range. The leftover still needs a decision.'],
+};
+function statusCell(r) {
+  const b = BADGE[r.badge];
+  const l = LIFE_DOT[r.lifecycle_status];
+  // Ciclo de vida ganha do selo de acao: comprar um item descontinuado e o erro
+  // que a tela existe para evitar, e ele nao pode ficar atras de um "ORDER NOW".
+  const pick = l || b;
+  if (!pick) return '<td class="st"></td>';
+  const why = pick[1]
+    + (l && b ? ' · also: ' + b[1] : '')
+    + (r.badge_why ? ' — ' + r.badge_why : '');
+  return '<td class="st" data-life="' + esc(r.sku_key) + '"><i class="dot d-' + pick[0]
+       + '" title="' + esc(why) + '"></i></td>';
+}
+
+/* A celula editavel. Sobrou UMA na grade — a cobertura-alvo em semanas. O
+   Wk/Avg saiu de la porque agora e a venda medida: deixa-lo editavel na linha
+   faria parecer que digitar por cima e o uso normal, quando e a excecao. Ela
+   mudou de lugar, para o painel, com o numero medido ao lado e como desfazer. */
+const cellSku = (r, f, html) =>
+  `<span class="sp-cell" contenteditable="plaintext-only" spellcheck="false"
+     data-sku="${esc(r.sku_key)}" data-field="${f}" data-kind="num">${html==null?'':html}</span>`;
+
+/* De onde saiu o Wk/Avg desta linha. Um tracinho sob o numero, nao um segundo
+   numero ao lado: a queixa era exatamente a celula com dois valores. */
+const WK_SRC = {
+  MEASURED_13W:    ['ok',  'measured sales'],
+  MEASURED_WINDOW: ['ok',  'measured sales, chosen window'],
+  MEASURED_SCOPE:  ['ok',  "measured sales, this scope's"],
+  OVERRIDE:        ['man', 'PINNED by hand — not the measured sale'],
+  NO_SALES:        ['nil', 'no normal sale measured in the window'],
+  DISCONTINUED:    ['nil', 'out of range: pulls no purchase'],
+};
+
 function renderSupply() {
   const d = spData; if (!d) return;
   const W = d.weeks;
   const HW = (spHist && spHist.weeks) || [];
-  const head = `<thead><tr>
-    <th style="width:190px">SKU</th><th class="n" style="width:${spData.scope?116:70}px">SOH</th>
-    <th class="n" style="width:${spData.scope?104:62}px">Wk/Avg</th><th class="n" style="width:52px">Mths</th>
-    <th class="n" style="width:60px">TBA</th><th class="n" style="width:74px">Incoming</th>
-    <th class="n" style="width:52px">Target</th>
-    ${HW.map(w=>`<th class="wk pastw" title="Realizado — o que de fato aconteceu nesta semana">
-      ${dSh(w.week_ending)}<small>actual</small></th>`).join('')}
-    ${W.map((w,i)=>`<th class="wk ${i===0?'rep':''} ${Number(w.factor)!==1?'cny':''}" title="${esc(w.factor_reason||'')}">
-      ${dSh(w.week_ending)}<small>${i===0?'reporting':Number(w.factor)!==1?Math.round(w.factor*100)+'%':'&nbsp;'}</small></th>`).join('')}
-  </tr></thead>`;
-  const bodies = d.rows.map(r0 => {
-    const r = { ...r0, cells: markCrossings(r0.cells) };
-    const open = S.supply.expandAll || S.supply.open[r.sku_key];
-    const m = r.summary;
-    const lc = r.lifecycle_status === 'RUN_OUT' ? 'lc-runout'
-             : r.lifecycle_status === 'DISCONTINUED' ? 'lc-disc' : '';
-    const lcMark = r.lifecycle_status === 'RUN_OUT'
-        ? `<span class="ui-tag ui-tag--warn lc-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Selling what is left; not reordered')}">RUN-OUT</span>`
-      : r.lifecycle_status === 'DISCONTINUED'
-        ? `<span class="ui-tag ui-tag--neutral lc-mark" data-life="${esc(r.sku_key)}" title="${esc(r.lifecycle_note||'Discontinued')}">DISC</span>`
-        : '';
-    // Fora da reposição de filial por decisão de alguém. Aparece aqui porque a
-    // compra é decidida nesta tela: comprar para uma filial que não recebe o
-    // item é o erro que esta marca evita.
-    const noBr = r.use_in_replenishment === false
-      ? `<span class="ui-tag ui-tag--neutral lc-mark" title="${esc(r.policy_note || 'Master Stock: not sent to branches')}">NO BRANCH</span>` : '';
-    const sup = r.superseded_by
-        ? `<span class="sup-to">→ <b data-goto="${esc(r.superseded_by)}">${esc(r.superseded_by)}</b></span>` : '';
-    const skuRow = `<tr class="sk ${lc}" data-sku="${esc(r.sku_key)}">
-      <td class="em"><button class="tog" data-tog="${esc(r.sku_key)}">${open?'▾':'▸'}</button><span class="mono sku-code">${esc(r.sku)}</span>${lcMark}${noBr}${badgeMark(r)}${bomMark(r)}${sup}${r.line?`<span class="sp-line" title="Product line">${esc(r.line)}</span>`:''}</td>
-      <td class="n mono"${r.soh<=0?' style="color:#9c0006;font-weight:700"':''}>${n0(r.soh)}${
-        r.file_soh!=null&&r.file_soh!==r.soh
-          ? `<span class="meas" title="the whole company holds ${n0(r.file_soh)}">${n0(r.file_soh)}</span>` : ''}</td>
-      <td class="n${r.badge_drift?' drift':''}"${r.badge_drift?` title="${esc(r.badge_why||'')}"`:''}
-        >${r.scope_wk!=null ? n1(r.scope_wk) : cellSku(r,'wk_avg',n1(r.wk_avg))}${
-          r.scope_wk!=null && r.file_wk!=null
-            ? `<span class="meas" title="the planning file says ${n1(r.file_wk)} a week for the whole company${
-                r.scope_by_rep ? ` · ${r.scope_by_rep} of ${r.scope_by_loc+r.scope_by_rep} sale lines here came in through a rep, shipped from Main` : ''}">${n1(r.file_wk)}</span>` : ''}${r.scope_wk==null && r.badge_drift
-          // O digitado fica editável; a venda medida entra ao lado, fantasma.
-          // Sem isto, 50 linhas de NO FORECAST abrem a tela mostrando zero em
-          // tudo — e zero é exatamente o que o planejador ignora.
-          ? `<span class="meas" title="venda medida nas últimas 13 semanas">${n1(r.badge_rate)}</span>` : ''}</td>
-      <td class="n mono"${m.mthsStock!=null&&m.mthsStock<1?' style="color:#9c0006;font-weight:700"':''}>${m.mthsStock==null?'—':n1(m.mthsStock)}</td>
-      <td class="n mono"${m.undatedQty?' style="color:#9c5700;font-weight:600"':' class="n mono faint"'}>${m.undatedQty?n0(m.undatedQty):'—'}</td>
-      <td class="n mono">${m.totalIncoming?n0(m.totalIncoming):''}</td>
-      <td class="n">${cellSku(r,'target_cover_weeks',r.target_cover_weeks)}</td>
-      ${(() => { const H = histFor(r.sku_key);
-        // Na linha fechada o passado mostra a VENDA realizada: é o número que o
-        // planejador compara com o Wk/Avg que ele mesmo digitou ao lado.
+  const cg = '<colgroup>'
+    + COLS.map(c => '<col style="width:' + c.w + 'px">').join('')
+    + HW.map(() => '<col style="width:' + WK_W + 'px">').join('')
+    + W.map(() => '<col style="width:' + WK_W + 'px">').join('')
+    + '</colgroup>';
+  const head = '<thead><tr>'
+    + COLS.map(c => '<th class="' + (c.n ? 'n ' : '') + 'c-' + c.k + '"'
+        + (c.title ? ' title="' + esc(c.title) + '"' : '') + '>'
+        + c.label + (c.sub ? '<small>' + c.sub + '</small>' : '') + '</th>').join('')
+    + HW.map(w => '<th class="wk pastw" title="Realizado — o que de fato aconteceu nesta semana">'
+        + dSh(w.week_ending) + '<small>actual</small></th>').join('')
+    + W.map((w, i) => '<th class="wk ' + (i === 0 ? 'rep' : '') + ' '
+        + (Number(w.factor) !== 1 ? 'cny' : '') + '" title="' + esc(w.factor_reason || '') + '">'
+        + dSh(w.week_ending) + '<small>'
+        + (i === 0 ? 'reporting' : Number(w.factor) !== 1 ? Math.round(w.factor * 100) + '%' : '&nbsp;')
+        + '</small></th>').join('')
+    + '</tr></thead>';
+
+  const grid = $('#spGrid');
+  /* A LARGURA TEM QUE SER EXPLÍCITA.
+     `table-layout:fixed` com `width:auto` volta ao layout automático: o browser
+     ignora o <colgroup> e dimensiona pela maior célula. Medido — o colgroup
+     pedia 26px na coluna do ponto e 176 no SKU, e a tela entregava 8 e 290. Aí
+     os `left:` sticky do CSS, que são as somas do colgroup, param em x errado:
+     as colunas congeladas se sobrepõem e abrem frestas por onde o realizado
+     aparece. Somar a largura aqui é o que fecha as três verdades — colgroup,
+     `left:` e largura da tabela. */
+  grid.style.width = (FROZEN_PX + (HW.length + W.length) * WK_W) + 'px';
+  grid.innerHTML = cg + head;
+  /* Pintura em duas levas. Com 500 SKUs por 47 colunas sao ~23.500 celulas num
+     innerHTML so, e a tela ficava parada ate a ultima chegar. As primeiras 60
+     linhas cobrem a area visivel; o resto entra no frame seguinte, com a rolagem
+     ja respondendo. Nada e escondido — so chega em duas levas. */
+  const rows = d.rows;
+  const FIRST = 60;
+  grid.insertAdjacentHTML('beforeend', rows.slice(0, FIRST).map(rowHtml).join(''));
+  if (rows.length > FIRST) {
+    cancelAnimationFrame(spPaint);
+    spPaint = requestAnimationFrame(() => {
+      // A grade pode ter sido trocada entre um frame e outro (troca de filtro).
+      if ($('#spGrid') !== grid || spData !== d) return;
+      grid.insertAdjacentHTML('beforeend', rows.slice(FIRST).map(rowHtml).join(''));
+      anchorReportingWeek();
+    });
+  }
+  anchorReportingWeek();
+}
+let spPaint = 0;
+
+/* Onde a grade para quando o historico entra.
+   Encostar a semana de reporte na borda do congelado atende metade do pedido —
+   nao perder a semana atual — e falha na outra: carregam-se 13 semanas de
+   realizado e nao se ve nenhuma. Sao dois numeros que o planejador compara lado
+   a lado (o Wk/Avg medido e o que de fato saiu), e comparar exige os dois na
+   tela.
+
+   Entao o passado ocupa ate 40% da area rolavel e a semana de reporte fica na
+   fronteira entre o que aconteceu e o que se projeta. Com o historico desligado
+   nada muda: nao ha o que reservar.
+
+   Ancora so quando o historico muda de tamanho, ou quando o botao "now" pede.
+   Fora disso a rolagem e do usuario. */
+function anchorReportingWeek() {
+  if (!spAnchor) return;
+  const rep = $('#spGrid').querySelector('th.wk.rep');
+  const box = $('#spGrid').closest('.sp-scroll');
+  if (!rep || !box) return;
+  spAnchor = false;
+  const carregadas = ((spHist && spHist.weeks) || []).length;
+  const cabem = Math.floor(((box.clientWidth - FROZEN_PX) * 0.4) / WK_W);
+  const reserva = Math.max(0, Math.min(carregadas, cabem)) * WK_W;
+  // offsetLeft mede contra o offsetParent, que aqui nao e a caixa que rola — por
+  // isso o primeiro salto erra. Medir a posicao real e corrigir acerta sem
+  // depender de qual ancestral esta posicionado.
+  const alvo = FROZEN_PX + reserva;
+  box.scrollLeft = Math.max(0, rep.offsetLeft - alvo);
+  box.scrollLeft += rep.getBoundingClientRect().left
+                  - box.getBoundingClientRect().left - alvo;
+}
+
+/* Uma linha, do <tbody> ao </tbody>.
+   E uma funcao e nao um trecho do laco porque expandir UM SKU precisa redesenhar
+   UM tbody. Antes chamava renderSupply(), que reconstruia as 500 linhas para
+   abrir uma — e era essa a lentidao ao clicar. */
+function rowHtml(r0) {
+  const r = { ...r0, cells: markCrossings(r0.cells) };
+  const open = S.supply.expandAll || S.supply.open[r.sku_key];
+  const HW = (spHist && spHist.weeks) || [];
+  const m = r.summary;
+  const lc = r.lifecycle_status === 'RUN_OUT' ? 'lc-runout'
+           : r.lifecycle_status === 'DISCONTINUED' ? 'lc-disc' : '';
+  // Fora da reposicao de filial por decisao de alguem. Continua visivel porque a
+  // compra e decidida nesta tela — mas como um traco na borda da celula do SKU,
+  // nao como mais uma capsula de texto.
+  const noBr = r.use_in_replenishment === false ? ' no-branch' : '';
+  const sup = r.superseded_by
+    ? '<span class="sup-to" title="Superseded by ' + esc(r.superseded_by) + '">→ <b data-goto="'
+      + esc(r.superseded_by) + '">' + esc(r.superseded_by) + '</b></span>' : '';
+  const wkSrc = WK_SRC[r.wk_avg_source] || ['', 'origem desconhecida'];
+  const wkTitle = wkSrc[1] + ' · ' + (r.wk_avg_window || 13) + '-week window'
+    + (r.wk_avg_weeks_with_sale != null ? ', ' + r.wk_avg_weeks_with_sale + ' of them with a sale' : '')
+    + (r.wk_avg_is_override && r.wk_avg_calc != null ? ' · the measured sale is ' + n1(r.wk_avg_calc) : '');
+
+  const skuRow = '<tr class="sk ' + lc + '" data-sku="' + esc(r.sku_key) + '">'
+    + statusCell(r)
+    + '<td class="em' + noBr + '"'
+      + (noBr ? ' title="' + esc(r.policy_note || 'Master Stock: not sent to branches') + '"' : '')
+      + '><button class="tog" data-tog="' + esc(r.sku_key) + '" aria-label="expand">'
+      + (open ? '▾' : '▸') + '</button>'
+      + '<span class="mono sku-code">' + esc(r.sku) + '</span>' + bomMark(r) + sup + '</td>'
+    + '<td class="n mono' + (r.soh <= 0 ? ' bad' : '') + '">' + n0(r.soh) + '</td>'
+    + '<td class="n wkc s-' + wkSrc[0] + (r.badge_drift ? ' drift' : '') + '" title="'
+      + esc(wkTitle + (r.badge_drift && r.badge_why ? ' — ' + r.badge_why : '')) + '">'
+      + n1(r.wk_avg) + '</td>'
+    + '<td class="n mono' + (m.mthsStock != null && m.mthsStock < 1 ? ' bad' : '') + '">'
+      + (m.mthsStock == null ? '—' : n1(m.mthsStock)) + '</td>'
+    + '<td class="n mono' + (m.undatedQty ? ' warn' : ' faint') + '">'
+      + (m.undatedQty ? n0(m.undatedQty) : '—') + '</td>'
+    + '<td class="n mono">' + (m.totalIncoming ? n0(m.totalIncoming) : '') + '</td>'
+    + '<td class="n">' + cellSku(r, 'target_cover_weeks', r.target_cover_weeks) + '</td>'
+    + (() => { const H = histFor(r.sku_key);
+        // Na linha fechada o passado mostra a VENDA realizada: e o numero que o
+        // planejador compara com o Wk/Avg ao lado.
         return HW.map((w, i) => {
           const h = H && H[i];
           if (!histKnown('sales', w.week_ending))
-            return `<td class="wk pastw nodata" title="Sem registro de venda nesta semana — a série começa em ${esc((spHist.coverage.sales||{}).first_week||'?')}">·</td>`;
-          return `<td class="wk pastw" title="realizado · vendido ${n0(h?h.sold:0)} · recebido ${n0(h?h.recv:0)} · projeto ${n0(h?h.proj:0)}">${n0(h?h.sold:0)}</td>`;
-        }).join(''); })()}
-      ${r.cells.map((c,i)=>open
-        ? `<td class="wk ${i===0?'rep':''} faint"></td>`
-        : `<td class="wk ${i===0?'rep':''} ${c.neg?'neg':''} ${c.lowEdge?'low':''} ${c.i?'has-in':''} ${c.d?'has-dr':''} ${isOpenCell(r.sku_key,c.w)?'is-open':''}"
-             data-week="${c.w}" title="opening ${n0(c.o)} · in ${n0(c.i)} · sales ${n1(c.s)} · project ${n0(c.d)}${c.lowEdge?' — drops below target cover here':''}">${n0(c.c)}</td>`).join('')}
-    </tr>`;
-    if (!open) return `<tbody>${skuRow}</tbody>`;
-    const H = histFor(r.sku_key);
-    const work = WRK.map(([cls,label,pick]) => `<tr class="wrk ${cls} ${cls==='r-close'?'close':''}">
-      <td class="lbl" colspan="7">${label}</td>
-      ${HW.map((w,i)=>{
+            return '<td class="wk pastw nodata" title="Sem registro de venda nesta semana — a serie comeca em '
+              + esc((spHist.coverage.sales || {}).first_week || '?') + '">·</td>';
+          return '<td class="wk pastw" title="realizado · vendido ' + n0(h ? h.sold : 0)
+            + ' · recebido ' + n0(h ? h.recv : 0) + ' · projeto ' + n0(h ? h.proj : 0) + '">'
+            + n0(h ? h.sold : 0) + '</td>';
+        }).join(''); })()
+    + r.cells.map((c, i) => open
+        ? '<td class="wk ' + (i === 0 ? 'rep' : '') + ' faint"></td>'
+        : '<td class="wk ' + (i === 0 ? 'rep' : '') + ' ' + (c.neg ? 'neg' : '') + ' '
+          + (c.lowEdge ? 'low' : '') + ' ' + (c.i ? 'has-in' : '') + ' ' + (c.d ? 'has-dr' : '') + ' '
+          + (isOpenCell(r.sku_key, c.w) ? 'is-open' : '') + '" data-week="' + c.w
+          + '" title="opening ' + n0(c.o) + ' · in ' + n0(c.i) + ' · sales ' + n1(c.s)
+          + ' · project ' + n0(c.d) + (c.lowEdge ? ' — drops below target cover here' : '')
+          + '">' + n0(c.c) + '</td>').join('')
+    + '</tr>';
+
+  if (!open) return '<tbody data-row="' + esc(r.sku_key) + '">' + skuRow + '</tbody>';
+
+  const H = histFor(r.sku_key);
+  const work = WRK.map(([cls, label, pick]) => '<tr class="wrk ' + cls + ' '
+      + (cls === 'r-close' ? 'close' : '') + '">'
+    + '<td class="lbl" colspan="' + NFIX + '">' + label + '</td>'
+    + HW.map((w, i) => {
         const pk = HPICK[cls];
-        // Opening e Closing não têm passado: exigem reconstruir o estoque para
-        // trás. Marcar como vazio é honesto; preencher seria inventar.
-        if (!pk) return `<td class="wk pastw nodata" title="O estoque do passado ainda não foi reconstruído">·</td>`;
+        // Opening e Closing nao tem passado: exigem reconstruir o estoque para
+        // tras. Marcar como vazio e honesto; preencher seria inventar.
+        if (!pk) return '<td class="wk pastw nodata" title="O estoque do passado ainda nao foi reconstruido">·</td>';
         if (!histKnown(pk[1], w.week_ending))
-          return `<td class="wk pastw nodata" title="Sem registro desta fonte nesta semana">·</td>`;
+          return '<td class="wk pastw nodata" title="Sem registro desta fonte nesta semana">·</td>';
         const v = H && H[i] ? H[i][pk[0]] : 0;
-        return `<td class="wk pastw">${v===0?'<span class="faint">0</span>':n0(v)}</td>`;
-      }).join('')}
-      ${r.cells.map((c,i)=>{
+        return '<td class="wk pastw">' + (v === 0 ? '<span class="faint">0</span>' : n0(v)) + '</td>';
+      }).join('')
+    + r.cells.map((c, i) => {
         const v = pick(c);
         const isClose = cls === 'r-close';
-        return `<td class="wk ${i===0?'rep':''} ${isClose&&c.neg?'neg':''} ${isClose&&c.lowEdge?'low':''} ${isClose&&isOpenCell(r.sku_key,c.w)?'is-open':''}"
-          ${isClose?`data-week="${c.w}"`:''}>${v===0?'<span class="faint">0</span>':cls==='r-out'?n1(v):n0(v)}</td>`;
-      }).join('')}</tr>`).join('');
-    return `<tbody>${skuRow}${bomRows(r)}${work}</tbody>`;
-  }).join('');
-  $('#spGrid').innerHTML = head + bodies;
-
-  // O pedido era "ver o passado SEM perder o foco na semana atual". Com 26
-  // colunas de realizado à esquerda, a semana de reporte nasceria fora da tela.
-  // Ancorar só quando o histórico muda: depois disso a rolagem é do usuário.
-  if (spAnchor) {
-    spAnchor = false;
-    const rep = $('#spGrid').querySelector('th.wk.rep');
-    const box = $('#spGrid').closest('.sp-scroll');
-    if (rep && box) {
-      // offsetLeft mede contra o offsetParent, que aqui não é a caixa que rola —
-      // por isso o primeiro salto erra. Medir a posição real e corrigir acerta
-      // sem depender de qual ancestral está posicionado.
-      box.scrollLeft = Math.max(0, rep.offsetLeft - FROZEN_PX);
-      box.scrollLeft += rep.getBoundingClientRect().left
-                      - box.getBoundingClientRect().left - FROZEN_PX;
-    }
-  }
+        return '<td class="wk ' + (i === 0 ? 'rep' : '') + ' '
+          + (isClose && c.neg ? 'neg' : '') + ' ' + (isClose && c.lowEdge ? 'low' : '') + ' '
+          + (isClose && isOpenCell(r.sku_key, c.w) ? 'is-open' : '') + '"'
+          + (isClose ? ' data-week="' + c.w + '"' : '') + '>'
+          + (v === 0 ? '<span class="faint">0</span>' : cls === 'r-out' ? n1(v) : n0(v)) + '</td>';
+      }).join('')
+    + '</tr>').join('');
+  return '<tbody data-row="' + esc(r.sku_key) + '">' + skuRow + bomRows(r) + work + '</tbody>';
 }
-// As 7 colunas fixas: 190+70+62+52+60+74+52. A rolagem para nesta borda para a
-// semana de reporte encostar no congelado, e não sumir atrás dele.
-const FROZEN_PX = 560;
-// Três tons, todos já existentes. --warn está fora: o selo RUN-OUT já ocupa
-// laranja na MESMA célula, e 17 das linhas teriam dois chips laranja colados.
-const BADGE = {
-  'ORDER NOW':    ['danger',  'Vende, zera dentro da janela de pedido, e nada em trânsito.'],
-  'CHASE PO':     ['danger',  'Vende e zera dentro da janela — mas o pedido já saiu. É cobrar prazo, não comprar.'],
-  'NO FORECAST':  ['danger',  'Vende e zera dentro da janela, e a lista de compra não enxerga este SKU.'],
-  'ORDER SOON':   ['info',    'Zera dentro do horizonte, ainda dá tempo de planejar.'],
-  'FIX FORECAST': ['neutral', 'Tem previsão viva e não vendeu nada no trimestre: o cadastro contradiz a venda.'],
-};
-const badgeMark = (r) => {
-  const b = BADGE[r.badge]; if (!b) return '';
-  const why = r.badge_why ? ' ' + r.badge_why : '';
-  return `<span class="ui-tag ui-tag--${b[0]} bdg" title="${esc(b[1] + why)}">${esc(r.badge)}</span>`;
-};
-const cellSku = (r, f, html) =>
-  `<span class="sp-cell" contenteditable="plaintext-only" spellcheck="false"
-     data-sku="${esc(r.sku_key)}" data-field="${f}" data-kind="num">${html==null?'':html}</span>`;
 
 // Com 34 colunas, o painel abria mostrando um detalhe cuja célula de origem ninguém
 // identificava. A marca sobrevive ao re-render porque mora no estado, não no DOM.
@@ -673,18 +784,67 @@ const isOpenCell = (sku, week) =>
 function toggleSku(k) {
   if (S.supply.expandAll) {
     S.supply.expandAll = false;
-    $('#spExpand').classList.remove('is-on');
+    setExpandBtn(false);
     (spData?.rows || []).forEach(r => { S.supply.open[r.sku_key] = true; });
+    S.supply.open[k] = false;
+    return renderSupply();          // saindo do "tudo aberto", a grade inteira muda
   }
   S.supply.open[k] = !S.supply.open[k];
-  renderSupply();
+  // Uma linha, um <tbody>. Antes daqui saia um renderSupply(), que reconstruia
+  // as 500 linhas e as ~23.500 celulas para abrir uma — a lentidao ao clicar.
+  const row = (spData?.rows || []).find(r => r.sku_key === k);
+  const tb = $('#spGrid').querySelector(`tbody[data-row="${CSS.escape(k)}"]`);
+  if (!row || !tb) return renderSupply();
+  tb.outerHTML = rowHtml(row);
+}
+
+/* O botao de expandir fala com seta, nao com frase. "Show the working" nao dizia
+   nem que era um interruptor nem para que lado ele estava. */
+function setExpandBtn(on) {
+  const b = $('#spExpand');
+  b.classList.toggle('is-on', on);
+  b.innerHTML = `<span class="cv">${on ? '\u25be' : '\u25b8'}</span>${on ? 'Collapse all' : 'Expand all'}`;
+  b.title = on ? 'Close the working on every row'
+               : 'Open, on every row, the five lines of the working: opening, in, sales, project, closing';
 }
 
 $('#spSupplier').addEventListener('change', e => { S.supply.supplier = e.target.value; localStorage.setItem('sp.sup', e.target.value); loadSupply(); });
 $('#spSearch').addEventListener('input', debounce(e => { S.supply.q = e.target.value; loadSupply(); }));
 $('#spWeeks').addEventListener('change', e => { S.supply.weeks = +e.target.value; loadSupply(); });
-$('#spBack').addEventListener('change', e => {
-  S.supply.back = +e.target.value; localStorage.setItem('sp.back', e.target.value); loadSupply();
+/* O passado, em passos.
+   Era um <select> de cinco opcoes que nao dizia o que fazia e — por causa do 500
+   na rota — nao fazia nada. Vira um par de botoes: cada clique acrescenta ou
+   tira um bloco de semanas a ESQUERDA da semana de reporte, que e para onde o
+   passado cresce. O rotulo entre eles diz onde voce esta. */
+const BACK_STEPS = [0, 4, 8, 13, 26, 52];
+function setBack(n) {
+  const i = Math.max(0, Math.min(BACK_STEPS.length - 1, n));
+  S.supply.back = BACK_STEPS[i];
+  localStorage.setItem('sp.back', String(S.supply.back));
+  syncBackBar();
+  loadSupply();
+}
+function syncBackBar() {
+  const i = BACK_STEPS.indexOf(S.supply.back);
+  $('#spBackLbl').textContent = S.supply.back ? S.supply.back + ' wk back' : 'no history';
+  $('#spBackMore').disabled = i >= BACK_STEPS.length - 1;
+  $('#spBackLess').disabled = i <= 0;
+  $('#spBackHome').hidden = !S.supply.back;
+}
+$('#spBackMore').addEventListener('click', () => setBack(BACK_STEPS.indexOf(S.supply.back) + 1));
+$('#spBackLess').addEventListener('click', () => setBack(BACK_STEPS.indexOf(S.supply.back) - 1));
+// Voltar para a semana de reporte sem perder o historico que ja carregou. Com 26
+// colunas de realizado a esquerda, achar a semana atual de novo era rolar no olho.
+$('#spBackHome').addEventListener('click', () => { spAnchor = true; anchorReportingWeek(); });
+
+/* A janela da media. O motor de filtros comeca aqui: a mesma venda medida,
+   cortada em quatro reguas. 13 semanas e o padrao e e a unica que alertas, buy e
+   overview tambem usam — trocar aqui muda ESTA tela, de proposito, para o
+   planejador comparar tendencia sem mover a regua das outras. */
+$('#spAvg').addEventListener('change', e => {
+  S.supply.avgWeeks = +e.target.value;
+  localStorage.setItem('sp.avgw', e.target.value);
+  loadSupply();
 });
 $('#spSort').addEventListener('click', e => {
   S.supply.sort = S.supply.sort === 'risk' ? '' : 'risk';
@@ -703,15 +863,15 @@ $('#spView').addEventListener('change', e => {
   // Entrar no modo BOM abre a expansão sozinho: o motivo de entrar nele é ver
   // os componentes, e obrigar a clicar 300 vezes seria esconder o que se pediu.
   S.supply.expandAll = e.target.value === 'bom';
-  $('#spExpand').classList.toggle('is-on', S.supply.expandAll);
+  setExpandBtn(S.supply.expandAll);
   loadSupply();
 });
-$('#spExpand').addEventListener('click', e => {
+$('#spExpand').addEventListener('click', () => {
   S.supply.expandAll = !S.supply.expandAll;
   // Desligar precisa fechar de verdade: sem isto, as linhas abertas uma a uma
   // continuavam abertas e o botão parecia não fazer nada.
   if (!S.supply.expandAll) S.supply.open = {};
-  e.currentTarget.classList.toggle('is-on', S.supply.expandAll);
+  setExpandBtn(S.supply.expandAll);
   renderSupply();
 });
 $('#spGrid').addEventListener('click', e => {
@@ -756,12 +916,36 @@ async function openWeek(sku, week) {
       ${d.sku && d.sku.undated_qty>0 ? `<h4>Outside every week</h4>
         <p style="color:#9c5700"><b>${n0(d.sku.undated_qty)}</b> units of project demand with no pick date.
         They stay visible in the TBA column and never land in an invented week.</p>`:''}
+      <h4>Where the Wk/Avg comes from</h4>
+      <table class="brk">
+        <tr><td>Using</td><td><b>${n1(row?row.wk_avg:0)}</b> / week</td></tr>
+        <tr><td>Source</td><td>${esc((WK_SRC[row?row.wk_avg_source:''] || ['','—'])[1])}</td></tr>
+        <tr><td>Window</td><td>${row?row.wk_avg_window||13:13} wk${
+          row&&row.wk_avg_weeks_with_sale!=null?` · ${row.wk_avg_weeks_with_sale} with a sale`:''}</td></tr>
+        ${row&&row.wk_avg_is_override?`<tr><td>Measured sale (ignored)</td><td>${n1(row.wk_avg_calc)}</td></tr>`:''}
+        ${row&&row.company_wk!=null?`<tr><td>Whole company</td><td>${n1(row.company_wk)}</td></tr>`:''}
+        <tr class="sub"><td>Excel file said (25/08)</td><td>${row&&row.wk_avg_input!=null?n1(row.wk_avg_input):'—'}</td></tr>
+      </table>
+      <div class="cart-add">
+        <input id="sideWk" type="number" min="0" step="0.1" placeholder="fix by hand"
+          value="${row&&row.wk_avg_is_override?row.wk_avg_override:''}">
+        <button class="sp-btn" id="sideWkSave" data-sku="${esc(sku)}">Pin this number</button>
+        ${row&&row.wk_avg_is_override?`<button class="sp-btn is-ghost" id="sideWkClear" data-sku="${esc(sku)}"
+           title="Volta a usar a venda medida">use the measured sale</button>`:''}
+      </div>
+
       <h4>Stock context</h4>
       <table class="brk">
-        <tr><td>Company-wide (the basis)</td><td>${n0(d.sku?d.sku.soh_available:0)}</td></tr>
+        ${row&&row.company_soh!=null
+          ? `<tr class="in-scope"><td>This scope</td><td><b>${n0(row.scope_soh)}</b></td></tr>
+             <tr><td>Whole company</td><td>${n0(row.company_soh)}</td></tr>`
+          : `<tr><td>Company-wide (the basis)</td><td>${n0(d.sku?d.sku.soh_available:0)}</td></tr>`}
         <tr><td>Main</td><td>${n0(d.sku?d.sku.main_soh:0)}</td></tr>
         <tr><td>Gateway</td><td>${n0(d.sku?d.sku.gateway_soh:0)}</td></tr>
         <tr><td>Project commitment</td><td>${n0(d.sku?d.sku.project_orders:0)}</td></tr>
+        ${row&&row.line?`<tr class="sub"><td>Product line</td><td>${esc(row.line)}</td></tr>`:''}
+        ${row&&row.use_in_replenishment===false
+          ? `<tr class="sub"><td>Branch replenishment</td><td>NOT sent to branches</td></tr>`:''}
       </table>
       <h4>Who this demand belongs to</h4>
       <div id="sideDemand" class="sp-loading">loading…</div>
@@ -774,6 +958,27 @@ async function openWeek(sku, week) {
           data-sup="${esc(row?row.supplier||'':'')}">Add to the ${esc(row&&row.supplier?row.supplier:'')} cart</button>
       </div>`);
     demandBreak(sku);
+    /* Fixar e desfixar o Wk/Avg. O campo saiu da grade porque a coluna passou a
+       ser a venda MEDIDA — deixar editável ali faria parecer que digitar por
+       cima é o uso normal, quando é a exceção. Aqui a exceção tem nome, tem o
+       número medido ao lado e tem como voltar atrás. */
+    const saveWk = async (value) => {
+      try {
+        await api(`/skus/${encodeURIComponent(sku)}`, { method:'PATCH',
+          body: JSON.stringify({ wk_avg_override: value }) });
+        toast(value === '' ? 'Back to the measured sale' : 'Wk/Avg pinned at ' + value);
+        loadSupply();
+      } catch (err) { toast(err.message, true); }
+    };
+    const wkBtn = $('#sideWkSave');
+    if (wkBtn) wkBtn.addEventListener('click', () => {
+      const v = $('#sideWk').value.trim();
+      if (v === '' || !isFinite(Number(v)) || Number(v) < 0) { toast('Type a number first', true); return; }
+      saveWk(v);
+    });
+    const wkClr = $('#sideWkClear');
+    if (wkClr) wkClr.addEventListener('click', () => saveWk(''));
+
     const add = $('#sideAdd');
     if (add) add.addEventListener('click', async () => {
       const q = Number($('#sideQty').value);
@@ -1264,3 +1469,69 @@ $('#alBody').addEventListener('click', e => {
   const row = e.target.closest('[data-sku]');
   if (row) return jumpSupply(row.dataset.sup, row.dataset.sku);
 });
+
+
+/* O boot mora no FIM do arquivo, e isso não é arrumação.
+   Ele agora executa de forma síncrona até disparar a view — sem um `await` na
+   frente — e usa BACK_STEPS, que é `const` declarada mais abaixo. `const` não
+   sobe: no topo do arquivo isso é ReferenceError por zona morta temporal, e o
+   try/catch do boot o transformava num toast, com a grade em branco e nenhum
+   erro no console. No fim do arquivo, tudo o que ele precisa já existe. */
+/* A ORDEM IMPORTA, e ela estava invertida.
+   A tela pedia /state, /suppliers e /branches, ESPERAVA, pedia /filters,
+   ESPERAVA de novo, e só então começava a carregar a grade. Medido no
+   navegador: 0,63 s + 0,46 s antes de o /planning sequer sair — 1,1 s em que
+   nada do que o planejador veio ver estava a caminho.
+
+   Nada disso é pré-requisito da grade. As três chamadas de metadados enchem
+   dropdown e barra de status; a grade só precisa do que já está no localStorage.
+   Então a view dispara PRIMEIRO e os metadados vêm por cima quando chegarem. */
+(async function boot() {
+  // Onde abrir. Um link antigo com #projects ou #pos vai para a página nova em
+  // vez de cair no Overview calado — e isso é decidido antes de qualquer rede.
+  const want = location.hash.replace('#', '');
+  if (MUDOU_DE_CASA[want]) return location.assign(MUDOU_DE_CASA[want]);
+
+  // O que a grade precisa saber sobre si mesma sai do localStorage, não da rede.
+  if (S.supply.view) { $('#spView').value = S.supply.view; S.supply.expandAll = true; }
+  if (!BACK_STEPS.includes(S.supply.back)) S.supply.back = 0;
+  if (S.supply.supplier) $('#spSupplier').value = S.supply.supplier;
+  syncBackBar();
+  $('#spAvg').value = String(S.supply.avgWeeks);
+  setExpandBtn(S.supply.expandAll);
+  $('#spSort').classList.toggle('is-on', S.supply.sort === 'risk');
+
+  // Dispara a view AGORA, sem esperar metadado nenhum.
+  const view = HASH_VIEWS.includes(want) ? want : 'overview';
+  show(view, { fromHash: true });
+
+  try {
+    // Uma leva só. /filters era um await à parte, em série, por nada.
+    const [st, sup, br, f] = await Promise.all([
+      api('/state'), api('/suppliers'), api('/branches'), api('/filters')]);
+    S.state = st; S.suppliers = sup; S.branches = br;
+    const src = st.soh_source === 'CIN7_LIVE' ? 'Cin7 live' : 'Excel snapshot';
+    const age = st.counts.cin7_lines_synced_at ? new Date(st.counts.cin7_lines_synced_at) : null;
+    const hrs = age ? (Date.now() - age.getTime()) / 36e5 : 99;
+    $('#statusDot').className = 'sp-dot ' + (hrs < 6 ? 'fresh' : hrs < 30 ? 'stale' : 'dead');
+    $('#statusText').textContent = `Week ${d10(st.reporting_week)} · stock from ${src}`;
+    const opts = sup.map(s => `<option value="${esc(s.code)}">${esc(s.code)} (${s.sku_count})</option>`).join('');
+    // Era "Pick a supplier…" porque a tela inteira levava 15,7s. Depois que a
+    // subconsulta LATERAL virou CTE MATERIALIZED (24×), os 1.951 SKUs saem em
+    // 616 ms — a restrição sobrevivia ao motivo dela.
+    $('#spSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
+    $('#byySupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
+    $('#alSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
+    // Reaplicar depois de reescrever as opções: o value some junto com elas.
+    if (S.supply.supplier) $('#spSupplier').value = S.supply.supplier;
+    $('#spLine').innerHTML = '<option value="">All lines</option>'
+      + (f.lines || []).map(l => `<option value="${esc(l.line)}">${esc(l.line)} (${n0(l.n)})</option>`).join('');
+    if (S.supply.line) $('#spLine').value = S.supply.line;
+  } catch (e) {
+    // A grade já está desenhando com o que tinha; o que falhou aqui foram os
+    // dropdowns e a barra de status. Dizer QUAL das duas coisas quebrou evita
+    // que o usuário conclua que a tela toda está fora.
+    $('#statusText').textContent = 'filters unavailable';
+    toast('The filters did not load: ' + e.message, true);
+  }
+})();

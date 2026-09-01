@@ -75,14 +75,16 @@ async function rpc(text, params, actor) {
   const body = await resp.text();
   if (!resp.ok) {
     // Propaga o code do Postgres (ex.: 23505 → 409 na rota) quando o PostgREST manda JSON.
-    let err = new Error(`sp_exec HTTP ${resp.status}: ${body.slice(0, 500)}`);
-    try {
-      const j = JSON.parse(body);
-      if (j && j.code) err.code = j.code;
-      if (j && j.message) err.message = j.message;
-      if (resp.status === 404) err.message =
-        'public.sp_exec não existe no banco — rode features/stock-planning/db/028_sp_exec.sql no SQL Editor.';
-    } catch (_) {}
+    const err = new Error(`sp_exec HTTP ${resp.status}: ${body.slice(0, 500)}`);
+    let j = null; try { j = JSON.parse(body); } catch (_) {}
+    if (j && j.code) err.code = j.code;
+    if (j && j.message) err.message = j.message;
+    // PostgREST mapeia função/tabela inexistente (42883/42P01) para 404. Se for o PRÓPRIO
+    // sp_exec (migration 028 não aplicada), avisa; senão mantém a mensagem real do Postgres
+    // (ex.: uma função rapid_inv.* faltando → rode a 030).
+    if (resp.status === 404 && (!body || /\bsp_exec\b/i.test(body))) {
+      err.message = 'public.sp_exec não existe no banco — rode features/stock-planning/db/028_sp_exec.sql no SQL Editor.';
+    }
     throw err;
   }
   try { return JSON.parse(body); } catch (_) { return []; }  // sp_exec retorna jsonb array
@@ -104,7 +106,7 @@ async function one(text, params, actor) {
  *   • pg  — BEGIN/COMMIT real, várias statements atômicas.
  *   • rpc — só transação de UMA statement (o shim manda ao sp_exec com o actor, uma
  *           statement = uma transação atômica). Multi-statement/lock ainda não é suportado
- *           por aqui: essas rotas viram funções rapid_inv.* na migration 029. O shim
+ *           por aqui: essas rotas viram funções rapid_inv.* na migration 030. O shim
  *           recusa a 2ª statement em vez de gravar pela metade.
  */
 async function tx(fn, actor) {
@@ -130,7 +132,7 @@ async function tx(fn, actor) {
       if (++calls > 1) {
         throw new Error(
           'sp-db.tx: transação com múltiplas statements ainda não roda no transporte por service key. ' +
-          'Rode a migration 029 (função rapid_inv dedicada) para este endpoint.');
+          'Rode a migration 030 (função rapid_inv dedicada) para este endpoint.');
       }
       return { rows: await rpc(text, params, actor) };
     },
