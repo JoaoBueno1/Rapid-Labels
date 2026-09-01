@@ -227,6 +227,9 @@
     const qs = new URLSearchParams({ branch: code, location: depotOf(code), months: SET.salesMonths || 6 });
     const d = await fetch(`/api/replenishment/branch-averages?${qs}`).then(r => r.json());
     if (d.error) throw new Error(d.error);
+    // Janela de datas da demanda (mesma para todas as filiais). O aviso acima da tabela mostra
+    // este range em dd/mm/yyyy para o user reproduzir o mesmo período no Cin7.
+    if (d.window && d.window.from && d.window.to) { S.demandFrom = d.window.from; S.demandTo = d.window.to; }
     const porSku = {};
     d.rows.forEach(r => { porSku[r.sku_key] = r; });
     return { porSku, info: { months: d.months, reps: d.reps || [], count: d.rep_count,
@@ -690,8 +693,8 @@
 
   function writeScope() {
     const el = $('gridScope'); if (!el) return;
-    const ruler = `${DEMAND_LABEL[SET.demand] || SET.demand} · ${SET.salesMonths}m`;
-    el.textContent = `Main+Gateway is the send pool · ${SET.abc ? 'ABC tiers' : SET.weeks + '-week target'} · ruler: ${ruler}`;
+    const range = (S.demandFrom && S.demandTo) ? ` (${dmy(S.demandFrom)} to ${dmy(S.demandTo)})` : '';
+    el.textContent = `Main+Gateway is the send pool · ${SET.abc ? 'ABC tiers' : SET.weeks + '-week target'} · demand: ${SET.salesMonths}m${range}`;
   }
 
   function openBranch(code) {
@@ -762,9 +765,12 @@
       : S.stage === 'ready_to_check' ? 'Manager checks — comments stay open' : '';
     // A lógica em uso fica ao lado dos estágios: ela muda TODOS os números da
     // tela, e quem chega no meio do fluxo não tem como saber qual está valendo.
-    const ruler = `${DEMAND_LABEL[SET.demand] || SET.demand} · ${SET.salesMonths}m`;
-    const logic = `<span class="rp-logic" title="Which demand the suggestions and the cover projection are using. Change it in Settings, or pick it when you load suggestions.">
-        <b>${esc(ruler)}</b> · ${SET.abc ? 'ABC tiers' : SET.weeks + 'w cover'} · order under ${SET.cutDays}d</span>`;
+    // O modo de demanda (branch/reps) saiu daqui: as duas médias já aparecem em colunas próprias
+    // na tabela, então repeti-lo só confundia. Fica o que vem do Settings — a janela de vendas e a
+    // cobertura — mais o range de datas dessa janela, para o user conferir direto no Cin7.
+    const range = (S.demandFrom && S.demandTo) ? ` (${dmy(S.demandFrom)} to ${dmy(S.demandTo)})` : '';
+    const logic = `<span class="rp-logic" title="The demand window every number on the sheet is read over — check it in Cin7 across these dates. Cover weeks and the suggest-under threshold come from Settings.">
+        <b>${SET.salesMonths}m demand${range}</b> · ${SET.abc ? 'ABC tiers' : SET.weeks + 'w cover'} · order under ${SET.cutDays}d</span>`;
     $('rpStage').innerHTML = `<div class="rp-steps">${pills}</div><span class="sp-gap"></span><span class="rp-sub">${hint}</span> ${logic} ${action}`;
     const a = $('btnAdvance'); if (a) a.addEventListener('click', advanceStage);
     const b = $('btnBackStage'); if (b) b.addEventListener('click', backStage);
@@ -1056,8 +1062,11 @@
            número negativo aparece só onde ele nasce: no SOH.
            Sem média não há cobertura, e "—" é mais honesto que "n/a": não é
            erro, é que não há o que dividir. */
+        // Cover < 0 = oversold (SOH negativo). Antes ficava em branco ("—") e o user não sabia
+        // se a sugestão já contava o negativo. Agora mostra 0.0w em vermelho ("sem cobertura,
+        // em déficit") — e a leitura "after" ao lado prova que o QTY sugerido leva ao alvo.
         const num = (v) => v == null ? '<span class="rp-sub">—</span>'
-          : v < 0 ? '<span class="rp-sub">—</span>'
+          : v < 0 ? '<span class="rp-neg">0.0w</span>'
           : v >= 999 ? '99+w' : n1(v) + 'w';
 
         const bBase = l.storedAvg != null ? l.storedAvg : l.avg;
@@ -1254,8 +1263,8 @@
         'What shipped out of this branch. Ignores what Main sent on its behalf.'],
       ['branch_then_rep', 'Branch, reps fill the gaps',
         'The branch figure when there is one; its reps cover the SKUs the branch never shipped itself.'],
-      ['rep_then_branch', 'Reps, branch fills the gaps',
-        'What the branch sold, wherever it shipped from; the branch figure covers what no rep touched.'],
+      // "Reps, branch fills the gaps" saiu: media 71/685 vs "Reps only" 70/673 — 1 linha, 12 unidades
+      // de diferença. Era uma quarta opção que quase ninguém distinguia da terceira.
       ['rep', 'Reps only',
         'What this branch sold, wherever it shipped from. Ignores branch-only movement.'],
     ];

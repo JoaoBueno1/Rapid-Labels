@@ -506,7 +506,7 @@ function register(app, db) {
        `orfaos` devolve zero hoje (a alocação foi fechada em 28/08/2026). Está
        aqui para o dia em que entrar gente nova: rep não alocado some da régua
        da filial em silêncio, e a soma encolhe sem motivo visível. */
-    const [rows, quebra, orfaos] = await Promise.all([
+    const [rows, quebra, orfaos, spanRows] = await Promise.all([
       // O FULL OUTER JOIN vive na função do banco agora. O `for` que reinseria
       // os SKUs que a filial vendeu pelo local sem nenhum rep dela ter tocado
       // virou parte do JOIN: mesma resposta, uma volta a menos, e a regra deixa
@@ -515,7 +515,21 @@ function register(app, db) {
         { p_branch: branch, p_months: months, p_location: location || null }),
       sbRpc('replenishment_branch_reps', { p_branch: branch, p_months: months }),
       sbRpc('replenishment_reps_orphan', { p_months: months }),
+      // Janela de datas destas médias, para o user conferir no Cin7. Falhar aqui NÃO derruba
+      // o endpoint (a tela só não mostra o range) — por isso o .catch.
+      sbRpc('replenishment_span').catch(() => null),
     ]);
+    /* _rp_window(months) = date_trunc('month', última venda) - (months-1) meses, ATÉ a última
+       venda. Reproduzido em aritmética de string (sem Date) para não escorregar de fuso — a
+       regra do repo é não deixar o fuso mexer numa data-calendário. */
+    let windowObj = null;
+    const span = spanRows && spanRows[0];
+    if (span && span.last_day) {
+      const to = String(span.last_day).slice(0, 10);
+      const [y, m] = to.split('-').map(Number);
+      const idx = (y * 12 + (m - 1)) - (Math.max(months, 1) - 1);
+      windowObj = { from: `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}-01`, to };
+    }
 
     /* Os dois totais somados AQUI e não no navegador, pelo mesmo motivo de
        sempre: se a tela somar o que recebeu, ela mede a página e chama de
@@ -525,6 +539,7 @@ function register(app, db) {
 
     res.json({
       branch, months, location: location || null,
+      window: windowObj,
       rep_count: quebra.length,
       reps: quebra.map((r) => r.sales_rep),      // compatível com quem já lia
       rep_breakdown: quebra,
