@@ -199,6 +199,9 @@
 /* Pedido acima do que o Main pode mandar. Ambar e nao vermelho: nao e erro,
    e uma informacao — a filial pode estar pedindo adiante de proposito. */
 .rp-in.is-over, .rp-lock.is-over { border-color: #d97706; background: #fffbeb; color: #92400e; font-weight: 700; }
+/* "(N)" ao lado do Main: quanto deste codigo os assemblies da planilha ja levam.
+   Discreto de proposito — e um aviso, nao um segundo numero a somar. */
+.rp-taken { color: #7c3aed; font-weight: 700; font-size: 11px; }
 .rp-mini-scroll { max-height: 230px; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }
 .sp-box { max-width: 760px; }
 

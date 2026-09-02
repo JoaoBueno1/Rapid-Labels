@@ -509,6 +509,29 @@
      mesma regra divergem no dia em que alguem ajusta uma. O rateio precisa dela
      sem o proprio cap aplicado, e buildRow precisa dela para depois aplicar o
      cap: mesma conta, dois usos. */
+  /* O que os ASSEMBLIES desta planilha vao consumir de cada componente.
+     O mesmo codigo pode aparecer duas vezes na carga: como linha propria (a
+     filial repoe o componente) e dentro de um assembly. Sao duas linhas certas
+     isoladamente que somam mais do que o Main tem — a coluna Main mostra o
+     estoque cheio para as duas e nenhuma sabe da outra.
+     O numero entre parenteses ao lado do Main e esse consumo. Nao muda conta
+     nenhuma: e o aviso de que aquele estoque ja tem dono na propria planilha. */
+  function bomDemandInSheet() {
+    const m = new Map();
+    for (const l of (S.lines || [])) {
+      if (!l.isBom || !l.bom) continue;
+      const ask = clampInt(l.ask);
+      if (!ask) continue;
+      for (const c of l.bom) {
+        const q = Number(c.quantity);
+        if (!(q > 0)) continue;              // negativo e subproduto, nao consumo
+        const k = String(c.code).toUpperCase();
+        m.set(k, (m.get(k) || 0) + ask * q);
+      }
+    }
+    return m;
+  }
+
   function mainCapacityFor(k) {
     const bom = (S.bom && S.bom[k]) || null;
     if (!bom) {
@@ -1181,6 +1204,7 @@
   const IDCLS = { main: ' c-main', avg: ' c-avg' };
   function renderGrid() {
     coverLegend();
+    S.bomTake = bomDemandInSheet();   // antes de desenhar: a coluna Main le daqui
     // A coluna Cover mostra sempre as duas leituras agora, então a linha tem
     // altura constante e não há mais um "modo de uma leitura só".
     // Guarda de digitação. renderGrid() reescreve a tabela inteira; se alguém
@@ -1425,11 +1449,18 @@
             bb <= 0 ? 'Main is short of components to build this assembly.'
                     : `Main can build ${n0(bb)} from the component stock it holds today.`);
         }
+        // Quanto deste mesmo codigo os assemblies da planilha ja vao levar.
+        const tomado = S.bomTake ? (S.bomTake.get(String(l.code).toUpperCase()) || 0) : 0;
+        // Sempre no DOM, vazia quando zero: repaintTaken corrige o texto enquanto
+        // se digita, e um span que so nasce quando o numero aparece nao poderia
+        // ser corrigido sem redesenhar a tabela (e perder o cursor).
+        const marca = ` <span class="rp-taken">${tomado > 0 ? '(' + n0(tomado) + ')' : ''}</span>`;
         return wrap(
-          l.mainGw <= 0 ? `<span class="rp-neg">${n0(l.mainGw)}</span>` : n0(l.mainGw), '',
-          l.mainGw <= 0
+          (l.mainGw <= 0 ? `<span class="rp-neg">${n0(l.mainGw)}</span>` : n0(l.mainGw)) + marca, '',
+          (l.mainGw <= 0
             ? 'Nothing in Main or Gateway to send today. The line is not blocked — stock may be on the way.'
-            : `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
+            : `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`)
+          + (tomado > 0 ? ` — an assembly on this sheet already takes ${n0(tomado)} of these.` : ''));
       }
       case 'ask':
       {
@@ -1497,7 +1528,7 @@
         }
         // Assembly: a qtd de cada componente = ask do pai × qtd por unidade.
         // Ao vivo, sem redesenhar a tabela (mesmo motivo do repaintCover).
-        if (k === 'ask' && l.isBom) repaintBomComps(l);
+        if (k === 'ask' && l.isBom) { repaintBomComps(l); repaintTaken(); }
       });
       inp.addEventListener('change', saveDraft);
       inp.addEventListener('click', e => e.stopPropagation());
@@ -1576,6 +1607,18 @@
   }
   // Assembly: repinta SÓ as células de qtd das sub-linhas de componente do pai
   // digitado (ask × qtd-por-unidade), sem redesenhar a tabela.
+  /* A marca "(N)" ao lado do Main, atualizada sem redesenhar a tabela.
+     renderGrid reescreve tudo e levaria o cursor junto — e quem mexe no ask de
+     um assembly esta digitando. */
+  function repaintTaken() {
+    S.bomTake = bomDemandInSheet();
+    $('rpGrid').querySelectorAll('tr.rp-line[data-code]').forEach((tr) => {
+      const el = tr.querySelector('.rp-taken'); if (!el) return;
+      const t = S.bomTake.get(String(tr.getAttribute('data-code')).toUpperCase()) || 0;
+      el.textContent = t > 0 ? `(${n0(t)})` : '';
+    });
+  }
+
   function repaintBomComps(l) {
     if (!l || !l.isBom) return;
     const ask = clampInt(l.ask);
@@ -1852,8 +1895,34 @@
       toast('Assembly (BOM) lines go out through Export CSV for now — the automatic Cin7 transfer with the components is the next step.', true);
       return;
     }
-    const lines = S.lines.map(l => ({ sku: l.code, qty: finalQty(l) })).filter(x => x.qty > 0);
+    /* CONSOLIDA POR SKU, como o Export CSV ja faz.
+       O Cin7 rejeita a mesma linha duas vezes no documento. Hoje isto nao dispara
+       — acPick ja recusa o codigo repetido digitado a mao e a carga sugerida
+       desconta o que ja esta na planilha — mas o Export consolida e este caminho
+       nao consolidava, o que e a mesma carga saindo por duas portas com regras
+       diferentes. Quando a Etapa 2 mandar os COMPONENTES por aqui, o repetido
+       passa a ser normal: dois assemblies que dividem uma peca. */
+    const porSku = new Map();
+    for (const l of S.lines) {
+      const q = finalQty(l);
+      if (!(q > 0)) continue;
+      const k = String(l.code).toUpperCase();
+      const ex = porSku.get(k);
+      if (ex) ex.qty += q; else porSku.set(k, { sku: l.code, qty: q, canSend: Number(l.canSend || 0) });
+    }
+    const lines = [...porSku.values()].map(x => ({ sku: x.sku, qty: x.qty }));
     if (!lines.length) { toast('No line has a quantity', true); return; }
+    /* VALIDACAO — aqui bloqueia, ao contrario da planilha.
+       Na grade, pedir acima do que o Main tem so recebe a marca ambar: a filial
+       pode estar pedindo adiante e quem decide e o Main. Aqui e diferente, porque
+       este botao cria uma transferencia REAL no Cin7: um documento para estoque
+       que nao existe nasce impossivel de atender. */
+    const excede = [...porSku.values()].filter(x => x.qty > x.canSend);
+    if (excede.length) {
+      const l = excede.slice(0, 3).map(x => `${x.sku} (asked ${n0(x.qty)}, Main can send ${n0(x.canSend)})`).join(', ');
+      toast(`${excede.length} line(s) ask more than Main can send: ${l}${excede.length > 3 ? '…' : ''}`, true);
+      return;
+    }
     placing = true;
     const btn = $('btnAdvance'); if (btn) { btn.disabled = true; btn.textContent = 'Sending to Cin7…'; }
     try {
@@ -2172,7 +2241,21 @@ The branch column is the decision that was recorded; the columns after it are wh
   function loadDraft() { try { return JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (_) { return null; } }
   function restoreDraft(d) {
     S.stage = d.stage || 'draft';
-    S.lines = (d.lines || []).map(sv => { const r = buildRow(sv.code); if (!r) return null; r.ask = clampInt(sv.ask); r.invQty = sv.invQty == null ? null : clampInt(sv.invQty); r.reason = sv.reason || ''; r.comment = sv.comment || ''; return r; }).filter(Boolean);
+    /* De-duplica na volta do rascunho. acPick recusa o codigo repetido, mas um
+       rascunho gravado antes dessa guarda (ou por outra versao) traria a linha
+       duplicada de volta — e o Cin7 nao aceita o mesmo SKU duas vezes no
+       documento. As quantidades somam em vez de a segunda linha sumir com o que
+       alguem digitou. */
+    const vistos = new Map();
+    S.lines = (d.lines || []).map(sv => { const r = buildRow(sv.code); if (!r) return null; r.ask = clampInt(sv.ask); r.invQty = sv.invQty == null ? null : clampInt(sv.invQty); r.reason = sv.reason || ''; r.comment = sv.comment || ''; return r; })
+      .filter(Boolean)
+      .filter(r => {
+        const k = String(r.code).toUpperCase(), ex = vistos.get(k);
+        if (!ex) { vistos.set(k, r); return true; }
+        ex.ask = clampInt(ex.ask) + clampInt(r.ask);
+        if (r.invQty != null) ex.invQty = clampInt(ex.invQty || 0) + clampInt(r.invQty);
+        return false;
+      });
   }
   function startOver() {
     if (S.lines.length && !confirm('Start this plan over? Your current lines will be cleared (approved snapshots are kept in History).')) return;
