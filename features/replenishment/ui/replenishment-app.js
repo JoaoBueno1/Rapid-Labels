@@ -1949,7 +1949,17 @@
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
       S.lastTr = d.number;
       toast(d.already ? `Already placed: ${d.number}` : `${d.number} created in Cin7 · ${d.order_lines} lines`);
-      renderStage();
+      /* A FOLHA SE ENCERRA AQUI.
+         Ela continuava na tela depois de virar transferencia no Cin7, e clicar
+         numa linha reabria a mesma carga ja enviada — o caminho mais curto para
+         mandar duas vezes. O registro dela nao se perde: ficou no History,
+         congelado nos valores que sairam, com o numero da TR.
+         O rascunho local tambem sai, senao a proxima abertura ressuscita a folha
+         que ja foi. */
+      S.lines = [];
+      S.stage = 'draft';
+      saveDraft();
+      enterGrid();
     } catch (e) {
       // Voltar o estágio: aprovado sem TR seria mentira na tela.
       S.stage = STAGES[S.mode][STAGES[S.mode].length - 2];

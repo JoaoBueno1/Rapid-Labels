@@ -319,41 +319,55 @@ function register(app, db) {
   async function refrescarStatus(rows) {
     const abertos = rows.filter((r) => r.cin7_task_id && !FINAIS.has(r.cin7_status || ''));
     if (!abertos.length) return rows;
+    /* LÊ DO ESPELHO, não do Cin7.
+       O Cin7 Core não tem webhook de transferência — confirmado na conta (9
+       webhooks registrados, nenhum de transfer) e na taxonomia da API. Por isso
+       existe .github/workflows/cin7-transfers-sync.yml, que já traz OPEN +
+       recém-modificadas para cin7_mirror.stock_transfers de 2 em 2 horas.
+       Perguntar ao Cin7 aqui gastava cota — 60/min para a aplicação inteira —
+       para obter o que já estava em casa, e só quando alguém abria a tela.
+
+       E lia `Page=1&Limit=100`: uma transferência aberta que saísse das 100 mais
+       recentes nunca mais era relida, e o status dela congelava para sempre.
+       O espelho não tem essa borda — a consulta é por TaskID. */
     let lista;
     try {
-      const res = await fetch('https://inventory.dearsystems.com/ExternalApi/v2/stockTransferList?Page=1&Limit=100',
-        { headers: headers(), signal: AbortSignal.timeout(20000) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = await res.json();
-      lista = j.StockTransferList || j.StockTransfers || j.List || [];
+      const ids = abertos.map((r) => `"${String(r.cin7_task_id).replace(/"/g, '')}"`).join(',');
+      lista = await sbAll(`stock_transfers?select=task_id,number,status,completion_date,synced_at`
+        + `&task_id=in.(${ids})`, 'cin7_mirror');
     } catch (e) {
       // Falhar aqui NÃO pode esconder o histórico. Devolve o que há em banco,
       // e cada linha diz quando foi lida pela última vez — que é o que impede
       // um status velho de passar por atual.
       return rows.map((r) => ({ ...r, cin7_refresh_error: e.message }));
     }
-    const porTask = lista.reduce((m, t) => (m[String(t.TaskID).toLowerCase()] = t, m), {});
+    const porTask = lista.reduce((m, t) => (m[String(t.task_id).toLowerCase()] =
+      { Status: t.status, CompletionDate: t.completion_date, SyncedAt: t.synced_at }, m), {});
     const mudou = [];
     for (const r of abertos) {
       const t = porTask[String(r.cin7_task_id).toLowerCase()];
       if (!t || t.Status === r.cin7_status) continue;
-      mudou.push({ id: r.id, status: t.Status, done: t.CompletionDate ? String(t.CompletionDate).slice(0, 10) : null });
+      mudou.push({ id: r.id, status: t.Status, done: t.CompletionDate ? String(t.CompletionDate).slice(0, 10) : null,
+                   at: t.SyncedAt || new Date().toISOString() });
     }
     if (mudou.length) {
-      const agora = new Date().toISOString();
       for (const m of mudou) {
+        /* O carimbo e o synced_at do ESPELHO, nao a hora em que esta pagina o
+           leu. Carimbar `agora` diria "lido agora" para um dado que pode ter
+           duas horas — que e exatamente a armadilha que esta coluna existe para
+           impedir (ver db/023_transfer_status.sql). */
         await sbPatch(`replenishment_order?id=eq.${encodeURIComponent(m.id)}`, 'rapid_inv',
-          { cin7_status: m.status, cin7_status_at: agora, cin7_completed: m.done });
+          { cin7_status: m.status, cin7_status_at: m.at, cin7_completed: m.done });
       }
     }
     // Carimba a hora da leitura em TODAS as que foram consultadas, inclusive
     // as que não mudaram: "lido agora e continua ORDERED" é informação, e sem
     // o carimbo ela ficaria indistinguível de "nunca foi lido".
-    const idsLidos = abertos.filter((r) => porTask[String(r.cin7_task_id).toLowerCase()]).map((r) => r.id);
-    if (idsLidos.length) {
-      const lista = idsLidos.map((x) => `"${String(x).replace(/"/g, '')}"`).join(',');
-      await sbPatch(`replenishment_order?id=in.(${lista})&cin7_status=not.is.null`, 'rapid_inv',
-        { cin7_status_at: new Date().toISOString() });
+    for (const r of abertos) {
+      const t = porTask[String(r.cin7_task_id).toLowerCase()];
+      if (!t || !t.SyncedAt || t.SyncedAt === r.cin7_status_at) continue;
+      await sbPatch(`replenishment_order?id=eq.${encodeURIComponent(r.id)}&cin7_status=not.is.null`, 'rapid_inv',
+        { cin7_status_at: t.SyncedAt });
     }
     const idx = mudou.reduce((m, x) => (m[x.id] = x, m), {});
     return rows.map((r) => {
@@ -361,7 +375,7 @@ function register(app, db) {
       if (!t) return r;
       return { ...r, cin7_status: idx[r.id] ? idx[r.id].status : (r.cin7_status || t.Status),
                cin7_completed: t.CompletionDate ? String(t.CompletionDate).slice(0, 10) : r.cin7_completed,
-               cin7_status_at: new Date().toISOString() };
+               cin7_status_at: t.SyncedAt || r.cin7_status_at };
     });
   }
 
