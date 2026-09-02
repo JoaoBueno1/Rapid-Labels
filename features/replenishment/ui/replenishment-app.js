@@ -279,6 +279,12 @@
        variável de ambiente numa máquina passou por regressão de código. */
     S.repAvgErro = falhou.length ? falhou.join(' · ') : null;
     if (falhou.length) console.error('[replenishment] régua não carregou:', S.repAvgErro);
+    /* O rateio e feito da demanda das sete filiais; demanda nova invalida as
+       fatias. Aqui e nao no chamador: applySettings limpava o cache e, tres
+       linhas abaixo, reconstruia as linhas — repovoando-o com a demanda VELHA,
+       porque o refreshRepAvg dela so resolve depois. Limpar na fonte fecha esse
+       caminho e todos os outros. */
+    S.alloc = null;
     apontarRegua();
   }
 
@@ -308,6 +314,7 @@
       for (const x of (d.rows || [])) { (byBranch[x.branch_code] || (byBranch[x.branch_code] = {}))[x.sku_key] = x; }
       BRANCHES.forEach(b => { S.avgLive[b.code] = byBranch[b.code] || {}; });
       S.repAvgErro = null;
+      S.alloc = null;   // mesma razao de loadRepAvg: demanda nova, fatias velhas
     } catch (e) {
       // A rota nova pode não existir ainda (server não reiniciado após o deploy).
       // Em vez de sumir com a demanda, CAI no caminho antigo (as sete chamadas
@@ -469,22 +476,8 @@
       const n = Math.max(0, alvo - avail - it);
       if (n > 0) { need[b.code] = n; total += n; }
     }
-    // Capacidade do lado do Main — a MESMA de buildRow, sem o cap do rateio
-    // (senao um alimentaria o outro).
-    const p = S.prod[k] || {}, avgRow = S.avgBy[k] || null;
-    const bom = (S.bom && S.bom[k]) || null;
-    let cap;
-    if (bom) {
-      const comps = bom.components.filter((c) => Number(c.quantity) > 0);
-      cap = comps.length ? Math.min(...comps.map((c) => {
-        const bruto = (S.stock.MAIN && S.stock.MAIN[c.code]) || 0;
-        const res = SET.bomSafety ? RC.computeMainSafety(mainAvgFor(String(c.code).toUpperCase())) : 0;
-        return Math.floor(Math.max(bruto - res, 0) / Number(c.quantity));
-      })) : 0;
-    } else {
-      const mainGw = Number((S.stock.MAIN && S.stock.MAIN[k]) || 0) + gwStock(k);
-      cap = Math.max(0, mainGw - RC.computeMainSafety(mainAvgFor(k)));
-    }
+    // Sem o cap do rateio, senao um alimentaria o outro.
+    const cap = mainCapacityFor(k);
     // Cabe para todo mundo: ninguem e cortado. O rateio so existe na escassez.
     const shares = {};
     if (total > 0 && total > cap) {
@@ -511,6 +504,27 @@
 
      Sem fonte viva (a chamada falhou), volta para a tabela: velha e melhor que
      reserva zero em tudo. */
+  /* O TETO DE ENVIO DO MAIN para um SKU, numa definicao so.
+     Estava escrito duas vezes — aqui e dentro de buildRow — e duas copias da
+     mesma regra divergem no dia em que alguem ajusta uma. O rateio precisa dela
+     sem o proprio cap aplicado, e buildRow precisa dela para depois aplicar o
+     cap: mesma conta, dois usos. */
+  function mainCapacityFor(k) {
+    const bom = (S.bom && S.bom[k]) || null;
+    if (!bom) {
+      const mainGw = Number((S.stock.MAIN && S.stock.MAIN[k]) || 0) + gwStock(k);
+      return Math.max(0, mainGw - RC.computeMainSafety(mainAvgFor(k)));
+    }
+    const comps = bom.components.filter((c) => Number(c.quantity) > 0);
+    if (!comps.length) return 0;
+    return Math.min(...comps.map((c) => {
+      const cc = String(c.code).toUpperCase();
+      const bruto = Number((S.stock.MAIN && S.stock.MAIN[c.code]) || 0);
+      const res = SET.bomSafety ? RC.computeMainSafety(mainAvgFor(cc)) : 0;
+      return Math.floor(Math.max(bruto - res, 0) / Number(c.quantity));
+    }));
+  }
+
   function mainAvgFor(k) {
     if (S.mainLive) return Number(S.mainLive[k] || 0);
     return RC.pickMainAvg(S.avgBy[k] || null);
@@ -574,21 +588,13 @@
       const capacity = (at) => comps.length
         ? Math.min(...comps.map((c) => Math.floor(Math.max(Number(at(c.code) || 0), 0) / Number(c.quantity))))
         : 0;
-      /* A MESMA reserva que o item normal ja tinha, agora tambem no assembly.
-         O item normal envia Main+Gateway MENOS computeMainSafety (8 semanas do
-         consumo do proprio Main). O assembly enviava o estoque de componente
-         CHEIO — o codigo aqui ja anotava a divida: "sem reservar safety... os
-         dois fluxos disputam o mesmo estoque no Main".
-         Era a assimetria que deixava o motor prometer as 6 unicas unidades que o
-         Main consegue montar, ignorando que o Main tambem vende o item.
-         Desligavel no Settings porque muda o que a empresa pede: quem quiser o
-         teto bruto de volta tira a marca. */
-      bomBuild = capacity((cc) => {
-        const bruto = (S.stock.MAIN && S.stock.MAIN[cc]) || 0;
-        if (!SET.bomSafety) return bruto;
-        return bruto - RC.computeMainSafety(mainAvgFor(String(cc).toUpperCase()));
-      });
-      branchBuild = capacity((cc) => stock[cc]);
+      /* A capacidade do lado do MAIN vem de mainCapacityFor — a mesma funcao que
+         o rateio usa. Ela ja aplica a reserva de seguranca nos componentes (a que
+         o item normal sempre teve e o assembly nao tinha: o motor prometia as 6
+         unicas unidades que o Main consegue montar ignorando que o Main tambem
+         vende o item). Uma definicao so, para as duas nao divergirem. */
+      bomBuild = mainCapacityFor(k);
+      branchBuild = capacity((cc) => stock[cc]);   // a FILIAL, sem reserva: e o SOH efetivo dela
     }
     // SOH efetivo: montado → o que a FILIAL consegue montar; normal → acabado.
     const avail = bom ? branchBuild : Number(stock[k] || 0);
@@ -608,9 +614,10 @@
     // NOTA (refinamento p/ Etapa 2): bomBuild usa o estoque de componente CHEIO,
     // sem reservar safety. Se o componente também for reposto sozinho, os dois
     // fluxos disputam o mesmo estoque no Main — descontar/reservar na Etapa 2.
-    // O rateio (quando ligado) e mais um teto, nunca uma fonte: ele so pode
-    // DIMINUIR o que o Main envia, jamais autorizar mais do que ele tem.
-    const canSend = Math.min(bom ? bomBuild : Math.max(0, mainGw - RC.computeMainSafety(mainAvg)), allocShare(k));
+    // Uma conta so para os dois casos: mainCapacityFor ja resolve BOM e item
+    // normal. O rateio (quando ligado) e mais um teto, nunca uma fonte — ele so
+    // pode DIMINUIR o que o Main envia, jamais autorizar mais do que ele tem.
+    const canSend = Math.min(mainCapacityFor(k), allocShare(k));
     let sug = Math.max(0, target - avail - inTransit);
     if (SET.cartons && p.carton_quantity) sug = RC.smartCartonRound(sug, p.carton_quantity, canSend, target, { avgMonthBranch: avg, branchAvailable: avail, targetWeeks: weeks }).qty;
     sug = Math.min(sug, canSend);
@@ -1264,6 +1271,10 @@
     return '';
   }
 
+  // Pedido acima do que o Main consegue mandar hoje. Assembly compara com a
+  // capacidade de MONTAR, que e o teto real dele.
+  const askOver = (l) => !l.isBomComp && Number(l.canSend) >= 0 && clampInt(l.ask) > Number(l.canSend || 0);
+
   function cell(l, c) {
     const g = c.group, gc = (g === 'ord' ? ' g-ord' : g === 'pack' ? ' g-pack' : '') + (IDCLS[c.key] || '');
     const base = c.align === 'num' ? 'num' : c.align === 'code' ? 'code txt' : 'txt';
@@ -1421,7 +1432,19 @@
             : `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
       }
       case 'ask':
-        return wrap(askEditable() ? `<input class="rp-in big" data-k="ask" value="${clampInt(l.ask) || ''}" inputmode="numeric">` : `<span class="rp-lock">${n0(clampInt(l.ask))}</span>`);
+      {
+        /* A sugestao SEMPRE respeita canSend, mas o que a filial DIGITA nao passa
+           por nenhum teste — nem ao digitar, nem no submit, nem no placeOrder, que
+           cria a transferencia no Cin7 com o numero que estiver la. Pedir 500 com 5
+           no Main virava um pedido de 500 e a descoberta acontecia no picking.
+           Marca, nao bloqueia: pedir adiante e legitimo, e o fluxo desta tela e
+           "a filial pede, o Main decide". O que nao pode e pedir sem saber. */
+        const over = askOver(l);
+        const tt = over ? `Asking ${n0(clampInt(l.ask))} but Main can send ${n0(l.canSend)} today.` : '';
+        return wrap(askEditable()
+          ? `<input class="rp-in big${over ? ' is-over' : ''}" data-k="ask" value="${clampInt(l.ask) || ''}" inputmode="numeric"${tt ? ` title="${esc(tt)}"` : ''}>`
+          : `<span class="rp-lock${over ? ' is-over' : ''}"${tt ? ` title="${esc(tt)}"` : ''}>${n0(clampInt(l.ask))}</span>`);
+      }
       case 'invQty': {
         if (invEditable()) return `<td class="num g-ord"><input class="rp-in big" data-k="invQty" value="${l.invQty == null ? '' : clampInt(l.invQty)}" inputmode="numeric"></td>`;
         const val = l.invQty == null ? '<span class="rp-sub" title="Unlocks when the branch submits and the inventory check starts">—</span>' : `<span class="rp-lock">${n0(clampInt(l.invQty))}</span>`;
@@ -1465,6 +1488,13 @@
         else if (k === 'invQty') l.invQty = inp.value === '' ? null : clampInt(inp.value);
         else l[k] = inp.value;
         if (k === 'ask' || k === 'invQty') { updateCount(); repaintCover(inp.closest('tr'), l); }
+        if (k === 'ask') {
+          // A marca tem de acompanhar a digitacao; so no render ela mentiria ate
+          // o proximo redesenho.
+          const over = askOver(l);
+          inp.classList.toggle('is-over', over);
+          inp.title = over ? `Asking ${n0(clampInt(l.ask))} but Main can send ${n0(l.canSend)} today.` : '';
+        }
         // Assembly: a qtd de cada componente = ask do pai × qtd por unidade.
         // Ao vivo, sem redesenhar a tabela (mesmo motivo do repaintCover).
         if (k === 'ask' && l.isBom) repaintBomComps(l);
@@ -1819,7 +1849,7 @@
     // pendente). Bloquear aqui evita criar uma stockTransfer do MONTADO, que tem
     // ~0 de estoque acabado. Ver o plano do feature.
     if ((S.lines || []).some(l => l.isBom)) {
-      toast('Itens BOM saem pelo Export CSV por enquanto — a transferência automática no Cin7 com os componentes entra na próxima etapa.', true);
+      toast('Assembly (BOM) lines go out through Export CSV for now — the automatic Cin7 transfer with the components is the next step.', true);
       return;
     }
     const lines = S.lines.map(l => ({ sku: l.code, qty: finalQty(l) })).filter(x => x.qty > 0);
