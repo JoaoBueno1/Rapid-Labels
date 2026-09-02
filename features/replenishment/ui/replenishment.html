@@ -184,6 +184,12 @@
         </label>
         <label class="rp-check"><input type="checkbox" id="setCartons"> Round suggested QTY up to full cartons</label>
         <label class="rp-check"><input type="checkbox" id="setBomSafety"> Keep Main&rsquo;s safety stock on assembly components too</label>
+        <label class="rp-check"><input type="checkbox" id="setFairShare"> Share Main&rsquo;s stock between branches (fair share)</label>
+        <small class="rp-set-note">Each branch is planned on its own against Main&rsquo;s <b>full</b> stock, so the same units can be
+          promised twice &mdash; today 286 SKUs are suggested to two or more branches, and 26 of them add up to more than Main holds.
+          With this on, a short SKU is split in proportion to what each branch needs. Leave it <b>off</b> for a normal day:
+          branches order on different days, and rationing a branch that is ordering now against one that might order next week
+          holds back stock for nobody. Turn it on when you plan the whole network in one sitting.</small>
         <small class="rp-set-note">A normal item can only be sent from Main+Gateway <b>minus</b> the safety Main keeps for its own sales.
           Assemblies were exempt: the engine offered every unit Main could build, ignoring that Main sells the item as well.
           Turn this off to go back to the raw build capacity.</small>

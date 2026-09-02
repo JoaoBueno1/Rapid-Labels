@@ -52,6 +52,8 @@
     // Ligado por padrao: e o mesmo criterio que o item normal sempre teve, e o
     // padrao anterior era a excecao, nao a regra.
     bomSafety: true,
+    // Rateio entre filiais. Desligado por padrao — ver allocShare.
+    fairShare: false,
     // demand: qual das duas médias vira quantidade sugerida. Não decide mais o
     // que a planilha MOSTRA — as duas estão sempre lá, cada uma na sua coluna.
     // O padrão é 'both' (Mixed = o MAIOR das duas por SKU): cobre o rep-only
@@ -142,6 +144,10 @@
   // ── state ────────────────────────────────────────────────────────────
   const S = {
     avg: [], avgBy: {}, ranks: null, stock: {}, inT: {}, prod: {}, prodList: [], pallet: {}, repAvg: {}, repAvgInfo: null, loaded: false,
+    // Cache do rateio (fairShare). Uma entrada por SKU, calculada sob demanda e
+    // jogada fora quando os Settings ou os dados mudam — recalcular por linha
+    // custaria 7 filiais x cada SKU desenhado.
+    alloc: null,
     branch: null, view: 'weekly', mode: 'weekly', stage: 'draft', lines: [],
     sort: { key: null, dir: 1 }, search: '', vis: { weekly: null, daily: null }, sideSku: null,
     // Divergências entre a leitura emendada e o total que o servidor informa.
@@ -384,6 +390,7 @@
       if (k && v > 0) S.pallet[k] = v;
     }
     S.stock = buckets; S.inT = inT; S.ranks = RC.computeAbcRanks(avg); S.loaded = true;
+    S.alloc = null;   // estoque novo: as fatias guardadas foram calculadas sobre o antigo
     // Se a emenda não bateu com o total do servidor, o rodapé diz isso em vez
     // de anunciar um número redondo que ninguém conferiu.
     if (S.emenda && S.emenda.length) {
@@ -418,6 +425,72 @@
   }
 
   // ── build one line from a SKU code for the current branch ─────────────
+  /* RATEIO ENTRE FILIAIS (fair share).
+     O motor calcula uma filial por vez contra o estoque CHEIO do Main, e nada
+     reserva nada entre elas. Medido no dado vivo: 286 SKUs sao sugeridos para
+     duas ou mais filiais ao mesmo tempo e, em 26 deles, a soma dos pedidos passa
+     do que o Main tem — 118 unidades prometidas duas vezes. Hoje quem exporta
+     primeiro leva, e a segunda filial descobre no picking.
+
+     Quando ligado, cada filial recebe a fatia do estoque proporcional a sua
+     NECESSIDADE, que e a regra classica de fair share de DRP. Proporcional a
+     necessidade, e nao por prioridade de filial, porque prioridade fixa faz a
+     ultima da fila nunca receber enquanto a primeira estiver com fome.
+
+     DESLIGADO por padrao: as filiais pedem em dias diferentes, entao rateio
+     entre pedidos que nao acontecem juntos tira estoque de quem esta pedindo
+     agora para guardar para quem talvez peca semana que vem. Serve para o dia em
+     que se planeja a rede toda de uma vez. */
+  function allocShare(k) {
+    if (!SET.fairShare) return Infinity;
+    if (!S.alloc) S.alloc = new Map();
+    /* A chave inclui a REGUA. branchCountFor e loadCount trocam SET.demand por
+       baixo para contar as outras opcoes, e uma fatia calculada em 'both' nao vale
+       para 'branch' — sem isto o cartao de uma regua responderia com o rateio de
+       outra. */
+    const ck = SET.demand + '|' + k;
+    if (S.alloc.has(ck)) return S.alloc.get(ck)[S.branch.code] ?? Infinity;
+
+    const need = {};
+    let total = 0;
+    for (const b of BRANCHES) {
+      const viva = (S.avgLive[b.code] || {})[k];
+      if (!viva) continue;
+      const lo = Number(viva.loc_avg || 0), re = Number(viva.rep_avg || 0);
+      const a = SET.demand === 'rep' ? re : SET.demand === 'branch' ? lo : Math.max(lo, re);
+      if (a <= 0) continue;
+      const avail = Number((S.stock[b.code] || {})[k] || 0);
+      const it = Number((S.inT[b.code] && S.inT[b.code][k]) || 0);
+      const alvo = RC.computeBranchTarget(a, SET.abc ? RC.targetWeeksForTier((S.ranks && S.ranks.get(k)) || 'C') : SET.weeks);
+      const n = Math.max(0, alvo - avail - it);
+      if (n > 0) { need[b.code] = n; total += n; }
+    }
+    // Capacidade do lado do Main — a MESMA de buildRow, sem o cap do rateio
+    // (senao um alimentaria o outro).
+    const p = S.prod[k] || {}, avgRow = S.avgBy[k] || null;
+    const bom = (S.bom && S.bom[k]) || null;
+    let cap;
+    if (bom) {
+      const comps = bom.components.filter((c) => Number(c.quantity) > 0);
+      cap = comps.length ? Math.min(...comps.map((c) => {
+        const bruto = (S.stock.MAIN && S.stock.MAIN[c.code]) || 0;
+        const ar = S.avgBy[String(c.code).toUpperCase()];
+        const res = SET.bomSafety ? RC.computeMainSafety(ar ? RC.pickMainAvg(ar) : 0) : 0;
+        return Math.floor(Math.max(bruto - res, 0) / Number(c.quantity));
+      })) : 0;
+    } else {
+      const mainGw = Number((S.stock.MAIN && S.stock.MAIN[k]) || 0) + gwStock(k);
+      cap = Math.max(0, mainGw - RC.computeMainSafety(avgRow ? RC.pickMainAvg(avgRow) : 0));
+    }
+    // Cabe para todo mundo: ninguem e cortado. O rateio so existe na escassez.
+    const shares = {};
+    if (total > 0 && total > cap) {
+      for (const c of Object.keys(need)) shares[c] = Math.floor(cap * (need[c] / total));
+    }
+    S.alloc.set(ck, shares);
+    return shares[S.branch.code] ?? Infinity;
+  }
+
   function buildRow(code) {
     const branch = S.branch, k = String(code || '').trim().toUpperCase(); if (!k) return null;
     const p = S.prod[k] || {}, avgRow = S.avgBy[k] || null, stock = S.stock[branch.code] || {};
@@ -492,7 +565,9 @@
     // NOTA (refinamento p/ Etapa 2): bomBuild usa o estoque de componente CHEIO,
     // sem reservar safety. Se o componente também for reposto sozinho, os dois
     // fluxos disputam o mesmo estoque no Main — descontar/reservar na Etapa 2.
-    const canSend = bom ? bomBuild : Math.max(0, mainGw - RC.computeMainSafety(mainAvg));
+    // O rateio (quando ligado) e mais um teto, nunca uma fonte: ele so pode
+    // DIMINUIR o que o Main envia, jamais autorizar mais do que ele tem.
+    const canSend = Math.min(bom ? bomBuild : Math.max(0, mainGw - RC.computeMainSafety(mainAvg)), allocShare(k));
     let sug = Math.max(0, target - avail - inTransit);
     if (SET.cartons && p.carton_quantity) sug = RC.smartCartonRound(sug, p.carton_quantity, canSend, target, { avgMonthBranch: avg, branchAvailable: avail, targetWeeks: weeks }).qty;
     sug = Math.min(sug, canSend);
@@ -1494,7 +1569,7 @@
         <small>${esc(texto)}</small></label>`;
     }).join('');
     box && box.querySelectorAll('input[name=lbasis]').forEach(r => r.addEventListener('change', () => {
-      SET.demand = r.value; saveSet();
+      SET.demand = r.value; S.alloc = null; saveSet();
       // Recarrega para as quantidades já virem preenchidas pela régua escolhida.
       refreshRepAvg().then(() => { writeScope(); writeRulers(); renderGrid(); openLoadModal(bomOnly); });
     }));
@@ -2164,6 +2239,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     if ($('setAvgSource')) $('setAvgSource').value = SET.avgSource;
     $('setAvgRound').value = SET.avgRound; $('setCartons').checked = SET.cartons;
     $('setBomSafety').checked = SET.bomSafety !== false;
+    $('setFairShare').checked = !!SET.fairShare;
     if ($('setMinAvg')) $('setMinAvg').value = SET.minAvg;
     const rows = S.avg.map(r => ({ code: r.product, tot: BRANCHES.reduce((s, b) => s + pickAvg(r, b), 0) })).filter(r => r.tot > 0).sort((a, b) => b.tot - a.tot).slice(0, 60);
     $('setAvgTable').innerHTML = '<thead><tr><th class="txt">Rapid Code</th><th class="num">Tier</th><th class="num">Network avg/mo</th></tr></thead><tbody>' +
@@ -2176,6 +2252,8 @@ The branch column is the decision that was recorded; the columns after it are wh
     SET.abc = $('setAbc').checked; if ($('setAvgSource')) SET.avgSource = $('setAvgSource').value;
     SET.avgRound = $('setAvgRound').value; SET.cartons = $('setCartons').checked;
     SET.bomSafety = $('setBomSafety').checked;
+    SET.fairShare = $('setFairShare').checked;
+    S.alloc = null;   // regra mudou: o rateio guardado nao vale mais
     if ($('setMinAvg')) SET.minAvg = Math.max(0, Number($('setMinAvg').value) || 0);
     const basisBefore = SET.demand, monthsBefore = SET.salesMonths;
     if ($('setDemand')) SET.demand = $('setDemand').value;
