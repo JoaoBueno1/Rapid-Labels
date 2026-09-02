@@ -83,7 +83,7 @@ SELECT d.sku_key,
        w.code                                    AS location_branch,
        m.branch_code                             AS rep_branch,
        sum(d.qty_signed)::numeric                AS qty
-  FROM cin7_mirror.v_sales_demand_line d
+  FROM cin7_mirror.v_rp_demand d
   LEFT JOIN rapid_inv.warehouses       w ON w.cin7_location_name = d.location_name
   LEFT JOIN rapid_inv.sales_rep_branch m ON m.sales_rep = d.sales_rep AND m.is_active
  WHERE d.order_date IS NOT NULL

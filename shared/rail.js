@@ -85,7 +85,7 @@
       { t: 'Container Check', href: '/features/container-check/container-check.html', ic: 'inbox' },
       { t: 'Gateway', href: '/gateway-main.html', ic: 'fact', dot: 'railDotGateway' },
       { t: 'Branch Replenishment', href: '/features/replenishment/ui/replenishment.html', ic: 'truck',
-        match: ['/features/replenishment/ui/replenishment.html', '/features/replenishment/replenishment.html', '/features/replenishment/replenishment-branch.html'] },
+        match: ['/features/replenishment/ui/replenishment.html'] },
     ]},
     { group: 'Labels & Barcodes', items: [
       { t: 'Search & Print', modal: 'openSearchModal', ic: 'tag' },

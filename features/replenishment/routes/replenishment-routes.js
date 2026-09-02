@@ -388,11 +388,13 @@ function register(app, db) {
   /**
    * As médias, calculadas na janela que o usuário escolher.
    *
-   * Fonte: cin7_mirror.v_sales_demand_line — 170.672 linhas, 13 meses
-   * contíguos, sales_rep e location_name em 100%. NÃO usa sale_lines +
-   * sales_orders: ali o location_name existe em 27,5% dos pedidos e o viés é
-   * CRONOLÓGICO (0,9% em ago/25 contra 99,4% em jul/26), então uma "média de 6
-   * meses" por aquele caminho seria "jun–ago/26" disfarçada.
+   * Fonte: cin7_mirror.v_rp_demand (via as RPCs), uma UNION medida em 02/09:
+   * history importada para order_date < 2026-07-01 (densa e congelada) e mirror
+   * ao vivo (sale_lines ⋈ sales_orders) de lá para cá. A costura existe porque
+   * o location_name/sales_rep do mirror hoje é 100% (o viés cronológico que
+   * antes desaconselhava este caminho foi corrigido no mirror), mas o sale_lines
+   * só ficou DENSO a partir de jun/2026 — puxar 6/12 meses direto do mirror
+   * subcontaria abr–mai pela metade. Ver o cabeçalho de db/001 para os números.
    *
    * Devolve a cobertura junto do número de propósito: sem ela o planejador lê
    * uma média de agosto como mês cheio quando o mês ainda está correndo.
@@ -550,6 +552,37 @@ function register(app, db) {
       },
       rows,
     });
+  }));
+
+  /** TODAS as filiais num passe só — a régua (loc_avg + rep_avg) de cada filial,
+   *  para os cartões da tela inicial. Uma chamada em vez de sete: a mesma
+   *  atribuição da por-filial (rep→filial via sales_rep_branch, local→filial via
+   *  warehouses), agregada de uma vez na função do banco. NÃO traz breakdown de
+   *  reps, órfãos nem janela — isso é da tela da filial aberta, que recarrega a
+   *  sua sozinha. Medido: 1 chamada (~1,1s, todas) contra 7 concorrentes (~5,3s). */
+  app.get(`${R}/all-branch-averages`, wrap(async (req, res) => {
+    const months = asInt(req.query.months, 6, 1, 13);
+    // db.query (sp_exec: UMA chamada, jsonb_agg) e NÃO sbRpc: o sbRpc pagina de
+    // 1000 em 1000 e o PostgREST RE-EXECUTA a função inteira a cada página —
+    // 9.399 linhas = 10 páginas = ~12s. Uma chamada só resolve em ~1s.
+    const rows = await db.query('SELECT * FROM public.replenishment_all_branch_averages($1)', [months]);
+    res.json({ months, rows: rows || [] });
+  }));
+
+  /** BOM: os componentes de cada assembly (bom_type='Assembly'), para a UI
+   *  desenhar as sub-linhas e o export mandar componentes em vez do montado.
+   *  Lê rapid_inv.product_bom via sp-db (rapid_inv NÃO é exposto no PostgREST —
+   *  mesma ponte que o stock-planning usa). Só a ESTRUTURA (pai→componente×qtd);
+   *  a UI enriquece com estoque/avg/locator que já tem carregado. Carton sai
+   *  aqui (o grosso); os poucos ctn/pk a UI corta com isPackSku. */
+  app.get(`${R}/bom-map`, wrap(async (req, res) => {
+    const rows = await db.query(
+      `SELECT parent_key, component_key, component_sku, quantity
+         FROM rapid_inv.product_bom
+        WHERE bom_type = 'Assembly'
+          AND parent_sku !~* 'carton'
+        ORDER BY parent_key, component_key`, []);
+    res.json({ rows: rows || [] });
   }));
 
   /** O detalhe de um SKU numa filial: quem vendeu, quanto, e por qual local. */

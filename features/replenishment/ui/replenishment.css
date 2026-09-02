@@ -62,7 +62,7 @@
 .rp-grid td.txt, .rp-grid th.txt { text-align: left; }
 .rp-grid td.code { font-family: var(--mono); font-size: 12px; }
 /* zebra on the plain cells only (keep the amber Order zone, red no-main + blank rows intact) */
-.rp-grid tbody tr:nth-child(even):not(.rp-nomain):not(.rp-intransit):not(.rp-blank) td:not(.g-ord) { background: var(--zebra); }
+.rp-grid tbody tr:nth-child(even):not(.rp-nomain):not(.rp-intransit):not(.rp-blank):not(.rp-bomcomp) td:not(.g-ord) { background: var(--zebra); }
 /* colour-coded column groups */
 .rp-grid th.g-stk { background: #d7e3f4; color: #29486f; }
 .rp-grid th.g-ord { background: #fce8a8; color: #7a5b00; }
@@ -89,6 +89,15 @@
 .rp-grid tbody tr.rp-intransit td { background: color-mix(in srgb, var(--xl-warn) 40%, #fff); }
 .rp-grid tbody tr.rp-intransit td.g-ord { background: color-mix(in srgb, var(--xl-warn) 24%, #fffbe9); }
 .rp-grid tbody tr.rp-intransit:hover td { background: color-mix(in srgb, var(--xl-warn) 52%, #fff); }
+/* Sub-linha de COMPONENTE (BOM): tom distinto do pai + faixa lateral no 1º campo
+   dizendo "componente do de cima". Fica junto do pai; só o pick separa por local. */
+.rp-grid tbody tr.rp-bomcomp td { background: #F3F0FF; color: var(--mut-2); }
+.rp-grid tbody tr.rp-bomcomp td:first-child { box-shadow: inset 4px 0 0 #8B5CF6; }
+.rp-grid tbody tr.rp-bomcomp:hover td { background: #E9E3FF; }
+.rp-grid tbody tr.rp-bomcomp .rp-bomqty { color: var(--mut-2); font-style: italic; }
+/* SOH "montável" do pai BOM: apagado + itálico — é o que a filial CONSEGUE
+   MONTAR com os componentes que tem, não estoque acabado pronto. */
+.rp-buildable { color: var(--mut-3); font-style: italic; }
 .rp-grid tbody tr.rp-line { cursor: pointer; }
 .rp-grid tbody tr.rp-line:hover td { background: color-mix(in srgb, var(--acc-soft) 55%, #fff); }
 .rp-grid tbody tr.rp-nomain:hover td { background: #fcd2d2; }
@@ -259,6 +268,7 @@ tr.rp-flagged td{box-shadow:inset 0 -2px 0 var(--xl-warn-ink)}
 .rp-life--disc{background:var(--line-2);color:var(--mut-2);border:1px solid var(--line-3)}
 .rp-life--run{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A}
 .rp-life--gw{background:#DBEAFE;color:#1E40AF;border:1px solid #BFDBFE}
+.rp-life--bom{background:#EDE9FE;color:#5B21B6;border:1px solid #DDD6FE}
 
 /* ── para onde o pedido leva a cobertura ── */
 

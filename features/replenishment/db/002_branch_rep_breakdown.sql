@@ -38,9 +38,9 @@ AS $$
          count(DISTINCT d.sku_key),
          b.note::TEXT
     FROM rapid_inv.sales_rep_branch b
-    LEFT JOIN cin7_mirror.v_sales_demand_line d
+    LEFT JOIN cin7_mirror.v_rp_demand d
            ON d.sales_rep = b.sales_rep
-          AND d.order_date >= public._rp_window(p_months)
+          AND d.order_date >= (SELECT public._rp_window(p_months))
    WHERE b.branch_code = upper(p_branch) AND b.is_active
    GROUP BY b.sales_rep, b.note
    -- Desempate por nome: sem ele, dois reps com o mesmo volume trocam de lugar
@@ -62,8 +62,8 @@ AS $$
   WITH vendas AS (
     SELECT d.sales_rep, sum(d.qty_signed) AS units,
            count(DISTINCT d.order_number) AS orders
-      FROM cin7_mirror.v_sales_demand_line d
-     WHERE d.order_date >= public._rp_window(p_months)
+      FROM cin7_mirror.v_rp_demand d
+     WHERE d.order_date >= (SELECT public._rp_window(p_months))
        AND coalesce(btrim(d.sales_rep), '') <> ''
        AND NOT EXISTS (SELECT 1 FROM rapid_inv.sales_rep_branch b
                         WHERE b.sales_rep = d.sales_rep AND b.is_active)
@@ -72,9 +72,9 @@ AS $$
   -- De onde ele mais despacha: é a pista de qual filial ele deveria estar.
   onde AS (
     SELECT DISTINCT ON (d.sales_rep) d.sales_rep, d.location_name
-      FROM cin7_mirror.v_sales_demand_line d
+      FROM cin7_mirror.v_rp_demand d
       JOIN vendas v ON v.sales_rep = d.sales_rep
-     WHERE d.order_date >= public._rp_window(p_months)
+     WHERE d.order_date >= (SELECT public._rp_window(p_months))
      GROUP BY d.sales_rep, d.location_name
      ORDER BY d.sales_rep, sum(d.qty_signed) DESC, d.location_name
   )

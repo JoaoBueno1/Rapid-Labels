@@ -37,6 +37,101 @@
 -- É idempotente — CREATE OR REPLACE, pode rodar de novo sem medo.
 -- ============================================================
 
+-- ============================================================
+-- 2026-09-02 — A DEMANDA PASSOU A LER O MIRROR AO VIVO (automático)
+--
+-- Até aqui a demanda vinha SÓ de cin7_mirror.v_sales_demand_line, que lê a
+-- tabela sales_history_line: um IMPORT MANUAL do report "Sale Order Details" do
+-- Cin7 (core/cin7/import-sale-order-details.js, que ainda precisa de
+-- SUPABASE_DB_PASSWORD). Import manual não é automático — alguém tem de baixar o
+-- arquivo e rodar o script. Resultado medido: a janela era dinâmica, mas o DADO
+-- congelou no último import (27/08), perdendo ~27.581 unidades de venda de 28/08
+-- a 02/09 que a reposição nem via.
+--
+-- v_rp_demand é a fonte AUTOMÁTICA. Ela é uma UNION de duas metades, com uma
+-- costura em 2026-07-01, e a costura NÃO é estética — é medida:
+--
+--   O sale_lines do mirror só passou a ser capturado DENSO a partir de jun/2026.
+--   Antes disso o pedido tem cabeçalho (sales_orders — daí location_name e
+--   sales_rep darem 100%) mas quase nenhuma LINHA. Medido em 02/09, por mês,
+--   unidades history × mirror:
+--     dez/25  87.004 × 6.726  (-92%)      abr/26 141.255 × 58.992  (-58%)
+--     jan/26 116.991 × 14.470 (-88%)      mai/26 152.622 × 61.083  (-60%)
+--     fev/26 142.478 × 36.667 (-74%)      jun/26 183.397 × 173.440  (-5%)  ok
+--     mar/26 143.265 × 35.283 (-75%)      jul/26 154.198 × 160.230  (+4%)  ok
+--   Puxar 6 ou 12 meses direto do mirror subcontaria abr–mai pela metade, calado.
+--
+--   • order_date <  2026-07-01  → v_sales_demand_line (history importada).
+--     É densa e CONGELADA: mês velho não muda mais, então não precisa
+--     reimportar nunca. Foi para ISTO que o import existiu — backfill histórico,
+--     uma vez, para construir o sistema. Não é dependência contínua.
+--   • order_date >= 2026-07-01  → mirror ao vivo (sale_lines ⋈ sales_orders),
+--     que sincroniza sozinho a cada ~2h. É a metade que muda: recupera 28/08–
+--     02/09 e capta TODO pedido novo, para sempre. Conferida contra a history
+--     nos dias que as duas têm: jul +4%, ago 1–27 +1,7% (o +10% do agosto cheio
+--     é só os dias 28–31 que a history não tinha — dado novo, correto).
+--   As duas metades são disjuntas por data: zero risco de contar o mesmo pedido
+--   duas vezes. Com o tempo a metade viva engole a janela e a history vira só
+--   cauda de +12 meses; a costura em jul/2026 continua correta para sempre.
+--
+-- ISOLADO DE PROPÓSITO: só as RPCs da reposição apontam para v_rp_demand.
+-- v_sales_demand_line NÃO é redefinida; o stock-planning segue lendo ela até
+-- aquele chat decidir migrar para cá também.
+--
+-- FIDELIDADE ao report (regras medidas em 003_sales_history_line.sql), na
+-- metade VIVA — a history já as aplica na sua:
+--   • universo = os 10 status que o report emite; exclui ESTIMATING/ESTIMATED/
+--     ORDERING/VOIDED/DRAFT. Filtro POSITIVO: status novo do Cin7 fica de fora
+--     até ser conferido, em vez de entrar mudo.
+--   • Credited entra NEGATIVO — é devolução, não demanda.
+--   • valor não existe aqui: o report traz bruto com GST e a demanda usa
+--     quantidade; nenhuma RPC lê valor.
+--   • linha sem SKU (frete/serviço) fica de fora: não se repõe SKU vazio, e a
+--     history nunca teve sku nulo (coluna NOT NULL lá).
+--   • order_date futura fica de fora: numa fonte VIVA um pedido pós-datado não é
+--     demanda de hoje e não pode empurrar a âncora da janela. O "+ 1 day" cobre
+--     o descasamento UTC↔Brisbane (o banco é UTC).
+--
+-- RISCO CONHECIDO (pré-existente do mirror, não introduzido aqui): sale_lines é
+-- upsert em (order_number,line_no) SEM delete, e a poda (pruneStaleLines) só
+-- roda no backfill detail-month, que hoje alcança o mês corrente + 1 anterior.
+-- Se o Cin7 encolhe/reordena as linhas de um pedido reenviado, linhas órfãs
+-- sobram e inflam a demanda DAQUELE SKU na metade viva (ex. catalogado
+-- SO-281413: 149 linhas/491un no mirror vs 100/349 no Cin7). É por-SKU e
+-- limitado — o agregado bate com a history em +1,7–4% —, mas a metade history
+-- (report deduplicado) não tem isso, então as duas metades podem divergir num
+-- SKU pontual. Conserto DE VERDADE é na camada de sync (podar em todo caminho
+-- de escrita de sale_lines, ou subir DETAIL_MONTH_BACK para cobrir a janela),
+-- não nesta view — que não tem como distinguir a linha viva da órfã.
+-- ============================================================
+CREATE OR REPLACE VIEW cin7_mirror.v_rp_demand AS
+  -- ── cauda ANTIGA: history importada, densa e congelada ──────────────────
+  SELECT order_number, order_date, sales_rep, location_name, status,
+         sku, sku_key, product_name, quantity, demanda_classe, qty_signed
+    FROM cin7_mirror.v_sales_demand_line
+   WHERE order_date < DATE '2026-07-01'
+UNION ALL
+  -- ── metade VIVA: mirror que sincroniza sozinho a cada ~2h ───────────────
+  SELECT sl.order_number, so.order_date, so.sales_rep, so.location_name, so.status,
+         sl.sku, upper(btrim(sl.sku)) AS sku_key, sl.product_name, sl.quantity,
+         CASE
+           WHEN upper(so.status) IN ('INVOICED','COMPLETED','CLOSED')             THEN 'consumada'
+           WHEN upper(so.status) IN ('ORDERED','BACKORDERED','PICKING','PICKED',
+                                     'PACKING','INVOICING')                       THEN 'aberta'
+           WHEN upper(so.status) = 'CREDITED'                                     THEN 'devolucao'
+           ELSE 'outro'
+         END                                                                     AS demanda_classe,
+         CASE WHEN upper(so.status)='CREDITED' THEN -sl.quantity ELSE sl.quantity END AS qty_signed
+    FROM cin7_mirror.sale_lines   sl
+    JOIN cin7_mirror.sales_orders so ON so.order_number = sl.order_number
+   WHERE so.order_date >= DATE '2026-07-01'
+     AND so.order_date <= CURRENT_DATE + INTERVAL '1 day'
+     AND upper(so.status) IN ('INVOICED','COMPLETED','CLOSED','ORDERED','BACKORDERED',
+                              'PICKING','PICKED','PACKING','INVOICING','CREDITED')
+     AND coalesce(btrim(sl.sku), '') <> '';
+
+GRANT SELECT ON cin7_mirror.v_rp_demand TO anon, authenticated, service_role;
+
 -- A janela móvel, num lugar só. Ela ancora no último mês COM DADO, não em
 -- now(): ancorar no relógio faz a média encolher sozinha quando o sync atrasa.
 -- SECURITY DEFINER também aqui: ela é chamada de dentro das outras e lê
@@ -45,7 +140,15 @@ CREATE OR REPLACE FUNCTION public._rp_window(p_months INT)
 RETURNS DATE
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, cin7_mirror
 AS $$
-  SELECT (date_trunc('month', (SELECT max(order_date) FROM cin7_mirror.v_sales_demand_line))
+  -- Âncora no último mês COM DADO, mas NUNCA à frente do mês corrente. A metade
+  -- viva de v_rp_demand admite order_date até hoje+1 (buffer UTC↔Brisbane); no
+  -- último dia do mês, um pedido pós-datado no 1º do mês seguinte faria max()
+  -- pular de mês e deslizar a janela para a frente, desinflando a média naquele
+  -- dia (o denominador continua p_months). O LEAST com CURRENT_DATE trava isso
+  -- SEM reancorar no relógio: se max estiver no PASSADO por atraso de sync, ele
+  -- continua valendo — que é a defesa contra a média encolher sozinha.
+  SELECT (date_trunc('month', LEAST((SELECT max(order_date) FROM cin7_mirror.v_rp_demand),
+                                    CURRENT_DATE))
           - (GREATEST(p_months, 1) - 1) * interval '1 month')::DATE;
 $$;
 
@@ -67,8 +170,8 @@ AS $$
          round(sum(d.qty_signed) / GREATEST(p_months, 1)::NUMERIC, 2),
          count(DISTINCT d.order_number),
          count(DISTINCT to_char(d.order_date, 'YYYY-MM'))
-    FROM cin7_mirror.v_sales_demand_line d
-   WHERE d.order_date >= public._rp_window(p_months)
+    FROM cin7_mirror.v_rp_demand d
+   WHERE d.order_date >= (SELECT public._rp_window(p_months))
      AND (p_location IS NULL OR p_location = '' OR d.location_name = p_location)
    GROUP BY d.sku_key, d.location_name
   HAVING sum(d.qty_signed) <> 0
@@ -104,7 +207,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, cin7_mirror
 AS $$
   SELECT min(order_date)::TEXT, max(order_date)::TEXT,
          count(DISTINCT to_char(order_date, 'YYYY-MM'))
-    FROM cin7_mirror.v_sales_demand_line;
+    FROM cin7_mirror.v_rp_demand;
 $$;
 
 -- ───────────────────────────────────────────────────────────────────
@@ -137,15 +240,15 @@ AS $$
     SELECT d.sku_key, sum(d.qty_signed) AS qty,
            count(DISTINCT d.order_number) AS orders,
            count(DISTINCT d.sales_rep)    AS reps
-      FROM cin7_mirror.v_sales_demand_line d
-     WHERE d.order_date >= public._rp_window(p_months)
+      FROM cin7_mirror.v_rp_demand d
+     WHERE d.order_date >= (SELECT public._rp_window(p_months))
        AND d.sales_rep IN (SELECT sales_rep FROM nomes)
      GROUP BY d.sku_key
   ),
   por_local AS (
     SELECT d.sku_key, sum(d.qty_signed) AS qty
-      FROM cin7_mirror.v_sales_demand_line d
-     WHERE d.order_date >= public._rp_window(p_months)
+      FROM cin7_mirror.v_rp_demand d
+     WHERE d.order_date >= (SELECT public._rp_window(p_months))
        AND p_location IS NOT NULL AND p_location <> ''
        AND d.location_name = p_location
      GROUP BY d.sku_key
@@ -186,8 +289,8 @@ AS $$
   WITH base AS (
     SELECT d.sales_rep, d.location_name,
            count(DISTINCT d.order_number) AS orders, max(d.order_date) AS last_order
-      FROM cin7_mirror.v_sales_demand_line d
-     WHERE d.order_date >= public._rp_window(p_months)
+      FROM cin7_mirror.v_rp_demand d
+     WHERE d.order_date >= (SELECT public._rp_window(p_months))
      GROUP BY 1, 2
   ),
   tot AS (SELECT sales_rep, sum(orders) AS total, max(last_order) AS last_order FROM base GROUP BY 1),
@@ -220,9 +323,9 @@ AS $$
   SELECT d.sales_rep::TEXT, COALESCE(a.branch_code, '—')::TEXT,
          sum(d.qty_signed)::NUMERIC, count(DISTINCT d.order_number),
          max(d.order_date)::DATE::TEXT
-    FROM cin7_mirror.v_sales_demand_line d
+    FROM cin7_mirror.v_rp_demand d
     LEFT JOIN rapid_inv.sales_rep_branch a ON a.sales_rep = d.sales_rep
-   WHERE d.sku_key = upper(p_sku) AND d.order_date >= public._rp_window(p_months)
+   WHERE d.sku_key = upper(p_sku) AND d.order_date >= (SELECT public._rp_window(p_months))
    GROUP BY 1, 2
   HAVING sum(d.qty_signed) <> 0
    ORDER BY 3 DESC;
@@ -235,8 +338,8 @@ RETURNS TABLE (location_name TEXT, qty NUMERIC)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, cin7_mirror
 AS $$
   SELECT d.location_name::TEXT, sum(d.qty_signed)::NUMERIC
-    FROM cin7_mirror.v_sales_demand_line d
-   WHERE d.sku_key = upper(p_sku) AND d.order_date >= public._rp_window(p_months)
+    FROM cin7_mirror.v_rp_demand d
+   WHERE d.sku_key = upper(p_sku) AND d.order_date >= (SELECT public._rp_window(p_months))
    GROUP BY 1
   HAVING sum(d.qty_signed) <> 0
    ORDER BY 2 DESC;
@@ -254,7 +357,10 @@ GRANT EXECUTE ON FUNCTION public.replenishment_sku_by_rep(TEXT, INT)            
 GRANT EXECUTE ON FUNCTION public.replenishment_sku_by_location(TEXT, INT)          TO anon, authenticated, service_role;
 
 -- Prova de vida: se isto voltar com número, a tela funciona sem senha nenhuma.
+-- `demanda_ate` é a prova do AUTOMÁTICO: tem de ser a data de HOJE (ou de
+-- ontem), não mais o 27/08 congelado do último import manual.
 SELECT 'replenishment rpc pronto'                       AS status,
+       (SELECT max(order_date) FROM cin7_mirror.v_rp_demand)                    AS demanda_ate,
        (SELECT count(*) FROM public.replenishment_reps(13))                    AS reps,
        (SELECT count(*) FROM public.replenishment_averages(6, 'Sydney'))       AS medias_sydney,
        (SELECT count(*) FROM public.replenishment_branch_averages('SYD', 6, 'Sydney')) AS regua_sydney;

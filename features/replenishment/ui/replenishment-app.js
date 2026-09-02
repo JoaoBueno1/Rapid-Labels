@@ -32,22 +32,16 @@
   // ABC desligado por padrao: os degraus 10/8/6 vieram de quando a media era
 // uma coluna importada. Com 13 meses de historico e janela escolhivel, a
 // cobertura pura e mais honesta — quem quiser os degraus liga no Settings.
-  // As quatro regras, nomeadas. Faltavam duas: o rodapé mostrava o código cru
-  // ("rep_then_branch") para quem escolhesse uma delas.
-  const DEMAND_LABEL = {
-    branch: 'branch only', rep: 'reps only',
-    branch_then_rep: 'branch, reps fill the gaps',
-    rep_then_branch: 'reps, branch fills the gaps',
-    both: 'the larger of the two',
-  };
-
   /* Migração dos modos que saíram.
      'both' nunca foi regra de sugestão — o motor caía em 'branch' com ele, e
      por isso o mapeamento é exato, não uma escolha minha.
      'rep_then_branch' vira 'rep': medido, os dois diferem em 202 de 6.861
      pares filial-SKU, 3%. Quem tinha aquele modo perde a diferença em 3% das
      linhas, e ganha um seletor com três opções em vez de cinco. */
-  const DEMAND_MIGRA = { both: 'branch', rep_then_branch: 'rep' };
+  // 'branch_then_rep' (o antigo padrão que escondia o pick) e 'rep_then_branch'
+  // saíram do seletor. O primeiro vira 'both' (Mixed = o maior, transparente); o
+  // segundo vira 'rep' (diferem em 3% dos pares). 'both' agora é opção válida.
+  const DEMAND_MIGRA = { branch_then_rep: 'both', rep_then_branch: 'rep' };
   /* `period` saiu daqui. Ele era lido e escrito contra um #setPeriod que não
      existe no HTML desde que os dois seletores viraram um só — zero
      ocorrências no arquivo. Deixá-lo no DEFAULTS fazia o delete da migração
@@ -56,9 +50,10 @@
   const DEFAULTS = { weeks: 6, cutDays: 25, abc: false, avgSource: 'branch', avgRound: 'pure', cartons: false,
     // demand: qual das duas médias vira quantidade sugerida. Não decide mais o
     // que a planilha MOSTRA — as duas estão sempre lá, cada uma na sua coluna.
-    // O padrão é o fallback porque em 1.891 de 6.861 pares filial-SKU só o rep
-    // vendeu: com 'branch' puro, o motor não sugeriria nada para eles.
-    demand: 'branch_then_rep', salesMonths: 6,
+    // O padrão é 'both' (Mixed = o MAIOR das duas por SKU): cobre o rep-only
+    // (1.891 de 6.861 pares filial-SKU só o rep vendeu) E o branch-only, sem
+    // esconder qual régua venceu — as duas colunas mostram, e o ponto marca.
+    demand: 'both', salesMonths: 6,
     // minAvg: o piso de demanda, em unidades por mês.
     //
     // Sem ele, 37% das linhas de Sydney (459 SKUs) vinham de itens que vendem
@@ -79,9 +74,13 @@
     if (raw.avgBasis && !raw.demand) raw.demand = raw.avgBasis === 'rep' ? 'rep' : 'branch';
     if (raw.repMonths && !raw.salesMonths) raw.salesMonths = raw.repMonths;
     delete raw.avgBasis; delete raw.repMonths;
-    // E os dois modos que saíram do seletor. Sem isto, quem tem 'both' salvo
-    // fica com um <select> que não casa com nenhuma opção e volta em branco.
+    // E os modos que saíram do seletor. Sem isto, quem tem 'branch_then_rep'
+    // salvo fica com um seletor que não casa com nenhuma opção e volta em branco.
     if (DEMAND_MIGRA[raw.demand]) raw.demand = DEMAND_MIGRA[raw.demand];
+    // Rede: valor salvo fora dos 3 modos (localStorage corrompido / de outra
+    // versão) é descartado para o DEFAULTS ('both') vencer — senão buildRow e o
+    // cartão discordariam e o modal Load abriria sem opção marcada.
+    if (!['branch', 'rep', 'both'].includes(raw.demand)) delete raw.demand;
 
     /* avgSource ficou ÓRFÃO e mudava o número em silêncio.
        Ele perdeu o <select> quando os dois seletores viraram um só, mas
@@ -146,6 +145,9 @@
     // A régua viva de TODAS as filiais, por código. S.repAvg é a janela para a
     // filial aberta; os cartões da tela inicial precisam das sete.
     avgLive: {}, avgLiveInfo: {},
+    // BOM: { parentKey: { components: [{code, quantity}] } } — componentes por
+    // assembly, para as sub-linhas + expansão do export. Carregado em loadBase.
+    bom: {},
   };
   const BRANCHES = (RC && RC.BRANCHES) || [];   // guarded: init() shows a status if the engine is missing
   const DEPOTS = (RC && RC.DEPOTS) || [];       // Main e Project: origem, não destino
@@ -277,6 +279,31 @@
   // Recarregar a régua não basta: as linhas já na tela foram construídas com o
   // valor antigo, e enterGrid() só redesenha o que elas têm. Sem costurar, a
   // segunda leitura do Cover não aparecia ao trocar a regra no Settings.
+  /* TODAS as filiais numa chamada só — substitui as sete chamadas de loadRepAvg
+     na abertura da tela (5,3s → ~1,1s). Mesma atribuição (rep→filial, local→
+     filial), agregada de uma vez no banco. O workspace de uma filial aberta
+     ainda recarrega a SUA (com breakdown + janela) via refreshRepAvg. */
+  async function loadAllBranchAvg() {
+    const months = SET.salesMonths || 6;
+    try {
+      const r = await fetch(`/api/replenishment/all-branch-averages?months=${months}`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      const byBranch = {};
+      for (const x of (d.rows || [])) { (byBranch[x.branch_code] || (byBranch[x.branch_code] = {}))[x.sku_key] = x; }
+      BRANCHES.forEach(b => { S.avgLive[b.code] = byBranch[b.code] || {}; });
+      S.repAvgErro = null;
+    } catch (e) {
+      // A rota nova pode não existir ainda (server não reiniciado após o deploy).
+      // Em vez de sumir com a demanda, CAI no caminho antigo (as sete chamadas
+      // por-filial, que sempre existiram): mais lento, mas carrega. Quando o
+      // server reiniciar, a rota rápida responde e este fallback não dispara.
+      console.warn('[replenishment] all-branch-averages indisponível (' + e.message + ') — usando o caminho por-filial');
+      await loadRepAvg();
+    }
+  }
+
   async function refreshRepAvg() {
     // Só a filial aberta: trocar a janela de meses não precisa rebuscar as sete.
     await loadRepAvg(S.branch ? [S.branch.code] : null);
@@ -322,6 +349,22 @@
         // aposentado ainda tem saldo, e é sobre esse saldo que se decide.
         S.lifeFlag = b.flags || {}; }
     } catch (_) { /* segue sem o corte */ }
+    /* BOM: componentes por assembly (só a estrutura pai→componente×qtd, via
+       /api/replenishment/bom-map porque rapid_inv não é exposto ao navegador).
+       Falha soft: sem BOM a tela segue como antes, só sem os assemblies. Os
+       poucos pack (ctn/pk) que a rota não cortou saem aqui pelo isPackSku. */
+    S.bom = {};
+    try {
+      const r = await fetch('/api/replenishment/bom-map');
+      if (r.ok) {
+        const b = await r.json();
+        for (const x of (b.rows || [])) {
+          const pk = String(x.parent_key || '').toUpperCase(); if (!pk || isPackSku(pk)) continue;
+          const ck = String(x.component_key || x.component_sku || '').toUpperCase(); if (!ck) continue;
+          (S.bom[pk] || (S.bom[pk] = { components: [] })).components.push({ code: ck, quantity: Number(x.quantity) || 0 });
+        }
+      }
+    } catch (_) { /* segue sem BOM */ }
     S.prod = {}; S.prodList = prod;
     prod.forEach(p => { if (p.sku) S.prod[String(p.sku).toUpperCase()] = p; });
     const buckets = {}, inT = {};
@@ -343,7 +386,11 @@
       const e = S.emenda[0];
       setStatus('bad', `Partial read — ${e.tabela} returned ${n0(e.emendado)} of ${n0(e.esperado)} rows. Reload before ordering.`);
     } else {
-      setStatus('fresh', `Live · ${n0(stock.length)} stock rows · ${n0(avg.length)} SKUs with averages`);
+      // "Live" vale para o estoque e a demanda (RPC v_rp_demand). As `office
+      // averages` são a tabela branch_avg_monthly_sales, curada à mão no
+      // escritório e usada só para o teto de segurança do Main — não é live, e
+      // o rótulo não pode fingir que é.
+      setStatus('fresh', `Live · ${n0(stock.length)} stock rows · demand live · ${n0(avg.length)} office averages (Main safety)`);
     }
   }
   function setStatus(level, text) {
@@ -380,8 +427,8 @@
        dado. A régua padrão continua sendo a da filial — só que certa.
        O valor da tabela antiga segue disponível como `tableAvg`, para o painel
        poder mostrar a diferença em vez de escondê-la. */
-    // Pela filial do argumento e não pela aberta: branchSuggestedCount troca
-    // S.branch para contar cada cartão, e ler S.repAvg daria a régua errada.
+    // Pela filial do argumento e não pela aberta: branchCountFor troca S.branch
+    // para contar cada cartão, e ler S.repAvg daria a régua errada.
     const viva = (S.avgLive[branch.code] || {})[k] || null;
     const tableAvg = avgRow ? pickAvg(avgRow, branch) : 0;
     const stored = viva ? Number(viva.loc_avg || 0) : 0;
@@ -389,14 +436,28 @@
     // A régua escolhida MANDA no número que vira compra. Sem esta linha o
     // painel mostrava a diferença e o motor continuava comprando pela régua
     // antiga — a tela ficaria informando e não decidindo.
+    // Branch usa a régua da filial; Reps a do rep; Mixed (o padrão) usa o MAIOR
+    // dos dois por SKU — cobre o pior caso, e as duas colunas mostram qual venceu.
     const avg = SET.demand === 'rep' ? fromRep
               : SET.demand === 'branch' ? stored
-              : SET.demand === 'branch_then_rep' ? (stored > 0 ? stored : fromRep)
-              : SET.demand === 'rep_then_branch' ? (fromRep > 0 ? fromRep : stored)
-              // 'both': o maior manda na sugestão, e as duas leituras aparecem
-              // no Cover para o usuário ver de onde veio.
               : Math.max(stored, fromRep);
-    const avail = Number(stock[k] || 0);
+    // ASSEMBLY (BOM): componentes por unidade (S.bom, de /bom-map). Duas
+    // capacidades de MONTAR = min(floor(estoque-componente / qtd)):
+    //   bomBuild    = do MAIN → o teto de ENVIO (o Main monta e manda componentes);
+    //   branchBuild = da FILIAL → quantos ela JÁ monta com o que tem = o SOH
+    //                 EFETIVO do montado (o acabado é ~0), pra o cover não mentir 0.
+    const bom = (S.bom && S.bom[k]) || null;
+    let bomBuild = null, branchBuild = null;
+    if (bom) {
+      const comps = bom.components.filter((c) => Number(c.quantity) > 0);
+      const capacity = (at) => comps.length
+        ? Math.min(...comps.map((c) => Math.floor(Math.max(Number(at(c.code) || 0), 0) / Number(c.quantity))))
+        : 0;
+      bomBuild = capacity((cc) => S.stock.MAIN && S.stock.MAIN[cc]);
+      branchBuild = capacity((cc) => stock[cc]);
+    }
+    // SOH efetivo: montado → o que a FILIAL consegue montar; normal → acabado.
+    const avail = bom ? branchBuild : Number(stock[k] || 0);
     const inTransit = Number((S.inT[branch.code] && S.inT[branch.code][k]) || 0);
     const mainOnly = Number((S.stock.MAIN && S.stock.MAIN[k]) || 0);
     const gw = gwStock(k);
@@ -408,7 +469,12 @@
     const weeks = SET.abc ? RC.targetWeeksForTier(tier) : SET.weeks;
     const target = RC.computeBranchTarget(avg, weeks);
     const mainAvg = avgRow ? RC.pickMainAvg(avgRow) : 0;
-    const canSend = Math.max(0, mainGw - RC.computeMainSafety(mainAvg));
+    // ASSEMBLY: teto de ENVIO = capacidade de montar do MAIN (bomBuild, calculado
+    // acima); item normal = Main+Gateway − safety.
+    // NOTA (refinamento p/ Etapa 2): bomBuild usa o estoque de componente CHEIO,
+    // sem reservar safety. Se o componente também for reposto sozinho, os dois
+    // fluxos disputam o mesmo estoque no Main — descontar/reservar na Etapa 2.
+    const canSend = bom ? bomBuild : Math.max(0, mainGw - RC.computeMainSafety(mainAvg));
     let sug = Math.max(0, target - avail - inTransit);
     if (SET.cartons && p.carton_quantity) sug = RC.smartCartonRound(sug, p.carton_quantity, canSend, target, { avgMonthBranch: avg, branchAvailable: avail, targetWeeks: weeks }).qty;
     sug = Math.min(sug, canSend);
@@ -425,6 +491,9 @@
       storedAvg: stored, tableAvg,
       loc: p.stock_locator || '', avg, soh: avail, inTransit, mainGw, mainOnly, gw, canSend, syd,
       tier, target, weeks, mainAvg, sug, coverWeeks,
+      // Assembly: marca + a lista de componentes {code, quantity} e quantos o
+      // Main consegue montar. O render desenha as sub-linhas; o export expande.
+      isBom: !!bom, bom: bom ? bom.components : null, bomBuild,
       // invComment e flag nascem aqui para o rascunho salvo já ter o formato
       // novo — senão a linha antiga volta do localStorage sem eles.
       ask: sug, invQty: null, reason: '', comment: '', invComment: '', flag: false,
@@ -449,7 +518,12 @@
       const c = String(r.product || '').trim();
       if (c) universo.set(c.toUpperCase(), c);
     }
-    for (const k of Object.keys(S.repAvg || {})) {
+    // S.avgLive[branch] e não S.repAvg: na tela inicial S.repAvg está vazio (só é
+    // preenchido pela filial ABERTA), e usá-lo aqui degradava o universo à tabela
+    // curada — subcontando os SKUs vivos fora dela e deixando o cartão do Mixed
+    // mais verde que a realidade. branchCountFor põe S.branch na filial que está
+    // contando, então isto vale para a landing E para a filial aberta.
+    for (const k of Object.keys((S.branch && S.avgLive[S.branch.code]) || S.repAvg || {})) {
       if (!universo.has(k)) universo.set(k, (S.prod[k] && S.prod[k].sku) || k);
     }
     for (const c0 of universo.values()) {
@@ -460,6 +534,9 @@
       // bloqueado para quem digita e liberado para quem clica em "Load
       // suggested" — que é o buraco que já existe hoje entre os dois caminhos.
       if (S.blocked && S.blocked.has(c0.toUpperCase())) continue;
+      // Assembly (BOM) tem fluxo PRÓPRIO ("Load BOM suggested"). Fora daqui para
+      // não misturar centenas de montados com a reposição normal (pedido do dono).
+      if (S.bom && S.bom[c0.toUpperCase()]) continue;
       const row = buildRow(c0); if (!row || row.avg <= 0) continue;
       const coverDays = Math.round(row.coverWeeks * 7);
       // O piso tira o item lento da sugestão AUTOMÁTICA — não da planilha:
@@ -489,11 +566,25 @@
     out.sort((a, b) => (b.isSuggested - a.isSuggested) || (a.coverWeeks - b.coverWeeks) || (b.sug - a.sug));
     return out;
   }
-  function branchSuggestedCount(code) {
-    const save = S.branch; S.branch = BRANCHES.find(b => b.code === code);
-    const n = suggestionUniverse().filter(r => r.isSuggested).length; S.branch = save; return n;
+  // Só os assemblies (BOM) — o fluxo SEPARADO "Load BOM suggested". Mesma regra
+  // do suggestionUniverse, mas o universo são os pais BOM e o cap já é a
+  // capacidade de MONTAR (canSend = bomBuild, resolvido em buildRow). Fica fora
+  // do suggest normal de propósito — o dono não quer centenas de montados lá.
+  function bomSuggestionUniverse() {
+    const out = [];
+    for (const k of Object.keys(S.bom || {})) {
+      const p = S.prod[k] || {};
+      if (RC.isExcludedProduct(k, p.name) || isPackSku(k) || escondePorDeprecated(p, k)) continue;
+      if (S.blocked && S.blocked.has(k)) continue;
+      const row = buildRow(k); if (!row || row.avg <= 0) continue;
+      const coverDays = Math.round(row.coverWeeks * 7);
+      const passaNoPiso = row.avg >= (SET.minAvg || 0);
+      row.isSuggested = (row.canSend > 0 && row.sug > 0 && coverDays < SET.cutDays && passaNoPiso && row.inTransit <= 0);
+      out.push(row);
+    }
+    out.sort((a, b) => (b.isSuggested - a.isSuggested) || (a.coverWeeks - b.coverWeeks) || (b.sug - a.sug));
+    return out;
   }
-
   /* A contagem de SKU de uma filial por uma régua específica.
      Mesmo motor, mesma regra do Settings (cover < cutDays, piso, sem estoque no
      Main não conta) — é o MESMO número que o Load Suggested mostra. Contar de
@@ -517,7 +608,8 @@
        régua da filial em silêncio. Vendo a lista, você percebe e aloca. */
     $('branchTiles').innerHTML = BRANCHES.map(b => {
       const inf = S.avgLiveInfo[b.code];
-      const usaRep = SET.demand === 'rep' || SET.demand === 'rep_then_branch';
+      const usaRep = SET.demand === 'rep';
+      const mixed = SET.demand === 'both';
       // A MESMA unidade da linha de cima: quantidade de SKU sob a regra do
       // Settings. Unidades por mês era outra grandeza no mesmo cartão, e duas
       // grandezas empilhadas fazem o olho comparar o que não se compara.
@@ -525,19 +617,26 @@
       const nRep = S.loaded ? branchCountFor(b.code, 'rep') : 0;
       // A cor do cartão segue a régua que está mandando: era o número da regra
       // configurada que a definia, e ele saiu.
-      const nDriver = usaRep ? nRep : nBranch;
+      // No Mixed quem manda é o maior por SKU — a cor usa a contagem do próprio
+      // Mixed, não a da filial (senão Brisbane, com 10 pela filial, ficaria verde).
+      const nDriver = mixed ? (S.loaded ? branchCountFor(b.code, 'both') : 0)
+                    : (usaRep ? nRep : nBranch);
       // Só os nomes. O quanto cada rep vendeu não muda decisão nenhuma nesta
       // tela — o que ela responde é "quem é desta filial" e "está faltando
       // alguém". Número por rep vive no painel de dentro.
       const nomes = ((inf && inf.breakdown) || []).map(r => r.sales_rep);
       const cls = nDriver > 40 ? 'bad' : nDriver > 15 ? 'warn' : 'good';
-      const reguas = inf ? `
+      // As contagens (Branch/Reps) vêm de branchCountFor, NÃO de `inf` — então o
+      // cartão as mostra assim que S.loaded. `inf` (nomes dos reps + órfãos) só é
+      // preenchido ao ABRIR a filial; na tela inicial usamos só quando existe, em
+      // vez de esconder a contagem inteira (era o que deixava o cartão em branco).
+      const reguas = S.loaded ? `
         <div class="rp-tk">
-          <div class="rp-tk-r${usaRep ? '' : ' is-driver'}"><span>Branch</span><b>${n0(nBranch)}</b></div>
-          <div class="rp-tk-r${usaRep ? ' is-driver' : ''}"><span>Reps</span><b>${n0(nRep)}</b></div>
+          <div class="rp-tk-r${SET.demand === 'branch' || mixed ? ' is-driver' : ''}"><span>Branch</span><b>${n0(nBranch)}</b></div>
+          <div class="rp-tk-r${SET.demand === 'rep' || mixed ? ' is-driver' : ''}"><span>Reps</span><b>${n0(nRep)}</b></div>
           <div class="rp-tile-sub">SKUs to restock (cover &lt; ${SET.cutDays}d)</div>
           ${nomes.length ? `<div class="rp-tk-reps">${esc(nomes.join(', '))}</div>` : ''}
-          ${(inf.orphans || []).length ? `<div class="rp-tk-orphan" title="${
+          ${((inf && inf.orphans) || []).length ? `<div class="rp-tk-orphan" title="${
             esc(inf.orphans.map(o => o.sales_rep).join(', '))}">${n0(inf.orphans.length)} rep(s) with no branch</div>` : ''}
         </div>` : (S.repAvgErro ? '<div class="rp-tk rp-tk-bad">demand did not load</div>' : '');
       return `<div class="sp-tile ${cls}" data-code="${b.code}" role="button" tabindex="0">
@@ -656,7 +755,7 @@
     if (!inf || !inf.totals) { el.style.display = 'none'; return; }
     el.style.display = '';
     const t = inf.totals;
-    const usandoRep = SET.demand === 'rep' || SET.demand === 'rep_then_branch';
+    const drive = SET.demand;   // 'branch' | 'rep' | 'both' (Mixed = o maior por SKU)
     // A diferença contra a tabela antiga, quando ela existe. Some quando o
     // usuário não tem mais nada carregado à mão — e some de propósito: um
     // aviso que nunca desliga vira parte do fundo.
@@ -668,20 +767,22 @@
         r.note ? '\n' + esc(r.note) : ''}">${esc(r.sales_rep)}<b>${Number(r.units) > 0 ? n0(r.units_month) : '—'}</b></span>`;
 
     el.innerHTML = `
-      <div class="rp-ruler${usandoRep ? '' : ' is-driver'}">
+      <div class="rp-ruler${drive === 'branch' || drive === 'both' ? ' is-driver' : ''}">
         <span class="rp-ruler-k">Branch</span>
         <span class="rp-ruler-v">${n0(t.loc_units)}<i>units / month</i></span>
         <span class="rp-ruler-n">${n0(t.loc_skus)} SKUs</span>
         <span class="rp-ruler-w">what shipped out of ${esc(inf.location || S.branch.name)} · live · ${inf.months}m${
           daTabela ? ` · the old loaded table said ${n0(daTabela)} for the lines on screen` : ''}</span>
-        ${usandoRep ? '' : '<span class="rp-ruler-tag">driving the suggestion</span>'}
+        ${drive === 'branch' ? '<span class="rp-ruler-tag">driving the suggestion</span>'
+          : drive === 'both' ? '<span class="rp-ruler-tag">used where it is the larger</span>' : ''}
       </div>
-      <div class="rp-ruler${usandoRep ? ' is-driver' : ''}">
+      <div class="rp-ruler${drive === 'rep' || drive === 'both' ? ' is-driver' : ''}">
         <span class="rp-ruler-k">By its reps</span>
         <span class="rp-ruler-v">${n0(t.rep_units)}<i>units / month</i></span>
         <span class="rp-ruler-n">${n0(t.rep_skus)} SKUs</span>
         <span class="rp-ruler-w">what ${esc(S.branch.name)} sold, wherever it shipped from · ${n0(inf.count)} reps · the chips below add up to this</span>
-        ${usandoRep ? '<span class="rp-ruler-tag">driving the suggestion</span>' : ''}
+        ${drive === 'rep' ? '<span class="rp-ruler-tag">driving the suggestion</span>'
+          : drive === 'both' ? '<span class="rp-ruler-tag">used where it is the larger</span>' : ''}
         <div class="rp-reps">${(inf.breakdown || []).map(chip).join('')}</div>
         ${(inf.orphans || []).length ? `<div class="rp-orphan">
           <b>${n0(inf.orphans.length)} rep${inf.orphans.length === 1 ? '' : 's'} not allocated to any branch</b> —
@@ -744,6 +845,13 @@
     const showLoad = S.view === 'weekly' && draft;
     $('btnLoadSuggest').style.display = showLoad ? '' : 'none';
     if (showLoad) $('btnLoadSuggest').textContent = `Load suggested (${suggestionUniverse().filter(r => r.isSuggested).length})`;
+    // BOM tem botão PRÓPRIO: só aparece quando há assembly a sugerir (senão vira ruído).
+    const bomBtn = $('btnLoadBom');
+    if (bomBtn) {
+      const nBom = showLoad ? bomSuggestionUniverse().filter(r => r.isSuggested).length : 0;
+      bomBtn.style.display = (showLoad && nBom > 0) ? '' : 'none';
+      if (showLoad && nBom > 0) bomBtn.textContent = `Load BOM suggested (${nBom})`;
+    }
   }
 
   // ── stage bar ────────────────────────────────────────────────────────
@@ -782,6 +890,13 @@
     if (S.mode === 'daily' && S.stage === 'draft') {
       const sem = S.lines.filter(l => finalQty(l) > 0 && !String(l.comment || '').trim());
       if (sem.length) return toast(`${sem.length} line${sem.length === 1 ? '' : 's'} still need a reason`, true);
+    }
+    // ETAPA 1: assemblies (BOM) saem pelo Export CSV (componentes), não pelo
+    // fluxo Submit→Approve→Place (Cin7 é a Etapa 2). Barrar AQUI, antes de virar
+    // o estágio, evita marcar "approved" sem transferência (mentira na tela) e
+    // deixa explícito que as linhas normais também não foram enviadas.
+    if (S.lines.some(l => l.isBom)) {
+      return toast('Esta folha tem itens BOM (assembly): eles saem pelo Export CSV por enquanto. Exporte-os e remova-os da folha para submeter as linhas normais — a transferência automática de BOM no Cin7 entra na próxima etapa.', true);
     }
     S.stage = steps[i + 1];
     // No Submit o Inv Qty nasce igual ao pedido da filial: o check vira
@@ -935,10 +1050,28 @@
       return `<th class="${a} ${gcls(c.group)}${IDCLS[c.key] || ''}${sep}${c.sortable ? ' srt' + (S.sort.key === c.key ? ' on' : '') : ''}" data-k="${c.key}"${c.w ? ` style="width:${c.w}px"` : ''}>${esc(c.label)}${arrow}</th>`;
     }).join('') + '</tr></thead>';
     let body = rows.map(l => {
-      const nomain = l.mainGw <= 0;
+      // Assembly: "sem estoque para enviar" = não dá para MONTAR (bomBuild<=0), não
+      // o estoque acabado (~0 por definição). Senão todo assembly montável fica vermelho.
+      const nomain = l.isBom ? (l.bomBuild <= 0) : (l.mainGw <= 0);
       const intransit = l.inTransit > 0;   // stock a caminho → linha amarela (vence o vermelho: já vem)
       const open = S.sideSku && String(l.code).toUpperCase() === S.sideSku ? ' rp-open' : '';
-      return `<tr class="rp-line${intransit ? ' rp-intransit' : nomain ? ' rp-nomain' : ''}${l.flag ? ' rp-flagged' : ''}${open}" data-code="${esc(l.code)}">` + C.map(c => cell(l, c)).join('') + '</tr>';
+      const tr = `<tr class="rp-line${intransit ? ' rp-intransit' : nomain ? ' rp-nomain' : ''}${l.flag ? ' rp-flagged' : ''}${open}" data-code="${esc(l.code)}">` + C.map(c => cell(l, c)).join('') + '</tr>';
+      // Assembly: as sub-linhas de COMPONENTE vêm logo abaixo do pai, montadas
+      // aqui no render (não são entradas de S.lines). Ficam junto do pai mesmo
+      // com o grid ordenado, porque a injeção é relativa ao pai — não à posição
+      // no array. buildRow(componente) dá o dado real (avg/estoque) para exibir;
+      // isBom=false/bom=null evita recursão se o componente também for montado.
+      if (!(l.isBom && l.bom && l.bom.length)) return tr;
+      const ask = clampInt(l.ask);
+      const subs = l.bom.map((comp) => {
+        const cl = buildRow(comp.code); if (!cl) return '';
+        cl.isBomComp = true; cl.parentCode = l.code; cl.isBom = false; cl.bom = null;
+        cl.bomQty = ask * Number(comp.quantity || 0);
+        cl.ask = cl.bomQty;   // o Cover do componente projeta a qtd QUE VAI, não a sug própria dele
+        return `<tr class="rp-bomcomp" data-bomparent="${esc(l.code)}" data-q="${Number(comp.quantity || 0)}">`
+          + C.map((c) => cell(cl, c)).join('') + '</tr>';
+      }).join('');
+      return tr + subs;
     }).join('');
     // Excel-style empty rows to fill (draft only, not while searching)
     if (S.stage === 'draft' && !S.search) {
@@ -966,6 +1099,8 @@
   // Um chip só, e o título explica o que ele muda. Duas marcas na mesma linha
   // brigariam por 8px numa coluna que já é a mais apertada da grade.
   function lifeChip(l) {
+    if (l.isBomComp)
+      return '<span class="rp-life rp-life--bom" title="Componente de um assembly (BOM) — é picado e transferido para a filial montar o item acima.">BOM</span>';
     if (l.life === 'DISCONTINUED')
       return '<span class="rp-life rp-life--disc" title="Discontinued in Master Stock. It still ships while there is stock; it is not reordered.">DISC</span>';
     // RUN-OUT badge removido a pedido: ocupava espaço na coluna mais apertada da grade.
@@ -978,6 +1113,16 @@
     const g = c.group, gc = (g === 'ord' ? ' g-ord' : g === 'pack' ? ' g-pack' : '') + (IDCLS[c.key] || '');
     const base = c.align === 'num' ? 'num' : c.align === 'code' ? 'code txt' : 'txt';
     const wrap = (inner, extra, title) => `<td class="${base}${gc}${extra || ''}"${title ? ` title="${esc(title)}"` : ''}>${inner}</td>`;
+    // Sub-linha de COMPONENTE (BOM): qtd TRAVADA (= ask do pai × qtd por unidade),
+    // sem remover/flag/comentar/inv — quem comanda é o pai. As demais colunas
+    // caem no switch normal e mostram o dado REAL do componente (avg/estoque/
+    // cover) para conferência e padronização.
+    if (l.isBomComp) {
+      if (c.key === 'ask') return wrap(`<span class="rp-lock rp-bomqty">${n0(l.bomQty || 0)}</span>`);
+      if (c.key === 'act') return `<td class="num rp-acts"></td>`;
+      if (c.key === 'invQty') return `<td class="num g-ord locked"><span class="rp-sub">—</span></td>`;
+      if (c.key === 'comment' || c.key === 'reason' || c.key === 'invComment') return wrap('<span class="rp-sub">—</span>');
+    }
     switch (c.key) {
       case 'dc': return wrap(esc(l.dc) || '<span class="rp-sub">—</span>');
       // O texto que pode quebrar vai num <div> DENTRO da célula, nunca na
@@ -1005,7 +1150,7 @@
         // algo que o Settings já diz, e que não muda a decisão da linha.
         return wrap(
           (b > 0 ? n1(b) : '<span class="rp-sub">—</span>'),
-          ' rp-avgb' + (usa ? ' is-driver' : ''),
+          ' rp-avgb' + (usa && b > 0 ? ' is-driver' : ''),
           b > 0 ? `${n1(b)} a month shipped out of this branch's own depot.`
                 : "Nothing shipped out of this branch's own depot in the window.");
       }
@@ -1023,6 +1168,15 @@
         // In Transit era uma coluna de 82px que quase sempre dizia "·". Vira
         // marca aqui, e o painel mostra o TR — que é o que o usuário quer ver.
         const t = l.inTransit ? `<span class="rp-transit" title="${n0(l.inTransit)} on the way to this branch — open the row to see the TR">▸${n0(l.inTransit)}</span>` : '';
+        // ASSEMBLY: o acabado é ~0; o SOH útil é quantos a FILIAL consegue MONTAR
+        // com os componentes que tem (l.soh já é esse branchBuild). Apagado, para
+        // ler como "montável", não estoque pronto. O cover sai deste número.
+        if (l.isBom) {
+          const b = l.soh || 0;
+          return wrap(`<span class="rp-buildable">${n0(b)}</span>` + t, '',
+            b > 0 ? `Acabado ~0 — mas a filial monta ${n0(b)} com os componentes que tem. O cover sai daqui.`
+                  : 'A filial ainda não tem componentes para montar nenhuma unidade.');
+        }
         // O negativo mora aqui e só aqui. O Cover parou de repeti-lo como
         // "short": duas colunas dizendo a mesma coisa de formas diferentes
         // fazem o usuário procurar a diferença entre elas.
@@ -1096,11 +1250,21 @@
 
         return `<td class="num rp-cover${b2 ? ' is-two' : ''}">${b1}${b2}</td>`;
       }
-      case 'main': return wrap(
-        l.mainGw <= 0 ? `<span class="rp-neg">${n0(l.mainGw)}</span>` : n0(l.mainGw), '',
-        l.mainGw <= 0
-          ? 'Nothing in Main or Gateway to send today. The line is not blocked — stock may be on the way.'
-          : `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
+      case 'main': {
+        // Assembly: a coluna Main mostra a CAPACIDADE DE MONTAR (não o estoque
+        // acabado, que é ~0). É o número que vira o teto de envio (canSend).
+        if (l.isBom) {
+          const bb = l.bomBuild || 0;
+          return wrap(bb <= 0 ? '<span class="rp-neg">0</span>' : n0(bb), '',
+            bb <= 0 ? 'Faltam componentes no Main para montar esta assembly.'
+                    : `O Main consegue montar ${n0(bb)} com o estoque de componentes que tem hoje.`);
+        }
+        return wrap(
+          l.mainGw <= 0 ? `<span class="rp-neg">${n0(l.mainGw)}</span>` : n0(l.mainGw), '',
+          l.mainGw <= 0
+            ? 'Nothing in Main or Gateway to send today. The line is not blocked — stock may be on the way.'
+            : `Main ${n0(l.mainOnly)} · Gateway ${n0(l.gw)} · Main avg/mo ${n1(l.mainAvg)}`);
+      }
       case 'ask':
         return wrap(askEditable() ? `<input class="rp-in big" data-k="ask" value="${clampInt(l.ask) || ''}" inputmode="numeric">` : `<span class="rp-lock">${n0(clampInt(l.ask))}</span>`);
       case 'invQty': {
@@ -1146,6 +1310,9 @@
         else if (k === 'invQty') l.invQty = inp.value === '' ? null : clampInt(inp.value);
         else l[k] = inp.value;
         if (k === 'ask' || k === 'invQty') { updateCount(); repaintCover(inp.closest('tr'), l); }
+        // Assembly: a qtd de cada componente = ask do pai × qtd por unidade.
+        // Ao vivo, sem redesenhar a tabela (mesmo motivo do repaintCover).
+        if (k === 'ask' && l.isBom) repaintBomComps(l);
       });
       inp.addEventListener('change', saveDraft);
       inp.addEventListener('click', e => e.stopPropagation());
@@ -1167,18 +1334,17 @@
     }));
     const ac = tb.querySelector('.rp-acq'); tb.querySelectorAll('.rp-acq').forEach(a => attachAutocomplete(a)); if (ac && S.autoFocusAdd) { ac.focus(); S.autoFocusAdd = false; }
   }
-  /* Qual das duas médias o motor está usando NESTA linha.
-     Precisa ser por linha e não por modo: em 'branch, fall back to reps' a
-     resposta muda de SKU para SKU, e é exatamente nos 31% em que uma das duas
-     está zerada que o usuário quer saber qual virou quantidade. */
+  /* Qual das duas médias o motor está usando NESTA linha — o ponto que marca a
+     coluna. No Mixed a resposta muda de SKU para SKU (usa o MAIOR), e é
+     exatamente nos SKUs em que uma das duas está zerada que o usuário quer
+     saber qual virou quantidade. */
   function usaBranch(l) {
     const b = l.storedAvg != null ? l.storedAvg : 0;
     const r = l.repAvg || 0;
     if (SET.demand === 'rep') return false;
     if (SET.demand === 'branch') return true;
-    if (SET.demand === 'branch_then_rep') return b > 0 || r <= 0;
-    if (SET.demand === 'rep_then_branch') return !(r > 0);
-    return true;
+    // Mixed: o motor usa o MAIOR — o ponto marca a coluna que venceu.
+    return b >= r;
   }
 
   // Repinta SÓ a célula do cover da linha digitada. Um renderGrid() a cada
@@ -1223,6 +1389,16 @@
     const src = tmp.firstElementChild; if (!src) return;
     td.innerHTML = src.innerHTML; td.title = src.title || '';
   }
+  // Assembly: repinta SÓ as células de qtd das sub-linhas de componente do pai
+  // digitado (ask × qtd-por-unidade), sem redesenhar a tabela.
+  function repaintBomComps(l) {
+    if (!l || !l.isBom) return;
+    const ask = clampInt(l.ask);
+    $('rpGrid').querySelectorAll(`tr.rp-bomcomp[data-bomparent="${CSS.escape(l.code)}"]`).forEach((tr) => {
+      const q = Number(tr.getAttribute('data-q') || 0);
+      const c = tr.querySelector('.rp-bomqty'); if (c) c.textContent = n0(ask * q);
+    });
+  }
   function lineByRow(tr) { if (!tr) return null; const code = tr.getAttribute('data-code'); return code ? S.lines.find(l => l.code === code) : null; }
   // O cabeçalho dizia "129 lines · 738 units" o tempo todo. Nenhum dos dois
   // muda uma decisão: quantas linhas se vê rolando, e o total de unidades só
@@ -1234,22 +1410,24 @@
   // A régua também se escolhe AQUI, e não só no Settings: é neste clique que a
   // diferença aparece — em Brisbane, 20 itens contra 396. Escolher com os dois
   // números na frente é diferente de escolher num menu de configuração.
-  function loadCountFor(basis) {
+  function loadCountFor(basis, bomOnly) {
     const keep = SET.demand; SET.demand = basis;
     let n = 0, units = 0;
     try {
       const have = new Set(S.lines.map(l => String(l.code).toUpperCase()));
-      const sug = suggestionUniverse().filter(r => r.isSuggested && !have.has(String(r.code).toUpperCase()));
+      const uni = bomOnly ? bomSuggestionUniverse() : suggestionUniverse();
+      const sug = uni.filter(r => r.isSuggested && !have.has(String(r.code).toUpperCase()));
       n = sug.length; units = sug.reduce((a, r) => a + (r.sug || 0), 0);
     } finally { SET.demand = keep; }
     return { n, units };
   }
-  function openLoadModal() {
+  function openLoadModal(bomOnly) {
     closeSide();
-    const uni = suggestionUniverse(), sug = uni.filter(r => r.isSuggested);
+    const uni = (bomOnly ? bomSuggestionUniverse() : suggestionUniverse()), sug = uni.filter(r => r.isSuggested);
     const have = new Set(S.lines.map(l => String(l.code).toUpperCase()));
     const toAdd = sug.filter(r => !have.has(String(r.code).toUpperCase()));
-    $('loadMsg').innerHTML = `<b>${toAdd.length}</b> suggested line${toAdd.length === 1 ? '' : 's'} for <b>${esc(S.branch.name)}</b> under ${SET.cutDays}d cover.` +
+    $('loadMsg').innerHTML = `<b>${toAdd.length}</b> ${bomOnly ? 'assembly (BOM) ' : ''}suggested line${toAdd.length === 1 ? '' : 's'} for <b>${esc(S.branch.name)}</b> under ${SET.cutDays}d cover.` +
+      (bomOnly ? ' Each brings its components below; the Export sends the components, not the assembly.' : '') +
       (S.lines.length ? ` Your ${S.lines.length} existing line${S.lines.length === 1 ? '' : 's'} stay untouched.` : '');
     // Os dois lados calculados de verdade, não estimados.
     /* AS QUATRO REGRAS, cada uma com o número que ela realmente produz — não
@@ -1261,26 +1439,27 @@
     const REGRAS = [
       ['branch', 'Branch only',
         'What shipped out of this branch. Ignores what Main sent on its behalf.'],
-      ['branch_then_rep', 'Branch, reps fill the gaps',
-        'The branch figure when there is one; its reps cover the SKUs the branch never shipped itself.'],
-      // "Reps, branch fills the gaps" saiu: media 71/685 vs "Reps only" 70/673 — 1 linha, 12 unidades
-      // de diferença. Era uma quarta opção que quase ninguém distinguia da terceira.
       ['rep', 'Reps only',
         'What this branch sold, wherever it shipped from. Ignores branch-only movement.'],
+      // Mixed substitui o antigo "fill the gaps": em vez de escolher uma régua
+      // calada (e subcontar os SKUs que a filial despacha um pouco), usa o MAIOR
+      // das duas por SKU. As duas colunas ficam à vista, então dá para auditar.
+      ['both', 'Mixed — the larger of the two',
+        'Per SKU, the higher of branch vs reps: covers the worst case. Both columns stay visible, so you see which one drove the number.'],
     ];
     const box = $('loadBasis');
     if (box) box.innerHTML = REGRAS.map(([v, titulo, texto]) => {
-      const c = loadCountFor(v);
+      const c = loadCountFor(v, bomOnly);
       const on = SET.demand === v;
       return `<label class="rp-basis${on ? ' is-on' : ''}">
         <input type="radio" name="lbasis" value="${v}"${on ? ' checked' : ''}>
-        <b>${esc(titulo)}</b><span>${n0(c.n)} lines · ${n0(c.units)} units</span>
+        <b>${esc(titulo)}</b><span>${n0(c.n)} lines</span>
         <small>${esc(texto)}</small></label>`;
     }).join('');
     box && box.querySelectorAll('input[name=lbasis]').forEach(r => r.addEventListener('change', () => {
       SET.demand = r.value; saveSet();
       // Recarrega para as quantidades já virem preenchidas pela régua escolhida.
-      refreshRepAvg().then(() => { writeScope(); writeRulers(); renderGrid(); openLoadModal(); });
+      refreshRepAvg().then(() => { writeScope(); writeRulers(); renderGrid(); openLoadModal(bomOnly); });
     }));
     $('loadConfirm').textContent = toAdd.length ? `Load ${toAdd.length}` : 'Nothing to add';
     $('loadConfirm').disabled = !toAdd.length;
@@ -1480,6 +1659,14 @@
   let placing = false;
   async function placeOrder() {
     if (placing) return;
+    // ETAPA 1: itens BOM (assembly) saem pelo Export CSV (componentes). A
+    // transferência automática no Cin7 com os componentes é a Etapa 2 (aprovação
+    // pendente). Bloquear aqui evita criar uma stockTransfer do MONTADO, que tem
+    // ~0 de estoque acabado. Ver o plano do feature.
+    if ((S.lines || []).some(l => l.isBom)) {
+      toast('Itens BOM saem pelo Export CSV por enquanto — a transferência automática no Cin7 com os componentes entra na próxima etapa.', true);
+      return;
+    }
     const lines = S.lines.map(l => ({ sku: l.code, qty: finalQty(l) })).filter(x => x.qty > 0);
     if (!lines.length) { toast('No line has a quantity', true); return; }
     placing = true;
@@ -1988,11 +2175,40 @@ The branch column is the decision that was recorded; the columns after it are wh
   // SKU = Rapid Code · Name = Product · Quantity = Branch Ask · Comments = stock locator.
   // Só as linhas com Branch Ask > 0: é arquivo de pedido, linha sem quantidade não entra.
   function exportCSV() {
-    const rows = (S.lines || []).filter(l => clampInt(l.ask) > 0);
-    if (!rows.length) { toast('Nada para exportar — preencha o Branch Ask', true); return; }
+    const src = (S.lines || []).filter(l => clampInt(l.ask) > 0);
+    if (!src.length) { toast('Nada para exportar — preencha o Branch Ask', true); return; }
+    // Assembly (BOM): exporta os COMPONENTES (qtd = ask × qtd-por-unidade), não o
+    // montado — o warehouse pica e transfere os componentes, a filial monta lá.
+    // Item normal continua uma linha só.
+    const linhas = [];
+    for (const l of src) {
+      const ask = clampInt(l.ask);
+      if (l.isBom && l.bom && l.bom.length) {
+        for (const comp of l.bom) {
+          const cp = S.prod[comp.code] || {};
+          linhas.push({ sku: cp.sku || comp.code, name: cp.name || '', qty: ask * (Number(comp.quantity) || 0), loc: cp.stock_locator || '' });
+        }
+      } else {
+        linhas.push({ sku: l.code, name: l.name, qty: ask, loc: l.loc || '' });
+      }
+    }
+    // Soma por SKU: o mesmo componente puxado por dois assemblies (ou por um
+    // assembly + uma linha normal) vira UMA linha somada — senão o import do
+    // Cin7 recebe o SKU duplicado e sub-transfere/rejeita.
+    const porSku = new Map();
+    for (const r of linhas) {
+      if (!(r.qty > 0)) continue;
+      const key = String(r.sku).toUpperCase();
+      const ex = porSku.get(key);
+      if (ex) ex.qty += r.qty; else porSku.set(key, { sku: r.sku, name: r.name, qty: r.qty, loc: r.loc });
+    }
+    // Pick ordenado por LOCATION (pedido do dono): itens do mesmo corredor juntos.
+    // Sem locator vai pro fim.
+    const linhasAgg = [...porSku.values()]
+      .sort((a, b) => (a.loc || '￿').localeCompare(b.loc || '￿') || String(a.sku).localeCompare(String(b.sku)));
     const q = v => { const s = String(v == null ? '' : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const out = [['SKU', 'Name', 'Quantity', 'Comments'].join(',')]
-      .concat(rows.map(l => [q(l.code), q(l.name), clampInt(l.ask), q(l.loc || '')].join(',')));
+      .concat(linhasAgg.map(r => [q(r.sku), q(r.name), r.qty, q(r.loc)].join(',')));
     const csv = out.join('\r\n') + '\r\n';   // vírgula + CRLF, aspas só quando precisa — como o CSV do Cin7
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const d = new Date(), p2 = n => String(n).padStart(2, '0');
@@ -2002,7 +2218,8 @@ The branch column is the decision that was recorded; the columns after it are wh
     a.download = `branch_replenishment_${(S.branch && S.branch.code) || 'branch'}_${stamp}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast(`Exportado: ${rows.length} linha${rows.length === 1 ? '' : 's'}`);
+    const nOut = out.length - 1;   // menos o cabeçalho
+    toast(`Exportado: ${nOut} linha${nOut === 1 ? '' : 's'}`);
   }
 
   function wire() {
@@ -2010,7 +2227,8 @@ The branch column is the decision that was recorded; the columns after it are wh
     $('btnBack').addEventListener('click', renderLanding);
     document.querySelectorAll('#viewSeg button').forEach(b => b.addEventListener('click', () => setView(b.dataset.v)));
     $('btnSettings').addEventListener('click', openSettings);
-    $('btnLoadSuggest').addEventListener('click', openLoadModal);
+    $('btnLoadSuggest').addEventListener('click', () => openLoadModal(false));
+    $('btnLoadBom').addEventListener('click', () => openLoadModal(true));
     $('btnCols').addEventListener('click', openCols);
     $('btnExport').addEventListener('click', exportCSV);
     $('btnReset').addEventListener('click', startOver);
@@ -2036,7 +2254,7 @@ The branch column is the decision that was recorded; the columns after it are wh
        mesmo motor da grade — sem a régua carregada eles somam zero, e zero ali
        lê-se "está tudo abastecido". É a leitura mais cara possível de um dado
        que ainda não chegou. */
-    try { await loadBase(); await loadRepAvg(); renderLanding(); }
+    try { await loadBase(); await loadAllBranchAvg(); renderLanding(); }
     catch (e) { console.error(e); setStatus('bad', 'Load failed: ' + e.message); toast('Load failed: ' + e.message, true); }
   })();
 })();

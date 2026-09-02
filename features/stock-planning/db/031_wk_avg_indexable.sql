@@ -48,7 +48,7 @@ AS $$
     SELECT d.sku_key,
            (d.order_date + (7 - extract(isodow FROM d.order_date))::int)::date AS week_ending,
            sum(d.qty_signed)::numeric                                          AS qty
-      FROM cin7_mirror.v_sales_demand_line d
+      FROM cin7_mirror.v_rp_demand d
      CROSS JOIN b
      WHERE d.order_date >  b.anchor - (b.wks * 7) - 7
        AND d.order_date <= b.anchor

@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=21">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=20260901c">
+<link rel="stylesheet" href="replenishment.css?v=20260902l">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -63,6 +63,7 @@
       <span class="sp-gap"></span>
       <input type="search" id="gridSearch" placeholder="Find on sheet…" style="max-width:190px">
       <button class="sp-btn is-primary" id="btnLoadSuggest">Load suggested</button>
+      <button class="sp-btn is-primary" id="btnLoadBom" title="Load assembly (BOM) suggestions — each shows its components below; the export sends the components, not the assembly" style="display:none">Load BOM suggested</button>
       <button class="sp-btn is-ghost" id="btnCols" title="Choose columns" style="font-size:13px">Columns</button>
       <button class="sp-btn is-ghost" id="btnExport" title="Export CSV (Cin7 format): SKU · Name · Quantity · Comments" style="font-size:13px">Export CSV</button>
       <button class="sp-btn is-ghost" id="btnReset" title="Start this plan over" style="font-size:13px">Start over</button>
@@ -221,6 +222,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js?v=20260831"></script>
-<script src="replenishment-app.js?v=20260901d"></script>
+<script src="replenishment-app.js?v=20260902l"></script>
 </body>
 </html>
