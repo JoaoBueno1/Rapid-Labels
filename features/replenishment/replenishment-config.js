@@ -41,10 +41,10 @@
   //   8 weeks ≈ supplier lead time (4-6 wks) + processing buffer (2 wks).
   //   Below this, Main itself becomes the bottleneck.
   //
-  //   Critical: this multiplies the avg returned by pickMainAvg(), which
-  //   prefers avg_sales_main (true Main customer demand) over
-  //   avg_mth_main (which includes interstate transfers and is inflated).
-  //   Without that preference, 8 × inflated_avg blocks all top movers.
+  //   This multiplies pickMainAvg(), which is now avg_sales_main and nothing
+  //   else — Main's own customer demand. It deliberately does NOT include
+  //   avg_transfer_main: the transfers ARE the replenishment this engine plans,
+  //   so reserving against them would be reserving against itself.
   const MAIN_MIN_WEEKS = 8;
 
   // ──────────────────────────────────────────────────────────────────
@@ -284,8 +284,9 @@
   ];
 
   // Field names for Main warehouse avg.
-  const MAIN_AVG_FIELD = 'avg_mth_main';
-  const MAIN_AVG_REP_FIELD = 'avg_rep_main';
+  /* avg_mth_main e avg_rep_main sairam com o fallback de pickMainAvg. Nada mais
+     no repo os lia — conferido — e uma constante exportada que ninguem usa e um
+     convite para alguem religar o comportamento sem saber o que ele fazia. */
 
   // ──────────────────────────────────────────────────────────────────
   // HELPERS
@@ -316,13 +317,26 @@
   // The first two reflect what Main actually sells to its own customers and
   // is the correct base for "how much Main must keep to cover supplier lead
   // time". avg_mth_main is fallback only.
+  /* A reserva do Main protege os CLIENTES do Main durante o lead time do
+     container. Logo, a media certa e a venda do Main — e so ela.
+     Duas fontes sairam daqui:
+
+     avg_rep_main vinha primeiro e esta VAZIA nas 4.644 linhas da tabela: o ramo
+     nunca executava. Funcionava por acidente, caindo na venda. Deixa-lo era
+     manter uma porta aberta para alguem preencher a coluna um dia e mudar o
+     significado da reserva do Main inteiro sem ninguem ter decidido nada.
+
+     avg_mth_main era o fallback e, por definicao da propria tabela
+     (docs/RESTOCK_AVG_UPDATE.md), e "tudo que SAI do Main" = venda + TRANSFERENCIA
+     para filial. Reservar contra ele e circular: o Main guardava estoque para se
+     proteger da transferencia que este proprio motor calcula. Media contra si
+     mesmo. No catalogo sao 152.440 contra 75.363 — o dobro.
+
+     Sem venda medida a reserva agora e 0. Zero e honesto ("nao ha venda medida");
+     o dobro era uma afirmacao errada. Medido: muda 232 SKUs, libera 3.289 unidades
+     que estavam presas, e nenhum SKU passa a reservar mais. */
   function pickMainAvg(avgRow) {
-    if (!avgRow) return 0;
-    const rep = Number(avgRow[MAIN_AVG_REP_FIELD] || 0);
-    if (rep > 0) return rep;
-    const sales = Number(avgRow.avg_sales_main || 0);
-    if (sales > 0) return sales;
-    return Number(avgRow[MAIN_AVG_FIELD] || 0);
+    return avgRow ? Number(avgRow.avg_sales_main || 0) : 0;
   }
 
   // Target: N weeks of branch cover (N from the ABC tier or a custom override).
@@ -524,8 +538,6 @@
     CIN7_LOCATION_MAP,
     BRANCHES,
     DEPOTS,
-    MAIN_AVG_FIELD,
-    MAIN_AVG_REP_FIELD,
 
     // constants
     ABC_TARGET_WEEKS,
