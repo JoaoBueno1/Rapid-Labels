@@ -1041,8 +1041,14 @@
       action = `<button class="sp-btn is-primary" id="btnAdvance" ${S.lines.length ? '' : 'disabled'}>${label} ›</button>`;
       if (cur > 0) action += ` <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ back</button>`;
     } else {
-      action = `<span class="rp-step done">✓ ${S.lastTr ? 'Placed in Cin7 — ' + esc(S.lastTr) : 'Approved'}</span>
-                <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ reopen</button>`;
+      /* Aprovado e onde a folha PARA. O envio ao Cin7 e um clique separado e
+         explicito — nunca um efeito colateral de aprovar. */
+      action = S.lastTr
+        ? `<span class="rp-step done">✓ Placed in Cin7 — ${esc(S.lastTr)}</span>
+           <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ reopen</button>`
+        : `<span class="rp-step done">✓ Approved — on hold</span>
+           <button class="sp-btn is-primary" id="btnPlace">Place order in Cin7 ›</button>
+           <button class="sp-btn is-ghost" id="btnBackStage" style="font-size:13px">‹ reopen</button>`;
     }
     const hint = S.stage === 'draft' ? 'Branch fills Branch Ask'
       : S.stage === 'submitted' ? 'Inventory team checks and adjusts Inv Qty'
@@ -1058,6 +1064,7 @@
     $('rpStage').innerHTML = `<div class="rp-steps">${pills}</div><span class="sp-gap"></span><span class="rp-sub">${hint}</span> ${logic} ${action}`;
     const a = $('btnAdvance'); if (a) a.addEventListener('click', advanceStage);
     const b = $('btnBackStage'); if (b) b.addEventListener('click', backStage);
+    const pl = $('btnPlace'); if (pl) pl.addEventListener('click', placeOrder);
   }
   function advanceStage() {
     const steps = STAGES[S.mode], i = stageIdx(); if (i >= steps.length - 1) return;
@@ -1082,7 +1089,11 @@
       S.lines.forEach(l => { if (l.invQty == null) { l.invQty = clampInt(l.ask); seeded++; } });
       if (seeded) saveDraft();
     }
-    if (S.stage === 'approved') { saveDraft(); enterGrid(); return placeOrder(); }
+    /* APROVAR NAO CRIA PEDIDO.
+       Esta linha chamava placeOrder() no mesmo clique: quem aprovava criava a
+       transferencia no Cin7 sem um segundo passo e sem saber. Foi assim que a
+       TR 50666 nasceu. Aprovado e um ESTADO — a folha fica parada nele ate
+       alguem, deliberadamente, mandar para o Cin7 no botao proprio. */
     saveDraft(); enterGrid(); toast(`Stage → ${STAGE_LABEL[S.stage]}`);
   }
   function backStage() { const steps = STAGES[S.mode], i = stageIdx(); if (i > 0) { S.stage = steps[i - 1]; saveDraft(); enterGrid(); } }
