@@ -148,6 +148,10 @@
     // jogada fora quando os Settings ou os dados mudam — recalcular por linha
     // custaria 7 filiais x cada SKU desenhado.
     alloc: null,
+    /* A venda do PROPRIO Main, viva, para a reserva de seguranca.
+       null = nao carregou (ai vale o recuo para a tabela). Objeto = carregou, e
+       ausencia de SKU significa "nao vendeu", que e uma resposta, nao um buraco. */
+    mainLive: null,
     branch: null, view: 'weekly', mode: 'weekly', stage: 'draft', lines: [],
     sort: { key: null, dir: 1 }, search: '', vis: { weekly: null, daily: null }, sideSku: null,
     // Divergências entre a leitura emendada e o total que o servidor informa.
@@ -474,13 +478,12 @@
       const comps = bom.components.filter((c) => Number(c.quantity) > 0);
       cap = comps.length ? Math.min(...comps.map((c) => {
         const bruto = (S.stock.MAIN && S.stock.MAIN[c.code]) || 0;
-        const ar = S.avgBy[String(c.code).toUpperCase()];
-        const res = SET.bomSafety ? RC.computeMainSafety(ar ? RC.pickMainAvg(ar) : 0) : 0;
+        const res = SET.bomSafety ? RC.computeMainSafety(mainAvgFor(String(c.code).toUpperCase())) : 0;
         return Math.floor(Math.max(bruto - res, 0) / Number(c.quantity));
       })) : 0;
     } else {
       const mainGw = Number((S.stock.MAIN && S.stock.MAIN[k]) || 0) + gwStock(k);
-      cap = Math.max(0, mainGw - RC.computeMainSafety(avgRow ? RC.pickMainAvg(avgRow) : 0));
+      cap = Math.max(0, mainGw - RC.computeMainSafety(mainAvgFor(k)));
     }
     // Cabe para todo mundo: ninguem e cortado. O rateio so existe na escassez.
     const shares = {};
@@ -489,6 +492,47 @@
     }
     S.alloc.set(ck, shares);
     return shares[S.branch.code] ?? Infinity;
+  }
+
+  /* A media do Main que alimenta computeMainSafety.
+     Vinha de branch_avg_monthly_sales, que NAO vem do sync: e importada de um
+     Excel a mao (docs/RESTOCK_AVG_UPDATE.md) e a ultima escrita foi 29/07.
+     Medido contra a fonte viva na mesma janela de 6 meses:
+       426 SKUs vendem pelo Main hoje e a tabela diz zero — reserva faltando,
+           107 deles com estoque no Main E filial pedindo agora;
+       595 SKUs desviam mais de 2x, para os dois lados (R-SLGPO2-WH reservava o
+           dobro e travava envio; R-VMB reservava metade e mandava demais).
+
+     A JANELA CONTINUA 6 MESES, de proposito. Com 13, entrariam 643 SKUs que
+     venderam na parte velha e nada nos ultimos 6 — itens que PARARAM de vender
+     pelo Main. Reservar oito semanas para eles congelaria estoque para uma
+     demanda que nao existe (R-SLGPO2-15-WH: 1.394 unidades paradas, zero venda
+     em 6 meses, e duas filiais pedindo). A janela curta esta certa.
+
+     Sem fonte viva (a chamada falhou), volta para a tabela: velha e melhor que
+     reserva zero em tudo. */
+  function mainAvgFor(k) {
+    if (S.mainLive) return Number(S.mainLive[k] || 0);
+    return RC.pickMainAvg(S.avgBy[k] || null);
+  }
+
+  async function loadMainAvg() {
+    const months = 6;   // ver mainAvgFor: alargar a janela cria reserva para item morto
+    try {
+      const qs = new URLSearchParams({ branch: 'MAIN', location: 'Main Warehouse', months });
+      const d = await fetch(`/api/replenishment/branch-averages?${qs}`).then(r => r.json());
+      if (d.error) throw new Error(d.error);
+      const m = {};
+      for (const r of (d.rows || [])) m[String(r.sku_key).trim().toUpperCase()] = Number(r.loc_avg || 0);
+      S.mainLive = m;
+    } catch (e) {
+      // Silencioso NAO: sem isto a reserva do Main volta a ser a tabela de 29/07
+      // e ninguem fica sabendo.
+      S.mainLive = null;
+      S.mainAvgErro = e.message;
+      console.error('[replenishment] venda do Main nao carregou — reserva usando a tabela importada:', e.message);
+    }
+    S.alloc = null;
   }
 
   function buildRow(code) {
@@ -542,8 +586,7 @@
       bomBuild = capacity((cc) => {
         const bruto = (S.stock.MAIN && S.stock.MAIN[cc]) || 0;
         if (!SET.bomSafety) return bruto;
-        const ar = S.avgBy[String(cc).toUpperCase()];
-        return bruto - RC.computeMainSafety(ar ? RC.pickMainAvg(ar) : 0);
+        return bruto - RC.computeMainSafety(mainAvgFor(String(cc).toUpperCase()));
       });
       branchBuild = capacity((cc) => stock[cc]);
     }
@@ -559,7 +602,7 @@
     const tier = (S.ranks && (S.ranks.get(k) || S.ranks.get(code))) || 'C';
     const weeks = SET.abc ? RC.targetWeeksForTier(tier) : SET.weeks;
     const target = RC.computeBranchTarget(avg, weeks);
-    const mainAvg = avgRow ? RC.pickMainAvg(avgRow) : 0;
+    const mainAvg = mainAvgFor(k);
     // ASSEMBLY: teto de ENVIO = capacidade de montar do MAIN (bomBuild, calculado
     // acima); item normal = Main+Gateway − safety.
     // NOTA (refinamento p/ Etapa 2): bomBuild usa o estoque de componente CHEIO,
@@ -1671,7 +1714,7 @@
     });
     const mainSoh = Number((S.stock.MAIN && S.stock.MAIN[sku]) || 0), gwSoh = gwStock(sku);
     const gwReal = Number((S.stock.GATEWAY && S.stock.GATEWAY[sku]) || 0);
-    const mainAvg = avgRow ? RC.pickMainAvg(avgRow) : 0;
+    const mainAvg = mainAvgFor(sku);
     $('sideBody').innerHTML = `
       <div class="rp-side-code">${esc(line.code)}</div>
       <div class="rp-side-name">${esc(line.name || '')}</div>
@@ -2373,7 +2416,7 @@ The branch column is the decision that was recorded; the columns after it are wh
        mesmo motor da grade — sem a régua carregada eles somam zero, e zero ali
        lê-se "está tudo abastecido". É a leitura mais cara possível de um dado
        que ainda não chegou. */
-    try { await loadBase(); await loadAllBranchAvg(); renderLanding(); }
+    try { await loadBase(); await Promise.all([loadAllBranchAvg(), loadMainAvg()]); renderLanding(); }
     catch (e) { console.error(e); setStatus('bad', 'Load failed: ' + e.message); toast('Load failed: ' + e.message, true); }
   })();
 })();
