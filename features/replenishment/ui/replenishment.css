@@ -193,6 +193,9 @@
 .rp-set { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-top: 12px; background: var(--card-2); }
 .rp-set-h { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); margin-bottom: 9px; }
 .rp-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin-top: 8px; cursor: pointer; }
+/* Nota de um ajuste que muda o que a empresa PEDE: a caixa sozinha nao diz o
+   suficiente, e a pessoa que a desmarca precisa saber o que esta abrindo mao. */
+.rp-set-note { display: block; margin: 6px 0 0 26px; font-size: 11.5px; line-height: 1.45; color: var(--ink-3, #7b8794); }
 .rp-mini-scroll { max-height: 230px; overflow: auto; border: 1px solid var(--line); border-radius: 7px; }
 .sp-box { max-width: 760px; }
 

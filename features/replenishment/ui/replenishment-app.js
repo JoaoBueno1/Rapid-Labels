@@ -48,6 +48,10 @@
      ser desfeito na linha seguinte pelo Object.assign, e o campo morto
      ressuscitava a cada carga. */
   const DEFAULTS = { weeks: 6, cutDays: 25, abc: false, avgSource: 'branch', avgRound: 'pure', cartons: false,
+    // Liga a reserva de seguranca do Main tambem nos assemblies (ver bomBuild).
+    // Ligado por padrao: e o mesmo criterio que o item normal sempre teve, e o
+    // padrao anterior era a excecao, nao a regra.
+    bomSafety: true,
     // demand: qual das duas médias vira quantidade sugerida. Não decide mais o
     // que a planilha MOSTRA — as duas estão sempre lá, cada uma na sua coluna.
     // O padrão é 'both' (Mixed = o MAIOR das duas por SKU): cobre o rep-only
@@ -453,7 +457,21 @@
       const capacity = (at) => comps.length
         ? Math.min(...comps.map((c) => Math.floor(Math.max(Number(at(c.code) || 0), 0) / Number(c.quantity))))
         : 0;
-      bomBuild = capacity((cc) => S.stock.MAIN && S.stock.MAIN[cc]);
+      /* A MESMA reserva que o item normal ja tinha, agora tambem no assembly.
+         O item normal envia Main+Gateway MENOS computeMainSafety (8 semanas do
+         consumo do proprio Main). O assembly enviava o estoque de componente
+         CHEIO — o codigo aqui ja anotava a divida: "sem reservar safety... os
+         dois fluxos disputam o mesmo estoque no Main".
+         Era a assimetria que deixava o motor prometer as 6 unicas unidades que o
+         Main consegue montar, ignorando que o Main tambem vende o item.
+         Desligavel no Settings porque muda o que a empresa pede: quem quiser o
+         teto bruto de volta tira a marca. */
+      bomBuild = capacity((cc) => {
+        const bruto = (S.stock.MAIN && S.stock.MAIN[cc]) || 0;
+        if (!SET.bomSafety) return bruto;
+        const ar = S.avgBy[String(cc).toUpperCase()];
+        return bruto - RC.computeMainSafety(ar ? RC.pickMainAvg(ar) : 0);
+      });
       branchBuild = capacity((cc) => stock[cc]);
     }
     // SOH efetivo: montado → o que a FILIAL consegue montar; normal → acabado.
@@ -615,12 +633,14 @@
       // grandezas empilhadas fazem o olho comparar o que não se compara.
       const nBranch = S.loaded ? branchCountFor(b.code, 'branch') : 0;
       const nRep = S.loaded ? branchCountFor(b.code, 'rep') : 0;
+      // Uma vez so: branchCountFor roda o suggestionUniverse inteiro, e chama-lo
+      // dentro do template o rodaria de novo em cada cartao que nao esta em Mixed.
+      const nBoth = S.loaded ? branchCountFor(b.code, 'both') : 0;
       // A cor do cartão segue a régua que está mandando: era o número da regra
       // configurada que a definia, e ele saiu.
       // No Mixed quem manda é o maior por SKU — a cor usa a contagem do próprio
       // Mixed, não a da filial (senão Brisbane, com 10 pela filial, ficaria verde).
-      const nDriver = mixed ? (S.loaded ? branchCountFor(b.code, 'both') : 0)
-                    : (usaRep ? nRep : nBranch);
+      const nDriver = mixed ? nBoth : (usaRep ? nRep : nBranch);
       // Só os nomes. O quanto cada rep vendeu não muda decisão nenhuma nesta
       // tela — o que ela responde é "quem é desta filial" e "está faltando
       // alguém". Número por rep vive no painel de dentro.
@@ -632,8 +652,13 @@
       // vez de esconder a contagem inteira (era o que deixava o cartão em branco).
       const reguas = S.loaded ? `
         <div class="rp-tk">
-          <div class="rp-tk-r${SET.demand === 'branch' || mixed ? ' is-driver' : ''}"><span>Branch</span><b>${n0(nBranch)}</b></div>
-          <div class="rp-tk-r${SET.demand === 'rep' || mixed ? ' is-driver' : ''}"><span>Reps</span><b>${n0(nRep)}</b></div>
+          <div class="rp-tk-r${SET.demand === 'branch' ? ' is-driver' : ''}"><span>Branch</span><b>${n0(nBranch)}</b></div>
+          <div class="rp-tk-r${SET.demand === 'rep' ? ' is-driver' : ''}"><span>Reps</span><b>${n0(nRep)}</b></div>
+          <!-- Mixed ja era calculado (nDriver) e usado so para escolher a cor do
+               cartao: o numero existia e nao aparecia. Como Mixed e o padrao, o
+               cartao marcava Branch E Reps como "driver" e nao mostrava o unico
+               numero que estava mandando de fato. -->
+          <div class="rp-tk-r${mixed ? ' is-driver' : ''}"><span>Mixed</span><b>${n0(nBoth)}</b></div>
           <div class="rp-tile-sub">SKUs to restock (cover &lt; ${SET.cutDays}d)</div>
           ${nomes.length ? `<div class="rp-tk-reps">${esc(nomes.join(', '))}</div>` : ''}
           ${((inf && inf.orphans) || []).length ? `<div class="rp-tk-orphan" title="${
@@ -844,13 +869,16 @@
     $('btnReset').style.display = gridding ? '' : 'none';
     const showLoad = S.view === 'weekly' && draft;
     $('btnLoadSuggest').style.display = showLoad ? '' : 'none';
-    if (showLoad) $('btnLoadSuggest').textContent = `Load suggested (${suggestionUniverse().filter(r => r.isSuggested).length})`;
+    // Sem contador no botao. Ele contava o universo INTEIRO, enquanto o modal e a
+    // carga descontam o que ja esta na planilha (`have`) — depois da primeira carga o
+    // botao anunciava um numero que ja nao existia. O numero honesto vive no modal,
+    // que e onde a decisao acontece.
     // BOM tem botão PRÓPRIO: só aparece quando há assembly a sugerir (senão vira ruído).
     const bomBtn = $('btnLoadBom');
     if (bomBtn) {
       const nBom = showLoad ? bomSuggestionUniverse().filter(r => r.isSuggested).length : 0;
-      bomBtn.style.display = (showLoad && nBom > 0) ? '' : 'none';
-      if (showLoad && nBom > 0) bomBtn.textContent = `Load BOM suggested (${nBom})`;
+      bomBtn.style.display = (showLoad && nBom > 0) ? '' : 'none';   // some quando nao ha assembly
+      bomBtn.textContent = 'Load BOM suggested';                     // sem contador, mesma razao
     }
   }
 
@@ -1063,7 +1091,16 @@
       // isBom=false/bom=null evita recursão se o componente também for montado.
       if (!(l.isBom && l.bom && l.bom.length)) return tr;
       const ask = clampInt(l.ask);
-      const subs = l.bom.map((comp) => {
+      /* Componente de quantidade NEGATIVA nao vira linha de picking.
+         765 das 6.109 linhas de BOM sao negativas, em 593 dos 2.134 assemblies (28%).
+         Elas descrevem uma CONVERSAO, nao uma montagem: R1140-WH-WH-36-SM = TRIM-36
+         (x1) + WH-60-SM (x1) + TRIM-60 (x-1) — pega-se um 60, tira-se o trim de 60 e
+         poe-se o de 36. O -1 e o que SOBRA, nao o que se envia.
+         Desenha-las como sub-linha punha "-6" numa coluna de quantidade a picar, e o
+         mesmo -6 saia no CSV do Cin7. A capacidade ja as ignorava (o filtro
+         `quantity > 0` em buildRow); o que faltava era o render e o export
+         concordarem com ela. */
+      const subs = l.bom.filter((comp) => Number(comp.quantity) > 0).map((comp) => {
         const cl = buildRow(comp.code); if (!cl) return '';
         cl.isBomComp = true; cl.parentCode = l.code; cl.isBom = false; cl.bom = null;
         cl.bomQty = ask * Number(comp.quantity || 0);
@@ -1100,7 +1137,7 @@
   // brigariam por 8px numa coluna que já é a mais apertada da grade.
   function lifeChip(l) {
     if (l.isBomComp)
-      return '<span class="rp-life rp-life--bom" title="Componente de um assembly (BOM) — é picado e transferido para a filial montar o item acima.">BOM</span>';
+      return '<span class="rp-life rp-life--bom" title="Component of an assembly (BOM) — picked and transferred so the branch can build the item above.">BOM</span>';
     if (l.life === 'DISCONTINUED')
       return '<span class="rp-life rp-life--disc" title="Discontinued in Master Stock. It still ships while there is stock; it is not reordered.">DISC</span>';
     // RUN-OUT badge removido a pedido: ocupava espaço na coluna mais apertada da grade.
@@ -1174,7 +1211,7 @@
         if (l.isBom) {
           const b = l.soh || 0;
           return wrap(`<span class="rp-buildable">${n0(b)}</span>` + t, '',
-            b > 0 ? `Acabado ~0 — mas a filial monta ${n0(b)} com os componentes que tem. O cover sai daqui.`
+            b > 0 ? `Finished stock ~0 — but the branch can build ${n0(b)} from the components it holds. Cover is measured from that.`
                   : 'A filial ainda não tem componentes para montar nenhuma unidade.');
         }
         // O negativo mora aqui e só aqui. O Cover parou de repeti-lo como
@@ -1256,8 +1293,8 @@
         if (l.isBom) {
           const bb = l.bomBuild || 0;
           return wrap(bb <= 0 ? '<span class="rp-neg">0</span>' : n0(bb), '',
-            bb <= 0 ? 'Faltam componentes no Main para montar esta assembly.'
-                    : `O Main consegue montar ${n0(bb)} com o estoque de componentes que tem hoje.`);
+            bb <= 0 ? 'Main is short of components to build this assembly.'
+                    : `Main can build ${n0(bb)} from the component stock it holds today.`);
         }
         return wrap(
           l.mainGw <= 0 ? `<span class="rp-neg">${n0(l.mainGw)}</span>` : n0(l.mainGw), '',
@@ -2126,6 +2163,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     if ($('setSalesMonths')) $('setSalesMonths').value = String(SET.salesMonths);
     if ($('setAvgSource')) $('setAvgSource').value = SET.avgSource;
     $('setAvgRound').value = SET.avgRound; $('setCartons').checked = SET.cartons;
+    $('setBomSafety').checked = SET.bomSafety !== false;
     if ($('setMinAvg')) $('setMinAvg').value = SET.minAvg;
     const rows = S.avg.map(r => ({ code: r.product, tot: BRANCHES.reduce((s, b) => s + pickAvg(r, b), 0) })).filter(r => r.tot > 0).sort((a, b) => b.tot - a.tot).slice(0, 60);
     $('setAvgTable').innerHTML = '<thead><tr><th class="txt">Rapid Code</th><th class="num">Tier</th><th class="num">Network avg/mo</th></tr></thead><tbody>' +
@@ -2137,6 +2175,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     SET.weeks = Math.max(1, Number($('setWeeks').value) || 6); SET.cutDays = Math.max(1, Number($('setCutDays').value) || 25);
     SET.abc = $('setAbc').checked; if ($('setAvgSource')) SET.avgSource = $('setAvgSource').value;
     SET.avgRound = $('setAvgRound').value; SET.cartons = $('setCartons').checked;
+    SET.bomSafety = $('setBomSafety').checked;
     if ($('setMinAvg')) SET.minAvg = Math.max(0, Number($('setMinAvg').value) || 0);
     const basisBefore = SET.demand, monthsBefore = SET.salesMonths;
     if ($('setDemand')) SET.demand = $('setDemand').value;
@@ -2176,7 +2215,7 @@ The branch column is the decision that was recorded; the columns after it are wh
   // Só as linhas com Branch Ask > 0: é arquivo de pedido, linha sem quantidade não entra.
   function exportCSV() {
     const src = (S.lines || []).filter(l => clampInt(l.ask) > 0);
-    if (!src.length) { toast('Nada para exportar — preencha o Branch Ask', true); return; }
+    if (!src.length) { toast('Nothing to export — fill in Branch Ask first', true); return; }
     // Assembly (BOM): exporta os COMPONENTES (qtd = ask × qtd-por-unidade), não o
     // montado — o warehouse pica e transfere os componentes, a filial monta lá.
     // Item normal continua uma linha só.
@@ -2184,7 +2223,9 @@ The branch column is the decision that was recorded; the columns after it are wh
     for (const l of src) {
       const ask = clampInt(l.ask);
       if (l.isBom && l.bom && l.bom.length) {
-        for (const comp of l.bom) {
+        // Mesma regra do render: o componente negativo e subproduto da conversao,
+        // nao carga. Exportado, ele virava quantidade negativa dentro do Cin7.
+        for (const comp of l.bom.filter((c) => Number(c.quantity) > 0)) {
           const cp = S.prod[comp.code] || {};
           linhas.push({ sku: cp.sku || comp.code, name: cp.name || '', qty: ask * (Number(comp.quantity) || 0), loc: cp.stock_locator || '' });
         }
