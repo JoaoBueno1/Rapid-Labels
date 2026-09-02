@@ -79,6 +79,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// As páginas legadas de reposição liam uma tabela de média importada à mão
+// (branch_avg_monthly_sales, ~5 semanas velha) e nunca foram repointadas para
+// a fonte viva. O módulo vivo é features/replenishment/ui/. 301 para que
+// bookmark/link antigo caia sempre na tela viva, em vez de planejar em dado velho.
+['/features/replenishment/replenishment.html',
+ '/features/replenishment/replenishment-branch.html',
+ '/features/replenishment/replenishment-all.html'].forEach((p) =>
+  app.get(p, (_req, res) => res.redirect(301, '/features/replenishment/ui/replenishment.html')));
+
 // Serve static files from current directory
 app.use(express.static(path.join(__dirname)));
 
@@ -408,6 +417,16 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   } catch (e) {
     console.warn('⚠️  Could not register Analytics routes:', e.message);
   }
+}
+
+// ── Monthly Review · o quadro de trabalho ──
+// try PROPRIO, de proposito. O bloco acima cobre tres registros de uma vez e
+// so escreve um console.warn: se o deck-routes quebrar, o replenishment some
+// sem ninguem ver. Nao repito o padrao aqui.
+try {
+  require('./features/analytics/routes/review-routes').register(app);
+} catch (e) {
+  console.warn('⚠️  Could not register Monthly Review board:', e.message);
 }
 
 /* ── Stock Planning (substitui o Excel Rapid-Inventory SKU) ──

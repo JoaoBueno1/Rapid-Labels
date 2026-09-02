@@ -1,0 +1,488 @@
+[
+ {
+  "key": "jul-01",
+  "deck": "jul",
+  "n": 1,
+  "title": "Capa · Inventory Monthly Review",
+  "readiness": "manual",
+  "brief": "Capa com mes e data. Sem dado.",
+  "img": "slides/jul-01.jpg"
+ },
+ {
+  "key": "jul-02",
+  "deck": "jul",
+  "n": 2,
+  "title": "PROJECTS · Sales do mes",
+  "readiness": "pronto",
+  "brief": "Venda total do mes ($831.132 em julho), variacao contra o mesmo mes do ano passado (+67%), e dois Top 10 — por categoria e por SKU. <b>Fonte:</b> cin7_mirror.sales_orders + sale_lines, liquido de imposto. A view <code>rapid_inv.v_an_monthly_sales</code> ja calcula o mes contra o ano anterior.",
+  "img": "slides/jul-02.jpg"
+ },
+ {
+  "key": "jul-03",
+  "deck": "jul",
+  "n": 3,
+  "title": "PROJECTS · Open Orders",
+  "readiness": "pronto",
+  "brief": "248 pedidos em aberto, com valor aberto, ja faturado e remanescente por cliente. <b>Fonte:</b> cin7_mirror.sales_orders por status. O TMS ja tem o modulo Open Orders lendo o espelho.",
+  "img": "slides/jul-03.jpg"
+ },
+ {
+  "key": "jul-04",
+  "deck": "jul",
+  "n": 4,
+  "title": "PROJECTS · Stock on Hand Analysis · Top 10 P+H por custo",
+  "readiness": "pronto",
+  "brief": "Os 10 SKUs com maior valor parado em Pack and Hold. <b>Fonte:</b> stock_snapshot x products.average_cost. A conta e quantidade x custo, ordenada — nada que o espelho nao tenha.",
+  "img": "slides/jul-04.jpg"
+ },
+ {
+  "key": "jul-05",
+  "deck": "jul",
+  "n": 5,
+  "title": "PROJECTS · Pack and Hold Analysis",
+  "readiness": "parcial",
+  "brief": "Cliente, job, dias medios parados e tipo de estoque. <b>Fonte:</b> depende de o Cin7 marcar o pedido como Pack and Hold. O espelho tem os pedidos; falta confirmar se a marcacao vem no status ou so no texto.",
+  "img": "slides/jul-05.jpg"
+ },
+ {
+  "key": "jul-06",
+  "deck": "jul",
+  "n": 6,
+  "title": "CONTAINERS · Received vs Booked",
+  "readiness": "parcial",
+  "brief": "Contêineres recebidos contra reservados, 12 meses moveis, com o pipeline dos proximos. <b>Fonte:</b> hoje planilha de shipping. O Labels tem container-check e container-builder, e o TMS tem inbound_shipments — mas o calendario de reserva ainda nao mora em nenhum dos dois.",
+  "img": "slides/jul-06.jpg"
+ },
+ {
+  "key": "jul-07",
+  "deck": "jul",
+  "n": 7,
+  "title": "CONTAINER PIPELINE · ETA Schedule",
+  "readiness": "parcial",
+  "brief": "Chegadas reservadas com ETA, navio e numero de entregas de fornecedor. <b>Mesma origem do slide 6</b>: existe como planilha (Container Calendar), nao como tabela.",
+  "img": "slides/jul-07.jpg"
+ },
+ {
+  "key": "jul-08",
+  "deck": "jul",
+  "n": 8,
+  "title": "MOVEMENT · Main ↔ Gateway",
+  "readiness": "pronto",
+  "brief": "Pallets transferidos entre Main e Gateway desde jan/25 (2.675 pallets, ~$53.500 a $20/pallet). <b>Fonte:</b> transferencias de estoque do Cin7. O custo por pallet e uma premissa fixa, nao um dado — vale deixar isso visivel quando virar tela.",
+  "img": "slides/jul-08.jpg"
+ },
+ {
+  "key": "jul-09",
+  "deck": "jul",
+  "n": 9,
+  "title": "COST IN por deposito",
+  "readiness": "pronto",
+  "brief": "Entrada de custo do mes por deposito ($275.203 em julho), com mix de categoria. <b>Fonte:</b> Cin7, tipo StockTransfer. E a definicao que ja esta registrada: Cost In = StockTransfer.",
+  "img": "slides/jul-09.jpg"
+ },
+ {
+  "key": "jul-10",
+  "deck": "jul",
+  "n": 10,
+  "title": "COST IN · Tendencia Jan-Jul",
+  "readiness": "pronto",
+  "brief": "A mesma conta do slide 9 mes a mes, por deposito. <b>Fonte:</b> identica. Um unico grafico de linha resolve — hoje sao sete numeros digitados a mao.",
+  "img": "slides/jul-10.jpg"
+ },
+ {
+  "key": "jul-11",
+  "deck": "jul",
+  "n": 11,
+  "title": "COST OUT por deposito",
+  "readiness": "pronto",
+  "brief": "Saida de custo do mes ($338.221 em julho). <b>Fonte:</b> Cin7, tipos Sale + SaleMultiple. Cost Out = Sale + SaleMultiple, tambem ja registrado.",
+  "img": "slides/jul-11.jpg"
+ },
+ {
+  "key": "jul-12",
+  "deck": "jul",
+  "n": 12,
+  "title": "COST OUT · Tendencia Jan-Jul",
+  "readiness": "pronto",
+  "brief": "A serie mensal do slide 11. <b>Fonte:</b> identica.",
+  "img": "slides/jul-12.jpg"
+ },
+ {
+  "key": "jul-13",
+  "deck": "jul",
+  "n": 13,
+  "title": "BRANCH TRANSFERS · Mensal",
+  "readiness": "pronto",
+  "brief": "Frete de transferencia por tipo (TR contra pedidos para filial), maio-julho, ex-GST. $84,2k no trimestre, +44%. <b>Fonte:</b> TMS — orders com customer = RAPID LED - filial. Custo canonico de total_charge / 1,1.",
+  "img": "slides/jul-13.jpg"
+ },
+ {
+  "key": "jul-14",
+  "deck": "jul",
+  "n": 14,
+  "title": "NEW CARRIER · XFM",
+  "readiness": "pronto",
+  "brief": "Transferencias via XFM contra a cotacao da Direct Freight. <b>Fonte:</b> TMS orders + as cotacoes guardadas. A comparacao contra a alternativa e o valor deste slide, e o TMS guarda as duas pontas.",
+  "img": "slides/jul-14.jpg"
+ },
+ {
+  "key": "jul-15",
+  "deck": "jul",
+  "n": 15,
+  "title": "NEW CARRIER · AusPost / StarTrack",
+  "readiness": "pronto",
+  "brief": "O mesmo do slide 14 para AusPost/StarTrack. <b>Fonte:</b> TMS. Atencao: ja foi medido que AusPost PERDE em transferencia de filial — o slide precisa mostrar os dois sinais.",
+  "img": "slides/jul-15.jpg"
+ },
+ {
+  "key": "jul-16",
+  "deck": "jul",
+  "n": 16,
+  "title": "PICK ANOMALIES · Deteccao",
+  "readiness": "pronto",
+  "brief": "10.632 pedidos analisados, 10,8% com anomalia (1.151). <b>Fonte:</b> modulo pick-anomalies do Labels, que ja roda por cron e ja tem a tela.",
+  "img": "slides/jul-16.jpg"
+ },
+ {
+  "key": "jul-17",
+  "deck": "jul",
+  "n": 17,
+  "title": "PICK CORRECTIONS · Auto-fix e manuais",
+  "readiness": "pronto",
+  "brief": "Quantas anomalias viraram correcao, automatica ou manual. <b>Fonte:</b> mesma do slide 16. Lembrete importante: correcao automatica ja corrompeu estoque no Cin7 — o slide deve separar as duas.",
+  "img": "slides/jul-17.jpg"
+ },
+ {
+  "key": "jul-18",
+  "deck": "jul",
+  "n": 18,
+  "title": "Monthly Sales por deposito",
+  "readiness": "pronto",
+  "brief": "Tabela: deposito, 2025, 2026, crescimento sobre o ano anterior, crescimento medio YTD. <b>Fonte:</b> <code>rapid_inv.v_an_monthly_sales</code> — ja existe, 149 linhas, pronta para ler.",
+  "img": "slides/jul-18.jpg"
+ },
+ {
+  "key": "jul-19",
+  "deck": "jul",
+  "n": 19,
+  "title": "Stock on Hand por deposito",
+  "readiness": "pronto",
+  "brief": "Valor de estoque, venda do mes e meses de cobertura por deposito. <b>Fonte:</b> <code>rapid_inv.v_an_stock_by_warehouse</code>. O denominador e COGS, nao faturamento — usar faturamento infla a cobertura pela margem inteira, erro que ja entrou no deck em abril.",
+  "img": "slides/jul-19.jpg"
+ },
+ {
+  "key": "jul-20",
+  "deck": "jul",
+  "n": 20,
+  "title": "Stock on Hand · Abertura, movimento, fechamento",
+  "readiness": "parcial",
+  "brief": "Saldo de abertura, movimentos e fechamento por deposito. <b>Fonte:</b> exige historico de movimento, nao so a foto atual. O espelho guarda o snapshot; a serie de movimentos precisa ser construida.",
+  "img": "slides/jul-20.jpg"
+ },
+ {
+  "key": "jul-21",
+  "deck": "jul",
+  "n": 21,
+  "title": "Ghost Warehouse",
+  "readiness": "parcial",
+  "brief": "Entradas e saidas do Ghost por filial, em quantidade e custo. <b>Fonte:</b> stock_snapshot tem o saldo do Ghost (5.072 unidades hoje); o fluxo entra/sai depende do historico de movimento, como o slide 20.",
+  "img": "slides/jul-21.jpg"
+ },
+ {
+  "key": "jul-22",
+  "deck": "jul",
+  "n": 22,
+  "title": "Top 10 produtos em ruptura nos ultimos 6 meses",
+  "readiness": "parcial",
+  "brief": "Quantas vezes cada SKU ficou sem estoque no periodo, com comentario. <b>Fonte:</b> exige uma serie historica de SOH que hoje nao e guardada — o espelho e substituido a cada hora.",
+  "img": "slides/jul-22.jpg"
+ },
+ {
+  "key": "jul-23",
+  "deck": "jul",
+  "n": 23,
+  "title": "Faulty Warehouse",
+  "readiness": "parcial",
+  "brief": "Valor que entrou no Faulty por filial, quanto foi reclamado e o movimento total. <b>Fonte:</b> o saldo do Faulty esta no espelho (7.057 unidades); o valor reclamado vem de garantia, fora dele.",
+  "img": "slides/jul-23.jpg"
+ },
+ {
+  "key": "jul-24",
+  "deck": "jul",
+  "n": 24,
+  "title": "New Products · Chegando",
+  "readiness": "manual",
+  "brief": "Lista de produtos novos com data prevista. Decisao comercial, digitada.",
+  "img": "slides/jul-24.jpg"
+ },
+ {
+  "key": "jul-25",
+  "deck": "jul",
+  "n": 25,
+  "title": "New Products · Pedidos no mes",
+  "readiness": "parcial",
+  "brief": "SKUs novos pedidos no mes com a data. <b>Fonte:</b> products.last_modified_on ou a data do PO — da para derivar, mas precisa definir o que conta como \"novo\".",
+  "img": "slides/jul-25.jpg"
+ },
+ {
+  "key": "jul-26",
+  "deck": "jul",
+  "n": 26,
+  "title": "Weekly File",
+  "readiness": "parcial",
+  "brief": "Contagens operacionais da semana: AF Main, AF outros, faturamento, transferencias, backorders. <b>Fonte:</b> mistura TMS e Cin7. Cada coluna tem origem, mas a definicao de cada uma precisa ser escrita.",
+  "img": "slides/jul-26.jpg"
+ },
+ {
+  "key": "jul-27",
+  "deck": "jul",
+  "n": 27,
+  "title": "Discontinued Items · 1/4",
+  "readiness": "pronto",
+  "brief": "Itens descontinuados por categoria. <b>Fonte:</b> cin7_mirror.products, campo status. Quatro slides hoje porque a lista nao cabe num — numa tela e uma tabela com filtro.",
+  "img": "slides/jul-27.jpg"
+ },
+ {
+  "key": "jul-28",
+  "deck": "jul",
+  "n": 28,
+  "title": "Discontinued Items · 2/4",
+  "readiness": "pronto",
+  "brief": "Continuacao do slide 27. Mesma fonte.",
+  "img": "slides/jul-28.jpg"
+ },
+ {
+  "key": "jul-29",
+  "deck": "jul",
+  "n": 29,
+  "title": "Discontinued Items · 3/4",
+  "readiness": "pronto",
+  "brief": "Continuacao do slide 27. Mesma fonte.",
+  "img": "slides/jul-29.jpg"
+ },
+ {
+  "key": "jul-30",
+  "deck": "jul",
+  "n": 30,
+  "title": "Discontinued Items · 4/4",
+  "readiness": "pronto",
+  "brief": "Continuacao do slide 27. Mesma fonte.",
+  "img": "slides/jul-30.jpg"
+ },
+ {
+  "key": "jul-31",
+  "deck": "jul",
+  "n": 31,
+  "title": "Collections Collected",
+  "readiness": "parcial",
+  "brief": "Total coletado, quanto nao foi faturado e o percentual. <b>Fonte:</b> TMS tem a coleta; o cruzamento com faturamento depende do vinculo pedido-fatura no Cin7.",
+  "img": "slides/jul-31.jpg"
+ },
+ {
+  "key": "jul-32",
+  "deck": "jul",
+  "n": 32,
+  "title": "Faulty WH · Comentarios",
+  "readiness": "manual",
+  "brief": "Texto sobre retrabalho e garantias. Nao e dado, e a leitura de quem cuida.",
+  "img": "slides/jul-32.jpg"
+ },
+ {
+  "key": "jul-33",
+  "deck": "jul",
+  "n": 33,
+  "title": "Concluding Thoughts",
+  "readiness": "manual",
+  "brief": "Encerramento e proximos passos. Discussao, nao relatorio.",
+  "img": "slides/jul-33.jpg"
+ },
+ {
+  "key": "master-01",
+  "deck": "master",
+  "n": 1,
+  "title": "COST IN por deposito",
+  "readiness": "pronto",
+  "brief": "Mesma analise do slide 9 de julho, referente a junho. <b>Fonte:</b> Cin7 StockTransfer.",
+  "img": "slides/master-01.jpg"
+ },
+ {
+  "key": "master-02",
+  "deck": "master",
+  "n": 2,
+  "title": "COST IN · Tendencia Jan-Jun",
+  "readiness": "pronto",
+  "brief": "Serie mensal por deposito. Nota do proprio slide: data efetiva da transacao.",
+  "img": "slides/master-02.jpg"
+ },
+ {
+  "key": "master-03",
+  "deck": "master",
+  "n": 3,
+  "title": "COST OUT por deposito",
+  "readiness": "pronto",
+  "brief": "Sale + SaleMultiple, junho. <b>Fonte:</b> Cin7.",
+  "img": "slides/master-03.jpg"
+ },
+ {
+  "key": "master-04",
+  "deck": "master",
+  "n": 4,
+  "title": "COST OUT · Tendencia Jan-Jun",
+  "readiness": "pronto",
+  "brief": "Serie mensal. Mesma fonte.",
+  "img": "slides/master-04.jpg"
+ },
+ {
+  "key": "master-05",
+  "deck": "master",
+  "n": 5,
+  "title": "CONTAINERS · Received vs Booked",
+  "readiness": "parcial",
+  "brief": "Como o slide 6 de julho.",
+  "img": "slides/master-05.jpg"
+ },
+ {
+  "key": "master-06",
+  "deck": "master",
+  "n": 6,
+  "title": "CONTAINER PIPELINE · ETA",
+  "readiness": "parcial",
+  "brief": "ETA, navio e entregas por fornecedor. Como o slide 7 de julho.",
+  "img": "slides/master-06.jpg"
+ },
+ {
+  "key": "master-07",
+  "deck": "master",
+  "n": 7,
+  "title": "MOVEMENT · Main ↔ Gateway",
+  "readiness": "pronto",
+  "brief": "Pallets acumulados desde jan/25. Como o slide 8 de julho.",
+  "img": "slides/master-07.jpg"
+ },
+ {
+  "key": "master-08",
+  "deck": "master",
+  "n": 8,
+  "title": "MOVEMENT · Tendencia semanal",
+  "readiness": "pronto",
+  "brief": "Os mesmos pallets, por semana (182 em julho, $3.640, 4 ordens). <b>Fonte:</b> transferencias do Cin7. A granularidade semanal e a unica diferenca para o slide 7.",
+  "img": "slides/master-08.jpg"
+ },
+ {
+  "key": "master-09",
+  "deck": "master",
+  "n": 9,
+  "title": "BRANCH TRANSFERS · Frete semanal",
+  "readiness": "pronto",
+  "brief": "516 consignacoes em maio-junho, custo ex-GST, incluindo frota propria. <b>Fonte:</b> TMS. Repare que inclui frota — a definicao \"frete total\" contra \"frete externo\" muda esse numero em 21%.",
+  "img": "slides/master-09.jpg"
+ },
+ {
+  "key": "master-10",
+  "deck": "master",
+  "n": 10,
+  "title": "BRANCH TRANSFERS · Custo diario",
+  "readiness": "pronto",
+  "brief": "A mesma serie por dia. <b>Fonte:</b> TMS orders.",
+  "img": "slides/master-10.jpg"
+ },
+ {
+  "key": "master-11",
+  "deck": "master",
+  "n": 11,
+  "title": "PICK & FREIGHT ECONOMICS · Transfer savings",
+  "readiness": "pronto",
+  "brief": "Economia das transferencias contra a alternativa. <b>Fonte:</b> TMS — cotacoes guardadas contra o que foi pago. Ja foi medido: XFM +$1,8k contra Direct em pallets, AusPost perde $10k.",
+  "img": "slides/master-11.jpg"
+ },
+ {
+  "key": "master-12",
+  "deck": "master",
+  "n": 12,
+  "title": "WAREHOUSE SPACE · Painel de capacidade",
+  "readiness": "parcial",
+  "brief": "Ocupacao por deposito. <b>Fonte:</b> exige volume por SKU e capacidade por local — o Labels tem Stock Volume e o container-builder tem CBM, mas a capacidade nao esta modelada.",
+  "img": "slides/master-12.jpg"
+ },
+ {
+  "key": "master-13",
+  "deck": "master",
+  "n": 13,
+  "title": "FREIGHT COST · Mensal",
+  "readiness": "pronto",
+  "brief": "Custo de frete por mes. <b>Fonte:</b> TMS orders, total_charge / 1,1 para ex-GST. Nao usar carrier_cost — diverge ~16%.",
+  "img": "slides/master-13.jpg"
+ },
+ {
+  "key": "master-14",
+  "deck": "master",
+  "n": 14,
+  "title": "DELIVERIES BY REGION",
+  "readiness": "pronto",
+  "brief": "Entregas por regiao. <b>Fonte:</b> TMS orders, campos state e suburb. Medido em 90 dias: QLD 5.859, NSW 1.167, VIC 402, WA 25.",
+  "img": "slides/master-14.jpg"
+ },
+ {
+  "key": "master-15",
+  "deck": "master",
+  "n": 15,
+  "title": "BRANCH REPLENISHMENT COST",
+  "readiness": "pronto",
+  "brief": "Custo de abastecer cada filial. <b>Fonte:</b> TMS, pedidos com customer = RAPID LED - filial.",
+  "img": "slides/master-15.jpg"
+ },
+ {
+  "key": "master-16",
+  "deck": "master",
+  "n": 16,
+  "title": "OWN FLEET · Evolucao das vans",
+  "readiness": "pronto",
+  "brief": "Volume e custo da frota propria ao longo do tempo. <b>Fonte:</b> TMS — os 2.772 pedidos sem carrier_id sao exatamente isso: Sunshine Coast Van, Rapid Brisbane, Rapid Gold Coast, Jet.",
+  "img": "slides/master-16.jpg"
+ },
+ {
+  "key": "master-17",
+  "deck": "master",
+  "n": 17,
+  "title": "DELIVERY COVERAGE · Territorios das vans",
+  "readiness": "pronto",
+  "brief": "Cobertura geografica de cada van. <b>Fonte:</b> TMS, carrier_service_areas — a tabela real de cobertura.",
+  "img": "slides/master-17.jpg"
+ },
+ {
+  "key": "master-18",
+  "deck": "master",
+  "n": 18,
+  "title": "DELIVERY SERVICES & CARRIERS",
+  "readiness": "pronto",
+  "brief": "Servicos e transportadoras em uso. <b>Fonte:</b> TMS. Falta uma tabela de nomes: hoje os identificadores sao crus (auspost-startrack-exp).",
+  "img": "slides/master-18.jpg"
+ },
+ {
+  "key": "master-19",
+  "deck": "master",
+  "n": 19,
+  "title": "PICK ANOMALIES · Deteccao",
+  "readiness": "pronto",
+  "brief": "Como o slide 16 de julho.",
+  "img": "slides/master-19.jpg"
+ },
+ {
+  "key": "master-20",
+  "deck": "master",
+  "n": 20,
+  "title": "PICK CORRECTIONS · Risco nao revertido",
+  "readiness": "pronto",
+  "brief": "Correcoes aplicadas que nao foram desfeitas. <b>Fonte:</b> pick-anomalies. E o slide mais importante da serie, porque cada correcao mexeu em estoque real.",
+  "img": "slides/master-20.jpg"
+ },
+ {
+  "key": "master-21",
+  "deck": "master",
+  "n": 21,
+  "title": "PICK CORRECTIONS · Estudo de caso · um bin",
+  "readiness": "parcial",
+  "brief": "Um caso detalhado. O dado existe; a narrativa e humana.",
+  "img": "slides/master-21.jpg"
+ }
+]

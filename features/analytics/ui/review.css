@@ -1,0 +1,99 @@
+/* Monthly Review · build board.
+   Tokens iguais aos do planning.css para a tela nascer nativa; o layout e
+   proprio porque esta pagina ROLA, e a casca do planning nao rola. */
+:root{
+  --bg:#e9edf3; --card:#fff; --card-2:#f2f5f9;
+  --ink:#141c29; --ink-2:#334054;
+  --mut:#4d5d76; --mut-2:#68788f; --mut-3:#8090a5;
+  --line:#dbe1ea; --line-2:#c3ccda;
+  --acc:#0d8fca; --acc-d:#0a769f; --acc-soft:#e2f2fb;
+  --ok:#18794e; --ok-soft:#e3f3ea;
+  --warn:#8a5a00; --warn-soft:#fdf0d9;
+  --off:#5c6b7d; --off-soft:#eaeef3;
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans);
+  -webkit-font-smoothing:antialiased}
+
+/* ── topo fixo ───────────────────────────────────────────── */
+.rv-top{position:sticky;top:0;z-index:100;background:var(--card);
+  border-bottom:1px solid var(--line-2);box-shadow:0 1px 3px rgba(20,28,41,.06)}
+.rv-top-in{display:flex;align-items:center;gap:14px;padding:10px 20px;flex-wrap:wrap}
+.rv-brand{font-size:15px} .rv-brand b{font-weight:600}
+.rv-gap{flex:1}
+.rv-state{font-family:var(--mono);font-size:12px;color:var(--mut-2)}
+
+.rv-prog{display:flex;align-items:center;gap:9px;min-width:230px}
+.rv-bar{flex:1;height:8px;border-radius:5px;background:var(--card-2);
+  border:1px solid var(--line);overflow:hidden;display:flex}
+.rv-bar i{display:block;height:100%}
+#barDone{background:var(--ok)} #barWork{background:var(--acc)}
+.rv-prog-txt{font-family:var(--mono);font-size:12px;color:var(--mut);white-space:nowrap}
+
+.rv-filters{display:flex;gap:8px;padding:0 20px 10px;flex-wrap:wrap;align-items:center}
+.rv-filters select,.rv-filters input{font:inherit;font-size:13px;color:var(--ink);
+  background:var(--card);border:1px solid var(--line-2);border-radius:6px;padding:5px 9px}
+.rv-filters input{min-width:230px;flex:1;max-width:380px}
+.rv-filters :focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.rv-count{font-family:var(--mono);font-size:12px;color:var(--mut-2)}
+
+/* ── aviso ───────────────────────────────────────────────── */
+.rv-warn{margin:14px 20px 0;padding:11px 14px;border-radius:8px;font-size:13.5px;
+  background:var(--warn-soft);color:var(--warn);border:1px solid #e8cd9a}
+
+/* ── lista ───────────────────────────────────────────────── */
+.rv-main{max-width:1180px;margin:0 auto;padding:18px 20px 90px;
+  display:flex;flex-direction:column;gap:14px}
+.rv-empty{color:var(--mut-2);text-align:center;padding:48px 0}
+
+.rv-card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:14px 16px;display:grid;gap:13px;grid-template-columns:230px 1fr}
+.rv-card.no-img{grid-template-columns:1fr}
+@media (max-width:760px){.rv-card{grid-template-columns:1fr}}
+.rv-card.is-done{border-color:#bfe0cd;background:linear-gradient(0deg,var(--ok-soft) 0%,var(--card) 42%)}
+
+.rv-thumb{width:100%;border:1px solid var(--line);border-radius:6px;display:block;
+  background:var(--card-2)}
+.rv-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:7px}
+.rv-n{font-family:var(--mono);font-size:12px;font-weight:600;color:#fff;
+  background:var(--ink-2);border-radius:4px;padding:2px 7px;flex:none}
+.rv-title{font-size:15.5px;font-weight:600;margin:0;flex:1 1 260px}
+.rv-chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+  text-transform:uppercase;padding:2px 8px;border-radius:12px;flex:none}
+.rv-chip.pronto{background:var(--ok-soft);color:var(--ok)}
+.rv-chip.parcial{background:var(--warn-soft);color:var(--warn)}
+.rv-chip.manual{background:var(--off-soft);color:var(--off)}
+
+.rv-brief{margin:0 0 10px;font-size:13.5px;color:var(--mut);max-width:78ch}
+.rv-brief b{color:var(--ink-2);font-weight:600}
+.rv-brief code{font-family:var(--mono);font-size:.9em;background:var(--card-2);
+  padding:1px 4px;border-radius:3px}
+
+.rv-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:9px}
+.rv-btn{font:inherit;font-size:12.5px;border:1px solid var(--line-2);background:var(--card);
+  color:var(--ink-2);border-radius:6px;padding:4px 11px;cursor:pointer}
+.rv-btn:hover{background:var(--card-2)}
+.rv-btn.on{background:var(--acc);border-color:var(--acc-d);color:#fff}
+.rv-btn.on.done{background:var(--ok);border-color:var(--ok)}
+.rv-btn:disabled{opacity:.5;cursor:not-allowed}
+.rv-when{font-family:var(--mono);font-size:11.5px;color:var(--mut-3);margin-left:4px}
+
+.rv-note{width:100%;font:inherit;font-size:13px;color:var(--ink);background:var(--card-2);
+  border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;min-height:44px}
+.rv-note:focus-visible{outline:2px solid var(--acc);outline-offset:1px;background:var(--card)}
+.rv-note::placeholder{color:var(--mut-3)}
+
+/* ── grafico ─────────────────────────────────────────────── */
+.rv-chart{margin:2px 0 10px;border:1px solid var(--line);border-radius:8px;
+  padding:11px;background:var(--card)}
+.rv-chart-bar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:9px}
+.rv-chart-bar select{font:inherit;font-size:12.5px;border:1px solid var(--line-2);
+  border-radius:6px;padding:3px 8px;background:var(--card);color:var(--ink)}
+.rv-canvas-wrap{position:relative;height:290px}
+.rv-note-src{margin:8px 0 0;font-size:12px;color:var(--mut-2);max-width:78ch}
+
+.rv-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);
+  background:var(--ink);color:#fff;font-size:13px;padding:9px 16px;border-radius:7px;
+  z-index:3000;box-shadow:0 6px 20px rgba(20,28,41,.28)}

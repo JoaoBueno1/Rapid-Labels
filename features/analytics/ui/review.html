@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monthly Review · Build Board — Rapid LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/rail.css?v=8">
+<script defer src="/shared/rail.js?v=9"></script>
+<!--
+  NAO carrega planning.css de proposito.
+
+  A tela /analytics/ atual herda dele, e planning.css:89 tem body{overflow:hidden}
+  com .sp-main{height:calc(100vh - 43px)} -- a casca de uma ferramenta de
+  viewport fixo onde um painel INTERNO rola. Conteudo longo posto direto ali
+  simplesmente nao rola em lugar nenhum, e e por isso que a tela travou.
+
+  Esta pagina e uma leitura de cima a baixo, entao usa os mesmos tokens da casa
+  e o seu proprio layout, que rola.
+-->
+<link rel="stylesheet" href="/features/analytics/ui/review.css?v=1">
+</head>
+<body>
+
+<header class="rv-top">
+  <div class="rv-top-in">
+    <span class="rv-brand"><b>Monthly Review</b> · build board</span>
+
+    <div class="rv-prog" title="Analyses moved out of PowerPoint">
+      <div class="rv-bar"><i id="barDone"></i><i id="barWork"></i></div>
+      <span class="rv-prog-txt" id="progTxt">—</span>
+    </div>
+
+    <span class="rv-gap"></span>
+    <span class="rv-state" id="state">loading…</span>
+  </div>
+
+  <div class="rv-filters">
+    <select id="fDeck" aria-label="Deck">
+      <option value="">All decks</option>
+      <option value="jul">Inventory Report · July</option>
+      <option value="master">RapidLED Master</option>
+    </select>
+    <select id="fReady" aria-label="Readiness">
+      <option value="">All readiness</option>
+      <option value="pronto">Ready to automate</option>
+      <option value="parcial">Partial</option>
+      <option value="manual">Manual</option>
+    </select>
+    <select id="fStatus" aria-label="Status">
+      <option value="">All status</option>
+      <option value="todo">To do</option>
+      <option value="working">Working</option>
+      <option value="done">Done</option>
+    </select>
+    <input id="fText" type="search" placeholder="Search title or brief…" aria-label="Search">
+    <span class="rv-count" id="count"></span>
+  </div>
+</header>
+
+<div class="rv-warn" id="warn" hidden></div>
+
+<main class="rv-main" id="list">
+  <p class="rv-empty">Loading the board…</p>
+</main>
+
+<div class="rv-toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/features/analytics/ui/review.js?v=1"></script>
+</body>
+</html>
