@@ -64,9 +64,9 @@ function register(app) {
       // NAO cai em silencio. Sem a tabela a tela ainda mostra o catalogo, mas
       // dizendo na cara que nada sera salvo -- o oposto do catch que trocava a
       // regua do rep sem avisar.
-      aviso = 'A tabela rapid_inv.review_board ainda nao existe. '
-            + 'Rode features/analytics/db/002_review_board.sql no SQL Editor. '
-            + 'Ate la, nada e salvo.';
+      aviso = 'Table rapid_inv.review_board does not exist yet. '
+            + 'Run features/analytics/db/002_review_board.sql in the Supabase SQL Editor. '
+            + 'Until then nothing on this page is saved.';
     }
     const por = estado.reduce((m, r) => (m[r.slide_key] = r, m), {});
     const rows = cat.map((c) => ({
@@ -85,11 +85,11 @@ function register(app) {
     const key = String(req.params.key);
     const cat = JSON.parse(fs.readFileSync(CATALOGO, 'utf8'));
     const item = cat.find((c) => c.key === key);
-    if (!item) return res.status(404).json({ error: 'slide desconhecido: ' + key });
+    if (!item) return res.status(404).json({ error: 'unknown slide: ' + key });
 
     const { status, note } = req.body || {};
     if (status && !['todo', 'working', 'done'].includes(status)) {
-      return res.status(400).json({ error: 'status invalido' });
+      return res.status(400).json({ error: 'invalid status' });
     }
     const linha = {
       slide_key: key, deck: item.deck, slide_no: item.n, title: item.title,
@@ -139,7 +139,7 @@ function register(app) {
 
   app.get(`${R}/data/:id`, wrap(async (req, res) => {
     const f = FONTES[req.params.id];
-    if (!f) return res.status(404).json({ error: 'fonte desconhecida: ' + req.params.id });
+    if (!f) return res.status(404).json({ error: 'unknown chart source: ' + req.params.id });
     const rows = await sbAll(`${f.view}?select=${f.select}&order=${f.order}`, 'rapid_inv');
     res.json({ id: req.params.id, title: f.titulo, note: f.nota, rows });
   }));

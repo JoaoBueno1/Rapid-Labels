@@ -19,6 +19,10 @@
   <div class="sp-header-inner">
     <span class="sp-brand"><span class="sp-logo">M</span> Monthly Review</span>
     <select id="dkMonth" title="Report month"></select>
+    <!-- O quadro de trabalho vive numa pagina propria: esta aqui herda o
+         planning.css, que tem body{overflow:hidden}, e conteudo longo nao rola. -->
+    <a class="sp-btn is-primary" href="/analytics/review.html"
+       title="Slide-by-slide build board: source, status, notes and live charts">Build board →</a>
     <span class="sp-gap"></span>
     <span class="dk-key" id="dkKey"></span>
     <div class="sp-status"><span class="sp-dot fresh" id="dkDot"></span><span id="dkStatus">loading…</span></div>
