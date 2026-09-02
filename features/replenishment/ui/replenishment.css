@@ -586,3 +586,29 @@ td.rp-avgb.is-driver,td.rp-avgr.is-driver{background:#f1f6ff}
 .rp-coverkey.is-bad{background:#fef3c7;border-top-color:#92400e;color:#92400e}
 .rp-coverkey.is-bad b{color:#92400e}
 .rp-coverkey.is-bad span{color:#92400e}
+
+/* ─── History: tabela, não cartões ────────────────────────────────────────
+   Cartão é bom para UM envio; para comparar dez, a coluna é que responde.
+   E com filtro de filial no topo, esta tela deixa de ser "o histórico desta
+   filial" e passa a ser o histórico da rede. */
+.rp-h2-wrap { border: 1px solid var(--line); border-radius: 10px; overflow: auto; background: var(--card); }
+.rp-h2t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rp-h2t th { position: sticky; top: 0; z-index: 1; background: var(--card-2); text-align: left;
+             padding: 9px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+             letter-spacing: .04em; color: var(--ink-2); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.rp-h2t td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.rp-h2t th.num, .rp-h2t td.num { text-align: right; }
+.rp-h2t tr.rp-h2r:hover td { background: var(--card-2); }
+.rp-h2t tr.rp-h2r.is-open td { background: var(--card-2); }
+/* Cancelada continua legível — ela é a resposta a "cadê o meu pedido?" */
+.rp-h2t tr.is-void td { opacity: .6; }
+.rp-h2t .rp-h2-tr { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rp-h2t .rp-h2-when, .rp-h2t .rp-h2-pr { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rp-h2t .rp-h2-tog { background: none; border: 0; cursor: pointer; color: var(--ink-2); font-size: 13px; padding: 0 2px; }
+.rp-h2-lines > td { padding: 0 10px 10px; background: var(--card-2); }
+
+/* A barra de filtros */
+.rp-hist-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.rp-h2-tabs { display: flex; gap: 4px; margin-left: auto; }
+.rp-h2-tabs .ui-act.is-on { background: var(--accent, #6d28d9); color: #fff; border-color: transparent; }
+.rp-h2-tabs .ui-act b { font-variant-numeric: tabular-nums; }

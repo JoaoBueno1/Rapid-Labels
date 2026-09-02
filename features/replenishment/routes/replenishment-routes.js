@@ -379,6 +379,26 @@ function register(app, db) {
     });
   }
 
+  /* Marca a impressao do documento.
+     printed_at e a PRIMEIRA e nao se mexe: a pergunta que ela responde e "quando
+     este picking saiu para o chao". A reimpressao incrementa o contador — e
+     legitima (papel perdido, segunda via) mas nao e detalhe: uma TR impressa seis
+     vezes diz alguma coisa. */
+  app.post(`${R}/printed`, wrap(async (req, res) => {
+    const id = String(req.body?.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'id é obrigatório' });
+    const who = (req.get('x-sp-user') || 'anon').toString().slice(0, 120);
+    const rows = await db.query(
+      `UPDATE rapid_inv.replenishment_order
+          SET printed_at    = COALESCE(printed_at, now()),
+              printed_by    = COALESCE(printed_by, $2),
+              printed_count = COALESCE(printed_count, 0) + 1
+        WHERE id = $1
+        RETURNING printed_at, printed_by, printed_count`, [id, who]);
+    if (!rows.length) return res.status(404).json({ error: 'pedido não encontrado' });
+    res.json({ ok: true, ...rows[0] });
+  }));
+
   app.get(`${R}/orders`, wrap(async (req, res) => {
     const f = [];
     if (req.query.branch) f.push(`branch_code=eq.${encodeURIComponent(req.query.branch)}`);
@@ -386,7 +406,8 @@ function register(app, db) {
     let rows = await sbGet(
       'replenishment_order?select=id,op_key,branch_code,branch_name,mode,week_ending,total_units,'
       + 'line_count,from_location,to_location,status,cin7_task_id,cin7_number,error,'
-      + 'cin7_status,cin7_status_at,cin7_completed,created_by,created_at,ordered_at,lines'
+      + 'cin7_status,cin7_status_at,cin7_completed,created_by,created_at,ordered_at,lines,'
+      + 'printed_at,printed_by,printed_count'
       + (f.length ? '&' + f.join('&') : '')
       + '&order=created_at.desc&limit=200', 'rapid_inv');
 

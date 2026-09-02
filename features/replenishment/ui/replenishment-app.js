@@ -2114,9 +2114,11 @@ The branch column is the decision that was recorded; the columns after it are wh
     const dn = $('rpDailyNote'); if (dn) dn.style.display = 'none';
     $('rpHistory').style.display = ''; setControls();
     $('rpHistory').innerHTML = '<div class="rp-hist-empty">Loading…</div>';
+    if (histF.branch === null) histF.branch = S.branch.code;   // abre na filial aberta
     let rows = [];
     try {
-      const r = await fetch(`/api/replenishment/orders?branch=${encodeURIComponent(S.branch.code)}`);
+      const qs = histAllBranches() ? '' : `?branch=${encodeURIComponent(histF.branch)}`;
+      const r = await fetch(`/api/replenishment/orders${qs}`);
       // Só o que de fato virou pedido. Uma tentativa que falhou não é
       // histórico — é ruído de operação, e mostrar erro cru para a filial não
       // ajuda ninguém a decidir nada.
@@ -2128,8 +2130,9 @@ The branch column is the decision that was recorded; the columns after it are wh
       return;
     }
     if (!rows.length) {
-      $('rpHistory').innerHTML = `<div class="rp-hist-empty">No order placed yet for ${esc(S.branch.name)}.<br>
-        <span class="rp-sub">When a plan is approved the TR is recorded here, frozen at the values that were sent.</span></div>`;
+      $('rpHistory').innerHTML = histBar(0, 0, 0) + `<div class="rp-hist-empty">No transfer recorded yet.<br>
+        <span class="rp-sub">When a plan is placed the TR is recorded here, frozen at the values that were sent.</span></div>`;
+      wireHistory();
       return;
     }
     /* Cancelada não é histórico útil.
@@ -2141,29 +2144,43 @@ The branch column is the decision that was recorded; the columns after it are wh
        lista — mas o número delas fica dito, porque esconder em silêncio faria
        procurar um pedido que se sabe que existe e concluir que a tela perdeu. */
     const cancelada = (o) => o.cin7_status === 'VOIDED';
-    const vivas = histShowVoided ? rows : rows.filter(o => !cancelada(o));
-    const nVoid = rows.filter(cancelada).length;
+    const concluida = (o) => o.cin7_status === 'COMPLETED';
+    const porTipo = rows.filter(o => histF.mode === 'ALL' || o.mode === histF.mode);
+    const nOpen = porTipo.filter(o => !FINAL_ST.has(o.cin7_status || '')).length;
+    const nDone = porTipo.filter(concluida).length;
+    const nVoid = porTipo.filter(cancelada).length;
+    /* A linha so SAI da lista corrente quando o Cin7 diz COMPLETED — recebida na
+       filial. Ate la continua a vista, mesmo ja enviada, porque enquanto nao
+       chegou alguem ainda pode precisar dela. */
+    const vivas = histF.show === 'completed' ? porTipo.filter(concluida)
+                : histF.show === 'voided'    ? porTipo.filter(cancelada)
+                : porTipo.filter(o => !FINAL_ST.has(o.cin7_status || ''));
     histRows = vivas;
 
     const aviso = histErro
       ? `<div class="rp-hist-warn">Showing the last known status — Cin7 did not answer just now
            (${esc(histErro)}). Each card says when it was last read.</div>` : '';
-    const alterna = nVoid
-      ? `<div class="rp-hist-bar">${histShowVoided
-          ? `Showing <b>${n0(nVoid)}</b> cancelled transfer${nVoid === 1 ? '' : 's'}`
-          : `<b>${n0(nVoid)}</b> cancelled transfer${nVoid === 1 ? '' : 's'} hidden`}
-         <button class="ui-act" id="histVoid">${histShowVoided ? 'Hide them' : 'Show them'}</button></div>` : '';
-
+    const barra = histBar(nOpen, nDone, nVoid);
     if (!vivas.length) {
-      $('rpHistory').innerHTML = aviso + alterna + `<div class="rp-hist-empty">
-        No transfer is live for ${esc(S.branch.name)}.${nVoid ? ' Every one placed was cancelled in Cin7.' : ''}</div>`;
+      $('rpHistory').innerHTML = aviso + barra + '<div class="rp-hist-empty">Nothing here with these filters.</div>';
       wireHistory();
       return;
     }
-    $('rpHistory').innerHTML = aviso + alterna + vivas.map((o, i) => histCard(o, i)).join('');
+    $('rpHistory').innerHTML = aviso + barra + `<div class="rp-h2-wrap"><table class="rp-h2t"><thead><tr>
+        <th style="width:28px"></th><th>TR</th><th>Placed</th>${histAllBranches() ? '<th>Branch</th>' : ''}
+        <th>Type</th><th class="num">Lines</th><th>Status</th><th>Printed</th><th></th>
+      </tr></thead><tbody>${vivas.map((o, i) => histRow(o, i)).join('')}</tbody></table></div>`;
     wireHistory();
   }
   let histRows = [], histOpen = new Set(), histShowVoided = false, histErro = null;
+  /* Os filtros do History. Uma tabela com filtro em vez de uma tela por filial:
+     "o que saiu esta semana" e uma pergunta da REDE, e responde-la abrindo sete
+     telas e somando de cabeca e o mesmo que nao a responder.
+     `show` separa o que ainda corre do que acabou — uma TR entregue nao deve
+     competir por atencao com uma que ainda esta no caminho. */
+  let histF = { branch: null, mode: 'ALL', show: 'open' };
+  const histAllBranches = () => histF.branch === 'ALL';
+  const FINAL_ST = new Set(['COMPLETED', 'VOIDED']);
 
   /* O estado que o Cin7 diz HOJE, e não o que pedimos ao criar.
      Sem leitura ainda, diz isso com essas palavras: um status sem procedência
@@ -2177,28 +2194,55 @@ The branch column is the decision that was recorded; the columns after it are wh
     VOIDED:    { rot: 'Cancelled', cls: 'st-void', ajuda: 'Cancelled in Cin7. Nothing moved.' },
   };
 
-  function histCard(o, i) {
+  /* UMA LINHA DE TABELA, nao um cartao.
+     Colunas pedidas pelo dono: TR, data, filial (so quando se ve mais de uma),
+     UM tipo (o Daily/Weekly viraram uma coluna so), linhas, status ate Completed,
+     e a impressao com a hora. "Units" saiu: a decisao aqui e sobre o documento,
+     nao sobre a soma dele — e a soma continua ao expandir. */
+  /* A barra de filtros: filial, tipo e em-que-fase. Sao as tres perguntas que
+     alguem faz ao abrir esta tela, e nenhuma delas devia exigir trocar de pagina. */
+  function histBar(nOpen, nDone, nVoid) {
+    const opt = (v, r, cur) => `<option value="${v}"${cur === v ? ' selected' : ''}>${r}</option>`;
+    return `<div class="rp-hist-bar">
+      <select class="sp-in" id="histBranch">
+        ${opt('ALL', 'All branches', histF.branch)}
+        ${BRANCHES.map(b => opt(b.code, b.name, histF.branch)).join('')}
+      </select>
+      <select class="sp-in" id="histMode">
+        ${opt('ALL', 'Daily + Weekly', histF.mode)}${opt('weekly', 'Weekly', histF.mode)}${opt('daily', 'Daily', histF.mode)}
+      </select>
+      <span class="rp-h2-tabs">
+        <button class="ui-act${histF.show === 'open' ? ' is-on' : ''}" data-show="open">In progress <b>${n0(nOpen)}</b></button>
+        <button class="ui-act${histF.show === 'completed' ? ' is-on' : ''}" data-show="completed">Completed <b>${n0(nDone)}</b></button>
+        <button class="ui-act${histF.show === 'voided' ? ' is-on' : ''}" data-show="voided">Cancelled <b>${n0(nVoid)}</b></button>
+      </span>
+    </div>`;
+  }
+
+  function histRow(o, i) {
     const when = o.ordered_at || o.created_at;
     const st = CIN7_ST[o.cin7_status] || null;
     const bad = o.cin7_status === 'VOIDED';
     const open = histOpen.has(i);
-    return `<div class="rp-h2 ${bad ? 'is-void' : ''}" data-i="${i}">
-      <div class="rp-h2-head">
-        <button class="rp-h2-tog" data-tog="${i}" title="${open ? 'Collapse' : 'Expand the lines'}">${open ? '▾' : '▸'}</button>
-        <span class="rp-h2-tr">${esc(o.cin7_number || '—')}</span>
-        <span class="badge ${o.mode === 'daily' ? 'is-daily' : 'is-weekly'}">${o.mode === 'daily' ? 'Daily' : 'Weekly'}</span>
-        <span class="rp-h2-when">${esc(fmtWhen(when))}</span>
-        <span class="rp-h2-meta">${o.line_count} line${o.line_count === 1 ? '' : 's'} · ${n0(o.total_units)} units</span>
-        <span class="rp-h2-route">${esc(o.from_location || '')} › ${esc(o.to_location || o.branch_name || '')}</span>
-        <span class="sp-gap"></span>
-        <span class="rp-h2-st ${st ? st.cls : 'st-unknown'}"
-          title="${st ? esc(st.ajuda) : 'Never read back from Cin7 — this is only what we asked for when we created it.'}${
-            o.cin7_status_at ? ` Read ${esc(dmyTime(o.cin7_status_at))}.` : ''}"
-          >${st ? esc(st.rot) : 'Not checked'}</span>
-        ${o.cin7_number ? `<button class="ui-act" data-print="${i}">Print</button>` : ''}
-      </div>
-      ${open ? histLines(o) : ''}
-    </div>`;
+    const pr = o.printed_at
+      ? `<span class="rp-h2-pr" title="${esc(o.printed_by ? 'First printed by ' + o.printed_by : 'First print')}${
+           o.printed_count > 1 ? ` · printed ${o.printed_count} times` : ''}">${esc(dmyTime(o.printed_at))}${
+           o.printed_count > 1 ? ` <b>×${o.printed_count}</b>` : ''}</span>`
+      : '<span class="rp-sub">—</span>';
+    return `<tr class="rp-h2r ${bad ? 'is-void' : ''}${open ? ' is-open' : ''}" data-i="${i}">
+      <td><button class="rp-h2-tog" data-tog="${i}" title="${open ? 'Collapse' : 'Expand the lines'}">${open ? '▾' : '▸'}</button></td>
+      <td class="rp-h2-tr">${esc(o.cin7_number || '—')}</td>
+      <td class="rp-h2-when">${esc(fmtWhen(when))}</td>
+      ${histAllBranches() ? `<td>${esc(o.branch_name || o.branch_code || '')}</td>` : ''}
+      <td><span class="badge ${o.mode === 'daily' ? 'is-daily' : 'is-weekly'}">${o.mode === 'daily' ? 'Daily' : 'Weekly'}</span></td>
+      <td class="num">${o.line_count}</td>
+      <td><span class="rp-h2-st ${st ? st.cls : 'st-unknown'}"
+        title="${st ? esc(st.ajuda) : 'Never read back from Cin7 — this is only what we asked for when we created it.'}${
+          o.cin7_status_at ? ` Read ${esc(dmyTime(o.cin7_status_at))}.` : ''}"
+        >${st ? esc(st.rot) : 'Not checked'}</span></td>
+      <td>${pr}</td>
+      <td class="num">${o.cin7_number ? `<button class="ui-act" data-print="${i}">${o.printed_at ? 'Reprint' : 'Print'}</button>` : ''}</td>
+    </tr>` + (open ? `<tr class="rp-h2-lines"><td colspan="${histAllBranches() ? 9 : 8}">${histLines(o)}</td></tr>` : '');
   }
   function histLines(o) {
     const lines = Array.isArray(o.lines) ? o.lines : [];
@@ -2209,14 +2253,22 @@ The branch column is the decision that was recorded; the columns after it are wh
   }
   const fmtWhen = (iso) => (iso ? dmyTime(iso) : '—');
   function wireHistory() {
-    const v = $('histVoid');
-    if (v) v.addEventListener('click', () => { histShowVoided = !histShowVoided; showHistory(); });
+    const br = $('histBranch');
+    if (br) br.addEventListener('change', () => { histF.branch = br.value; histOpen.clear(); showHistory(); });
+    const md = $('histMode');
+    if (md) md.addEventListener('change', () => { histF.mode = md.value; histOpen.clear(); showHistory(); });
+    $('rpHistory').querySelectorAll('[data-show]').forEach(b => b.addEventListener('click', () => {
+      histF.show = b.dataset.show; histOpen.clear(); showHistory();
+    }));
     $('rpHistory').querySelectorAll('[data-tog]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
       const i = +b.dataset.tog;
       if (histOpen.has(i)) histOpen.delete(i); else histOpen.add(i);
-      $('rpHistory').innerHTML = histRows.map((o, k) => histCard(o, k)).join('');
-      wireHistory();
+      // Redesenha SO o corpo da tabela: reescrever o container levaria a barra de
+      // filtros junto e o <select> perderia o foco a cada linha expandida.
+      const tb = $('rpHistory').querySelector('.rp-h2t tbody');
+      if (tb) { tb.innerHTML = histRows.map((o, k) => histRow(o, k)).join(''); wireHistory(); }
+      else showHistory();
     }));
     $('rpHistory').querySelectorAll('[data-print]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation(); printOrder(histRows[+b.dataset.print]);
@@ -2229,6 +2281,22 @@ The branch column is the decision that was recorded; the columns after it are wh
     const lines = Array.isArray(o.lines) ? o.lines : [];
     const w = window.open('', '_blank', 'width=820,height=900');
     if (!w) { toast('The browser blocked the print window', true); return; }
+    /* Marca a impressao, sem travar a janela: quem clicou quer o papel, nao uma
+       espera de rede. Se o registro falhar, o documento sai do mesmo jeito — a
+       marca e para responder "isto ja foi impresso?", e perder a resposta e
+       melhor do que perder a impressao. */
+    if (o.id) {
+      fetch('/api/replenishment/printed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-sp-user': (localStorage.getItem('rp.user') || 'branch') },
+        body: JSON.stringify({ id: o.id }),
+      }).then(r => r.ok ? r.json() : null).then(d => {
+        if (!d) return;
+        o.printed_at = d.printed_at; o.printed_by = d.printed_by; o.printed_count = d.printed_count;
+        const tb = $('rpHistory') && $('rpHistory').querySelector('.rp-h2t tbody');
+        if (tb) { tb.innerHTML = histRows.map((x, k) => histRow(x, k)).join(''); wireHistory(); }
+      }).catch(() => {});
+    }
     w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(o.cin7_number || 'Transfer')}</title>
       <style>
         body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#1b2230;margin:26px}
