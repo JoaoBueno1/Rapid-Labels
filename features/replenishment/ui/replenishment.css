@@ -640,6 +640,10 @@ td.rp-avgb.is-driver,td.rp-avgr.is-driver{background:#f1f6ff}
 .rp-b2t td.num, .rp-b2t th.num { text-align: right; }
 .rp-b2t .rp-h2-tr { font-weight: 700; font-variant-numeric: tabular-nums; }
 .rp-b2t tr.is-draft td { background: color-mix(in srgb, var(--acc-soft) 30%, transparent); }
+/* Transferência feita direto no Cin7 (monitoramento, não é pedido nosso). */
+.rp-b2t tr.is-external td { background: color-mix(in srgb, var(--card-2) 55%, transparent); }
+.rp-ext-tag { font: 700 8.5px var(--sans); text-transform: uppercase; letter-spacing: .04em; color: var(--mut-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 0 3px; margin-left: 4px; vertical-align: middle; }
+.badge.is-cin7 { background: var(--card-2); color: var(--mut-2); }
 
 /* A barra de filtros */
 .rp-hist-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }

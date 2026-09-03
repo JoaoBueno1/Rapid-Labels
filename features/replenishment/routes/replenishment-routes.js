@@ -666,6 +666,27 @@ function register(app, db) {
     res.json({ configured: true, results });
   }));
 
+  // Transferências ABERTAS feitas DIRETO no Cin7 (fora do nosso módulo), Main →
+  // filial. O in-progress mostra a rede inteira, não só o que passou por aqui.
+  // Só o CABEÇALHO — o mirror não guarda as linhas (line_count/total_qty vêm
+  // nulos numa TR nova). Aberta = ORDERED/PICKING/IN TRANSIT (DRAFT é rascunho no
+  // Cin7, não comprometido; COMPLETED/VOIDED saíram). Janela de 60 dias corta
+  // ORDERED antigas nunca fechadas. A UI desduplica contra o que é nosso.
+  app.get(`${R}/open-transfers`, wrap(async (req, res) => {
+    const rows = await db.query(
+      `SELECT number, to_location, status, line_count, total_qty,
+              COALESCE(departure_date::text, cin7_updated::text) AS dt
+         FROM cin7_mirror.stock_transfers
+        WHERE from_location ILIKE '%main%'
+          AND number LIKE 'TR-%'
+          AND status IN ('ORDERED','PICKING','IN TRANSIT')
+          AND to_location IN ('Sydney','Melbourne','Brisbane','Cairns','Coffs Harbour','Hobart','Sunshine Coast Warehouse')
+          AND COALESCE(departure_date, cin7_updated) >= CURRENT_DATE - 60
+        ORDER BY COALESCE(departure_date, cin7_updated) DESC NULLS LAST, number DESC
+        LIMIT 300`, []);
+    res.json({ rows: rows || [] });
+  }));
+
   /** BOM: os componentes de cada assembly (bom_type='Assembly'), para a UI
    *  desenhar as sub-linhas e o export mandar componentes em vez do montado.
    *  Lê rapid_inv.product_bom via sp-db (rapid_inv NÃO é exposto no PostgREST —

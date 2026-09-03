@@ -89,9 +89,13 @@ sem ninguém fazer à mão. A **coluna "Emailed"** já existe na Table A (in-pro
 na History (mostra "—" até isto rodar; enche igual carrier/consignment).
 
 **O que falta montar (nesta ordem):**
-1. **Campo de registro** — migração aditiva em `rapid_inv.replenishment_order`:
-   `emailed_at timestamptz`, `emailed_to text`, `emailed_count int default 0` (mesmo
-   padrão do `printed_*` da 003). É o que a coluna "Emailed" lê.
+1. **Registro do envio (keyed por TR)** — precisa cobrir TAMBÉM as transfers feitas
+   direto no Cin7 (que NÃO estão no `replenishment_order`, mas já aparecem no
+   in-progress como "Cin7 direct" via `/api/replenishment/open-transfers`). Por isso
+   o registro é uma tabela própria: `rapid_inv.transfer_email_log { tr_number PK,
+   emailed_at timestamptz, emailed_to text, emailed_count int default 0 }`. Tanto o
+   `/orders` (nossas) quanto o `/open-transfers` (Cin7-direct) dão join por TR → a
+   coluna "Emailed" enche nas duas. (Padrão do `printed_*` da 003.)
 2. **Lista de email por warehouse** — tabela/config `{branch_code → [emails]}`
    (ex. `rapid_inv.branch_email` ou um JSON de config). O destino vem do
    `branch_code` do pedido.

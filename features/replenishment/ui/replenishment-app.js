@@ -909,7 +909,23 @@
                      emailed_at: o.emailed_at, emailed_to: o.emailed_to }));
     } catch (_) { /* servidor fora: mostra só os rascunhos locais, nunca quebra */ }
 
-    if (!drafts.length && !live.length) {
+    // Transferências abertas feitas DIRETO no Cin7 (fora do nosso módulo). Só o
+    // cabeçalho (o mirror não tem as linhas). Desduplica contra o que já é nosso
+    // e rotula "Cin7 direct" — é FYI de rede, não pedido que exige a sua ação.
+    let external = [];
+    try {
+      const r = await fetch('/api/replenishment/open-transfers');
+      const j = await r.json();
+      const ours = new Set(live.map(x => x.tr));
+      const loc2br = {};
+      BRANCHES.forEach(b => { if (LOCAL[b.code]) loc2br[LOCAL[b.code]] = b; });
+      external = (j.rows || [])
+        .filter(o => !ours.has(o.number))
+        .map(o => ({ tr: o.number, br: loc2br[o.to_location], status: o.status, lines: o.line_count }))
+        .filter(x => x.br);
+    } catch (_) { /* mirror fora: segue sem as externas, nunca quebra */ }
+
+    if (!drafts.length && !live.length && !external.length) {
       el.innerHTML = `<div class="rp-board-empty">Nothing in progress. Pick a branch above to start one.</div>`;
       return;
     }
@@ -944,17 +960,33 @@
           ? `<span title="${esc(x.emailed_to || 'Emailed')}">${esc(dmyTime(x.emailed_at))}</span>`
           : '<span class="rp-sub">—</span>'}</td></tr>`;
     };
+    // Status do mirror (ORDERED/PICKING/IN TRANSIT) → chip. Difere do cin7_status
+    // do nosso replenishment_order, por isso um mapa próprio. Sem stage/print/
+    // emailed: não são pedidos nossos, é monitoramento. Não clicável (sem data-code).
+    const XFER_ST = { ORDERED: { rot: 'Ordered', cls: 'st-ord' }, PICKING: { rot: 'Picking', cls: 'st-pick' }, 'IN TRANSIT': { rot: 'In transit', cls: 'st-ship' } };
+    const extRow = (x) => {
+      const st = XFER_ST[x.status] || { rot: x.status, cls: 'st-unknown' };
+      return `<tr class="rp-b2r is-external">
+        <td class="em">${esc(x.br.name)}</td>
+        <td class="rp-h2-tr">${esc(x.tr)} <span class="rp-ext-tag" title="Created directly in Cin7 — not through this module">Cin7</span></td>
+        <td><span class="badge is-cin7">Direct</span></td>
+        <td class="num">${x.lines != null ? n0(x.lines) : '—'}</td>
+        <td><span class="rp-h2-st ${st.cls}">${esc(st.rot)}</span></td>
+        <td class="rp-h2-carrier" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
+        <td class="rp-h2-conn" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
+        <td class="rp-sub">—</td></tr>`;
+    };
 
     const nWaiting = drafts.filter(x => (rank[x.stage] ?? 9) <= 1).length;
     el.innerHTML = `
       <div class="rp-board-head">
         <b>In progress</b>
-        <span>${nWaiting ? `${n0(nWaiting)} waiting on someone` : (live.length ? `${n0(live.length)} on the way` : 'nothing waiting')}</span>
-        <span class="rp-board-note">drafts live on this computer · placed transfers are shared</span>
+        <span>${nWaiting ? `${n0(nWaiting)} waiting on someone` : ((live.length + external.length) ? `${n0(live.length + external.length)} on the way` : 'nothing waiting')}</span>
+        <span class="rp-board-note">drafts on this computer · placed + Cin7-direct are shared</span>
       </div>
       <table class="rp-board-tbl rp-b2t"><thead><tr>
         <th>Branch</th><th>TR</th><th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th><th>Emailed</th>
-      </tr></thead><tbody>${drafts.map(draftRow).join('')}${live.map(liveRow).join('')}</tbody></table>`;
+      </tr></thead><tbody>${drafts.map(draftRow).join('')}${live.map(liveRow).join('')}${external.map(extRow).join('')}</tbody></table>`;
 
     el.querySelectorAll('tr[data-code]').forEach(tr => tr.addEventListener('click', () => {
       S.mode = tr.dataset.mode; openBranch(tr.dataset.code);
