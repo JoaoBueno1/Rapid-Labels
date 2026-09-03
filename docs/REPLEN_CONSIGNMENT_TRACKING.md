@@ -79,3 +79,33 @@ POD + custo. Se o objetivo é só "ver o histórico", já está lá; não precis
 NOVAS. Só depois decidir o registro retroativo — e, se decidir, fazer como registro
 read-only sobre `cin7_mirror.stock_transfers`, **nunca** backfill na
 `replenishment_order`.
+
+## Automação de email por warehouse (PLANEJADO — coluna já montada)
+
+Objetivo: quando o sistema **captar o tracking** de um TR (o consignment aparece via
+`/api/replenishment/tr-tracking`), **disparar um email** para o warehouse de destino
+avisando que a transferência saiu, e **registrar** isso — quem recebeu + horário —
+sem ninguém fazer à mão. A **coluna "Emailed"** já existe na Table A (in-progress) e
+na History (mostra "—" até isto rodar; enche igual carrier/consignment).
+
+**O que falta montar (nesta ordem):**
+1. **Campo de registro** — migração aditiva em `rapid_inv.replenishment_order`:
+   `emailed_at timestamptz`, `emailed_to text`, `emailed_count int default 0` (mesmo
+   padrão do `printed_*` da 003). É o que a coluna "Emailed" lê.
+2. **Lista de email por warehouse** — tabela/config `{branch_code → [emails]}`
+   (ex. `rapid_inv.branch_email` ou um JSON de config). O destino vem do
+   `branch_code` do pedido.
+3. **Gatilho** — quando o `tr-tracking` retorna consignment para um TR que ainda tem
+   `emailed_at` nulo → enfileira o email. Idempotente pela chave (TR): reenvio só se
+   pedido explícito (incrementa `emailed_count`), nunca duplica no automático.
+4. **Envio** — reusar o mesmo transporte de email que o Labels já usa (verificar qual;
+   senão, um sender simples). Corpo: TR, filial, carrier, consignment + link do
+   tracking público do TMS.
+5. **Confirmação na tela** — o envio grava `emailed_at`/`emailed_to`; a coluna passa
+   a mostrar o horário + destinatário (tooltip).
+
+**Decisões pendentes (configurar depois):** qual endereço por warehouse; disparar no
+**primeiro consignment** (mais cedo) ou só quando o status vira SHIPPED (mais certo);
+1 email por TR ou por connote (lembrar do 1:many). Nada disso escreve em terceiro
+além do próprio email — mas email É efeito externo, então testar com um endereço
+interno antes de ligar de verdade (política POLITICA_TESTES_COM_EFEITO_REAL do TMS).

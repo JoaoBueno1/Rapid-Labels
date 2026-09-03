@@ -770,6 +770,27 @@
   function finalQty(l) { return (S.mode === 'weekly' && l.invQty != null) ? clampInt(l.invQty) : clampInt(l.ask); }
 
   // ═══ LANDING ═══════════════════════════════════════════════════════
+  // Agenda semanal de place-order (fixa). Cada filial tem seu dia; cutoff 14:00;
+  // pick+ship na manhã seguinte. Sexta (Sydney) pula o fim de semana → Segunda.
+  // Melbourne/Hobart são ad-hoc (em crescimento). "Hoje" fica destacado.
+  const SCHED = [
+    { day: 'Mon', dow: 1, branch: 'Coffs', ship: 'Tue' },
+    { day: 'Tue', dow: 2, branch: 'Brisbane', ship: 'Wed' },
+    { day: 'Wed', dow: 3, branch: 'Cairns', ship: 'Thu' },
+    { day: 'Thu', dow: 4, branch: 'Sunshine Coast', ship: 'Fri' },
+    { day: 'Fri', dow: 5, branch: 'Sydney', ship: 'Mon' },
+  ];
+  function renderSchedule() {
+    const el = $('rpSched'); if (!el) return;
+    const today = new Date().getDay(); // 0=Sun … 6=Sat, relógio do operador
+    const cell = (s) => `<td class="${s.dow === today ? 'is-today' : ''}">`
+      + `<i>${s.day}</i><b>${esc(s.branch)}</b><u>pick+ship ${s.ship}</u></td>`;
+    el.innerHTML = '<div class="rp-sched-h">Place order by <b>14:00</b> on the branch&rsquo;s day — '
+      + 'pick &amp; ship the next morning (Fri &rarr; Mon).</div>'
+      + `<table class="rp-sched-t"><tbody><tr>${SCHED.map(cell).join('')}`
+      + '<td class="rp-sched-adhoc"><i>Ad-hoc</i><b>Melbourne · Hobart</b><u>growing</u></td>'
+      + '</tr></tbody></table>';
+  }
   function renderLanding() {
     $('branchLanding').style.display = ''; $('branchGrid').style.display = 'none'; closeSide();
     /* CADA CARTÃO É DIVIDIDO NO MEIO.
@@ -804,27 +825,28 @@
       // cartão as mostra assim que S.loaded. `inf` (nomes dos reps + órfãos) só é
       // preenchido ao ABRIR a filial; na tela inicial usamos só quando existe, em
       // vez de esconder a contagem inteira (era o que deixava o cartão em branco).
+      // Compacto: as três réguas numa LINHA só (não empilhadas de 24px), para o
+      // card não crescer para baixo — o espaço vertical foi para a tabela de
+      // agenda no topo. Os NOMES dos reps viram tooltip (a régua "sumiu um rep
+      // não alocado" continua auditável no hover) e os órfãos viram um contador
+      // pequeno na sub-linha, em vez de duas linhas próprias.
       const reguas = S.loaded ? `
-        <div class="rp-tk">
-          <div class="rp-tk-r${SET.demand === 'branch' ? ' is-driver' : ''}"><span>Branch</span><b>${n0(nBranch)}</b></div>
-          <div class="rp-tk-r${SET.demand === 'rep' ? ' is-driver' : ''}"><span>Reps</span><b>${n0(nRep)}</b></div>
-          <!-- Mixed ja era calculado (nDriver) e usado so para escolher a cor do
-               cartao: o numero existia e nao aparecia. Como Mixed e o padrao, o
-               cartao marcava Branch E Reps como "driver" e nao mostrava o unico
-               numero que estava mandando de fato. -->
-          <div class="rp-tk-r${mixed ? ' is-driver' : ''}"><span>Mixed</span><b>${n0(nBoth)}</b></div>
-          <div class="rp-tile-sub">SKUs to restock (cover &lt; ${SET.cutDays}d)</div>
-          ${nomes.length ? `<div class="rp-tk-reps">${esc(nomes.join(', '))}</div>` : ''}
-          ${((inf && inf.orphans) || []).length ? `<div class="rp-tk-orphan" title="${
-            esc(inf.orphans.map(o => o.sales_rep).join(', '))}">${n0(inf.orphans.length)} rep(s) with no branch</div>` : ''}
-        </div>` : (S.repAvgErro ? '<div class="rp-tk rp-tk-bad">demand did not load</div>' : '');
+        <div class="rp-tk2"${nomes.length ? ` title="Reps: ${esc(nomes.join(', '))}"` : ''}>
+          <span class="rp-m${SET.demand === 'branch' ? ' is-driver' : ''}"><i>Branch</i><b>${n0(nBranch)}</b></span>
+          <span class="rp-m${SET.demand === 'rep' ? ' is-driver' : ''}"><i>Reps</i><b>${n0(nRep)}</b></span>
+          <span class="rp-m${mixed ? ' is-driver' : ''}"><i>Mixed</i><b>${n0(nBoth)}</b></span>
+        </div>
+        <div class="rp-tile-sub">to restock · cover &lt; ${SET.cutDays}d${
+          ((inf && inf.orphans) || []).length ? ` · <span class="rp-orph" title="${
+            esc(inf.orphans.map(o => o.sales_rep).join(', '))}">${n0(inf.orphans.length)} unassigned</span>` : ''}</div>`
+        : (S.repAvgErro ? '<div class="rp-tk rp-tk-bad">demand did not load</div>' : '');
       return `<div class="sp-tile ${cls}" data-code="${b.code}" role="button" tabindex="0">
-        <span>${esc(b.name)}</span>
+        <span class="rp-tile-name">${esc(b.name)}</span>
         ${reguas}
-        ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}
-        ${WEEKLY_DAY[b.code] ? `<span class="rp-tile-day">Weekly · <b>${WEEKLY_DAY[b.code]}</b> · 14:00</span>` : '<span class="rp-tile-day is-adhoc">Weekly · ad-hoc</span>'}</div>`;
+        ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}</div>`;
     }).join('');
     $('landingNote').textContent = `${BRANCHES.length} branches · engine target ${SET.abc ? 'ABC (A10·B8·C6 wk)' : SET.weeks + ' wk'}`;
+    renderSchedule();
     renderBoard();
     $('branchTiles').querySelectorAll('.sp-tile').forEach(t => {
       const go = () => openBranch(t.dataset.code);
@@ -883,7 +905,8 @@
       live = (j.rows || [])
         .filter(o => o.cin7_number && o.status !== 'FAILED' && !FINAL_ST.has(o.cin7_status || ''))
         .map(o => ({ code: o.branch_code, name: o.branch_name || o.branch_code, mode: o.mode,
-                     tr: o.cin7_number, lines: o.line_count, cin7_status: o.cin7_status }));
+                     tr: o.cin7_number, lines: o.line_count, cin7_status: o.cin7_status,
+                     emailed_at: o.emailed_at, emailed_to: o.emailed_to }));
     } catch (_) { /* servidor fora: mostra só os rascunhos locais, nunca quebra */ }
 
     if (!drafts.length && !live.length) {
@@ -905,6 +928,7 @@
         <td class="num">${n0(x.lines)}</td>
         <td><span class="rp-h2-st st-draft">${esc(STAGE_LABEL[x.stage] || x.stage)}</span></td>
         <td class="rp-sub">—</td>
+        <td class="rp-sub">—</td>
         <td class="rp-sub">—</td></tr>`;
     const liveRow = (x) => {
       const st = CIN7_ST[x.cin7_status] || null;
@@ -915,7 +939,10 @@
         <td class="num">${n0(x.lines)}</td>
         <td><span class="rp-h2-st ${st ? st.cls : 'st-unknown'}">${st ? esc(st.rot) : 'Not checked'}</span></td>
         <td class="rp-h2-carrier" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
-        <td class="rp-h2-conn" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td></tr>`;
+        <td class="rp-h2-conn" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
+        <td class="rp-h2-emailed">${x.emailed_at
+          ? `<span title="${esc(x.emailed_to || 'Emailed')}">${esc(dmyTime(x.emailed_at))}</span>`
+          : '<span class="rp-sub">—</span>'}</td></tr>`;
     };
 
     const nWaiting = drafts.filter(x => (rank[x.stage] ?? 9) <= 1).length;
@@ -926,7 +953,7 @@
         <span class="rp-board-note">drafts live on this computer · placed transfers are shared</span>
       </div>
       <table class="rp-board-tbl rp-b2t"><thead><tr>
-        <th>Branch</th><th>TR</th><th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th>
+        <th>Branch</th><th>TR</th><th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th><th>Emailed</th>
       </tr></thead><tbody>${drafts.map(draftRow).join('')}${live.map(liveRow).join('')}</tbody></table>`;
 
     el.querySelectorAll('tr[data-code]').forEach(tr => tr.addEventListener('click', () => {
@@ -2223,7 +2250,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     }
     $('rpHistory').innerHTML = aviso + barra + `<div class="rp-h2-wrap"><table class="rp-h2t"><thead><tr>
         <th style="width:28px"></th><th>TR</th><th>Placed</th>${histAllBranches() ? '<th>Branch</th>' : ''}
-        <th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th><th>Printed</th><th></th>
+        <th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th><th>Printed</th><th>Emailed</th><th></th>
       </tr></thead><tbody>${vivas.map((o, i) => histRow(o, i)).join('')}</tbody></table></div>`;
     wireHistory();
   }
@@ -2298,8 +2325,11 @@ The branch column is the decision that was recorded; the columns after it are wh
       <td class="rp-h2-carrier" data-tr="${esc(o.cin7_number || '')}"><span class="rp-sub">—</span></td>
       <td class="rp-h2-conn" data-tr="${esc(o.cin7_number || '')}"><span class="rp-sub">—</span></td>
       <td>${pr}</td>
+      <td class="rp-h2-emailed">${o.emailed_at
+        ? `<span title="${esc(o.emailed_to || 'Emailed')}">${esc(dmyTime(o.emailed_at))}${o.emailed_to ? '<span class="rp-sub"> · ' + esc(o.emailed_to) + '</span>' : ''}</span>`
+        : '<span class="rp-sub">—</span>'}</td>
       <td class="num">${o.cin7_number ? `<button class="ui-act" data-print="${i}">${o.printed_at ? 'Reprint' : 'Print'}</button>` : ''}</td>
-    </tr>` + (open ? `<tr class="rp-h2-lines"><td colspan="${histAllBranches() ? 11 : 10}">${histLines(o)}</td></tr>` : '');
+    </tr>` + (open ? `<tr class="rp-h2-lines"><td colspan="${histAllBranches() ? 12 : 11}">${histLines(o)}</td></tr>` : '');
   }
   function histLines(o) {
     const lines = Array.isArray(o.lines) ? o.lines : [];

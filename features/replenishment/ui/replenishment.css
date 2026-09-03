@@ -14,7 +14,7 @@
 /* O cartão passou a carregar as duas réguas e os nomes dos reps. 178px (o
    mínimo compartilhado) cortava tudo; 230 dá para ler sem virar coluna única
    em tela larga. Só aqui — as outras telas não mudaram de conteúdo. */
-#branchTiles.sp-tiles { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+#branchTiles.sp-tiles { grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); }
 .sp-tile { cursor: pointer; transition: box-shadow .15s, transform .15s; }
 .sp-tile:hover { box-shadow: 0 4px 14px rgba(20,28,41,.10); transform: translateY(-1px); }
 .rp-tile-sub { font-size: 11.5px; color: var(--mut-2); margin-top: 4px; }
@@ -42,9 +42,28 @@
   background: #FEE2E2; border: 1px solid #FECACA; border-radius: 5px; padding: 3px 7px; }
 
 .rp-tile-var { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--acc-d); background: var(--acc-soft); border-radius: 4px; padding: 1px 6px; margin-top: 6px; }
-/* Dia de place-order da filial (weekly). Ad-hoc = filial em crescimento, sem dia fixo. */
-.rp-tile-day { display: block; width: fit-content; margin-top: 6px; font-size: 10px; font-weight: 600; letter-spacing: .02em; color: var(--acc-d); background: var(--acc-soft); border-radius: 4px; padding: 1px 6px; }
-.rp-tile-day.is-adhoc { color: var(--mut-2); background: var(--card-2); }
+/* Card compacto: as três réguas numa linha, para não crescer para baixo. */
+.rp-tile-name { display: block; font: 700 13.5px var(--sans); color: var(--ink); letter-spacing: -.01em; }
+.rp-tk2 { display: flex; gap: 5px; margin-top: 7px; }
+.rp-m { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 3px 2px; border-radius: 5px; }
+.rp-m i { font-style: normal; font: 600 9px var(--sans); text-transform: uppercase; letter-spacing: .04em; color: var(--mut-2); }
+.sp-tile .rp-m b { font: 700 17px/1.1 var(--sans); letter-spacing: -.01em; color: var(--ink); }
+.rp-m.is-driver { background: var(--acc-soft); }
+.sp-tile .rp-m.is-driver i, .sp-tile .rp-m.is-driver b { color: var(--acc-d); }
+.rp-orph { color: #92400E; font-weight: 700; cursor: help; }
+
+/* Agenda semanal de place-order — tira horizontal, "hoje" destacado. */
+.rp-sched { margin: 6px 2px 12px; }
+.rp-sched-h { font: 400 11px var(--sans); color: var(--mut-2); margin: 0 2px 6px; }
+.rp-sched-h b { color: var(--ink); font-weight: 700; }
+.rp-sched-t { width: 100%; border-collapse: separate; border-spacing: 6px 0; table-layout: fixed; }
+.rp-sched-t td { border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 9px; vertical-align: top; }
+.rp-sched-t td.is-today { border-color: var(--acc); background: var(--acc-soft); }
+.rp-sched-t td i { display: block; font-style: normal; font: 700 9.5px var(--sans); text-transform: uppercase; letter-spacing: .05em; color: var(--mut-2); }
+.rp-sched-t td.is-today i { color: var(--acc-d); }
+.rp-sched-t td b { display: block; font: 700 13px var(--sans); color: var(--ink); margin-top: 1px; }
+.rp-sched-t td u { display: block; text-decoration: none; font: 400 10.5px var(--sans); color: var(--mut-2); margin-top: 2px; }
+.rp-sched-adhoc { opacity: .8; }
 
 /* segmented sub-tabs (Weekly | Daily | History) */
 .rp-seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
