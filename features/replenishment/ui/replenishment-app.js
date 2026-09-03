@@ -1021,16 +1021,37 @@
     // writeRulers vem junto: o painel só tem número depois desta chamada.
     refreshRepAvg().then(() => { renderGrid(); writeRulers(); });
   }
+  // Aviso minimalista do weekly (o time já conhece o processo — é só lembrete).
+  // Cada filial tem seu dia de place-order, cutoff 14:00; submeteu até lá → análise
+  // + impressão → pick às 4am do dia seguinte. Depois disso, atrasa uma corrida.
+  // Melbourne e Hobart são ad-hoc (filiais em crescimento, sem dia fixo).
+  const WEEKLY_DAY = { CFS: 'Monday', BNE: 'Tuesday', CNS: 'Wednesday', SCS: 'Thursday', SYD: 'Friday' };
+  function weeklyNote() {
+    const b = S.branch || {};
+    const when = WEEKLY_DAY[b.code]
+      ? `${esc(b.name)}'s day is <b>${WEEKLY_DAY[b.code]}</b>, cutoff <b>14:00</b>`
+      : 'this branch runs <b>ad-hoc</b> (growing)';
+    return `Weekly transfer — ${when}. Submit by then for the next-day <b>4am</b> pick; `
+      + 'later submissions ship the next run.';
+  }
   function enterGrid() {
     $('rpScroll').style.display = ''; $('rpHistory').style.display = 'none'; $('rpStage').style.display = ''; $('rpFoot').style.display = '';
     const rul = $('rpRulers'); if (rul) rul.style.display = '';
-    // O diário tem regra própria e ela precisa estar na tela, não no treinamento.
+    // Cada modo tem a sua regra, e ela precisa estar na tela, não no treinamento —
+    // no futuro os users de filial entram direto aqui, sem passar pelo painel.
     const note = $('rpDailyNote');
     if (note) {
-      note.style.display = (S.view === 'daily') ? '' : 'none';
-      note.innerHTML = 'Asked before <b>12:00</b> today. Does not include the weekly transfer — '
-        + 'that goes on the Weekly tab. Up to ' + DAILY_MAX + ' items, each with a reason. '
-        + 'Daily skips the manager check.';
+      if (S.view === 'daily') {
+        note.style.display = '';
+        note.innerHTML = 'Asked before <b>12:00</b> today — after that it ships the next day. '
+          + 'Does not include the weekly transfer (that\'s the Weekly tab). Up to ' + DAILY_MAX
+          + ' items, each with a reason. Daily skips the manager check.';
+      } else if (S.view === 'weekly') {
+        note.style.display = '';
+        note.innerHTML = weeklyNote();
+      } else {
+        note.style.display = 'none';
+      }
     }
     setControls(); renderStage(); renderGrid();
   }
