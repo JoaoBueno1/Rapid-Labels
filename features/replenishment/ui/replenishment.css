@@ -42,6 +42,9 @@
   background: #FEE2E2; border: 1px solid #FECACA; border-radius: 5px; padding: 3px 7px; }
 
 .rp-tile-var { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--acc-d); background: var(--acc-soft); border-radius: 4px; padding: 1px 6px; margin-top: 6px; }
+/* Dia de place-order da filial (weekly). Ad-hoc = filial em crescimento, sem dia fixo. */
+.rp-tile-day { display: block; width: fit-content; margin-top: 6px; font-size: 10px; font-weight: 600; letter-spacing: .02em; color: var(--acc-d); background: var(--acc-soft); border-radius: 4px; padding: 1px 6px; }
+.rp-tile-day.is-adhoc { color: var(--mut-2); background: var(--card-2); }
 
 /* segmented sub-tabs (Weekly | Daily | History) */
 .rp-seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }

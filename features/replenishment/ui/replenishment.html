@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=21">
 <link rel="stylesheet" href="/shared/rail.css?v=8">
 <link rel="stylesheet" href="/shared/ui.css?v=4">
-<link rel="stylesheet" href="replenishment.css?v=20260903d">
+<link rel="stylesheet" href="replenishment.css?v=20260903e">
 <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -182,7 +182,6 @@
             <b>Which average</b> (branch shipments vs the branch's reps) is chosen right in the
             <b>Load suggested</b> dialog — with the line/unit count of each option in front of you — not here.</small>
         </label>
-        <label class="rp-check"><input type="checkbox" id="setCartons"> Round suggested QTY up to full cartons</label>
         <label class="rp-check"><input type="checkbox" id="setBomSafety"> Keep Main&rsquo;s safety stock on assembly components too</label>
         <label class="rp-check"><input type="checkbox" id="setFairShare"> Share Main&rsquo;s stock between branches (fair share)</label>
         <small class="rp-set-note">Each branch is planned on its own against Main&rsquo;s <b>full</b> stock, so the same units can be
@@ -232,6 +231,6 @@
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script src="/features/replenishment/replenishment-config.js?v=20260831"></script>
-<script src="replenishment-app.js?v=20260903d"></script>
+<script src="replenishment-app.js?v=20260903e"></script>
 </body>
 </html>

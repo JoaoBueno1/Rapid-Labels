@@ -106,6 +106,12 @@
     }
     raw.avgSource = DEFAULTS.avgSource;
     delete raw.period;   // mesma história: lido, sem elemento no HTML desde f87e34e
+    // Cartons saiu do Settings: o arredondamento para caixa cheia inflava a
+    // cobertura acima do week/day configurado. Agora a sugestão é sempre em
+    // UNIDADES (respeita o cover) e a carton qty fica só como INFO na coluna —
+    // o manager arredonda à mão se quiser. Forçado off aqui para que quem tinha
+    // o toggle ligado no localStorage não continue com o comportamento antigo.
+    raw.cartons = false;
     // 'up' saiu do seletor. computeBranchTarget JÁ faz Math.ceil no alvo, então
     // arredondar a média para cima antes era um teto em cima de outro: média
     // 0,2 virava 1 e alvo 2 — dois anos de estoque parado. Medido em Sydney,
@@ -815,7 +821,8 @@
       return `<div class="sp-tile ${cls}" data-code="${b.code}" role="button" tabindex="0">
         <span>${esc(b.name)}</span>
         ${reguas}
-        ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}</div>`;
+        ${VARIANT[b.code] ? '<span class="rp-tile-var">+ Sydney re-route</span>' : ''}
+        ${WEEKLY_DAY[b.code] ? `<span class="rp-tile-day">Weekly · <b>${WEEKLY_DAY[b.code]}</b> · 14:00</span>` : '<span class="rp-tile-day is-adhoc">Weekly · ad-hoc</span>'}</div>`;
     }).join('');
     $('landingNote').textContent = `${BRANCHES.length} branches · engine target ${SET.abc ? 'ABC (A10·B8·C6 wk)' : SET.weeks + ' wk'}`;
     renderBoard();
@@ -2583,7 +2590,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     if ($('setDemand')) $('setDemand').value = SET.demand;
     if ($('setSalesMonths')) $('setSalesMonths').value = String(SET.salesMonths);
     if ($('setAvgSource')) $('setAvgSource').value = SET.avgSource;
-    $('setAvgRound').value = SET.avgRound; $('setCartons').checked = SET.cartons;
+    $('setAvgRound').value = SET.avgRound;
     $('setBomSafety').checked = SET.bomSafety !== false;
     $('setFairShare').checked = !!SET.fairShare;
     if ($('setMinAvg')) $('setMinAvg').value = SET.minAvg;
@@ -2596,7 +2603,7 @@ The branch column is the decision that was recorded; the columns after it are wh
   function applySettings() {
     SET.weeks = Math.max(1, Number($('setWeeks').value) || 6); SET.cutDays = Math.max(1, Number($('setCutDays').value) || 25);
     SET.abc = $('setAbc').checked; if ($('setAvgSource')) SET.avgSource = $('setAvgSource').value;
-    SET.avgRound = $('setAvgRound').value; SET.cartons = $('setCartons').checked;
+    SET.avgRound = $('setAvgRound').value;
     SET.bomSafety = $('setBomSafety').checked;
     SET.fairShare = $('setFairShare').checked;
     S.alloc = null;   // regra mudou: o rateio guardado nao vale mais
