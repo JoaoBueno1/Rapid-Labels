@@ -8,7 +8,7 @@
  * pickbay and handed to transfer_out_print.html via localStorage.
  */
 (function () {
-  const PRINT_URL = '/features/transfer-out/transfer_out_print.html';
+  const PRINT_URL = '/features/transfer-out/transfer_out_print.html?v=2';
   const KEY = 'transferOutPrint';
   // Kit components are only shown for extrusion / linear. Those are the products that
   // physically leave the shelf as loose parts — extrusion + diffuser + end caps + clips —
@@ -108,6 +108,7 @@
                 <div class="title">Stock Transfer</div>
                 <div class="dest" id="tostDest">—</div>
                 <div class="fromline"><span class="lbl">From</span> <b>Main Warehouse</b> &nbsp;•&nbsp; <span class="lbl">To</span> <span id="tostToAddr">—</span></div>
+                <div class="fromline" id="tostRefline" style="display:none;margin-top:2px"><span class="lbl">Ref</span> <b id="tostRef"></b></div>
               </div>
               <div class="right">
                 <div class="trno" id="tostTr">—</div>
@@ -146,6 +147,11 @@
         $('tostMeta').innerHTML = `Date <b>${esc(fmtD(row.order_date))}</b> · ${esc(row.status || '')}`;
       }
       const lines = j.lines || [];
+      // Referência do transfer (do detalhe do Cin7) — fica ABAIXO da linha From/To,
+      // na tela e no print. Vazia → some.
+      st.sel.reference = (j.header && j.header.reference) || row.reference || '';
+      if ($('tostRef')) $('tostRef').textContent = st.sel.reference;
+      if ($('tostRefline')) $('tostRefline').style.display = st.sel.reference ? '' : 'none';
       const skus = [...new Set(lines.map(l => l.sku).filter(Boolean))];
       const map = {};
       if (skus.length && sbc()) {
@@ -278,7 +284,7 @@
     const r = st.sel || {};
     const data = {
       tr: r.number || '', to_name: String(r.to_location || '').replace(/\s+Warehouse$/i, ''),
-      to_addr: st.toAddr || '', date: fmtD(r.order_date),
+      to_addr: st.toAddr || '', date: fmtD(r.order_date), reference: r.reference || '',
       lines: st.lines.map(l => ({ dc: l.dc, code: l.code, product: l.product, qty: l.qty, loc: l.loc, kit: l._kit || null })),
     };
     try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (_) {}

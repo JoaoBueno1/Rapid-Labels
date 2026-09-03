@@ -91,6 +91,7 @@
         <div class="dest">→ <span id="pDest">—</span></div>
         <div class="fromline"><span class="lbl">From</span> <b>Main Warehouse</b>
           &nbsp;•&nbsp; <span class="lbl">To</span> <span id="pToAddr">—</span></div>
+        <div class="fromline" id="pRefline" style="display:none;margin-top:2px"><span class="lbl">Ref</span> <b id="pRef"></b></div>
       </div>
       <div class="hd-right">
         <div class="trno" id="pTr">—</div>
@@ -143,6 +144,7 @@ else {
 
   document.getElementById('pDest').textContent = (DATA.to_name || '—').toUpperCase();
   document.getElementById('pToAddr').textContent = DATA.to_addr || '—';
+  if (DATA.reference) { document.getElementById('pRef').textContent = DATA.reference; document.getElementById('pRefline').style.display = ''; }
   document.getElementById('pTr').textContent = DATA.tr || '—';
   document.getElementById('pDate').textContent = DATA.date || '—';
   document.title = 'Transfer Out — ' + (DATA.tr || '');
