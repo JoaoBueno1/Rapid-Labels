@@ -889,7 +889,7 @@
        • transferência PLACED em andamento (servidor, compartilhada) — a mesma
          fonte da History, rede inteira, sem as recebidas/canceladas.
      Carrier + Consignment preenchem progressivamente (paintTrack/fillTrack). */
-  let boardPage = 0, boardData = null;
+  let boardPage = 0;
   async function renderBoard() {
     const el = $('rpBoard'); if (!el) return;
 
@@ -942,8 +942,8 @@
         <td class="em">${esc(x.name)}</td>
         <td class="rp-sub">draft</td>
         <td>${typeBadge(x.mode)}</td>
-        <td class="num">${n0(x.lines)}</td>
         <td><span class="rp-h2-st st-draft">${esc(STAGE_LABEL[x.stage] || x.stage)}</span></td>
+        <td class="rp-sub">—</td>
         <td class="rp-sub">—</td>
         <td class="rp-sub">—</td>
         <td class="rp-sub">—</td></tr>`;
@@ -953,13 +953,13 @@
         <td class="em">${esc(x.name)}</td>
         <td class="rp-h2-tr">${esc(x.tr)}</td>
         <td>${typeBadge(x.mode)}</td>
-        <td class="num">${n0(x.lines)}</td>
         <td><span class="rp-h2-st ${st ? st.cls : 'st-unknown'}">${st ? esc(st.rot) : 'Not checked'}</span></td>
         <td class="rp-h2-carrier" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
         <td class="rp-h2-conn" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
         <td class="rp-h2-emailed">${x.emailed_at
           ? `<span title="${esc(x.emailed_to || 'Emailed')}">${esc(dmyTime(x.emailed_at))}</span>`
-          : '<span class="rp-sub">—</span>'}</td></tr>`;
+          : '<span class="rp-sub">—</span>'}</td>
+        <td class="rp-b2-print"><button class="ui-act" data-ptr="${esc(x.tr)}" title="Print picking sheet">Print</button></td></tr>`;
     };
     // Status do mirror (ORDERED/PICKING/IN TRANSIT) → chip. Difere do cin7_status
     // do nosso replenishment_order, por isso um mapa próprio. Sem stage/print/
@@ -973,19 +973,18 @@
           x.reference ? `<div class="rp-sub rp-tr-sub" title="Reference">${esc(x.reference)}</div>` : ''}${
           x.dt ? `<div class="rp-sub rp-tr-sub" title="Placed date">${esc(String(x.dt).slice(0, 10).split('-').reverse().slice(0, 2).join('/'))}</div>` : ''}</td>
         <td><span class="badge is-cin7">Direct</span></td>
-        <td class="num">${x.lines != null ? n0(x.lines) : '—'}</td>
         <td><span class="rp-h2-st ${st.cls}">${esc(st.rot)}</span></td>
         <td class="rp-h2-carrier" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
         <td class="rp-h2-conn" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
-        <td class="rp-sub">—</td></tr>`;
+        <td class="rp-sub">—</td>
+        <td class="rp-b2-print"><button class="ui-act" data-ptr="${esc(x.tr)}" title="Print picking sheet">Print</button></td></tr>`;
     };
 
     const nWaiting = drafts.filter(x => (rank[x.stage] ?? 9) <= 1).length;
 
     // Paginação client-side: tudo já está na memória (rascunhos + nossas +
     // Cin7-direct). Uma página não estoura a landing e o fillTrack só busca os
-    // TRs visíveis. boardData guarda tudo para o Print sair com a folha COMPLETA.
-    boardData = { drafts, live, external };
+    // TRs visíveis. O Print agora é por LINHA (a folha do TR, sob demanda).
     const allRows = [...drafts.map(draftRow), ...live.map(liveRow), ...external.map(extRow)];
     const total = allRows.length;
     const PAGE_N = 12;
@@ -1004,10 +1003,10 @@
       <div class="rp-board-head">
         <b>In progress</b>
         <span>${nWaiting ? `${n0(nWaiting)} waiting on someone` : ((live.length + external.length) ? `${n0(live.length + external.length)} on the way` : 'nothing waiting')}</span>
-        <span class="rp-board-tools">${pager}<button class="ui-act" data-bprint="1" title="Print this list">Print</button></span>
+        <span class="rp-board-tools">${pager}</span>
       </div>
       <table class="rp-board-tbl rp-b2t"><thead><tr>
-        <th>Branch</th><th>TR</th><th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th><th>Emailed</th>
+        <th>Branch</th><th>TR</th><th>Type</th><th>Status</th><th>Carrier</th><th>Consignment</th><th>Emailed</th><th>Print</th>
       </tr></thead><tbody>${pageRows.join('')}</tbody></table>`;
 
     el.querySelectorAll('tr[data-code]').forEach(tr => tr.addEventListener('click', () => {
@@ -1016,43 +1015,40 @@
     el.querySelectorAll('[data-bpage]').forEach(b => b.addEventListener('click', () => {
       boardPage += (b.dataset.bpage === 'next' ? 1 : -1); renderBoard();
     }));
-    const pb = el.querySelector('[data-bprint]'); if (pb) pb.addEventListener('click', printBoard);
+    el.querySelectorAll('[data-ptr]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation(); printTransfer(b.dataset.ptr);
+    }));
     paintTrack(el); fillTrack(el);
   }
 
-  // Folha da lista in-progress (a COMPLETA, não só a página). Janela própria, como
-  // o print da History. Carrier/Consignment saem do cache trackMap (o que já
-  // carregou); as Cin7-direct entram rotuladas.
-  function printBoard() {
-    const d = boardData; if (!d) return;
-    const XL = { ORDERED: 'Ordered', PICKING: 'Picking', 'IN TRANSIT': 'In transit' };
-    const md = (m) => (m === 'daily' ? 'Daily' : 'Weekly');
-    const rows = [];
-    d.drafts.forEach(x => rows.push({ br: x.name, tr: '—', type: md(x.mode), lines: x.lines, st: 'Draft — ' + (STAGE_LABEL[x.stage] || x.stage), key: null }));
-    d.live.forEach(x => rows.push({ br: x.name, tr: x.tr, type: md(x.mode), lines: x.lines, st: (CIN7_ST[x.cin7_status] && CIN7_ST[x.cin7_status].rot) || x.cin7_status || '—', key: x.tr }));
-    d.external.forEach(x => rows.push({ br: x.br.name, tr: x.tr + ' (Cin7 direct)', type: 'Direct', lines: (x.lines != null ? x.lines : '—'), st: XL[x.status] || x.status, key: x.tr }));
-    const trk = (key) => {
-      const os = key && trackMap[key];
-      if (!os || !os.length) return { carrier: '—', conn: '—' };
-      return { carrier: [...new Set(os.map(o => o.carrier).filter(Boolean))].join(' / ') || '—',
-               conn: os.map(o => o.consignment || (o.is_own_fleet ? 'Own fleet' : '')).filter(Boolean).join(' · ') || '—' };
-    };
-    const body = rows.map(r => { const t = trk(r.key); return `<tr>`
-      + `<td>${esc(r.br)}</td><td>${esc(String(r.tr))}</td><td>${esc(r.type)}</td>`
-      + `<td class="n">${esc(String(r.lines))}</td><td>${esc(r.st)}</td>`
-      + `<td>${esc(t.carrier)}</td><td>${esc(t.conn)}</td></tr>`; }).join('');
-    const w = window.open('', '_blank', 'width=1000,height=800');
+  // Folha de UMA transferência (picking do TR), sob demanda. Busca o detalhe no
+  // Cin7 via /transfer-detail (1 chamada, com cache de 30min) e imprime
+  // SKU · Produto · Qty — serve tanto para as nossas quanto para as Cin7-direct.
+  // O horário real de criação vem aqui (do Cin7), quando disponível.
+  async function printTransfer(tr) {
+    if (!tr) return;
+    let d;
+    try {
+      const r = await fetch(`/api/replenishment/transfer-detail?tr=${encodeURIComponent(tr)}`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      d = await r.json();
+    } catch (e) { toast(`Could not load ${tr}: ${e.message}`, true); return; }
+    const w = window.open('', '_blank', 'width=820,height=900');
     if (!w) { toast('The browser blocked the print window', true); return; }
+    const lines = Array.isArray(d.lines) ? d.lines : [];
+    const body = lines.map(l => `<tr><td>${esc(l.sku)}</td><td>${esc((l.name || '').slice(0, 55))}</td><td class="n">${esc(String(l.qty))}</td></tr>`).join('')
+      || '<tr><td colspan="3" style="color:#5b6472">No line detail from Cin7.</td></tr>';
     const now = new Date();
-    w.document.write('<!doctype html><meta charset="utf-8"><title>In progress — ' + esc(now.toLocaleDateString()) + '</title>'
-      + '<style>body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#1b2230;margin:24px}'
-      + 'h1{font-size:18px;margin:0 0 2px}.sub{color:#5b6472;font-size:12px;margin-bottom:14px}'
+    const created = d.created ? esc(String(d.created).slice(0, 16).replace('T', ' ')) : '';
+    w.document.write('<!doctype html><meta charset="utf-8"><title>' + esc(tr) + '</title>'
+      + '<style>body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#1b2230;margin:26px}'
+      + 'h1{font-size:19px;margin:0 0 3px}.sub{color:#5b6472;font-size:12px;margin-bottom:16px}'
       + 'table{border-collapse:collapse;width:100%;font-size:12.5px}'
-      + 'th{background:#f1f3f6;text-align:left;padding:6px 9px;border-bottom:1px solid #cfd6df;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#5b6472}'
-      + 'td{padding:5px 9px;border-bottom:1px solid #e6eaef}.n{text-align:right}</style>'
-      + '<h1>Branch Replenishment — In progress</h1>'
-      + `<div class="sub">${rows.length} transfer(s) · printed ${esc(now.toLocaleString())}</div>`
-      + '<table><thead><tr><th>Branch</th><th>TR</th><th>Type</th><th class="n">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th></tr></thead>'
+      + 'th{background:#f1f3f6;text-align:left;padding:6px 9px;border-bottom:1px solid #cfd6df;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#5b6472}'
+      + 'td{padding:5px 9px;border-bottom:1px solid #e6eaef}.n{text-align:right;font-variant-numeric:tabular-nums}</style>'
+      + `<h1>${esc(tr)}${d.to ? ' → ' + esc(d.to) : ''}</h1>`
+      + `<div class="sub">${d.reference ? esc(d.reference) + ' · ' : ''}${lines.length} line(s) · ${esc(String(d.total_qty || 0))} units${created ? ' · created ' + created : ''} · printed ${esc(now.toLocaleString())}</div>`
+      + '<table><thead><tr><th>SKU</th><th>Product</th><th class="n">Qty</th></tr></thead>'
       + `<tbody>${body}</tbody></table>`);
     w.document.close(); w.focus(); w.print();
   }

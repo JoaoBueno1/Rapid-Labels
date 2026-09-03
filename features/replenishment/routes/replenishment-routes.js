@@ -687,6 +687,45 @@ function register(app, db) {
     res.json({ rows: rows || [] });
   }));
 
+  // Detalhe de UMA transferência (as linhas), SOB DEMANDA — para o Print da linha.
+  // Busca o task_id no espelho e lê o Cin7 UMA vez, com cache de 30min. A cota é
+  // 60/min compartilhada com o TMS + 16 workflows, então isto só roda quando o
+  // usuário clica Print numa linha, nunca em lote no render. Parse defensivo dos
+  // nomes de campo (a resposta do GET pode diferir do corpo que POSTamos).
+  const tdCache = new Map(); // tr -> { at, detail }
+  const TD_TTL = 30 * 60 * 1000;
+  app.get(`${R}/transfer-detail`, wrap(async (req, res) => {
+    const m = String(req.query.tr || '').match(/[Tt][Rr][- ]?([0-9]+)/);
+    if (!m) return res.status(400).json({ error: 'tr inválido' });
+    const tr = 'TR-' + m[1];
+    const hit = tdCache.get(tr);
+    if (hit && Date.now() - hit.at < TD_TTL) return res.json(hit.detail);
+
+    const found = await db.query(
+      `SELECT task_id, number, reference, to_location, status
+         FROM cin7_mirror.stock_transfers WHERE number = $1 LIMIT 1`, [tr]);
+    const row = found && found[0];
+    if (!row || !row.task_id) return res.status(404).json({ error: 'TR não está no espelho' });
+
+    const g = await fetch(`${CIN7}/stockTransfer?TaskID=${encodeURIComponent(row.task_id)}`, { headers: headers() });
+    if (!g.ok) return res.status(502).json({ error: `Cin7 HTTP ${g.status}` });
+    const t = await g.json();
+    const L = t.Lines || t.OrderLines || t.TransferOrderLines || [];
+    const lines = L.map((l) => ({
+      sku: l.SKU || l.Sku || l.ProductCode || '',
+      name: l.Name || l.ProductName || '',
+      qty: Number(l.TransferQuantity != null ? l.TransferQuantity
+        : (l.Quantity != null ? l.Quantity : (l.Qty || 0))),
+    })).filter((x) => x.sku);
+    const detail = {
+      number: tr, reference: row.reference || t.Reference || '', to: row.to_location, status: row.status,
+      created: t.CreatedDate || t.OrderDate || t.LastModifiedOn || null,
+      total_qty: lines.reduce((s, l) => s + (l.qty || 0), 0), line_count: lines.length, lines,
+    };
+    tdCache.set(tr, { at: Date.now(), detail });
+    res.json(detail);
+  }));
+
   /** BOM: os componentes de cada assembly (bom_type='Assembly'), para a UI
    *  desenhar as sub-linhas e o export mandar componentes em vez do montado.
    *  Lê rapid_inv.product_bom via sp-db (rapid_inv NÃO é exposto no PostgREST —
