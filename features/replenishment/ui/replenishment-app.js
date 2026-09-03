@@ -889,6 +889,7 @@
        • transferência PLACED em andamento (servidor, compartilhada) — a mesma
          fonte da History, rede inteira, sem as recebidas/canceladas.
      Carrier + Consignment preenchem progressivamente (paintTrack/fillTrack). */
+  let boardPage = 0, boardData = null;
   async function renderBoard() {
     const el = $('rpBoard'); if (!el) return;
 
@@ -978,20 +979,80 @@
     };
 
     const nWaiting = drafts.filter(x => (rank[x.stage] ?? 9) <= 1).length;
+
+    // Paginação client-side: tudo já está na memória (rascunhos + nossas +
+    // Cin7-direct). Uma página não estoura a landing e o fillTrack só busca os
+    // TRs visíveis. boardData guarda tudo para o Print sair com a folha COMPLETA.
+    boardData = { drafts, live, external };
+    const allRows = [...drafts.map(draftRow), ...live.map(liveRow), ...external.map(extRow)];
+    const total = allRows.length;
+    const PAGE_N = 12;
+    const pages = Math.max(1, Math.ceil(total / PAGE_N));
+    boardPage = Math.min(Math.max(0, boardPage), pages - 1);
+    const start = boardPage * PAGE_N;
+    const pageRows = allRows.slice(start, start + PAGE_N);
+
+    const pager = total > PAGE_N ? `<span class="rp-board-pager">
+        <button class="ui-act" data-bpage="prev"${boardPage === 0 ? ' disabled' : ''}>‹</button>
+        <span class="rp-board-range">${start + 1}–${Math.min(start + PAGE_N, total)} of ${total}</span>
+        <button class="ui-act" data-bpage="next"${boardPage >= pages - 1 ? ' disabled' : ''}>›</button>
+      </span>` : '';
+
     el.innerHTML = `
       <div class="rp-board-head">
         <b>In progress</b>
         <span>${nWaiting ? `${n0(nWaiting)} waiting on someone` : ((live.length + external.length) ? `${n0(live.length + external.length)} on the way` : 'nothing waiting')}</span>
-        <span class="rp-board-note">drafts on this computer · placed + Cin7-direct are shared</span>
+        <span class="rp-board-tools">${pager}<button class="ui-act" data-bprint="1" title="Print this list">Print</button></span>
       </div>
       <table class="rp-board-tbl rp-b2t"><thead><tr>
         <th>Branch</th><th>TR</th><th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th><th>Emailed</th>
-      </tr></thead><tbody>${drafts.map(draftRow).join('')}${live.map(liveRow).join('')}${external.map(extRow).join('')}</tbody></table>`;
+      </tr></thead><tbody>${pageRows.join('')}</tbody></table>`;
 
     el.querySelectorAll('tr[data-code]').forEach(tr => tr.addEventListener('click', () => {
       S.mode = tr.dataset.mode; openBranch(tr.dataset.code);
     }));
+    el.querySelectorAll('[data-bpage]').forEach(b => b.addEventListener('click', () => {
+      boardPage += (b.dataset.bpage === 'next' ? 1 : -1); renderBoard();
+    }));
+    const pb = el.querySelector('[data-bprint]'); if (pb) pb.addEventListener('click', printBoard);
     paintTrack(el); fillTrack(el);
+  }
+
+  // Folha da lista in-progress (a COMPLETA, não só a página). Janela própria, como
+  // o print da History. Carrier/Consignment saem do cache trackMap (o que já
+  // carregou); as Cin7-direct entram rotuladas.
+  function printBoard() {
+    const d = boardData; if (!d) return;
+    const XL = { ORDERED: 'Ordered', PICKING: 'Picking', 'IN TRANSIT': 'In transit' };
+    const md = (m) => (m === 'daily' ? 'Daily' : 'Weekly');
+    const rows = [];
+    d.drafts.forEach(x => rows.push({ br: x.name, tr: '—', type: md(x.mode), lines: x.lines, st: 'Draft — ' + (STAGE_LABEL[x.stage] || x.stage), key: null }));
+    d.live.forEach(x => rows.push({ br: x.name, tr: x.tr, type: md(x.mode), lines: x.lines, st: (CIN7_ST[x.cin7_status] && CIN7_ST[x.cin7_status].rot) || x.cin7_status || '—', key: x.tr }));
+    d.external.forEach(x => rows.push({ br: x.br.name, tr: x.tr + ' (Cin7 direct)', type: 'Direct', lines: (x.lines != null ? x.lines : '—'), st: XL[x.status] || x.status, key: x.tr }));
+    const trk = (key) => {
+      const os = key && trackMap[key];
+      if (!os || !os.length) return { carrier: '—', conn: '—' };
+      return { carrier: [...new Set(os.map(o => o.carrier).filter(Boolean))].join(' / ') || '—',
+               conn: os.map(o => o.consignment || (o.is_own_fleet ? 'Own fleet' : '')).filter(Boolean).join(' · ') || '—' };
+    };
+    const body = rows.map(r => { const t = trk(r.key); return `<tr>`
+      + `<td>${esc(r.br)}</td><td>${esc(String(r.tr))}</td><td>${esc(r.type)}</td>`
+      + `<td class="n">${esc(String(r.lines))}</td><td>${esc(r.st)}</td>`
+      + `<td>${esc(t.carrier)}</td><td>${esc(t.conn)}</td></tr>`; }).join('');
+    const w = window.open('', '_blank', 'width=1000,height=800');
+    if (!w) { toast('The browser blocked the print window', true); return; }
+    const now = new Date();
+    w.document.write('<!doctype html><meta charset="utf-8"><title>In progress — ' + esc(now.toLocaleDateString()) + '</title>'
+      + '<style>body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#1b2230;margin:24px}'
+      + 'h1{font-size:18px;margin:0 0 2px}.sub{color:#5b6472;font-size:12px;margin-bottom:14px}'
+      + 'table{border-collapse:collapse;width:100%;font-size:12.5px}'
+      + 'th{background:#f1f3f6;text-align:left;padding:6px 9px;border-bottom:1px solid #cfd6df;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#5b6472}'
+      + 'td{padding:5px 9px;border-bottom:1px solid #e6eaef}.n{text-align:right}</style>'
+      + '<h1>Branch Replenishment — In progress</h1>'
+      + `<div class="sub">${rows.length} transfer(s) · printed ${esc(now.toLocaleString())}</div>`
+      + '<table><thead><tr><th>Branch</th><th>TR</th><th>Type</th><th class="n">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th></tr></thead>'
+      + `<tbody>${body}</tbody></table>`);
+    w.document.close(); w.focus(); w.print();
   }
 
   // ═══ BRANCH WORKSPACE ══════════════════════════════════════════════

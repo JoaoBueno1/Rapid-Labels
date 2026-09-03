@@ -558,6 +558,10 @@ td.rp-avgb.is-driver,td.rp-avgr.is-driver{background:#f1f6ff}
 .rp-board-head b{font:700 12.5px var(--sans);color:var(--ink)}
 .rp-board-head span{font:400 11.5px var(--sans);color:var(--mut)}
 .rp-board-note{margin-left:auto;font-size:10.5px !important;color:var(--mut-2) !important}
+.rp-board-tools{margin-left:auto;display:flex;align-items:center;gap:8px}
+.rp-board-pager{display:inline-flex;align-items:center;gap:6px}
+.rp-board-range{font:600 11px var(--sans);color:var(--mut-2);font-variant-numeric:tabular-nums}
+.rp-board-tools .ui-act[disabled]{opacity:.4;cursor:default}
 .rp-board-empty{padding:16px 13px;font:400 12px var(--sans);color:var(--mut-2)}
 .rp-board-tbl{width:100%;border-collapse:collapse}
 .rp-board-tbl th{text-align:left;padding:6px 13px;font:700 10px var(--sans);
