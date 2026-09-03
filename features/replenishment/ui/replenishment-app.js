@@ -922,7 +922,7 @@
       BRANCHES.forEach(b => { if (LOCAL[b.code]) loc2br[LOCAL[b.code]] = b; });
       external = (j.rows || [])
         .filter(o => !ours.has(o.number))
-        .map(o => ({ tr: o.number, br: loc2br[o.to_location], status: o.status, lines: o.line_count }))
+        .map(o => ({ tr: o.number, br: loc2br[o.to_location], status: o.status, lines: o.line_count, reference: o.reference, dt: o.dt }))
         .filter(x => x.br);
     } catch (_) { /* mirror fora: segue sem as externas, nunca quebra */ }
 
@@ -969,7 +969,9 @@
       const st = XFER_ST[x.status] || { rot: x.status, cls: 'st-unknown' };
       return `<tr class="rp-b2r is-external">
         <td class="em">${esc(x.br.name)}</td>
-        <td class="rp-h2-tr">${esc(x.tr)} <span class="rp-ext-tag" title="Created directly in Cin7 — not through this module">Cin7</span></td>
+        <td class="rp-h2-tr">${esc(x.tr)} <span class="rp-ext-tag" title="Created directly in Cin7 — not through this module">Cin7</span>${
+          x.reference ? `<div class="rp-sub rp-tr-sub" title="Reference">${esc(x.reference)}</div>` : ''}${
+          x.dt ? `<div class="rp-sub rp-tr-sub" title="Placed date">${esc(String(x.dt).slice(0, 10).split('-').reverse().slice(0, 2).join('/'))}</div>` : ''}</td>
         <td><span class="badge is-cin7">Direct</span></td>
         <td class="num">${x.lines != null ? n0(x.lines) : '—'}</td>
         <td><span class="rp-h2-st ${st.cls}">${esc(st.rot)}</span></td>

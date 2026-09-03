@@ -674,7 +674,7 @@ function register(app, db) {
   // ORDERED antigas nunca fechadas. A UI desduplica contra o que é nosso.
   app.get(`${R}/open-transfers`, wrap(async (req, res) => {
     const rows = await db.query(
-      `SELECT number, to_location, status, line_count, total_qty,
+      `SELECT number, to_location, status, line_count, total_qty, reference,
               COALESCE(departure_date::text, cin7_updated::text) AS dt
          FROM cin7_mirror.stock_transfers
         WHERE from_location ILIKE '%main%'

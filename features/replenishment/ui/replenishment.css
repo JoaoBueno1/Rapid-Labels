@@ -647,6 +647,8 @@ td.rp-avgb.is-driver,td.rp-avgr.is-driver{background:#f1f6ff}
 /* Transferência feita direto no Cin7 (monitoramento, não é pedido nosso). */
 .rp-b2t tr.is-external td { background: color-mix(in srgb, var(--card-2) 55%, transparent); }
 .rp-ext-tag { font: 700 8.5px var(--sans); text-transform: uppercase; letter-spacing: .04em; color: var(--mut-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 0 3px; margin-left: 4px; vertical-align: middle; }
+/* Reference + data do placed, abaixo do número da TR. */
+.rp-tr-sub { display: block; font-size: 10px; line-height: 1.35; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge.is-cin7 { background: var(--card-2); color: var(--mut-2); }
 
 /* A barra de filtros */
