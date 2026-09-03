@@ -216,6 +216,49 @@ async function rtConfirmPutaway(id) {
   setTimeout(() => $('rtPutawayBy').focus(), 60);
 }
 function rtPutawayClose() { $('rtPutawayModal').classList.remove('active'); }
+
+// Folha "Ready to put away": tudo que está na fila to_putaway, para o warehouse
+// pegar e finalizar a partir do papel. Colunas simples — RT number, 5DC (dc5), o
+// SKU e a quantidade; sem descrição. Prefere as linhas de tratamento (o que foi
+// processado); cai nas declaradas se não houver.
+async function rtPrintPutaway() {
+  const rows = (RT.active || []).filter(r => r.status === 'to_putaway');
+  if (!rows.length) return toast('Nothing ready to put away', 'err');
+  const ids = rows.map(r => r.id);
+  let tl = [], ll = [];
+  try {
+    const [t, l] = await Promise.all([
+      sb().from('returns_treatment_lines').select('*').in('return_id', ids),
+      sb().from('returns_lines').select('*').in('return_id', ids),
+    ]);
+    tl = t.data || []; ll = l.data || [];
+  } catch (e) { return toast('Could not load lines: ' + e.message, 'err'); }
+  const byRet = arr => { const m = {}; arr.forEach(x => { (m[x.return_id] = m[x.return_id] || []).push(x); }); return m; };
+  const tByR = byRet(tl), lByR = byRet(ll);
+  const pr = [];
+  rows.forEach(r => {
+    const src = (tByR[r.id] && tByR[r.id].length) ? tByR[r.id] : (lByR[r.id] || []);
+    src.slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0))
+      .forEach(l => pr.push({ rt: r.return_no, dc5: l.dc5 || '', sku: l.sku || '', qty: l.qty }));
+  });
+  if (!pr.length) return toast('No line detail to print', 'err');
+  const w = window.open('', '_blank', 'width=900,height=800');
+  if (!w) return toast('The browser blocked the print window', 'err');
+  const now = new Date();
+  const body = pr.map(r => `<tr><td>${esc(r.rt)}</td><td>${esc(r.dc5)}</td><td><strong>${esc(r.sku)}</strong></td><td class="r">${esc(String(r.qty))}</td></tr>`).join('');
+  w.document.write('<!doctype html><meta charset="utf-8"><title>Ready to put away — ' + esc(now.toLocaleDateString()) + '</title>'
+    + '<style>body{font:13px/1.5 "IBM Plex Sans",system-ui,-apple-system,sans-serif;color:#1b2230;margin:24px}'
+    + 'h1{font-size:18px;margin:0 0 2px}.sub{color:#5b6b86;font-size:12px;margin-bottom:14px}'
+    + 'table{border-collapse:collapse;width:100%;font-size:13px}'
+    + 'th{background:#f1f3f6;text-align:left;padding:7px 10px;border-bottom:1px solid #cfd6df;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#5b6b86}'
+    + 'td{padding:6px 10px;border-bottom:1px solid #e6eaef}.r{text-align:right;font-variant-numeric:tabular-nums}'
+    + 'tr:nth-child(even) td{background:#fafbfc}</style>'
+    + '<h1>Ready to put away</h1>'
+    + `<div class="sub">${rows.length} return(s) · ${pr.length} line(s) · printed ${esc(now.toLocaleString())}</div>`
+    + '<table><thead><tr><th>RT number</th><th>5DC</th><th>Product code (SKU)</th><th class="r">Qty</th></tr></thead>'
+    + `<tbody>${body}</tbody></table>`);
+  w.document.close(); w.focus(); w.print();
+}
 async function rtDoPutaway() {
   const id = RT.putawayId; if (!id) return;
   const r = RT.active.find(x => String(x.id) === String(id));
@@ -296,8 +339,44 @@ async function rtOpenForm(row) {
   if (!RT.lines.length) { RT.lines = [{ sku: '', name: '', dc5: '', qty: '', reason: '', condition: '', return_status: '', unit: 0 }]; }   // start with ONE line; user clicks "+ Add line" for more
   rtRenderLines();
   $('rtNewModal').classList.add('active');
+  RT.newDirtyBase = rtNewFingerprint();   // baseline do dirty-check (× / ESC)
 }
-function rtCloseNew() { $('rtNewModal').classList.remove('active'); }
+function rtNewFingerprint() {
+  const v = id => (($(id) && $(id).value) || '');
+  return JSON.stringify({
+    f: [v('rtCustName'), v('rtCustId'), v('rtCustRef'), v('rtInvoice'), v('rtContact'), v('rtRep'), v('rtOrigin'), v('rtOperator'), (($('rtNewWarehouse') && $('rtNewWarehouse').value) || ''), v('rtNotes')],
+    l: (RT.lines || []).map(l => [l.sku || '', l.dc5 || '', String(l.qty || ''), l.reason || '', l.condition || '']),
+  });
+}
+function rtNewDirty() { return RT.newDirtyBase != null && rtNewFingerprint() !== RT.newDirtyBase; }
+// × e ESC: se houve alteração não salva, confirma (em inglês) antes de descartar;
+// sem alteração, fecha direto. Não fecha ao clicar fora — de propósito.
+function rtCloseNew(force) {
+  if (!force && rtNewDirty() && !confirm('You have unsaved changes. Discard them?')) return;
+  RT.newDirtyBase = null;
+  $('rtNewModal').classList.remove('active');
+}
+
+// ESC fecha o modal do topo (o confirm de descarte do Act fecha primeiro). Os
+// modais com dados a salvar (New, Act) confirmam se houve alteração; os demais
+// fecham direto. NÃO há fechamento por clique fora — de propósito.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const order = [
+    ['rtDiscardModal', () => rtDiscardClose()],
+    ['rtActModal', () => rtCloseAct()],
+    ['rtNewModal', () => rtCloseNew()],
+    ['rtCompleteModal', () => rtCompleteClose()],
+    ['rtVoidModal', () => rtVoidClose()],
+    ['rtSoModal', () => rtSoClose()],
+    ['rtPutawayModal', () => rtPutawayClose()],
+    ['rtViewModal', () => rtCloseView()],
+  ];
+  for (const [id, close] of order) {
+    const el = document.getElementById(id);
+    if (el && el.classList.contains('active')) { e.preventDefault(); close(); return; }
+  }
+});
 
 function rtCustInput() {
   const q = ($('rtCustName').value || '').trim().toLowerCase(); const ac = $('rtCustAc');
@@ -414,7 +493,7 @@ async function rtSaveNew() {
     const { error: e2 } = await sb().from('returns_lines').insert(lineRows); if (e2) throw e2;
     if (oldLineIds.length) await sb().from('returns_lines').delete().in('id', oldLineIds);   // safe: new rows already in
     toast(`${return_no} ${RT.editId ? 'updated' : 'created'}`, 'ok');
-    const wasNew = !RT.editId; rtCloseNew(); await loadReturns();
+    const wasNew = !RT.editId; rtCloseNew(true); await loadReturns();
     if (wasNew) rtPrint(id);
   } catch (e) { toast('Save failed: ' + e.message, 'err'); } finally { btn.disabled = false; }
 }
