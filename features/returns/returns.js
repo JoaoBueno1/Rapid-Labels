@@ -207,9 +207,12 @@ async function rtConfirmPutaway(id) {
       <div class="rt-kv"><span>Credit note</span><b>${esc(r.treatment_ref || '—')}</b></div>
     </div>`;
   const src = tlines.length ? tlines : lines;
+  // 5DC vem da linha de criacao (returns_lines); linha de tratamento nao o carrega.
+  const dc5BySku = {}; lines.forEach(l => { const k = (l.sku || '').toLowerCase(); if (k && l.dc5 && !(k in dc5BySku)) dc5BySku[k] = l.dc5; });
   $('rtPutLinesBody').innerHTML = src.map(l => {
     const disp = l.return_status || l.condition || l.reason || '—';
-    return `<tr><td>${esc(l.dc5 || '')}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(disp)}</td></tr>`;
+    const dc5 = l.dc5 || dc5BySku[(l.sku || '').toLowerCase()] || '';
+    return `<tr><td>${esc(dc5)}</td><td><strong>${esc(l.sku)}</strong></td><td>${esc((l.product_name || '').slice(0, 40))}</td><td class="r">${l.qty}</td><td>${esc(disp)}</td></tr>`;
   }).join('') || '<tr><td colspan="5" class="rt-sec-empty">No line detail.</td></tr>';
   $('rtPutawayBy').value = ''; $('rtPutawayLoc').value = '';
   $('rtPutawayModal').classList.add('active');
@@ -235,11 +238,16 @@ async function rtPrintPutaway() {
   } catch (e) { return toast('Could not load lines: ' + e.message, 'err'); }
   const byRet = arr => { const m = {}; arr.forEach(x => { (m[x.return_id] = m[x.return_id] || []).push(x); }); return m; };
   const tByR = byRet(tl), lByR = byRet(ll);
+  // O 5DC (dc5) mora na linha de CRIACAO (returns_lines); as linhas de tratamento
+  // nao o carregam, entao um return ja processado — impresso a partir das linhas de
+  // tratamento — saia com o 5DC vazio. Fallback pelo dc5 da linha de criacao, por SKU.
+  const dc5BySku = {};
+  ll.forEach(l => { const k = (l.sku || '').toLowerCase(); if (k && l.dc5 && !(k in dc5BySku)) dc5BySku[k] = l.dc5; });
   const pr = [];
   rows.forEach(r => {
     const src = (tByR[r.id] && tByR[r.id].length) ? tByR[r.id] : (lByR[r.id] || []);
     src.slice().sort((a, b) => (a.line_no || 0) - (b.line_no || 0))
-      .forEach(l => pr.push({ rt: r.return_no, dc5: l.dc5 || '', sku: l.sku || '', qty: l.qty }));
+      .forEach(l => pr.push({ rt: r.return_no, dc5: l.dc5 || dc5BySku[(l.sku || '').toLowerCase()] || '', sku: l.sku || '', qty: l.qty }));
   });
   if (!pr.length) return toast('No line detail to print', 'err');
   const w = window.open('', '_blank', 'width=900,height=800');
