@@ -606,6 +606,18 @@ td.rp-avgb.is-driver,td.rp-avgr.is-driver{background:#f1f6ff}
 .rp-h2t .rp-h2-when, .rp-h2t .rp-h2-pr { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rp-h2t .rp-h2-tog { background: none; border: 0; cursor: pointer; color: var(--ink-2); font-size: 13px; padding: 0 2px; }
 .rp-h2-lines > td { padding: 0 10px 10px; background: var(--card-2); }
+/* Consignment clicável → tracking público do TMS. Carrier + connote entram
+   vazios ("—") e preenchem quando o TR é bookado (preenchimento progressivo). */
+.rp-h2-carrier { white-space: nowrap; color: var(--ink-2); }
+.rp-h2-conn { font-variant-numeric: tabular-nums; }
+.rp-track { color: var(--acc-d); text-decoration: none; font-weight: 600; }
+.rp-track:hover { text-decoration: underline; }
+.rp-h2-st.st-draft { background: var(--card-2); color: var(--mut-2); }
+/* Tabela A (landing) reusa o formato da History: alinhamento + rascunho local
+   com um tom bem leve, para separar do que já foi placed sem gritar. */
+.rp-b2t td.num, .rp-b2t th.num { text-align: right; }
+.rp-b2t .rp-h2-tr { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rp-b2t tr.is-draft td { background: color-mix(in srgb, var(--acc-soft) 30%, transparent); }
 
 /* A barra de filtros */
 .rp-hist-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }

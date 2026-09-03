@@ -604,6 +604,68 @@ function register(app, db) {
     res.json({ months, rows: rows || [] });
   }));
 
+  // ── Consignment + carrier do TMS, por TR ──────────────────────────────────
+  // O consignment e a transportadora vivem no TMS (Rapid Express Web), não no
+  // Labels — o cin7_mirror não carrega frete de transferência (confirmado). Este
+  // proxy pergunta ao TMS por um ou mais TRs e devolve, por TR, a lista de
+  // {consignment, carrier, public_track_url, status}. É 1:many de propósito: um
+  // TR vira vários connotes (pallet+carton). Degrada em silêncio: sem
+  // TMS_BASE_URL/TMS_API_KEY, ou TMS fora do ar, devolve configured:false / lista
+  // vazia e a UI mostra o "step que ainda não tem a info" — nunca derruba a tela.
+  const TMS_BASE = (process.env.TMS_BASE_URL || '').replace(/\/+$/, '');
+  const TMS_KEY = process.env.TMS_API_KEY || '';
+  const trCache = new Map(); // tr -> { at, orders }
+  const TR_TTL = 60 * 1000; // 1 min: o status muda devagar e a History recarrega
+
+  app.get(`${R}/tr-tracking`, wrap(async (req, res) => {
+    if (!TMS_BASE || !TMS_KEY) return res.json({ configured: false, results: {} });
+
+    const raw = (req.query.trs || req.query.tr || '').toString();
+    const wanted = [];
+    const seen = new Set();
+    for (const tok of raw.split(',')) {
+      const m = tok.match(/[Tt][Rr][- ]?([0-9]+)/);
+      if (!m) continue;
+      const norm = 'TR-' + m[1];
+      if (!seen.has(norm)) { seen.add(norm); wanted.push(norm); }
+      if (wanted.length >= 100) break;
+    }
+    if (!wanted.length) return res.json({ configured: true, results: {} });
+
+    // Serve do cache o que estiver fresco; só pergunta ao TMS o que faltar.
+    const now = Date.now();
+    const results = {};
+    const missing = [];
+    for (const tr of wanted) {
+      const c = trCache.get(tr);
+      if (c && now - c.at < TR_TTL) results[tr] = c.orders;
+      else missing.push(tr);
+    }
+
+    if (missing.length) {
+      try {
+        const u = `${TMS_BASE}/api/v1/transfer_tracking?trs=${encodeURIComponent(missing.join(','))}`;
+        const r = await fetch(u, { headers: { 'X-API-Key': TMS_KEY }, signal: AbortSignal.timeout(15000) });
+        if (!r.ok) throw new Error(`TMS ${r.status}: ${(await r.text()).slice(0, 160)}`);
+        const body = await r.json();
+        const map = (body && body.results) || {};
+        for (const tr of missing) {
+          const orders = Array.isArray(map[tr]) ? map[tr] : [];
+          results[tr] = orders;
+          trCache.set(tr, { at: now, orders });
+        }
+      } catch (e) {
+        // TMS em deploy ou fora do ar não derruba a tela: devolve o que houver em
+        // cache, marca degraded, e a UI mostra "—" em vez de erro.
+        console.error('[replenishment] tr-tracking TMS', e.message);
+        for (const tr of missing) if (!(tr in results)) results[tr] = [];
+        return res.json({ configured: true, degraded: true, error: e.message, results });
+      }
+    }
+
+    res.json({ configured: true, results });
+  }));
+
   /** BOM: os componentes de cada assembly (bom_type='Assembly'), para a UI
    *  desenhar as sub-linhas e o export mandar componentes em vez do montado.
    *  Lê rapid_inv.product_bom via sp-db (rapid_inv NÃO é exposto no PostgREST —

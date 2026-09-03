@@ -852,53 +852,80 @@
     } catch (_) { return null; }
   }
 
-  function renderBoard() {
+  /* Igual à History por dentro (server-backed, status ao vivo, MESMAS colunas,
+     SEM Units), só que na landing e em uma linha por fluxo. Duas fontes, unidas
+     e distintas de propósito (o comentário acima explica por quê):
+       • rascunho LOCAL (localStorage deste PC) que ainda não virou TR — a linha
+         que este computador precisa retomar; e
+       • transferência PLACED em andamento (servidor, compartilhada) — a mesma
+         fonte da History, rede inteira, sem as recebidas/canceladas.
+     Carrier + Consignment preenchem progressivamente (paintTrack/fillTrack). */
+  async function renderBoard() {
     const el = $('rpBoard'); if (!el) return;
-    const linhas = BRANCHES.map(b => ({ b, weekly: readDraft(b.code, 'weekly'), daily: readDraft(b.code, 'daily') }))
-      .filter(x => x.weekly || x.daily);
 
-    if (!linhas.length) {
-      el.innerHTML = `<div class="rp-board-empty">
-        Nothing in progress on this computer. Pick a branch above to start one.</div>`;
+    const drafts = [];
+    BRANCHES.forEach(b => ['weekly', 'daily'].forEach(mode => {
+      const d = readDraft(b.code, mode);
+      if (d) drafts.push({ code: b.code, name: b.name, mode, stage: d.stage, lines: d.lines });
+    }));
+
+    let live = [];
+    try {
+      const r = await fetch('/api/replenishment/orders');
+      const j = await r.json();
+      live = (j.rows || [])
+        .filter(o => o.cin7_number && o.status !== 'FAILED' && !FINAL_ST.has(o.cin7_status || ''))
+        .map(o => ({ code: o.branch_code, name: o.branch_name || o.branch_code, mode: o.mode,
+                     tr: o.cin7_number, lines: o.line_count, cin7_status: o.cin7_status }));
+    } catch (_) { /* servidor fora: mostra só os rascunhos locais, nunca quebra */ }
+
+    if (!drafts.length && !live.length) {
+      el.innerHTML = `<div class="rp-board-empty">Nothing in progress. Pick a branch above to start one.</div>`;
       return;
     }
-    // A ordem é por urgência: o que espera alguém vem antes do que ainda está
-    // sendo escrito. Um plano parado em "submitted" é o que trava a fila.
-    const peso = { submitted: 0, ready_to_check: 1, draft: 2, approved: 3 };
-    const pior = (x) => Math.min(...[x.weekly, x.daily].filter(Boolean).map(d => peso[d.stage] ?? 9));
-    linhas.sort((a, b) => pior(a) - pior(b) || a.b.name.localeCompare(b.b.name));
 
-    const pastilha = (d, modo) => {
-      if (!d) return `<span class="rp-bs is-none">—</span>`;
-      const espera = d.stage === 'submitted' ? 'the inventory team'
-                   : d.stage === 'ready_to_check' ? 'the manager' : null;
-      return `<span class="rp-bs st-${d.stage}" title="${esc(modo)} · ${n0(d.lines)} lines · ${n0(d.units)} units${
-        espera ? ` · waiting on ${espera}` : ''}">${esc(STAGE_LABEL[d.stage] || d.stage)}<i>${n0(d.lines)}</i></span>`;
+    // Rascunho local no topo (é o que este PC retoma), por urgência de estágio;
+    // depois as placed, por filial.
+    const rank = { submitted: 0, ready_to_check: 1, draft: 2, approved: 3 };
+    drafts.sort((a, b) => (rank[a.stage] ?? 9) - (rank[b.stage] ?? 9) || a.name.localeCompare(b.name));
+    live.sort((a, b) => a.name.localeCompare(b.name));
+
+    const typeBadge = (m) => `<span class="badge ${m === 'daily' ? 'is-daily' : 'is-weekly'}">${m === 'daily' ? 'Daily' : 'Weekly'}</span>`;
+    const draftRow = (x) => `<tr class="rp-b2r is-draft" data-code="${esc(x.code)}" data-mode="${esc(x.mode)}" title="Draft on this computer — click to resume">
+        <td class="em">${esc(x.name)}</td>
+        <td class="rp-sub">draft</td>
+        <td>${typeBadge(x.mode)}</td>
+        <td class="num">${n0(x.lines)}</td>
+        <td><span class="rp-h2-st st-draft">${esc(STAGE_LABEL[x.stage] || x.stage)}</span></td>
+        <td class="rp-sub">—</td>
+        <td class="rp-sub">—</td></tr>`;
+    const liveRow = (x) => {
+      const st = CIN7_ST[x.cin7_status] || null;
+      return `<tr class="rp-b2r" data-code="${esc(x.code)}" data-mode="${esc(x.mode)}">
+        <td class="em">${esc(x.name)}</td>
+        <td class="rp-h2-tr">${esc(x.tr)}</td>
+        <td>${typeBadge(x.mode)}</td>
+        <td class="num">${n0(x.lines)}</td>
+        <td><span class="rp-h2-st ${st ? st.cls : 'st-unknown'}">${st ? esc(st.rot) : 'Not checked'}</span></td>
+        <td class="rp-h2-carrier" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td>
+        <td class="rp-h2-conn" data-tr="${esc(x.tr)}"><span class="rp-sub">—</span></td></tr>`;
     };
 
-    const esperando = linhas.filter(x => pior(x) <= 1).length;
+    const nWaiting = drafts.filter(x => (rank[x.stage] ?? 9) <= 1).length;
     el.innerHTML = `
       <div class="rp-board-head">
         <b>In progress</b>
-        <span>${esperando ? `${n0(esperando)} waiting on someone` : 'nothing is waiting'}</span>
-        <span class="rp-board-note">drafts live on this computer · placed orders are shared</span>
+        <span>${nWaiting ? `${n0(nWaiting)} waiting on someone` : (live.length ? `${n0(live.length)} on the way` : 'nothing waiting')}</span>
+        <span class="rp-board-note">drafts live on this computer · placed transfers are shared</span>
       </div>
-      <table class="rp-board-tbl"><thead><tr>
-        <th>Branch</th><th>Weekly</th><th>Daily</th><th class="n">Units</th><th></th>
-      </tr></thead><tbody>
-      ${linhas.map(x => {
-        const u = (x.weekly ? x.weekly.units : 0) + (x.daily ? x.daily.units : 0);
-        return `<tr data-code="${esc(x.b.code)}" data-mode="${x.weekly ? 'weekly' : 'daily'}">
-          <td class="em">${esc(x.b.name)}</td>
-          <td>${pastilha(x.weekly, 'Weekly')}</td>
-          <td>${pastilha(x.daily, 'Daily')}</td>
-          <td class="n">${n0(u)}</td>
-          <td class="n"><button class="ui-act">Open</button></td></tr>`;
-      }).join('')}
-      </tbody></table>`;
+      <table class="rp-board-tbl rp-b2t"><thead><tr>
+        <th>Branch</th><th>TR</th><th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th>
+      </tr></thead><tbody>${drafts.map(draftRow).join('')}${live.map(liveRow).join('')}</tbody></table>`;
+
     el.querySelectorAll('tr[data-code]').forEach(tr => tr.addEventListener('click', () => {
       S.mode = tr.dataset.mode; openBranch(tr.dataset.code);
     }));
+    paintTrack(el); fillTrack(el);
   }
 
   // ═══ BRANCH WORKSPACE ══════════════════════════════════════════════
@@ -2168,7 +2195,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     }
     $('rpHistory').innerHTML = aviso + barra + `<div class="rp-h2-wrap"><table class="rp-h2t"><thead><tr>
         <th style="width:28px"></th><th>TR</th><th>Placed</th>${histAllBranches() ? '<th>Branch</th>' : ''}
-        <th>Type</th><th class="num">Lines</th><th>Status</th><th>Printed</th><th></th>
+        <th>Type</th><th class="num">Lines</th><th>Status</th><th>Carrier</th><th>Consignment</th><th>Printed</th><th></th>
       </tr></thead><tbody>${vivas.map((o, i) => histRow(o, i)).join('')}</tbody></table></div>`;
     wireHistory();
   }
@@ -2240,9 +2267,11 @@ The branch column is the decision that was recorded; the columns after it are wh
         title="${st ? esc(st.ajuda) : 'Never read back from Cin7 — this is only what we asked for when we created it.'}${
           o.cin7_status_at ? ` Read ${esc(dmyTime(o.cin7_status_at))}.` : ''}"
         >${st ? esc(st.rot) : 'Not checked'}</span></td>
+      <td class="rp-h2-carrier" data-tr="${esc(o.cin7_number || '')}"><span class="rp-sub">—</span></td>
+      <td class="rp-h2-conn" data-tr="${esc(o.cin7_number || '')}"><span class="rp-sub">—</span></td>
       <td>${pr}</td>
       <td class="num">${o.cin7_number ? `<button class="ui-act" data-print="${i}">${o.printed_at ? 'Reprint' : 'Print'}</button>` : ''}</td>
-    </tr>` + (open ? `<tr class="rp-h2-lines"><td colspan="${histAllBranches() ? 9 : 8}">${histLines(o)}</td></tr>` : '');
+    </tr>` + (open ? `<tr class="rp-h2-lines"><td colspan="${histAllBranches() ? 11 : 10}">${histLines(o)}</td></tr>` : '');
   }
   function histLines(o) {
     const lines = Array.isArray(o.lines) ? o.lines : [];
@@ -2252,6 +2281,56 @@ The branch column is the decision that was recorded; the columns after it are wh
     </table></div>`;
   }
   const fmtWhen = (iso) => (iso ? dmyTime(iso) : '—');
+
+  // ── Consignment + carrier por TR (vêm do TMS via /tr-tracking) ─────────────
+  // O /orders não conhece frete; o TMS sim. Preenchemos as células DEPOIS do
+  // render — preenchimento progressivo: o step que ainda não bookou mostra "—",
+  // e quando o TR é bookado o consignment aparece clicável → tracking público.
+  // Cache no cliente por TR: re-render (toggle, reprint, Tabela A) repinta na
+  // hora, sem rede; só busca TR ainda desconhecido. Sem TMS configurado, some.
+  const trackMap = {}; // 'TR-x' -> [orders]  (array vazio = sabido-sem-frete)
+  let trackCfg = null; // null=desconhecido, false=TMS não configurado (não insiste)
+  function trackCells(orders) {
+    if (!orders || !orders.length) return null;
+    const carrier = [...new Set(orders.map(o => o.carrier).filter(Boolean))].map(esc).join(' / ') || '—';
+    const conn = orders.map(o => {
+      const label = o.consignment || (o.is_own_fleet ? 'Own fleet' : '');
+      if (!label) return '';
+      return o.public_track_url
+        ? `<a class="rp-track" href="${esc(o.public_track_url)}" target="_blank" rel="noopener" title="Open tracking">${esc(label)}</a>`
+        : esc(label);
+    }).filter(Boolean).join('<span class="rp-sub"> · </span>') || '—';
+    return { carrier, conn };
+  }
+  function paintTrack(root) {
+    if (!root) return;
+    root.querySelectorAll('.rp-h2-carrier[data-tr]').forEach(td => {
+      const c = trackCells(trackMap[td.dataset.tr]); if (c) td.innerHTML = c.carrier;
+    });
+    root.querySelectorAll('.rp-h2-conn[data-tr]').forEach(td => {
+      const c = trackCells(trackMap[td.dataset.tr]); if (c) td.innerHTML = c.conn;
+    });
+  }
+  async function fillTrack(root) {
+    if (!root || trackCfg === false) return;
+    const want = new Set();
+    root.querySelectorAll('[data-tr]').forEach(td => {
+      const tr = td.dataset.tr; if (tr && !(tr in trackMap)) want.add(tr);
+    });
+    if (!want.size) { paintTrack(root); return; }
+    try {
+      const r = await fetch(`/api/replenishment/tr-tracking?trs=${encodeURIComponent([...want].join(','))}`);
+      const j = await r.json();
+      if (j.configured === false) { trackCfg = false; return; } // TMS não ligado ainda
+      trackCfg = true;
+      const map = j.results || {};
+      want.forEach(tr => { trackMap[tr] = Array.isArray(map[tr]) ? map[tr] : []; });
+    } catch (_) {
+      return; // TMS/proxy fora: deixa "—", nunca quebra a tela
+    }
+    paintTrack(root);
+  }
+
   function wireHistory() {
     const br = $('histBranch');
     if (br) br.addEventListener('change', () => { histF.branch = br.value; histOpen.clear(); showHistory(); });
@@ -2273,6 +2352,7 @@ The branch column is the decision that was recorded; the columns after it are wh
     $('rpHistory').querySelectorAll('[data-print]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation(); printOrder(histRows[+b.dataset.print]);
     }));
+    paintTrack($('rpHistory')); fillTrack($('rpHistory'));
   }
 
   // Reimprimir. Janela própria e não a página: imprimir a tela levaria o menu,
