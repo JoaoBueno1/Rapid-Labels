@@ -1,0 +1,145 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Cyclic Count — o que planning.css não tem.
+
+   Tudo que é shell, grade, botão, painel e modal vem de planning.css sem
+   uma linha de override: a tela é irmã da Branch Replenishment de propósito,
+   e quem sabe usar uma sabe usar a outra. Aqui só mora o que é próprio
+   desta tela — a faixa da semana, os selos de estado e a coluna de
+   tratativa.
+
+   Nenhum hex cravado: tudo sai dos tokens que planning.css define.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── a faixa da semana ────────────────────────────────────────────────
+   O primeiro objeto da tela é a SEMANA, não a lista de rodadas. Quem abre
+   isto na segunda de manhã tem uma pergunta só: o que sai hoje, e para
+   quem. A faixa responde antes de a tabela carregar. */
+.cc-week{background:var(--card);border:1px solid var(--line-2);border-radius:9px;
+  padding:11px 14px;margin-bottom:14px;box-shadow:0 1px 2px rgba(20,28,41,.04)}
+.cc-week-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cc-week-nav{display:flex;align-items:center;gap:2px}
+.cc-week-nav button{background:none;border:1px solid transparent;border-radius:6px;
+  color:var(--mut);font-size:17px;line-height:1;padding:3px 8px}
+.cc-week-nav button:hover{background:var(--card-2);color:var(--ink)}
+.cc-week-label{font-size:15px;font-weight:600;white-space:nowrap;min-width:172px}
+.cc-week-label small{display:block;font-weight:400;font-size:11.5px;color:var(--mut-2);margin-top:1px}
+.cc-week-today{font-size:11.5px;color:var(--acc);font-weight:600}
+.cc-week-form{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cc-week-form label{font-size:12px;color:var(--mut);white-space:nowrap}
+.cc-week-form select,.cc-week-form input{padding:5px 8px;border:1px solid var(--line-2);
+  border-radius:6px;background:var(--card);font-size:12.5px}
+
+/* ── estado do estoque, no topo e sempre visível ──────────────────────
+   O snapshot é a prova da rodada. Se o espelho está velho, isso precisa
+   ser visível ANTES do clique, não uma surpresa no 409. */
+.cc-stock{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut-2);
+  padding:8px 0 0;margin-top:9px;border-top:1px solid var(--line)}
+.cc-stock b{color:var(--ink-2);font-weight:600}
+.cc-stock.is-stale b{color:var(--xl-amber-ink)}
+.cc-stock.is-dead b{color:var(--xl-bad-ink)}
+
+/* ── selos de estado ──────────────────────────────────────────────────
+   Um por status do ciclo. Cinza para o que ainda não saiu, azul para o que
+   está com a filial, âmbar para o que voltou e espera tratativa, verde só
+   quando fechou. Vermelho fica reservado para atraso — se tudo que precisa
+   de atenção for vermelho, nada é. */
+.cc-st{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;
+  font-weight:600;white-space:nowrap;line-height:17px}
+.cc-st.st-draft{background:var(--card-2);color:var(--mut)}
+.cc-st.st-dispatching{background:var(--xl-amber);color:var(--xl-amber-ink)}
+.cc-st.st-sent{background:var(--xl-info);color:var(--xl-info-ink)}
+.cc-st.st-submitted{background:var(--xl-amber);color:var(--xl-amber-ink)}
+.cc-st.st-review{background:var(--xl-amber);color:var(--xl-amber-ink)}
+.cc-st.st-closed{background:var(--xl-good);color:var(--xl-good-ink)}
+.cc-st.st-cancelled{background:var(--card-2);color:var(--mut-3);text-decoration:line-through}
+.cc-late{margin-left:5px;color:var(--xl-bad-ink);font-weight:700;font-size:11px}
+
+/* ── o board ──────────────────────────────────────────────────────────
+   Mesma anatomia do rp-board da Branch Replenishment: cabeçalho com
+   contagem, linha clicável, ações à direita. */
+.cc-board{background:var(--card);border:1px solid var(--line-2);border-radius:9px;
+  overflow:hidden;box-shadow:0 1px 2px rgba(20,28,41,.04)}
+.cc-board-head{display:flex;align-items:center;gap:9px;padding:9px 13px;
+  border-bottom:1px solid var(--line);font-size:12.5px}
+.cc-board-head b{font-size:13px}
+.cc-board-head span{color:var(--mut-2)}
+.cc-board-tools{margin-left:auto;display:flex;align-items:center;gap:6px}
+.cc-board table{width:100%;border-collapse:collapse;font-size:12.5px}
+.cc-board th{background:var(--head);text-align:left;font-weight:600;color:var(--mut);
+  padding:7px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap;font-size:11.5px}
+.cc-board td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.cc-board tbody tr:last-child td{border-bottom:0}
+.cc-board tbody tr.is-click{cursor:pointer}
+.cc-board tbody tr.is-click:hover td{background:var(--card-2)}
+.cc-board .em{font-weight:600;color:var(--ink)}
+.cc-board .sub{color:var(--mut-3);font-size:11.5px}
+.cc-board td.n,.cc-board th.n{text-align:right;font-family:var(--mono);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.cc-board td.act{text-align:right;white-space:nowrap}
+.cc-neg{color:var(--xl-bad-ink)}
+.cc-pos{color:var(--xl-good-ink)}
+.cc-zero{color:var(--mut-3)}
+
+/* Progresso de contagem: número e barra fina. A barra existe porque
+   "31/44" exige leitura e a barra não. */
+.cc-prog{display:flex;align-items:center;gap:7px;justify-content:flex-end}
+.cc-prog i{display:block;width:46px;height:4px;border-radius:2px;background:var(--line-2);
+  overflow:hidden;flex:none}
+.cc-prog i span{display:block;height:100%;background:var(--acc)}
+.cc-prog i.done span{background:var(--xl-good-ink)}
+
+/* ── a grade da rodada ────────────────────────────────────────────────
+   Herda .sp-grid. Só as colunas de tratativa ganham fundo próprio, para
+   separar o que veio da filial do que nós escrevemos depois. */
+.cc-grid input,.cc-grid select{width:100%;border:1px solid transparent;background:none;
+  border-radius:4px;padding:1px 4px;font:inherit;font-size:12px}
+.cc-grid input:hover,.cc-grid select:hover{border-color:var(--line-2)}
+.cc-grid input:focus,.cc-grid select:focus{border-color:var(--acc);background:var(--card);outline:none}
+.cc-grid td.fix{background:var(--xl-draws)}
+.cc-grid th.fix{background:var(--xl-draws)}
+.cc-grid tr.has-var td.n.var{font-weight:700}
+.cc-grid tr.is-clean td{color:var(--mut-2)}
+.cc-grid td.money{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.cc-nocost{color:var(--xl-amber-ink);font-size:11px}
+/* A chave de cor da legenda. Classe e não style inline: o token muda num
+   lugar só, e a legenda não vira o único hex cravado da tela. */
+.sp-foot .k.cc-k-fix{background:var(--xl-draws)}
+
+/* ── listas e destinatários ───────────────────────────────────────────*/
+.cc-two{display:grid;grid-template-columns:238px 1fr;gap:14px;flex:1;min-height:0}
+.cc-pick{background:var(--card);border:1px solid var(--line-2);border-radius:9px;
+  overflow:auto;padding:6px}
+.cc-pick button{display:block;width:100%;text-align:left;background:none;border:0;
+  border-radius:6px;padding:8px 10px;font-size:13px;color:var(--ink-2)}
+.cc-pick button:hover{background:var(--card-2)}
+.cc-pick button.on{background:var(--acc-soft);color:var(--acc-d);font-weight:600}
+.cc-pick button small{display:block;color:var(--mut-3);font-size:11.5px;font-weight:400;margin-top:1px}
+.cc-pick button.on small{color:var(--acc-d)}
+.cc-pane{display:flex;flex-direction:column;min-height:0}
+
+.cc-sku-add{position:relative}
+.cc-sku-res{position:absolute;top:100%;left:0;right:0;z-index:1000;background:var(--card);
+  border:1px solid var(--line-2);border-radius:8px;margin-top:3px;max-height:290px;overflow:auto;
+  box-shadow:0 6px 18px rgba(20,28,41,.13)}
+.cc-sku-res button{display:block;width:100%;text-align:left;background:none;border:0;
+  padding:7px 11px;font-size:12.5px;border-bottom:1px solid var(--line)}
+.cc-sku-res button:last-child{border-bottom:0}
+.cc-sku-res button:hover{background:var(--acc-soft)}
+.cc-sku-res b{font-family:var(--mono);font-size:12px}
+.cc-sku-res small{color:var(--mut-2);display:block}
+
+/* ── um aviso que não é erro ──────────────────────────────────────────*/
+.cc-warn{background:var(--xl-amber);color:var(--xl-amber-ink);border:1px solid var(--xl-amber-line);
+  border-radius:8px;padding:9px 13px;font-size:12.5px;margin-bottom:12px}
+.cc-warn b{font-weight:700}
+.cc-err{background:var(--xl-bad);color:var(--xl-bad-ink);border-radius:8px;
+  padding:9px 13px;font-size:12.5px;margin-bottom:12px}
+
+/* Estado de erro de tela inteira. Existe porque "nenhuma rodada" e "a API
+   caiu" não podem ser a mesma tela vazia: a primeira é uma semana que
+   ninguém abriu, a segunda é uma contagem que ninguém vai fazer. */
+.cc-fail{padding:34px;text-align:center;color:var(--xl-bad-ink)}
+.cc-fail b{display:block;font-size:14px;margin-bottom:5px}
+.cc-fail span{display:block;color:var(--mut-2);font-size:12.5px;margin-bottom:13px}
+
+.cc-mail-off{margin-left:auto;font-size:11.5px;color:var(--xl-amber-ink)}

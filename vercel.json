@@ -7,6 +7,9 @@
     { "source": "/wms/", "destination": "/features/wms/pwa/wms.html" },
     { "source": "/pack", "destination": "/features/wms/pack/pack.html" },
     { "source": "/pack/", "destination": "/features/wms/pack/pack.html" },
+    { "source": "/cyclic-count", "destination": "/features/cyclic-count/ui/cyclic-count.html" },
+    { "source": "/cyclic-count/", "destination": "/features/cyclic-count/ui/cyclic-count.html" },
+    { "source": "/count/:token", "destination": "/features/cyclic-count/ui/count-form.html" },
     { "source": "/api/:path*", "destination": "/api" }
   ]
 }

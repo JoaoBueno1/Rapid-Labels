@@ -86,6 +86,11 @@
       { t: 'Gateway', href: '/gateway-main.html', ic: 'fact', dot: 'railDotGateway' },
       { t: 'Branch Replenishment', href: '/features/replenishment/ui/replenishment.html', ic: 'truck',
         match: ['/features/replenishment/ui/replenishment.html'] },
+      // Fecha o grupo porque fecha o ciclo: depois que a unidade chegou, foi
+      // guardada e seguiu para a filial, a contagem é o que confere se ela
+      // ainda está onde o sistema diz que está.
+      { t: 'Cyclic Count', href: '/cyclic-count', ic: 'cycle',
+        match: ['/cyclic-count', '/features/cyclic-count/ui/cyclic-count.html'] },
     ]},
     { group: 'Labels & Barcodes', items: [
       { t: 'Search & Print', modal: 'openSearchModal', ic: 'tag' },

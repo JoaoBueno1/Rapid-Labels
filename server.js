@@ -488,6 +488,25 @@ if (process.env.STOCK_PLANNING_ENABLED !== '0') {
   } catch (e) {
     console.warn('⚠️  Could not register Stock Planning routes:', e.message);
   }
+
+  // ── Cyclic Count ────────────────────────────────────────────────────────
+  // Bloco próprio: usa o mesmo transporte (sp-db) mas nada do Stock Planning.
+  // Se uma quebrar, a outra continua — que é o motivo de os try/catch deste
+  // arquivo serem por módulo e não um só no fim.
+  try {
+    require('./features/cyclic-count/routes/cyclic-count-routes').register(app);
+    // Rota explícita ANTES do static: montado sozinho, o static devolve 301
+    // para /cyclic-count/ e o item do menu ganha um salto de redirect à toa.
+    app.get('/cyclic-count', (req, res) =>
+      res.sendFile(path.join(__dirname, 'features/cyclic-count/ui/cyclic-count.html')));
+    app.use('/cyclic-count', express.static(path.join(__dirname, 'features/cyclic-count/ui'), { index: 'cyclic-count.html' }));
+    // A folha da filial. URL curta de propósito: vai por e-mail e alguém vai
+    // digitá-la à mão no celular do armazém quando o link não abrir.
+    app.get('/count/:token', (req, res) =>
+      res.sendFile(path.join(__dirname, 'features/cyclic-count/ui/count-form.html')));
+  } catch (e) {
+    console.warn('⚠️  Could not register Cyclic Count routes:', e.message);
+  }
 }
 
 // ── Replenishment: Pending TR Lines (fetches line details from Cin7 API) ──

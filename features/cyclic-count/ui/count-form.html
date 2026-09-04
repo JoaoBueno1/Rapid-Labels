@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Stock Count — Rapid LED</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="/features/cyclic-count/ui/count-form.css?v=1">
+<link rel="icon" type="image/svg+xml" href="/icon-192.svg">
+</head>
+<body>
+
+<header class="hd" id="hd" hidden>
+  <div class="hd-in">
+    <h1 id="hBranch">—</h1>
+    <div class="sub" id="hSub"></div>
+    <div class="snap" id="hSnap"></div>
+  </div>
+</header>
+
+<div class="prog" id="prog" hidden>
+  <div class="prog-in">
+    <b id="pCount">0 / 0</b>
+    <span class="bar" id="pBar"><i></i></span>
+    <span class="save" id="pSave"></span>
+  </div>
+</div>
+
+<main class="wrap">
+  <div id="body">
+    <div class="state"><b>Loading your count sheet…</b></div>
+  </div>
+</main>
+
+<div class="foot" id="foot" hidden>
+  <div class="foot-in">
+    <input type="text" id="by" maxlength="120" placeholder="Your name" autocomplete="name">
+    <button type="button" id="submit">Submit</button>
+  </div>
+</div>
+
+<script defer src="/features/cyclic-count/ui/count-form.js?v=1"></script>
+</body>
+</html>

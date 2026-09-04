@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cyclic Count — Rapid LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- O design system do Inventory Management, sem override. Esta tela é irmã
+     da Branch Replenishment de propósito. -->
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=21">
+<link rel="stylesheet" href="/shared/rail.css?v=8">
+<link rel="stylesheet" href="/shared/ui.css?v=4">
+<link rel="stylesheet" href="/features/cyclic-count/ui/cyclic-count.css?v=1">
+<link rel="icon" type="image/svg+xml" href="/icon-192.svg">
+<script defer src="/shared/rail.js?v=9"></script>
+</head>
+<body>
+
+<header class="sp-header">
+  <div class="sp-header-inner">
+    <span class="sp-brand"><span class="sp-logo">R</span> Cyclic Count</span>
+    <nav class="sp-tabs" id="tabs">
+      <button class="sp-tab is-on" data-view="rounds">Rounds</button>
+      <button class="sp-tab" data-view="lists">Lists</button>
+      <button class="sp-tab" data-view="recipients">Recipients</button>
+      <button class="sp-tab" data-view="history">History</button>
+    </nav>
+    <div class="sp-status" id="status">
+      <span class="sp-dot" id="statusDot"></span><span id="statusText">Loading…</span>
+    </div>
+  </div>
+</header>
+
+<main class="sp-main">
+
+<!-- ══ ROUNDS ═══════════════════════════════════════════════════════════ -->
+<section class="sp-view is-on" data-view="rounds">
+
+  <!-- board da semana -->
+  <div class="sp-view-inner" id="vBoard">
+    <div class="cc-week">
+      <div class="cc-week-top">
+        <span class="cc-week-nav">
+          <button type="button" id="wkPrev" title="Previous week">‹</button>
+          <button type="button" id="wkNext" title="Next week">›</button>
+        </span>
+        <span class="cc-week-label" id="wkLabel">—<small id="wkSub"></small></span>
+        <span class="sp-gap"></span>
+        <span class="cc-week-form">
+          <label for="wkList">Run list</label>
+          <select id="wkList"></select>
+          <label for="wkDue">due</label>
+          <input type="date" id="wkDue">
+          <button class="sp-btn is-primary" id="btnOpenWeek">Open the week</button>
+        </span>
+      </div>
+      <div class="cc-stock" id="stockBar">
+        <span>Stock mirror</span><b id="stockAge">checking…</b>
+        <button class="ui-act" id="btnRefreshStock" hidden>Refresh from Cin7</button>
+        <span class="cc-mail-off" id="mailOff" hidden></span>
+      </div>
+    </div>
+
+    <div class="sp-tiles" id="tiles"></div>
+
+    <div class="sp-bar">
+      <select id="fStatus">
+        <option value="">All states</option>
+        <option value="draft">Not sent</option>
+        <option value="sent">With the branch</option>
+        <option value="submitted">Counted — to treat</option>
+        <option value="review">In review</option>
+        <option value="closed">Closed</option>
+      </select>
+      <select id="fBranch"><option value="">All branches</option></select>
+      <label class="sp-hint"><input type="checkbox" id="fAllWeeks"> every week</label>
+      <span class="sp-gap"></span>
+      <span class="sp-count" id="boardCount"></span>
+    </div>
+
+    <div class="cc-board" id="board"><div class="sp-loading">Loading rounds…</div></div>
+  </div>
+
+  <!-- uma rodada -->
+  <div class="sp-view-inner" id="vRound" hidden>
+    <div class="sp-bar">
+      <button class="sp-btn is-ghost" id="btnBack" title="Back to the board">‹</button>
+      <b id="rTitle">Round</b>
+      <span class="cc-st" id="rStatus"></span>
+      <span class="sp-gap"></span>
+      <input type="search" id="rSearch" placeholder="Find a SKU…">
+      <button class="sp-btn is-ghost" id="btnCopyLink">Copy link</button>
+      <button class="sp-btn is-ghost" id="btnResend">Resend email</button>
+      <button class="sp-btn is-primary" id="btnClose">Close round</button>
+    </div>
+    <div id="rNotes"></div>
+    <div class="sp-scroll"><table class="sp-grid cc-grid" id="rGrid"></table></div>
+    <div class="sp-foot">
+      <span><i class="k cc-k-fix"></i><b>Ghost · Movement · Action</b> — the treatment, ours to fill</span><i></i>
+      <span><b>Variance</b> = counted − system</span><i></i>
+      <span><b>Unexplained</b> = what is left after the treatment</span><i></i>
+      <span id="rFootScope"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ══ LISTS ════════════════════════════════════════════════════════════ -->
+<section class="sp-view" data-view="lists">
+  <div class="sp-view-inner">
+    <div class="sp-bar">
+      <b>Count lists</b>
+      <span class="sp-hint">A list is what gets counted. Editing one never touches a round already sent.</span>
+      <span class="sp-gap"></span>
+      <button class="sp-btn" id="btnNewList">New list</button>
+    </div>
+    <div class="cc-two">
+      <div class="cc-pick" id="listPick"><div class="sp-loading">Loading…</div></div>
+      <div class="cc-pane">
+        <div class="sp-bar">
+          <b id="lTitle">—</b>
+          <span class="sp-count" id="lCount"></span>
+          <span class="sp-gap"></span>
+          <span class="cc-sku-add">
+            <input type="search" id="skuSearch" placeholder="Add a SKU — type at least 2 characters">
+            <div class="cc-sku-res" id="skuRes" hidden></div>
+          </span>
+        </div>
+        <div class="sp-scroll"><table class="sp-grid" id="lGrid"></table></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ RECIPIENTS ═══════════════════════════════════════════════════════ -->
+<section class="sp-view" data-view="recipients">
+  <div class="sp-view-inner">
+    <div class="sp-bar">
+      <b>Who gets the email</b>
+      <span class="sp-hint">One or more addresses per branch. A branch with none can still be counted — the link just has to be shared by hand.</span>
+    </div>
+    <div class="sp-bar">
+      <select id="recBranch"></select>
+      <input type="email" id="recEmail" placeholder="name@rapidled.com.au">
+      <input type="text" id="recName" placeholder="Name (optional)">
+      <button class="sp-btn is-primary" id="btnAddRec">Add</button>
+    </div>
+    <div class="sp-scroll"><table class="sp-grid" id="recGrid"></table></div>
+  </div>
+</section>
+
+<!-- ══ HISTORY ══════════════════════════════════════════════════════════ -->
+<section class="sp-view" data-view="history">
+  <div class="sp-view-inner">
+    <div class="sp-bar">
+      <b>History</b>
+      <span class="sp-hint">Every counted line, every week. This is the Stock Count Summary, without rebuilding it.</span>
+      <span class="sp-gap"></span>
+      <select id="hBranch"><option value="">All branches</option></select>
+      <input type="search" id="hSku" placeholder="SKU">
+      <input type="date" id="hFrom">
+      <button class="sp-btn" id="btnHist">Show</button>
+      <button class="sp-btn is-ghost" id="btnHistCsv">CSV</button>
+    </div>
+    <div class="sp-scroll"><table class="sp-grid" id="hGrid"></table></div>
+    <div class="sp-foot"><span id="hFoot"></span></div>
+  </div>
+</section>
+
+</main>
+
+<!-- painel lateral: a vida de um SKU nesta filial, semana a semana -->
+<aside class="sp-side" id="side">
+  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose">&times;</button></header>
+  <div class="sp-side-body" id="sideBody"></div>
+</aside>
+
+<!-- nova lista -->
+<div class="sp-modal" id="mdList">
+  <div class="sp-box">
+    <header><h3>New count list</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
+    <div class="sp-box-body">
+      <p class="sp-field"><label for="nlCode">Code</label>
+        <input id="nlCode" maxlength="40" placeholder="MONTHLY-2026-10"></p>
+      <p class="sp-field"><label for="nlName">Name</label>
+        <input id="nlName" maxlength="120" placeholder="Monthly extra — Oct/2026"></p>
+      <p class="sp-field"><label for="nlNotes">Note</label>
+        <input id="nlNotes" maxlength="500" placeholder="What this list is for"></p>
+    </div>
+    <footer><span class="sp-gap"></span>
+      <button class="sp-btn" data-close>Cancel</button>
+      <button class="sp-btn is-primary" id="nlSave">Create</button></footer>
+  </div>
+</div>
+
+<!-- confirmação de disparo -->
+<div class="sp-modal" id="mdSend">
+  <div class="sp-box">
+    <header><h3 id="sendTitle">Send the count</h3><button class="sp-btn is-ghost" data-close>&times;</button></header>
+    <div class="sp-box-body" id="sendBody"></div>
+    <footer><span class="sp-gap"></span>
+      <button class="sp-btn" data-close>Cancel</button>
+      <button class="sp-btn is-primary" id="sendGo">Send</button></footer>
+  </div>
+</div>
+
+<div class="sp-toast" id="toast"></div>
+<script defer src="/features/cyclic-count/ui/cyclic-count.js?v=1"></script>
+</body>
+</html>
