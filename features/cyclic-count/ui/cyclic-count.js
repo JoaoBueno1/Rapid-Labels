@@ -144,6 +144,11 @@
         el.textContent = `Email off — missing ${b.mail.missing.join(', ')}`;
       }
       setStatus(`${(b.branches || []).length} branches · ${S.lists.length} lists`, 'fresh');
+      // Os destinatários entram no boot, e não só ao abrir a aba: o aviso
+      // "esta filial não tem e-mail" no modal de disparo lê S.recipients, e
+      // com a lista vazia ele acusaria TODAS as filiais no primeiro disparo.
+      // Um alerta que mente uma vez deixa de ser lido.
+      try { S.recipients = await api('/recipients'); } catch (_) { S.recipients = null; }
       await loadBoard();
     } catch (e) {
       setStatus('Failed to load', 'dead');
@@ -276,10 +281,17 @@
       <td class="act">${act(r)}</td></tr>`;
 
     const waiting = R.filter((r) => r.status === 'submitted' || r.status === 'review').length;
+    // A rotina semanal é abrir a semana e mandar para as 8. Um botão por linha
+    // transforma isso em 8 cliques e 8 confirmações, e é aí que alguém pula uma
+    // filial sem perceber. O disparo em lote é UMA confirmação que lista o que
+    // vai sair — inclusive quais filiais estão sem e-mail.
+    const drafts = R.filter((r) => r.status === 'draft');
     $('board').innerHTML = `
       <div class="cc-board-head">
         <b>Rounds</b>
         <span>${waiting ? `${n0(waiting)} waiting on us` : (R.some((r) => r.status === 'sent') ? 'waiting on the branches' : 'nothing waiting')}</span>
+        <span class="cc-board-tools">${drafts.length > 1
+          ? `<button class="sp-btn is-primary" id="btnSendAll">Send all ${drafts.length}</button>` : ''}</span>
       </div>
       <table><thead><tr>
         <th>Branch</th><th>List</th><th>State</th><th>Sent</th>
@@ -293,6 +305,9 @@
   // Clique no board: abrir, enviar, copiar link. Delegado porque o corpo
   // é reescrito inteiro a cada carga.
   $('board').addEventListener('click', async (e) => {
+    if (e.target.closest('#btnSendAll')) {
+      return askSend(S.rounds.filter((r) => r.status === 'draft').map((r) => r.round_id));
+    }
     const copy = e.target.closest('[data-copy]');
     if (copy) { e.stopPropagation(); return copyLink(copy.dataset.copy); }
     const send = e.target.closest('[data-send]');
@@ -350,13 +365,16 @@
     const rs = S.rounds.filter((r) => ids.includes(r.round_id));
     const st = S.boot && S.boot.stock;
     const noRec = rs.filter((r) => !recipientCount(r.branch_code));
+    $('sendGo').hidden = false;
     $('sendTitle').textContent = rs.length === 1
       ? `Send to ${rs[0].branch_name || rs[0].branch_code}` : `Send ${rs.length} rounds`;
     $('sendBody').innerHTML = `
       <p class="sp-hint">The system stock for each line is frozen now, at the moment you send.
         Nothing in this round changes on its own afterwards.</p>
       <p class="sp-hint"><b>Stock mirror:</b> ${st && st.age_min != null ? esc(bne(st.synced_at)) : 'unknown'}</p>
-      ${noRec.length ? `<div class="cc-warn"><b>${noRec.length} branch(es) have no email set.</b>
+      ${S.recipients === null
+        ? '<div class="cc-warn">Could not read the recipient list, so this cannot say which branches have no address. Sending anyway is safe — the sheet is created either way.</div>'
+        : noRec.length ? `<div class="cc-warn"><b>${noRec.length} branch(es) have no email set.</b>
         The sheet will still be created — you will have to share the link by hand.
         ${esc(noRec.map((r) => r.branch_name || r.branch_code).join(', '))}</div>` : ''}
       ${forced ? '<div class="cc-warn">Sending with a <b>stale mirror</b>. The round will record it as such.</div>' : ''}`;
@@ -364,35 +382,68 @@
   }
 
   function recipientCount(branch) {
+    if (!Array.isArray(S.recipients)) return 1;   // não sabemos: não acusa
     return S.recipients.filter((x) => x.branch_code === branch && x.is_active).length;
   }
 
   $('sendGo').addEventListener('click', (e) => lock(e.target, async () => {
     const job = S.pendingSend;
     if (!job) return;
-    let sent = 0; const problems = [];
+    const total = job.ids.length;
+    const named = (id) => {
+      const r = S.rounds.find((x) => x.round_id === id);
+      return (r && (r.branch_name || r.branch_code)) || `#${id}`;
+    };
+
+    let frozen = 0; const problems = [];
     for (const id of job.ids) {
+      // Oito filiais são oito chamadas em série. Sem isto o operador olha um
+      // botão parado por meio minuto sem saber se travou.
+      if (total > 1) $('sendBody').innerHTML =
+        `<p class="sp-hint">Sending ${frozen + 1} of ${total} — ${esc(named(id))}…</p>`;
       try {
         const r = await api(`/rounds/${id}/dispatch`, {
           method: 'POST', body: JSON.stringify({ force: job.force }),
         });
-        sent++;
-        if (r.mail && !r.mail.ok) problems.push(`email: ${r.mail.error}`);
+        frozen++;
+        if (r.mail && !r.mail.ok) problems.push(`${named(id)}: ${r.mail.error}`);
       } catch (err) {
         if (err.body && err.body.error === 'stale_stock') {
+          // O espelho não muda no meio do laço, então isto só acontece na
+          // primeira. Volta a perguntar, agora dizendo que está velho.
           $('mdSend').classList.remove('is-on');
           S.boot.stock = err.body.stock;
           paintStock(err.body.stock, S.boot.refresh_available);
           return askSend(job.ids, true);
         }
-        problems.push(err.message);
+        problems.push(`${named(id)}: ${err.message}`);
       }
     }
-    $('mdSend').classList.remove('is-on');
+
     await loadBoard();
-    if (problems.length) toast(`${sent} sent · ${problems[0]}`, true);
-    else toast(`${sent} count sheet${sent === 1 ? '' : 's'} sent`);
+
+    // A folha existe para todas que congelaram, mesmo onde o e-mail falhou —
+    // são dois fatos, e um resumo que junta os dois faz alguém achar que
+    // precisa disparar de novo. O modal fica aberto listando o que falhou.
+    if (!problems.length) {
+      $('mdSend').classList.remove('is-on');
+      toast(`${frozen} count sheet${frozen === 1 ? '' : 's'} sent`);
+      return;
+    }
+    $('sendTitle').textContent = 'Sent, with problems';
+    $('sendBody').innerHTML = `
+      <div class="cc-warn"><b>${frozen} of ${total} count sheet(s) are live</b> — the branches can
+        count through their link. What failed below was the <b>notification</b>, not the sheet.</div>
+      <ul class="sp-hint">${problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>
+      <p class="sp-hint">Fix the address under <b>Recipients</b> and use <b>Resend email</b> on the
+        round, or copy the link and send it by hand.</p>`;
+    $('sendGo').hidden = true;
   }));
+
+  // O modal de disparo é reusado; ao fechar volta ao estado de pergunta.
+  $('mdSend').addEventListener('click', (e) => {
+    if (e.target === $('mdSend') || e.target.hasAttribute('data-close')) $('sendGo').hidden = false;
+  });
 
   // ══ UMA RODADA ═══════════════════════════════════════════════════════
   async function openRound(id) {
