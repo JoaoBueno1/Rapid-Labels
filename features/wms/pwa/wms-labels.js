@@ -40,6 +40,11 @@
     return { dc5: p.dc5 || '', sku: p.code || '', barcode: p.barcode || '', qty: qty || '' };
   }
 
+  // A MESMA regra do renderer (usable() em label-render.js:128): "0" e "000"
+  // contam como vazio. Sem isto a marca "bc" mentia em 15 de 25 resultados —
+  // o catalogo guarda zero onde nao ha codigo — e a linha ia imprimir o SKU.
+  function hasBarcode(v) { v = String(v == null ? '' : v).trim(); return !!v && !/^0+$/.test(v); }
+
   var MAX_ML = 8;             // = ML_CONFIGS['A4-portrait'].maxSlots, em label-render.js
   var MAX_PHOTOS = 4;         // = MAX_PHOTOS do container-check
 
@@ -139,12 +144,31 @@
         });
       }
 
+      // A rota devolve {rows,total,truncated}. O erro dela agora sobe como
+      // excecao (raw() lanca em nao-2xx), entao a tela distingue "nao achou" de
+      // "nao consegui procurar".
       function searchProducts(q) {
         return raw('GET', '/api/wms/product-search?q=' + encodeURIComponent(q));
       }
 
+      /* Uma busca que volta DEPOIS de o operador sair da tela nao pode navegar
+         nem pintar: ele ja esta noutro lugar, e ver a tela trocar sozinha e pior
+         do que nao ver resultado. Cada tela pega um selo ao abrir; o retorno so
+         age se o selo ainda for o corrente. */
+      var navSeal = 0;
+      function seal() { return ++navSeal; }
+      function fresh(mine) { return mine === navSeal; }
+
       // Uma tela de erro de verdade, em vez de um toast que some.
+      /* Some com a barra de baixo TAMBEM.
+         #bottomBar e irmao de #view, nao filho: trocar view.innerHTML deixava o
+         botao "Create the label" vivo, ancorado no rodape, segurando um closure
+         que le #fDc5 — que acabou de ser destruido. O toque seguinte estourava
+         um TypeError sem toast e sem reacao nenhuma, e o operador concluia que o
+         aplicativo travou. Nao ha window.onerror neste PWA. */
       function engineError(view, e, retry) {
+        bottom('');
+        var bb = $('bottomBar'); if (bb) bb.classList.add('hidden');
         view.innerHTML = '<div class="banner err"><b>The label engine did not load.</b><br>' +
           esc((e && e.message) || 'unknown') +
           '<br><br>Labels need the network the first time. Check the connection and try again.</div>' +
@@ -162,11 +186,19 @@
                  '<div class="lab-dc5">' + esc(p.dc5 || '—') + '</div>' +
                  '<div class="lab-mid"><div class="lab-code">' + esc(p.code) + '</div>' +
                  '<div class="lab-name">' + esc(p.name || '') + '</div></div>' +
-                 (p.barcode ? '<div class="lab-bc">bc</div>' : '') +
+                 (hasBarcode(p.barcode) ? '<div class="lab-bc">bc</div>' : '') +
                '</button>';
         }
         return h + '</div>';
       }
+      // Corte declarado: "25 de 63" em vez de uma lista que parece completa.
+      function truncNote(r) {
+        return (r && r.truncated)
+          ? '<div class="meta" style="margin-top:10px">Showing <b>' + (r.rows || []).length +
+            '</b> of <b>' + r.total + '</b> — narrow the search to see the rest.</div>'
+          : '';
+      }
+
       function wireResults(view, items, onPick) {
         var b = view.querySelectorAll('.lab-item');
         for (var i = 0; i < b.length; i++) {
@@ -196,19 +228,25 @@
           '<div class="banner">Scan the barcode, or type a <b>5DC</b>, a <b>code</b> or part of the name.</div>' +
           H.scanField('Scan or type…') +
           '<div id="labResults"></div>';
+        var mine = seal();
         H.wireScan(function (v) {
           if (!v || v.length < 2) return;
           $('labResults').innerHTML = '<div class="empty"><span class="spin"></span></div>';
-          searchProducts(v).then(function (items) {
+          searchProducts(v).then(function (r) {
+            if (!fresh(mine)) return;                       // o operador ja saiu
+            var items = (r && r.rows) || [];
             // Um único acerto exato é o caso do leitor de código de barras:
             // parar para escolher entre uma opção só é atrito puro.
             if (items.length === 1 && items[0].matchedBy !== 'partial') {
               go('labMake', 'Label', { p: items[0] }); return;
             }
-            $('labResults').innerHTML = resultList(items);
+            $('labResults').innerHTML = resultList(items) + truncNote(r);
             wireResults(view, items, function (p) { go('labMake', 'Label', { p: p }); });
           }).catch(function (e) {
-            $('labResults').innerHTML = '<div class="banner err">' + esc(e.message) + '</div>';
+            if (!fresh(mine)) return;
+            // Erro de busca é ERRO, não "nada encontrado" — a diferença decide
+            // se o operador procura de novo ou digita a etiqueta à mão.
+            $('labResults').innerHTML = '<div class="banner err"><b>Could not search.</b><br>' + esc(e.message) + '</div>';
           });
         });
       }
@@ -269,20 +307,29 @@
         h += '<div class="lab-batch" id="mlBatch"></div>';
         view.innerHTML = h;
         paintBatch();
+        var mine = seal();
         H.wireScan(function (v) {
           if (!v || v.length < 2) return;
           if (ml.length >= MAX_ML) { toast('The sheet holds ' + MAX_ML, 'err'); return; }
           $('labResults').innerHTML = '<div class="empty"><span class="spin"></span></div>';
-          searchProducts(v).then(function (items) {
+          searchProducts(v).then(function (r) {
+            if (!fresh(mine)) return;
+            var items = (r && r.rows) || [];
             if (items.length === 1 && items[0].matchedBy !== 'partial') { add(items[0]); return; }
-            $('labResults').innerHTML = resultList(items);
+            $('labResults').innerHTML = resultList(items) + truncNote(r);
             wireResults(view, items, add);
           }).catch(function (e) {
-            $('labResults').innerHTML = '<div class="banner err">' + esc(e.message) + '</div>';
+            if (!fresh(mine)) return;
+            $('labResults').innerHTML = '<div class="banner err"><b>Could not search.</b><br>' + esc(e.message) + '</div>';
           });
         });
 
         function add(p) {
+          // A checagem de cima acontece ANTES da rede: duas leituras seguidas
+          // resolviam juntas e passavam do limite, e layoutMultiTable corta o
+          // excedente em silencio (slice(0, maxSlots)) — a folha sairia sem uma
+          // linha que esta na tela.
+          if (ml.length >= MAX_ML) { toast('The sheet holds ' + MAX_ML, 'err'); return; }
           var k = String(p.code).toUpperCase();
           for (var i = 0; i < ml.length; i++) {
             // Já na folha: soma em vez de repetir a linha. Duas linhas do mesmo
@@ -328,6 +375,7 @@
                  '<button class="btn" id="mlGo">Create the sheet</button>');
           $('mlClear').onclick = function () { ml = []; paintBatch(); };
           $('mlGo').onclick = function () {
+            if (!ml.length) { toast('Nothing on the sheet', 'err'); return; }   // Clear e depois Criar dava PDF vazio
             var btn = this; btn.disabled = true; btn.textContent = 'Building…';
             loadEngine(function (err) {
               btn.disabled = false; btn.textContent = 'Create the sheet';
@@ -342,6 +390,10 @@
                 window.LabelRender.toPdf(doc, cell, T.marginLeft, T.marginTop, T.labelW, T.labelH,
                                          { mlConfig: T.mlConfig || 'A4-portrait' });
                 deliverPdf(doc, 'multi-label.pdf', toast);
+                // A folha saiu: o lote acabou. `ml` vive fora da tela (senao o
+                // repaint o apagaria), e sem isto o proximo Multi-Label abria
+                // cheio dos produtos do anterior.
+                ml = []; paintBatch();
               } catch (e) { toast('Could not build it: ' + e.message, 'err'); }
             });
           };
@@ -357,7 +409,14 @@
       function ccNew() { return { code: '', dc5: '', qty: '', po: '', ocl: '', icl: '', bar: '', notes: '', photos: [], busy: 0 }; }
       function ccScreen(view) {
         if (!cc) cc = ccNew();
+        seal();
         var LAB = ['OK', 'Wrong', 'Missing', 'N/A'];
+        // O rascunho sobrevive a sair da tela DE PROPOSITO — perder o que foi
+        // digitado (e as fotos ja enviadas) e pior. Mas ele tem de se anunciar,
+        // senao a ficha meio preenchida do item anterior passa por formulario
+        // novo e vira um registro misturado.
+        var rascunho = !!(cc.code || cc.dc5 || cc.qty || cc.po || cc.notes || cc.photos.length ||
+                          cc.ocl || cc.icl || cc.bar);
         function seg(id, cur) {
           var s = '<div class="cc-seg" id="' + id + '">';
           for (var i = 0; i < LAB.length; i++) {
@@ -367,6 +426,8 @@
         }
         view.innerHTML =
           '<p class="eyebrow">Container check</p>' +
+          (rascunho ? '<div class="banner warn">You have an unsaved check in progress. ' +
+                      '<b>Discard</b> it below if this is a new item.</div>' : '') +
           '<label class="lab-f"><span>Rapid code <i>(required)</i></span>' +
             '<input id="ccCode" value="' + esc(cc.code) + '" placeholder="Scan or type"></label>' +
           '<div class="lab-two">' +
@@ -383,8 +444,13 @@
           // capture="environment" abre a câmera traseira direto; sem ele o
           // Android pergunta câmera-ou-galeria a cada foto.
           '<input type="file" id="ccFile" accept="image/*" capture="environment" multiple hidden>' +
-          '<div class="meta" style="margin-top:14px"><a href="/features/container-check/container-check.html">Open the full Container Check</a> for records and review.</div>';
-        bottom('<button class="btn" id="ccSave">Save check</button>');
+          '<div class="meta" style="margin-top:14px"><a href="/features/container-check/container-check.html" id="ccFull">Open the full Container Check</a> for records and review.</div>';
+        bottom((rascunho ? '<button class="btn ghost" id="ccDiscard">Discard</button>' : '') +
+               '<button class="btn" id="ccSave">Save check</button>');
+        if ($('ccDiscard')) $('ccDiscard').onclick = function () {
+          if (cc.busy > 0) { toast('Wait for the photos to finish', 'err'); return; }
+          cc = ccNew(); ccScreen(view);
+        };
         paintPhotos();
 
         function bindSeg(id, key) {
@@ -402,18 +468,49 @@
         }
         bindSeg('ccOcl', 'ocl'); bindSeg('ccIcl', 'icl'); bindSeg('ccBar', 'bar');
 
-        ['ccCode:code', 'ccDc5:dc5', 'ccQty:qty', 'ccPo:po', 'ccNotes:notes'].forEach(function (pair) {
+        /* Sair daqui e uma navegacao de pagina inteira: o PWA morre junto com o
+           rascunho, e as fotos ja enviadas ficam no bucket sem registro nenhum.
+           Confirmacao em DOIS TOQUES e nao um confirm() — o CLAUDE.md proibe o
+           dialogo nativo em codigo novo, e no telefone ele ainda por cima chega
+           como um alerta do sistema que se fecha por reflexo. */
+        if ($('ccFull')) {
+          var armado = false;
+          $('ccFull').addEventListener('click', function (ev) {
+            if (!rascunho || armado) return;      // segundo toque: deixa navegar
+            ev.preventDefault();
+            armado = true;
+            this.textContent = 'Tap again to leave — this check is not saved' +
+              (cc.photos.length ? ' (' + cc.photos.length + ' photo(s) too)' : '');
+            this.className = 'cc-leave-warn';
+          });
+        }
+
+        ['ccCode:code', 'ccDc5:dc5', 'ccPo:po', 'ccNotes:notes'].forEach(function (pair) {
           var a = pair.split(':'), el = $(a[0]);
           if (el) el.oninput = function () { cc[a[1]] = el.value; };
         });
+        // Qty so aceita digito. Solto, um "12 un" virava Number('12 un') = NaN e
+        // o save mandava a quantidade como null — some do registro sem um aviso.
+        if ($('ccQty')) $('ccQty').oninput = function () {
+          this.value = this.value.replace(/\D/g, ''); cc.qty = this.value;
+        };
 
         // Preencher o 5DC sozinho quando o código bate — um campo a menos para
         // digitar de luva, e menos chance de casar errado depois.
+        /* O 5DC automatico e para POUPAR digitacao, nunca para inventar dado.
+           A busca e assincrona e `cc` e do modulo: sem amarrar a resposta ao
+           codigo que a pediu, uma busca lenta do item anterior escrevia o 5DC
+           DELE na ficha do proximo — e ninguem repara, porque o campo
+           simplesmente aparece preenchido. */
         $('ccCode').addEventListener('blur', function () {
           var v = String(this.value || '').trim().toUpperCase();
           this.value = v; cc.code = v;
           if (!v || cc.dc5) return;
-          searchProducts(v).then(function (items) {
+          var pedido = v, mine = navSeal;
+          searchProducts(v).then(function (r) {
+            var items = (r && r.rows) || [];
+            if (cc.code !== pedido || mine !== navSeal) return;   // trocou de item, ou de tela
+            if (cc.dc5) return;                                    // ja digitaram um
             if (items.length && items[0].matchedBy !== 'partial' && items[0].dc5) {
               cc.dc5 = items[0].dc5;
               if ($('ccDc5')) $('ccDc5').value = cc.dc5;
@@ -476,7 +573,10 @@
           }, { 'x-cc-user': H.user() }).then(function () {
             toast('Saved — it goes to Need Review', 'ok');
             cc = ccNew();
-            go('ccCheck', 'Container check');   // folha limpa para o próximo item
+            // REPINTA, nao navega. go() empilha um quadro novo a cada item
+            // salvo: depois de doze conferencias o Voltar precisava de doze
+            // toques para chegar em casa, e parecia morto.
+            ccScreen(view);
           }).catch(function (e) {
             btn.disabled = false; btn.textContent = 'Save check';
             toast(e.message, 'err');

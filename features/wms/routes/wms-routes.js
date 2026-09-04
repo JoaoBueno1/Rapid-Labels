@@ -283,10 +283,19 @@ function registerWmsRoutes(app, sb) {
      chama de "Code" e products.sku. */
   app.get('/api/wms/product-search', A(async (req, res) => {
     const q = String(req.query.q || '').trim();
-    if (q.length < 2) return res.json([]);
+    // A MESMA forma sempre. Devolver [] aqui e {rows,total} ali obriga cada
+    // chamador a lidar com dois formatos, e o que esquecer trata a busca curta
+    // como resposta valida vazia.
+    if (q.length < 2) return res.json({ rows: [], total: 0, truncated: false });
     const cm = sb.schema('cin7_mirror');
     const cols = 'sku,name,barcode,attribute1,type,status';
     const seen = new Set(), out = [];
+    /* O supabase-js NAO lanca em erro do PostgREST: ele resolve para
+       {data:null, error}. Ler so .data transformava banco fora do ar, chave
+       revogada ou filtro malformado em ZERO resultados — e a tela responde
+       "Nothing matched.", que e a leitura mais cara possivel: o operador conclui
+       que o produto nao existe e digita a etiqueta a mao. Vazio nao e erro. */
+    const must = async (b) => { const r = await b; if (r.error) throw new Error(r.error.message); return r.data; };
     const push = (rows, how) => {
       for (const p of (rows || [])) {
         const k = String(p.sku || '').toUpperCase();
@@ -298,16 +307,23 @@ function registerWmsRoutes(app, sb) {
     };
     // Exatos primeiro — quem escaneia um codigo de barras quer AQUELE item no
     // topo, nao o primeiro alfabetico de um ilike que tambem o contem.
-    push((await cm.from('products').select(cols).eq('barcode', q).limit(5)).data, 'barcode');
-    push((await cm.from('products').select(cols).eq('sku', q).limit(5)).data, 'code');
-    push((await cm.from('products').select(cols).eq('attribute1', q).limit(10)).data, '5dc');
+    push(await must(cm.from('products').select(cols).eq('barcode', q).limit(5)), 'barcode');
+    push(await must(cm.from('products').select(cols).eq('sku', q).limit(5)), 'code');
+    push(await must(cm.from('products').select(cols).eq('attribute1', q).limit(10)), '5dc');
     if (out.length < 25) {
-      const like = `%${q.replace(/[%,]/g, '')}%`;
-      push((await cm.from('products').select(cols)
+      /* `(`, `)` e `*` sao sintaxe da arvore logica do PostgREST, nao texto: um
+         nome com parenteses ("LED DRIVER (60W)") quebrava o filtro inteiro. A
+         rota irma do container-check ja tira tudo fora de [a-zA-Z0-9 _-] com a
+         nota "safe for the .or() filter" — a mesma regra vale aqui. */
+      const like = `%${q.replace(/[^a-zA-Z0-9 _-]/g, ' ').trim()}%`;
+      push(await must(cm.from('products').select(cols)
         .or(`sku.ilike.${like},name.ilike.${like},attribute1.ilike.${like}`)
-        .limit(40)).data, 'partial');
+        .limit(40)), 'partial');
     }
-    res.json(out.slice(0, 25));
+    // "X de Y" em vez de um corte mudo: uma lista truncada e indistinguivel de
+    // uma lista completa, e o operador para de procurar no item 25.
+    const LIM = 25;
+    res.json({ rows: out.slice(0, LIM), total: out.length, truncated: out.length > LIM });
   }));
 
   /* Upload de foto do Container Check, pelo SERVIDOR.
