@@ -138,3 +138,75 @@ input.txt:disabled{background:var(--go-soft);border-color:var(--go);color:var(--
 .fldrow .txt{flex:1}
 .okmark{color:var(--go);font-weight:800;font-size:20px;min-width:22px;text-align:center}
 .qtybig{text-align:center;font-size:26px;font-weight:800;letter-spacing:.02em}
+
+/* ═══ Extras de celular — etiquetas + container check ═══════════════════════
+   Alvos de toque grandes e uma coluna só: quem usa isto está de pé, de luva,
+   com uma mão no leitor. Nada aqui depende de hover. */
+
+.banner.err{background:var(--bad-soft);border-color:#fca5a5;color:#7f1d1d}
+.banner.err b{color:#991b1b}
+
+/* resultado de busca — o 5DC à esquerda porque é por ele que se procura */
+.lab-list{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.lab-item,.lab-brow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:13px 14px;box-shadow:var(--shadow);cursor:pointer;font-family:inherit;color:var(--ink)}
+.lab-item:active{border-color:var(--brand)}
+.lab-dc5{font-family:var(--mono);font-size:17px;font-weight:700;letter-spacing:.02em;
+  min-width:62px;flex:0 0 auto}
+.lab-mid{flex:1;min-width:0}
+.lab-code{font-family:var(--mono);font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lab-name{font-size:12.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Marca discreta: este produto TEM código de barras próprio. No Multi-Label é a
+   diferença entre a linha imprimir o barcode e cair no SKU. */
+.lab-bc{flex:0 0 auto;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--brand-d);background:var(--brand-soft);border:1px solid #99f6e4;border-radius:5px;padding:2px 6px}
+
+/* campos */
+.lab-f{display:block;margin-bottom:13px}
+.lab-f>span{display:block;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:6px}
+.lab-f>span i{font-style:normal;font-weight:500;text-transform:none;letter-spacing:0;color:var(--faint2)}
+.lab-f input,.lab-f textarea{width:100%;background:var(--surface);border:1px solid var(--line-2);border-radius:8px;
+  color:var(--ink);font-family:var(--mono);font-size:17px;padding:14px;outline:none;box-shadow:var(--shadow)}
+/* 16px é o piso que impede o iOS de dar zoom ao focar um campo. */
+.lab-f textarea{font-family:var(--f);font-size:16px;resize:vertical}
+.lab-f input:focus,.lab-f textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.lab-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* lote do multi-label */
+.lab-batch{margin-top:16px}
+.lab-bhead{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint2);margin-bottom:8px}
+.lab-brow{cursor:default;margin-bottom:8px}
+.lab-q{flex:0 0 68px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:7px;
+  font-family:var(--mono);font-size:16px;text-align:center;padding:10px 6px;outline:none;color:var(--ink)}
+.lab-q:focus{border-color:var(--brand)}
+.lab-x{flex:0 0 auto;background:none;border:none;color:var(--faint2);font-size:24px;line-height:1;
+  padding:6px 4px;cursor:pointer}
+.lab-x:active{color:var(--bad)}
+
+/* container check — os três rótulos */
+.cc-lab{margin-bottom:13px}
+.cc-lab>span{display:block;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:6px}
+.cc-seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.cc-seg button{background:var(--surface);border:1px solid var(--line-2);border-radius:7px;color:var(--muted);
+  font-size:14px;font-weight:600;padding:12px 4px;cursor:pointer}
+/* Um estado só, e ele fica claro de longe: no chão do armazém a diferença entre
+   "OK" e "Wrong" não pode depender de olhar de perto. */
+.cc-seg button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+
+/* fotos */
+.cc-ph-h{font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}
+.cc-ph-h i{font-style:normal;font-weight:500;text-transform:none;letter-spacing:0;color:var(--faint2)}
+.cc-ph{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cc-ph-i{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--surface-2);
+  border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.cc-ph-i img{width:100%;height:100%;object-fit:cover;display:block}
+.cc-ph-i button{position:absolute;top:3px;right:3px;width:24px;height:24px;border:none;border-radius:50%;
+  background:rgba(15,23,42,.66);color:#fff;font-size:16px;line-height:1;cursor:pointer;padding:0}
+.cc-ph-add{aspect-ratio:1;background:var(--surface);border:1.5px dashed var(--line-2);border-radius:8px;
+  color:var(--muted);font-size:22px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;font-family:inherit}
+.cc-ph-add span{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.cc-ph-add:active{border-color:var(--brand);color:var(--brand-d)}

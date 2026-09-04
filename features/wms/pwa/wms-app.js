@@ -24,6 +24,7 @@
   }
 
   // ── state + navigation ──
+  var EXTRA_TILES;          // preenchido junto do SCREENS, no fim do arquivo
   var S = { user: localStorage.getItem('wms_user') || 'operator', stack: [], pick: null };
   function setUser(u) { S.user = u || 'operator'; localStorage.setItem('wms_user', S.user); $('whoChip').textContent = S.user; }
   function go(screen, title, ctx) { S.stack.push({ screen: screen, title: title, ctx: ctx }); render(); }
@@ -110,6 +111,9 @@
         '<button class="tile" id="tTr"><div class="t">Transfer (TR)</div><div class="s">Scan a stock transfer and pick its items</div></button>' +
         '<button class="tile" id="tXfer"><div class="t">Bin transfer</div><div class="s">Move stock bin to bin or between warehouses</div></button>' +
         '<button class="tile" id="tLook"><div class="t">Stock lookup</div><div class="s">Find a SKU across all bins</div></button>' +
+        EXTRA_TILES.map(function (t) {
+          return '<button class="tile" id="' + t.id + '"><div class="t">' + t.title + '</div><div class="s">' + t.sub + '</div></button>';
+        }).join('') +
       '</div>' +
       '<div class="row" style="justify-content:flex-end;margin-top:22px"><button class="who" id="tUser">' + esc(S.user) + ' ▾</button></div>';
     $('tPick').onclick = function () { go('pickEntry', 'Pick'); };
@@ -117,6 +121,9 @@
     $('tXfer').onclick = function () { S.bb = null; go('transfer', 'Bin transfer'); };
     $('tLook').onclick = function () { go('lookup', 'Stock lookup'); };
     $('tUser').onclick = function () { var u = prompt('Operator name', S.user); if (u) { setUser(u.trim()); render(); } };
+    EXTRA_TILES.forEach(function (t) {
+      var el = $(t.id); if (el) el.onclick = function () { go(t.screen, t.title); };
+    });
   }
   // Transfer (TR) — scan an ordered stock transfer and pick its items, then dispatch.
   function trEntryScreen(view) {
@@ -456,6 +463,28 @@
   }
 
   SCREENS = { home: homeScreen, pickEntry: pickEntryScreen, trEntry: trEntryScreen, pick: pickScreen, pickItem: pickItemScreen, lookup: lookupScreen, transfer: transferScreen };
+
+  /* Extras de celular (etiquetas + container check) — features/wms/pwa/wms-labels.js.
+     Montados SE existirem: o arquivo pode faltar (deploy parcial, cache velho) e o
+     WMS tem de abrir do mesmo jeito, porque picar e o que nao pode parar.
+     Ele recebe os helpers em vez de os redescobrir — este arquivo e uma IIFE e nao
+     exporta nada, e duas copias de toast/api divergiriam. */
+  EXTRA_TILES = [];
+  try {
+    if (window.WmsExtra && typeof window.WmsExtra.install === 'function') {
+      var ex = window.WmsExtra.install({
+        $: $, esc: esc, go: go, toast: toast, bottom: bottom,
+        scanField: scanField, wireScan: wireScan,
+        user: function () { return S.user; }
+      });
+      if (ex && ex.screens) for (var sk in ex.screens) if (ex.screens.hasOwnProperty(sk)) SCREENS[sk] = ex.screens[sk];
+      if (ex && ex.tiles) EXTRA_TILES = ex.tiles;
+    }
+  } catch (e) {
+    // Alto no console, silencioso na tela: o operador do picking nao pode ser
+    // parado por um modulo que ele nem ia abrir.
+    if (window.console) console.error('[wms] extras did not load:', e);
+  }
 
   // ── boot ──
   $('backBtn').onclick = back;

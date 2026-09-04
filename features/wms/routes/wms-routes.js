@@ -267,6 +267,80 @@ function registerWmsRoutes(app, sb) {
     res.json(data || []);
   }));
 
+  // ══════════════════════════════════════════════════════════════════════
+  // MOBILE EXTRAS — labels + container check capture
+  // ══════════════════════════════════════════════════════════════════════
+
+  /* Busca de produto para ETIQUETA.
+     resolveScan (o /resolve/:code acima) devolve {sku, productId, name} e serve
+     ao picking, mas a etiqueta precisa tambem do BARCODE e do 5DC (attribute1)
+     — sem eles a etiqueta sai sem barras e sem o numero que o operador le.
+     Por isso uma rota propria em vez de esticar aquela: quem pica e quem imprime
+     querem coisas diferentes do mesmo produto.
+
+     ATENCAO a inversao de nomes, que e a fonte mais provavel de etiqueta errada:
+     o que a interface chama de "SKU" e products.attribute1 (o 5DC), e o que ela
+     chama de "Code" e products.sku. */
+  app.get('/api/wms/product-search', A(async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json([]);
+    const cm = sb.schema('cin7_mirror');
+    const cols = 'sku,name,barcode,attribute1,type,status';
+    const seen = new Set(), out = [];
+    const push = (rows, how) => {
+      for (const p of (rows || [])) {
+        const k = String(p.sku || '').toUpperCase();
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        out.push({ code: p.sku, dc5: p.attribute1 || '', name: p.name || '',
+                   barcode: p.barcode || '', matchedBy: how });
+      }
+    };
+    // Exatos primeiro — quem escaneia um codigo de barras quer AQUELE item no
+    // topo, nao o primeiro alfabetico de um ilike que tambem o contem.
+    push((await cm.from('products').select(cols).eq('barcode', q).limit(5)).data, 'barcode');
+    push((await cm.from('products').select(cols).eq('sku', q).limit(5)).data, 'code');
+    push((await cm.from('products').select(cols).eq('attribute1', q).limit(10)).data, '5dc');
+    if (out.length < 25) {
+      const like = `%${q.replace(/[%,]/g, '')}%`;
+      push((await cm.from('products').select(cols)
+        .or(`sku.ilike.${like},name.ilike.${like},attribute1.ilike.${like}`)
+        .limit(40)).data, 'partial');
+    }
+    res.json(out.slice(0, 25));
+  }));
+
+  /* Upload de foto do Container Check, pelo SERVIDOR.
+     A tela de desktop sobe direto para o Storage com o supabase-js do navegador
+     (features/container-check/container-check.js:768). Fazer o mesmo aqui
+     obrigaria o PWA a carregar o supabase-js inteiro so por causa disto — peso
+     que o fluxo de picking pagaria sem usar. O servidor ja tem a service key.
+
+     Recebe um data URL porque o corpo ja e JSON em toda esta rota; multipart
+     traria uma dependencia nova para resolver um problema que nao temos. O
+     redimensionamento continua NO TELEFONE (canvas), entao o que sobe aqui ja
+     vem pequeno — o limite abaixo e rede de seguranca, nao o caminho normal. */
+  app.post('/api/wms/cc-photo', A(async (req, res) => {
+    if (!sb) return res.status(503).json({ error: 'Supabase backend not configured' });
+    const { dataUrl, code, date } = req.body || {};
+    const m = /^data:image\/(jpeg|jpg|png);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+    if (!m) return res.status(400).json({ error: 'dataUrl must be a base64 jpeg or png' });
+    const buf = Buffer.from(m[2], 'base64');
+    if (!buf.length) return res.status(400).json({ error: 'empty image' });
+    if (buf.length > 4 * 1024 * 1024) return res.status(413).json({ error: 'image over 4 MB — resize before sending' });
+    const safe = String(code || 'item').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'item';
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : new Date().toISOString().slice(0, 10);
+    const ext = m[1] === 'png' ? 'png' : 'jpg';
+    // O mesmo formato de caminho da tela de desktop, para as duas origens
+    // ficarem no mesmo bucket sem se distinguirem depois.
+    const path = `${day}/${safe}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+    const up = await sb.storage.from('container-check')
+      .upload(path, buf, { contentType: `image/${ext === 'jpg' ? 'jpeg' : 'png'}`, upsert: false });
+    if (up.error) return res.status(502).json({ error: up.error.message });
+    const { data } = sb.storage.from('container-check').getPublicUrl(path);
+    res.json({ url: data.publicUrl });
+  }));
+
   console.log('✅ WMS routes registered at /api/wms/* (feature isolated — not in nav)');
 }
 
