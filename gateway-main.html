@@ -4,11 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gateway Inventory — Rapid LED</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="gateway-main.css?v=20260821a" />
   <link rel="icon" type="image/svg+xml" href="icon-192.svg" />
+  <!-- Os tokens e as medidas vem do Stock Planning; gateway-main.css so
+       traduz os nomes `.gw-*` para eles. Ver o cabecalho daquele arquivo. -->
+  <link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=25">
   <link rel="stylesheet" href="/shared/rail.css?v=8">
   <link rel="stylesheet" href="/shared/ui.css?v=4">
+  <link rel="stylesheet" href="gateway-main.css?v=20260904a" />
   <script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
@@ -16,17 +21,24 @@
 <header class="gw-header no-print">
   <div class="gw-header-inner">
     <span class="gw-brand"><span class="gw-logo">G</span> Gateway Inventory</span>
+    <nav class="gw-tabs">
+      <button class="gw-tab active" data-view="overview" type="button">Overview</button>
+      <button class="gw-tab" data-view="inventory" type="button">Inventory</button>
+      <button class="gw-tab" data-view="transfers" type="button">Transfers <span class="badge" id="tabTransfers"></span></button>
+      <button class="gw-tab" data-view="recon" type="button">Reconciliation <span class="badge" id="tabRecon"></span></button>
+      <button class="gw-tab" data-view="quality" type="button">Data quality <span class="badge" id="tabQuality"></span></button>
+    </nav>
     <div class="gw-sync">
       <span class="gw-dot" id="syncDot"></span>
-      <span id="syncText">Loading…</span>
-      <span id="whoami" style="margin-left:10px"></span>
+      <span id="syncText">Loading&hellip;</span>
+      <span class="gw-who" id="whoami"></span>
     </div>
   </div>
 </header>
 
 <main class="gw-main">
 
-  <div id="deployWarning" class="gw-note gw-note-bad" style="display:none">
+  <div id="deployWarning" class="gw-note gw-note-bad" hidden>
     <b>Gateway tables are not deployed yet.</b>
     Apply <span class="mono">features/gateway/db/001_gateway_inventory.sql</span>,
     <span class="mono">002_gateway_logic.sql</span> and
@@ -34,39 +46,43 @@
     then run <span class="mono">python features/gateway/import/import_gateway_history.py --apply</span>.
   </div>
 
-  <nav class="gw-tabs no-print">
-    <button class="gw-tab active" data-view="overview">Overview</button>
-    <button class="gw-tab" data-view="inventory">Inventory</button>
-    <button class="gw-tab" data-view="transfers">Transfers <span class="badge" id="tabTransfers">0</span></button>
-    <button class="gw-tab" data-view="recon">Reconciliation <span class="badge" id="tabRecon">0</span></button>
-    <button class="gw-tab" data-view="quality">Data quality <span class="badge" id="tabQuality">0</span></button>
-  </nav>
-
   <!-- ═══════════ OVERVIEW ═══════════ -->
-  <section class="gw-view" id="view-overview">
+  <section class="gw-view active" id="view-overview">
     <div class="gw-tiles" id="tiles"></div>
+
+    <!-- Como o estoque envelhece. Tres numeros soltos nao dizem proporção;
+         a barra diz, e é a única grandeza desta tela que só a forma explica. -->
+    <div class="gw-sec" id="ageSec" hidden>
+      <div class="gw-sec-hd">
+        <span class="gw-sec-title">How the stock is ageing</span>
+        <span class="gw-sec-hint" id="ageHint"></span>
+      </div>
+      <div class="gw-agebar" id="ageBar"></div>
+      <div class="gw-key" id="ageKey"></div>
+    </div>
 
     <!-- Restock: what Main is low on and Gateway can supply -->
     <div class="gw-sec">
       <div class="gw-sec-hd">
-        <span class="gw-sec-title">Restock — send to Main</span>
+        <span class="gw-sec-title">Restock &mdash; send to Main</span>
         <span class="gw-sec-hint">cover = Main stock &divide; weekly demand (total monthly avg &divide; 4.33)</span>
       </div>
       <div class="gw-toolbar">
-        <span style="font-weight:600;color:#5b6b86;font-size:13px">Main cover:</span>
-        <button class="gw-chip active" data-cov="all">All <span id="covAll">0</span></button>
-        <button class="gw-chip" data-cov="lt2" style="border-color:#f6c9c4">&lt; 2 wk <span id="covLt2">0</span></button>
-        <button class="gw-chip" data-cov="lt4" style="border-color:#fbe3b3">&lt; 4 wk <span id="covLt4">0</span></button>
-        <button class="gw-chip" data-cov="lt6" style="border-color:#c4e0f5">&lt; 6 wk <span id="covLt6">0</span></button>
-        <label style="margin-left:auto;font-size:13px;color:#5b6b86">Target cover
-          <select class="gw-input gw-btn-sm" id="ovWeeks" style="margin-left:6px">
+        <span class="gw-toolbar-label">Main cover:</span>
+        <button class="gw-chip active" data-cov="all" type="button">All <span id="covAll">0</span></button>
+        <button class="gw-chip" data-cov="lt2" type="button">&lt; 2 wk <span id="covLt2">0</span></button>
+        <button class="gw-chip" data-cov="lt4" type="button">&lt; 4 wk <span id="covLt4">0</span></button>
+        <button class="gw-chip" data-cov="lt6" type="button">&lt; 6 wk <span id="covLt6">0</span></button>
+        <span class="gw-gap"></span>
+        <label class="gw-tgt">Target cover
+          <select class="gw-input gw-btn-sm" id="ovWeeks">
             <option value="2">2 weeks</option>
             <option value="4" selected>4 weeks</option>
             <option value="6">6 weeks</option>
             <option value="8">8 weeks</option>
           </select>
         </label>
-        <button class="gw-btn gw-btn-primary gw-btn-sm" id="ovBuild" disabled>Create transfer from selected</button>
+        <button class="gw-btn gw-btn-primary" id="ovBuild" type="button" disabled>Create transfer from selected</button>
       </div>
       <div class="gw-table-wrap"><table class="gw-table">
         <thead><tr>
@@ -75,7 +91,7 @@
           <th class="r">Main</th><th class="r">Weekly</th><th class="r">Cover</th>
           <th class="r">Suggested</th><th class="r">Gateway free</th><th>Oldest</th><th>Shelves</th>
         </tr></thead>
-        <tbody id="ovRestock"><tr><td colspan="10" class="gw-empty">Loading…</td></tr></tbody>
+        <tbody id="ovRestock"><tr><td colspan="10" class="gw-empty">Loading&hellip;</td></tr></tbody>
       </table></div>
     </div>
 
@@ -86,7 +102,7 @@
           <span class="gw-sec-hint">created and not yet completed</span></div>
         <div class="gw-table-wrap"><table class="gw-table">
           <thead><tr><th>Transfer</th><th>Status</th><th>Allocation</th><th class="r">Lines</th><th class="r">Requested</th><th>Created</th></tr></thead>
-          <tbody id="ovOpenTr"><tr><td colspan="6" class="gw-empty">Loading…</td></tr></tbody>
+          <tbody id="ovOpenTr"><tr><td colspan="6" class="gw-empty">Loading&hellip;</td></tr></tbody>
         </table></div>
       </div>
       <div class="gw-sec">
@@ -94,16 +110,16 @@
           <span class="gw-sec-hint">last processed transfers</span></div>
         <div class="gw-table-wrap"><table class="gw-table">
           <thead><tr><th>Transfer</th><th>Cin7</th><th class="r">Moved</th><th>Completed</th></tr></thead>
-          <tbody id="ovHistTr"><tr><td colspan="4" class="gw-empty">Loading…</td></tr></tbody>
+          <tbody id="ovHistTr"><tr><td colspan="4" class="gw-empty">Loading&hellip;</td></tr></tbody>
         </table></div>
       </div>
     </div>
   </section>
 
   <!-- ═══════════ INVENTORY ═══════════ -->
-  <section class="gw-view" id="view-inventory" style="display:none">
+  <section class="gw-view" id="view-inventory">
     <div class="gw-toolbar">
-      <input class="gw-input gw-search" id="invSearch" placeholder="Search SKU, product, 5DC or shelf…" />
+      <input class="gw-input gw-search" id="invSearch" placeholder="Search SKU, product, 5DC or shelf&hellip;" />
       <select class="gw-input" id="invFilter">
         <option value="in_stock">In stock</option>
         <option value="all">All</option>
@@ -120,7 +136,8 @@
         <option value="variance">Biggest variance</option>
         <option value="sku">SKU</option>
       </select>
-      <button class="gw-btn" id="invReceive">Record a receipt</button>
+      <button class="gw-btn" id="invReceive" type="button">Record a receipt</button>
+      <span class="gw-gap"></span>
       <span class="gw-count" id="invCount"></span>
     </div>
     <div class="gw-table-wrap"><table class="gw-table">
@@ -130,19 +147,20 @@
         <th>Oldest stock</th><th class="r">Age</th>
         <th class="r">Cin7</th><th class="r">Diff</th><th>Shelves</th>
       </tr></thead>
-      <tbody id="invBody"><tr><td colspan="11" class="gw-empty">Loading…</td></tr></tbody>
+      <tbody id="invBody"><tr><td colspan="11" class="gw-empty">Loading&hellip;</td></tr></tbody>
     </table></div>
-    <div class="gw-toolbar" style="margin-top:10px">
-      <button class="gw-btn gw-btn-sm" id="invPrev">Previous</button>
-      <button class="gw-btn gw-btn-sm" id="invNext">Next</button>
+    <div class="gw-toolbar gw-toolbar-pager">
+      <button class="gw-btn gw-btn-sm" id="invPrev" type="button">Previous</button>
+      <button class="gw-btn gw-btn-sm" id="invNext" type="button">Next</button>
+      <span class="gw-gap"></span>
       <span class="gw-count" id="invPage"></span>
     </div>
   </section>
 
   <!-- ═══════════ TRANSFERS ═══════════ -->
-  <section class="gw-view" id="view-transfers" style="display:none">
+  <section class="gw-view" id="view-transfers">
     <div class="gw-toolbar">
-      <input class="gw-input gw-search" id="trSearch" placeholder="Search transfer or Cin7 reference…" />
+      <input class="gw-input gw-search" id="trSearch" placeholder="Search transfer or Cin7 reference&hellip;" />
       <select class="gw-input" id="trStatus">
         <option value="">Open transfers</option>
         <option value="all">All</option>
@@ -154,8 +172,9 @@
         <option value="completed">Completed</option>
         <option value="cancelled">Cancelled</option>
       </select>
-      <button class="gw-btn gw-btn-primary" id="trNew">New Gateway &rarr; Main</button>
-      <button class="gw-btn" id="trNewIn">New Main &rarr; Gateway</button>
+      <button class="gw-btn gw-btn-primary" id="trNew" type="button">New Gateway &rarr; Main</button>
+      <button class="gw-btn" id="trNewIn" type="button">New Main &rarr; Gateway</button>
+      <span class="gw-gap"></span>
       <span class="gw-count" id="trCount"></span>
     </div>
     <div class="gw-table-wrap"><table class="gw-table">
@@ -164,12 +183,12 @@
         <th>Cin7 ref</th><th class="r">Lines</th><th class="r">Requested</th>
         <th class="r">Allocated</th><th class="r">Moved</th><th>Created</th>
       </tr></thead>
-      <tbody id="trBody"><tr><td colspan="10" class="gw-empty">Loading…</td></tr></tbody>
+      <tbody id="trBody"><tr><td colspan="10" class="gw-empty">Loading&hellip;</td></tr></tbody>
     </table></div>
   </section>
 
   <!-- ═══════════ RECONCILIATION ═══════════ -->
-  <section class="gw-view" id="view-recon" style="display:none">
+  <section class="gw-view" id="view-recon">
     <div class="gw-note gw-note-info" id="reconNote">
       Cin7 owns the per-SKU total. We own the shelf, the pallet and the arrival date, because
       Cin7 does not model any of them for Gateway. A difference is recorded and explained, never
@@ -182,7 +201,8 @@
         <option value="local_only">Only in our records</option>
         <option value="cin7_only">Only in Cin7</option>
       </select>
-      <button class="gw-btn" id="reconRefresh">Refresh</button>
+      <button class="gw-btn" id="reconRefresh" type="button">Refresh</button>
+      <span class="gw-gap"></span>
       <span class="gw-count" id="reconCount"></span>
     </div>
     <div class="gw-table-wrap"><table class="gw-table">
@@ -190,12 +210,12 @@
         <th>SKU</th><th>Product</th><th class="r">Ours</th><th class="r">Cin7</th>
         <th class="r">Difference</th><th>State</th><th>Investigation</th><th>Shelves</th><th></th>
       </tr></thead>
-      <tbody id="reconBody"><tr><td colspan="9" class="gw-empty">Loading…</td></tr></tbody>
+      <tbody id="reconBody"><tr><td colspan="9" class="gw-empty">Loading&hellip;</td></tr></tbody>
     </table></div>
   </section>
 
   <!-- ═══════════ DATA QUALITY ═══════════ -->
-  <section class="gw-view" id="view-quality" style="display:none">
+  <section class="gw-view" id="view-quality">
     <div class="gw-sec">
       <div class="gw-sec-hd"><span class="gw-sec-title">Imports</span>
         <span class="gw-sec-hint">where this inventory came from</span></div>
@@ -203,7 +223,7 @@
         <thead><tr><th>Source</th><th>Sheet</th><th>Status</th>
           <th class="r">Rows</th><th class="r">Lots</th><th class="r">Movements</th>
           <th class="r">Warnings</th><th class="r">Errors</th><th>When</th></tr></thead>
-        <tbody id="qualBatches"><tr><td colspan="9" class="gw-empty">Loading…</td></tr></tbody>
+        <tbody id="qualBatches"><tr><td colspan="9" class="gw-empty">Loading&hellip;</td></tr></tbody>
       </table></div>
     </div>
     <div class="gw-sec">
@@ -215,11 +235,12 @@
           <option value="error">Errors</option>
           <option value="warning">Warnings</option>
         </select>
+        <span class="gw-gap"></span>
         <span class="gw-count" id="qualCount"></span>
       </div>
       <div class="gw-table-wrap"><table class="gw-table">
         <thead><tr><th>Severity</th><th>Type</th><th>Row</th><th>SKU</th><th>What happened</th><th></th></tr></thead>
-        <tbody id="qualIssues"><tr><td colspan="6" class="gw-empty">Loading…</td></tr></tbody>
+        <tbody id="qualIssues"><tr><td colspan="6" class="gw-empty">Loading&hellip;</td></tr></tbody>
       </table></div>
     </div>
   </section>
@@ -231,10 +252,10 @@
 <aside class="gw-drawer" id="drawer">
   <div class="gw-drawer-hd">
     <div>
-      <div class="gw-drawer-title" id="drTitle">—</div>
+      <div class="gw-drawer-title" id="drTitle">&mdash;</div>
       <div class="gw-sub" id="drSub"></div>
     </div>
-    <button class="gw-close" id="drClose">&times;</button>
+    <button class="gw-close" id="drClose" type="button">&times;</button>
   </div>
   <div class="gw-drawer-body" id="drBody"></div>
 </aside>
@@ -242,7 +263,7 @@
 <!-- ═══════════ MODAL ═══════════ -->
 <div class="gw-modal-back" id="modalBack">
   <div class="gw-modal">
-    <div class="gw-modal-hd" id="modalTitle">—</div>
+    <div class="gw-modal-hd" id="modalTitle">&mdash;</div>
     <div class="gw-modal-body" id="modalBody"></div>
     <div class="gw-modal-ft" id="modalFoot"></div>
   </div>
@@ -250,6 +271,6 @@
 
 <div class="gw-toast" id="toast"></div>
 
-<script src="gateway-main.js?v=20260831a"></script>
+<script src="gateway-main.js?v=20260904a"></script>
 </body>
 </html>

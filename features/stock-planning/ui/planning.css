@@ -72,6 +72,14 @@
      Os valores são o accent do design system (#2563EB / #DBEAFE / #1E40AF). */
   --xl-info:#dbeafe;  --xl-info-ink:#1e40af;
 
+  /* Ambar legivel. O --xl-warn do Excel (#fafa46) e um amarelo neon: serve de
+     realce numa celula de numero, nao de fundo para uma etiqueta de texto. O
+     par abaixo e o "warning subtle / warning text" do design system
+     (#FEF3C7 / #92400E, 7,6:1) — o mesmo que a Branch Replenishment ja usa
+     cravado em tres lugares. Hoje quem le sao a Container Check e a Gateway;
+     ficam aqui para os literais da Replenishment poderem migrar depois. */
+  --xl-amber:#fef3c7; --xl-amber-ink:#92400e; --xl-amber-line:#fde68a;
+
   /* Superfície rebaixada, do design system. Mesmo caso. */
   --sunken:#f8fafc;
 

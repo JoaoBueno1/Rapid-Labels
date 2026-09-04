@@ -1,175 +1,324 @@
 /* ══════════════════════════════════════════════════════════════════════
    Gateway Inventory — Rapid LED.
-   Same "our-face" system as Returns / Pick-Anomalies / Re-Stock V2:
-     bg #f4f6f9 · card #fff · ink #1a2230 · muted #5b6b86 / #7a8aa2 / #8a97ab
-     border #e2e7ef / #d3dae6 · accent #0aa5e6 (hover #0893cc) · IBM Plex Sans
-   Desktop-first and dense: this is a warehouse operations screen, so the
-   priority is rows-on-screen and scan speed, not decoration.
+
+   Este arquivo passou a ser UMA TRADUCAO, nao um sistema proprio: os nomes
+   de classe continuam `.gw-*`, mas cada valor vem dos tokens do Stock
+   Planning (/features/stock-planning/ui/planning.css), que a Branch
+   Replenishment e a Container Check ja usam. As quatro telas passam a ler
+   como um app so, e mudar um token muda as quatro.
+
+   POR QUE MANTER `.gw-*` EM VEZ DE RENOMEAR PARA `.sp-*`:
+   os nomes sao o contrato com 1.200 linhas de gateway-main.js — e, mais
+   serio, com a FOLHA DE PICKING IMPRESSA no fim deste arquivo. Renomear
+   economizaria um arquivo e arriscaria um documento fisico de armazem.
+
+   POR QUE A PAGINA CONTINUA ROLANDO NO BODY:
+   o planning.css trava `body{overflow:hidden}` e da altura fixa ao main —
+   e um layout de tela cheia com a tabela rolando por dentro. Aqui isso
+   imprimiria UMA pagina e cortaria o resto do picking em silencio. Entao o
+   overflow volta a `auto` logo abaixo, de proposito, e a pagina rola
+   inteira. E o unico ponto onde esta tela discorda do sistema.
+
+   Denso e desktop-first: e tela de operacao de armazem, a prioridade e
+   linha na tela e velocidade de leitura, nao decoracao.
    ══════════════════════════════════════════════════════════════════════ */
-* { box-sizing: border-box; }
+
+html, body { height: auto; }
 body {
-  margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  background: #f4f6f9; color: #1a2230; font-size: 14px;
+  overflow: auto;                       /* ver nota acima */
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.45 var(--sans);
+  -webkit-font-smoothing: antialiased;
 }
-.mono, .num { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
-a { color: #0b6ea8; }
+* { box-sizing: border-box; }
+.mono, .num { font-family: var(--mono); font-feature-settings: 'tnum'; font-variant-numeric: tabular-nums; }
+a { color: var(--acc-d); }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
 
-/* ── header ── */
-.gw-header { background: #fff; border-bottom: 1px solid #e2e7ef; position: sticky; top: 0; z-index: 40; }
-.gw-header-inner { max-width: 1620px; margin: 0 auto; display: flex; align-items: center; gap: 16px; padding: 11px 22px; }
-.gw-back { color: #5b6b86; text-decoration: none; font-size: 13px; white-space: nowrap; }
-.gw-back:hover { color: #1a2230; }
-.gw-brand { font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 9px; }
-.gw-logo { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; border-radius: 50%; background: #0aa5e6; color: #fff; font-weight: 700; font-size: 13px; }
-.gw-sync { margin-left: auto; font-size: 12px; color: #8a97ab; display: flex; align-items: center; gap: 7px; }
-.gw-dot { width: 8px; height: 8px; border-radius: 50%; background: #c7d0da; }
+/* ── header ─────────────────────────────────────────────────────────── */
+.gw-header { background: #fff; border-bottom: 1px solid var(--line-3); position: sticky; top: 0; z-index: 40;
+  box-shadow: 0 1px 3px rgba(20,28,41,.05); }
+.gw-header-inner { max-width: 1620px; margin: 0 auto; display: flex; align-items: center; gap: 16px; padding: 9px 22px; }
+.gw-brand { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+.gw-logo { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  border-radius: 50%; background: var(--acc); color: #fff; font-weight: 700; font-size: 12px; }
+.gw-sync { margin-left: auto; font-size: 12px; color: var(--mut-3); display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.gw-dot { width: 8px; height: 8px; border-radius: 50%; background: #c7d0da; flex: none; }
 .gw-dot.fresh { background: #12a150; } .gw-dot.stale { background: #e0930d; } .gw-dot.dead { background: #c0392b; }
+.gw-who { color: var(--ink-2); font-weight: 600; padding-left: 10px; margin-left: 3px; border-left: 1px solid var(--line-2); }
 
-.gw-main { max-width: 1620px; margin: 0 auto; padding: 16px 22px 70px; }
+.gw-main { max-width: 1620px; margin: 0 auto; padding: 14px 22px 70px; }
 
-/* ── tabs ── */
-.gw-tabs { display: flex; gap: 2px; border-bottom: 2px solid #e2e7ef; margin-bottom: 16px; }
-.gw-tab { background: none; border: none; padding: 10px 18px; font-size: 14px; font-weight: 500; color: #6b7a92; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; font-family: inherit; }
-.gw-tab:hover { color: #1a2230; }
-.gw-tab.active { color: #0aa5e6; border-bottom-color: #0aa5e6; }
-.gw-tab .badge { display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: #eef2f6; color: #5b6b86; }
-.gw-tab .badge.warn { background: #fef6e7; color: #b46a00; }
-.gw-tab .badge.bad  { background: #fdeceb; color: #c0392b; }
+/* ── tabs ───────────────────────────────────────────────────────────── */
+/* As abas ficam DENTRO da linha do header, como no Stock Planning e na
+   Container Check: e o elemento que faz as quatro telas se reconhecerem. O
+   `margin-bottom: -10px` puxa o sublinhado ativo ate a borda do header. */
+.gw-tabs { display: flex; gap: 2px; margin-left: 14px; }
+.gw-tab { background: none; border: 0; padding: 9px 14px; font: 500 13.5px var(--sans); color: var(--mut);
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -10px; white-space: nowrap; }
+.gw-tab:hover { color: var(--ink); }
+.gw-tab.active { color: var(--acc); border-bottom-color: var(--acc); font-weight: 600; }
+/* O badge some quando e zero. Numero que nunca zera deixa de ser sinal e
+   vira enfeite — a mesma regra que o menu lateral ja aplica. */
+.gw-tab .badge { display: none; min-width: 17px; margin-left: 6px; padding: 0 5px; border-radius: 9px;
+  background: var(--card-2); color: var(--mut); font: 600 10px/16px var(--mono); vertical-align: 1px; }
+.gw-tab .badge.on   { display: inline-block; }
+.gw-tab .badge.warn { background: var(--xl-amber); color: var(--xl-amber-ink); }
+.gw-tab .badge.bad  { background: var(--xl-bad); color: var(--xl-bad-ink); }
 
-/* ── stat tiles ── */
-.gw-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
-.gw-tile { background: #fff; border: 1px solid #e2e7ef; border-radius: 9px; padding: 11px 14px; }
-.gw-tile-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #8a97ab; font-weight: 600; }
-.gw-tile-value { font-size: 23px; font-weight: 600; margin-top: 3px; font-family: 'IBM Plex Mono', monospace; font-feature-settings: 'tnum'; }
-.gw-tile-sub { font-size: 11.5px; color: #8a97ab; margin-top: 1px; }
-.gw-tile.warn .gw-tile-value { color: #b46a00; }
-.gw-tile.bad  .gw-tile-value { color: #c0392b; }
-.gw-tile.good .gw-tile-value { color: #1b8a4b; }
-.gw-tile.clickable { cursor: pointer; }
-.gw-tile.clickable:hover { border-color: #0aa5e6; }
+/* Abas trocam de view por CLASSE, nao por style.display inline: o design
+   system proibe style= no HTML, e uma classe tambem deixa a regra de
+   impressao alcancar a view certa. */
+.gw-view { display: none; }
+.gw-view.active { display: block; }
+.gw-tgt { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--mut); }
+.gw-toolbar-pager { margin-top: 10px; }
 
-/* ── toolbar ── */
-.gw-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; flex-wrap: wrap; }
-.gw-count { color: #8a97ab; font-size: 12px; margin-left: auto; }
-.gw-input { font-family: inherit; font-size: 13.5px; padding: 7px 11px; border: 1px solid #d3dae6; border-radius: 7px; background: #fff; color: #1a2230; outline: none; }
-.gw-input:focus { border-color: #0aa5e6; box-shadow: 0 0 0 3px rgba(10,165,230,.14); }
-.gw-search { min-width: 330px; }
+/* ── KPI tiles ──────────────────────────────────────────────────────── */
+/* Mesma peca do .sp-tile do Stock Planning: valor grande, rotulo, subtexto,
+   e uma barra lateral de 3px quando o numero pede acao. */
+.gw-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(172px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.gw-tile { background: #fff; border: 1px solid var(--line-2); border-radius: 9px; padding: 11px 13px;
+  box-shadow: 0 1px 2px rgba(20,28,41,.04); }
+.gw-tile.bad  { border-left: 3px solid var(--xl-bad-ink); }
+.gw-tile.warn { border-left: 3px solid var(--xl-amber-ink); }
+.gw-tile.good { border-left: 3px solid var(--xl-good-ink); }
+.gw-tile-value { display: block; font: 700 24px/1 var(--sans); letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; color: var(--ink); }
+.gw-tile-value u { text-decoration: none; font: 600 13px var(--sans); color: var(--mut-2); margin-left: 3px; }
+.gw-tile.bad  .gw-tile-value { color: var(--xl-bad-ink); }
+.gw-tile.warn .gw-tile-value { color: var(--xl-amber-ink); }
+.gw-tile.good .gw-tile-value { color: var(--xl-good-ink); }
+.gw-tile-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink); margin-top: 7px; }
+.gw-tile-sub { display: block; font-size: 11.5px; line-height: 1.35; color: var(--mut-2); margin-top: 2px; }
+/* Tile que leva a algum lugar e botao de verdade — foco por teclado incluso. */
+button.gw-tile { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; }
+button.gw-tile:hover { border-color: var(--acc); box-shadow: 0 3px 12px rgba(20,28,41,.10); }
+button.gw-tile:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+
+/* ── perfil de idade: a unica grandeza desta tela que so a forma explica ─
+   Quantos SKUs estao frescos, quantos passaram do aviso, quantos passaram
+   do alerta. Tres numeros soltos nao dizem a proporcao; uma barra diz. */
+.gw-agebar { display: flex; height: 18px; border-radius: 5px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--card-2); }
+.gw-agebar i { display: block; height: 100%; min-width: 0; }
+.gw-agebar i.a-fresh { background: var(--xl-good); }
+.gw-agebar i.a-warn  { background: var(--xl-amber); }
+.gw-agebar i.a-alert { background: var(--xl-bad); }
+.gw-key { display: flex; gap: 14px; flex-wrap: wrap; padding: 9px 0 0; font-size: 11.5px; color: var(--mut-3); }
+.gw-key span { display: inline-flex; align-items: center; gap: 5px; }
+.gw-key b { color: var(--ink-2); font-family: var(--mono); font-weight: 700; }
+.gw-key i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; border: 1px solid var(--line-2); }
+.gw-key i.a-fresh { background: var(--xl-good); }
+.gw-key i.a-warn  { background: var(--xl-amber); }
+.gw-key i.a-alert { background: var(--xl-bad); }
+
+/* ── toolbar ────────────────────────────────────────────────────────── */
+.gw-toolbar { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; flex-wrap: wrap; }
+.gw-toolbar-label { font: 600 12.5px var(--sans); color: var(--ink-2); white-space: nowrap; }
+.gw-gap { margin-left: auto; }
+.gw-count { color: var(--mut-3); font: 12px var(--mono); white-space: nowrap; }
+.gw-input { font: 13px var(--sans); padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 7px;
+  background: #fff; color: var(--ink); outline: none; }
+.gw-input:focus { border-color: var(--acc); box-shadow: 0 0 0 2px var(--acc-soft); }
+.gw-input::placeholder { color: var(--mut-3); }
+.gw-search { min-width: 320px; }
 select.gw-input { cursor: pointer; }
-.gw-btn { font-family: inherit; font-size: 13.5px; font-weight: 500; padding: 7px 14px; border-radius: 7px; border: 1px solid #d3dae6; background: #fff; color: #1a2230; cursor: pointer; }
-.gw-btn:hover { border-color: #0aa5e6; }
-.gw-btn:disabled { opacity: .5; cursor: not-allowed; }
-.gw-btn-primary { background: #0aa5e6; border-color: #0aa5e6; color: #fff; }
-.gw-btn-primary:hover { background: #0893cc; border-color: #0893cc; }
-.gw-btn-danger { background: #c0392b; border-color: #c0392b; color: #fff; }
-.gw-btn-danger:hover { background: #a02f24; border-color: #a02f24; }
-.gw-btn-sm { padding: 4px 10px; font-size: 12.5px; }
-.gw-chip { font-family: inherit; font-size: 12.5px; padding: 5px 11px; border-radius: 999px; border: 1px solid #d3dae6; background: #fff; color: #5b6b86; cursor: pointer; }
-.gw-chip:hover { border-color: #0aa5e6; }
-.gw-chip.active { background: #0aa5e6; border-color: #0aa5e6; color: #fff; }
 
-/* ── tables ── */
-.gw-table-wrap { background: #fff; border: 1px solid #e2e7ef; border-radius: 10px; overflow: auto; }
-.gw-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.gw-table th { background: #f7f9fc; text-align: left; padding: 9px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #7a8aa2; font-weight: 600; white-space: nowrap; border-bottom: 1px solid #e2e7ef; position: sticky; top: 0; z-index: 2; }
-.gw-table th.r, .gw-table td.r { text-align: right; }
+/* Botao e chip: as mesmas medidas do .sp-btn / .sp-chip do shared/ui.css.
+   Duplicadas aqui de proposito — a nota no topo do ui.css registra que
+   apelidar `.gw-btn` la dentro ja foi tentado e revertido. */
+.gw-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px;
+  padding: 0 12px; border: 1px solid var(--line-2); border-radius: 7px; background: #fff; color: var(--ink-2);
+  font: 500 13px var(--sans); line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s; }
+.gw-btn:hover:not(:disabled) { background: var(--card-2); border-color: var(--line-3); color: var(--ink); }
+.gw-btn:disabled { opacity: .45; cursor: not-allowed; }
+.gw-btn-primary { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+.gw-btn-primary:hover:not(:disabled) { background: var(--acc-d); border-color: var(--acc-d); color: #fff; }
+.gw-btn-danger { background: #fff; border-color: var(--xl-bad-ink); color: var(--xl-bad-ink); font-weight: 600; }
+.gw-btn-danger:hover:not(:disabled) { background: var(--xl-bad); color: var(--xl-bad-ink); }
+.gw-btn-sm { height: 24px; padding: 0 9px; font-size: 12px; border-radius: 5px; }
+.gw-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 11px;
+  border: 1px solid var(--line-2); border-radius: 20px; background: #fff; color: var(--mut);
+  font: 500 12.5px var(--sans); line-height: 1; white-space: nowrap; cursor: pointer; }
+.gw-chip:hover { border-color: var(--line-3); color: var(--ink); }
+.gw-chip.active { background: var(--acc-soft); border-color: var(--acc); color: var(--acc-d); font-weight: 600; }
+/* Os chips de cobertura carregam a cor do risco na borda, nao no fundo:
+   ligado, todos ficam azuis; desligado, a borda ja diz qual e o grave. */
+.gw-chip[data-cov=lt2]:not(.active) { border-color: var(--xl-bad-ink); color: var(--xl-bad-ink); }
+.gw-chip[data-cov=lt4]:not(.active) { border-color: var(--xl-amber-ink); color: var(--xl-amber-ink); }
+.gw-chip[data-cov=lt6]:not(.active) { border-color: var(--line-3); }
+
+/* ── tabelas ────────────────────────────────────────────────────────── */
+/* Mesma grade do .sp-grid: cabecalho grudado em var(--head), tinta #475569
+   (o cinza claro nao passa contraste sobre esse fundo), zebra discreta. */
+.gw-table-wrap { background: #fff; border: 1px solid var(--line-2); border-radius: 9px; overflow: auto;
+  box-shadow: 0 1px 2px rgba(20,28,41,.04); }
+.gw-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.gw-table th { position: sticky; top: 0; z-index: 2; background: var(--head); text-align: left;
+  padding: 7px 10px; font: 700 10px var(--sans); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--mut); white-space: nowrap; border-bottom: 1px solid var(--line-3); user-select: none; }
+.gw-table th.r, .gw-table td.r { text-align: right; white-space: nowrap; }
 .gw-table th.c, .gw-table td.c { text-align: center; }
-.gw-table td { padding: 8px 11px; border-top: 1px solid #eef1f6; vertical-align: middle; }
-.gw-table tbody tr:hover { background: #f9fbfd; }
-.gw-table tbody tr.clickable { cursor: pointer; }
-.gw-empty { text-align: center; color: #9aa6ba; padding: 34px; }
-.gw-sub { font-size: 11px; color: #8a97ab; }
+.gw-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: middle; }
+.gw-table tbody tr:nth-child(even) td { background: var(--zebra); }
+.gw-table tbody tr:hover td { background: color-mix(in srgb, var(--acc-soft) 55%, #fff); }
+.gw-table tbody tr.clickable, .gw-table td.clickable { cursor: pointer; }
+.gw-table tbody tr:last-child td { border-bottom: 0; }
+.gw-empty { text-align: center; color: var(--mut-3); padding: 34px; font-size: 12.5px; }
+.gw-empty b { display: block; color: var(--ink-2); font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+.gw-sub { font-size: 11.5px; color: var(--mut-2); }
 
-/* ── status / tags ── */
-.tag { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .04em; padding: 2px 8px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }
-.tag-grey   { background: #f0f3f8; color: #5b6b86; border-color: #e2e7ef; }
-.tag-blue   { background: #eaf4fb; color: #1667c9; border-color: #c4e0f5; }
-.tag-green  { background: #eaf7f0; color: #1b8a4b; border-color: #c4ebd4; }
-.tag-amber  { background: #fef6e7; color: #b46a00; border-color: #fbe3b3; }
-.tag-red    { background: #fdeceb; color: #c0392b; border-color: #f6c9c4; }
-.tag-cyan   { background: #e6f6fd; color: #0b6ea8; border-color: #bfe6f9; }
+/* Erro NAO e vazio: fundo proprio, mensagem crua do servidor e um caminho
+   de volta. Antes, um 500 deixava a tabela em "Loading..." para sempre. */
+.gw-empty.gw-err { border-radius: 8px; padding: 26px 20px;
+  background: color-mix(in srgb, var(--xl-bad) 26%, #fff); }
+.gw-empty.gw-err b { color: var(--xl-bad-ink); }
+.gw-empty code { display: block; margin-top: 2px; font: 11.5px var(--mono);
+  color: var(--xl-bad-ink); word-break: break-word; }
+.gw-empty .gw-btn { margin-top: 12px; }
 
-/* age colouring, used on dates and day counts */
-.age-fresh { color: #1b8a4b; } .age-warn { color: #b46a00; } .age-alert { color: #c0392b; font-weight: 600; }
-.age-unknown { color: #8a5cc0; font-weight: 600; }
-.var-pos { color: #1667c9; } .var-neg { color: #c0392b; } .var-zero { color: #9aa6ba; }
+/* pecas pequenas que estavam em style= inline */
+.gw-alloc { margin: 1px 0; }
+.gw-alloc-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.gw-check { display: flex; align-items: center; gap: 8px; font-weight: 500;
+  text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink-2); }
+.gw-mb5 { margin-bottom: 5px; }
+.gw-qty { width: 100px; text-align: right; font-family: var(--mono); }
+.sign-box { min-width: 56px; }
 
-/* ── sections ── */
-.gw-sec { margin-bottom: 22px; }
+/* ── etiquetas de estado ────────────────────────────────────────────── */
+/* Retangulo de canto pequeno, nao capsula: e a forma que o shared/ui.css
+   fixou para estado, e le como planilha — que e o que estas telas sao. */
+.tag { display: inline-block; padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+  font: 700 10px/1.6 var(--sans); letter-spacing: .03em; }
+.tag-grey  { background: #e5ecf5;            color: var(--mut); }
+.tag-blue  { background: var(--xl-info);     color: var(--xl-info-ink); }
+.tag-cyan  { background: var(--acc-soft);    color: var(--acc-d); }
+.tag-green { background: var(--xl-good);     color: var(--xl-good-ink); }
+.tag-amber { background: var(--xl-amber);    color: var(--xl-amber-ink); }
+.tag-red   { background: var(--xl-bad);      color: var(--xl-bad-ink); }
+
+/* Idade e variancia — cor sobre numero, usada em datas e contagens de dias */
+.age-fresh   { color: var(--xl-good-ink); }
+.age-warn    { color: var(--xl-amber-ink); font-weight: 600; }
+.age-alert   { color: var(--xl-bad-ink); font-weight: 700; }
+/* Sem data nao e "novo" nem "velho": e desconhecido, e tem cor propria. */
+.age-unknown { color: #6d28d9; font-weight: 600; }
+.var-pos  { color: var(--xl-info-ink); }
+.var-neg  { color: var(--xl-bad-ink); font-weight: 600; }
+.var-zero { color: var(--mut-3); }
+
+/* ── secoes ─────────────────────────────────────────────────────────── */
+.gw-sec { margin-bottom: 20px; }
 .gw-sec-hd { display: flex; align-items: baseline; gap: 9px; margin-bottom: 8px; }
-.gw-sec-title { font-size: 13px; font-weight: 700; color: #1b2733; }
-.gw-sec-hint { font-size: 12px; color: #8a97ab; }
-.gw-sec-count { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 20px; background: #eef2f6; color: #5b6b86; }
+.gw-sec-title { font: 700 12.5px var(--sans); color: var(--ink); }
+.gw-sec-hint { font-size: 11.5px; color: var(--mut-2); }
+.gw-sec-count { font: 700 11px var(--mono); padding: 1px 7px; border-radius: 20px;
+  background: var(--card-2); color: var(--mut); }
 .gw-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 1100px) { .gw-grid-2 { grid-template-columns: 1fr; } }
 
-/* ── drawer (SKU detail) ── */
-.gw-drawer-back { position: fixed; inset: 0; background: rgba(20,28,42,.34); z-index: 60; display: none; }
+/* ── drawer (detalhe de SKU / picking) ──────────────────────────────── */
+/* 920px e nao os 470 do .sp-side: aqui dentro cabem duas tabelas largas —
+   o FIFO por pallet e o extrato de movimentos. */
+.gw-drawer-back { position: fixed; inset: 0; background: rgba(26,34,48,.4); z-index: 50; display: none; }
 .gw-drawer-back.open { display: block; }
-.gw-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(920px, 96vw); background: #f4f6f9; z-index: 61; transform: translateX(100%); transition: transform .16s ease-out; overflow-y: auto; box-shadow: -4px 0 24px rgba(20,28,42,.14); }
+.gw-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(920px, 96vw); background: var(--bg);
+  z-index: 51; transform: translateX(100%); transition: transform .15s ease; overflow-y: auto;
+  border-left: 1px solid var(--line-2); box-shadow: -8px 0 30px rgba(26,34,48,.13); }
 .gw-drawer.open { transform: none; }
-.gw-drawer-hd { background: #fff; border-bottom: 1px solid #e2e7ef; padding: 14px 20px; position: sticky; top: 0; z-index: 3; display: flex; align-items: flex-start; gap: 14px; }
-.gw-drawer-title { font-size: 17px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
-.gw-drawer-body { padding: 18px 20px 60px; }
-.gw-close { background: none; border: none; font-size: 22px; line-height: 1; color: #8a97ab; cursor: pointer; margin-left: auto; padding: 0 4px; }
-.gw-close:hover { color: #1a2230; }
+.gw-drawer-hd { background: #fff; border-bottom: 1px solid var(--line); padding: 11px 20px; position: sticky;
+  top: 0; z-index: 3; display: flex; align-items: flex-start; gap: 14px; }
+.gw-drawer-title { font: 600 15px var(--mono); color: var(--ink); }
+.gw-drawer-body { padding: 16px 20px 60px; }
+.gw-close { background: none; border: 0; font-size: 20px; line-height: 1; color: var(--mut);
+  cursor: pointer; margin-left: auto; padding: 2px 6px; border-radius: 6px; }
+.gw-close:hover { color: var(--ink); background: var(--card-2); }
 
-/* ── modal ── */
-.gw-modal-back { position: fixed; inset: 0; background: rgba(20,28,42,.4); z-index: 70; display: none; align-items: center; justify-content: center; padding: 24px; }
+/* ── modal ──────────────────────────────────────────────────────────── */
+.gw-modal-back { position: fixed; inset: 0; background: rgba(26,34,48,.4); z-index: 60; display: none;
+  align-items: center; justify-content: center; padding: 24px; }
 .gw-modal-back.open { display: flex; }
-.gw-modal { background: #fff; border-radius: 12px; width: min(620px, 100%); max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(20,28,42,.2); }
-.gw-modal-hd { padding: 15px 20px; border-bottom: 1px solid #e2e7ef; font-weight: 600; font-size: 15px; }
-.gw-modal-body { padding: 18px 20px; }
-.gw-modal-ft { padding: 13px 20px; border-top: 1px solid #e2e7ef; display: flex; gap: 8px; justify-content: flex-end; }
-.gw-field { margin-bottom: 13px; }
-.gw-field label { display: block; font-size: 12px; font-weight: 600; color: #5b6b86; margin-bottom: 4px; }
+.gw-modal { background: #fff; border-radius: 11px; width: min(620px, 100%); max-height: 88vh; overflow-y: auto;
+  box-shadow: 0 18px 52px rgba(26,34,48,.28); }
+.gw-modal-hd { padding: 13px 16px; border-bottom: 1px solid var(--line); font: 600 15px var(--sans); }
+.gw-modal-body { padding: 16px; }
+.gw-modal-ft { padding: 11px 16px; border-top: 1px solid var(--line); background: var(--card-2);
+  border-radius: 0 0 11px 11px; display: flex; gap: 8px; justify-content: flex-end; }
+.gw-field { margin-bottom: 12px; }
+.gw-field label { display: block; font: 700 10.5px var(--sans); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--mut-2); margin-bottom: 4px; }
 .gw-field .gw-input, .gw-field textarea, .gw-field select { width: 100%; }
-.gw-field textarea { font-family: inherit; font-size: 13.5px; padding: 7px 11px; border: 1px solid #d3dae6; border-radius: 7px; resize: vertical; outline: none; }
-.gw-field .hint { font-size: 11.5px; color: #8a97ab; margin-top: 3px; }
+.gw-field textarea { font: 13px var(--sans); padding: 7px 10px; border: 1px solid var(--line-2);
+  border-radius: 7px; resize: vertical; outline: none; background: #fff; color: var(--ink); }
+.gw-field textarea:focus { border-color: var(--acc); box-shadow: 0 0 0 2px var(--acc-soft); }
+.gw-field .hint { font-size: 11.5px; color: var(--mut-2); margin-top: 3px; }
 .gw-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-/* ── notices ── */
-.gw-note { border-radius: 8px; padding: 10px 13px; font-size: 13px; margin-bottom: 14px; border: 1px solid; }
-.gw-note-info  { background: #eaf4fb; color: #10527f; border-color: #c4e0f5; }
-.gw-note-warn  { background: #fef6e7; color: #8a5100; border-color: #fbe3b3; }
-.gw-note-bad   { background: #fdeceb; color: #96271b; border-color: #f6c9c4; }
-.gw-note b { font-weight: 600; }
+/* ── avisos ─────────────────────────────────────────────────────────── */
+.gw-note { border-radius: 8px; padding: 9px 12px; font-size: 12.5px; margin-bottom: 13px; border: 1px solid; }
+.gw-note-info { background: var(--xl-info);  color: var(--xl-info-ink);  border-color: #bfdbfe; }
+.gw-note-warn { background: var(--xl-amber); color: var(--xl-amber-ink); border-color: var(--xl-amber-line); }
+.gw-note-bad  { background: var(--xl-bad);   color: var(--xl-bad-ink);   border-color: #fecaca; }
+.gw-note b { font-weight: 700; }
 
-/* ── toast ── */
-.gw-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(140%); background: #1a2230; color: #fff; padding: 11px 20px; border-radius: 9px; font-size: 13.5px; z-index: 90; transition: transform .18s; max-width: 70vw; }
-.gw-toast.show { transform: translateX(-50%) translateY(0); }
+/* ── toast ──────────────────────────────────────────────────────────── */
+.gw-toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(18px);
+  opacity: 0; background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 8px; font-size: 13px;
+  z-index: 70; transition: opacity .15s, transform .15s; pointer-events: none; max-width: 70vw; }
+.gw-toast.show { opacity: 1; transform: translateX(-50%); }
 .gw-toast.bad { background: #c0392b; }
 
-.gw-kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 13px; }
-.gw-kv dt { color: #8a97ab; }
-.gw-kv dd { margin: 0; font-weight: 500; }
+.gw-kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 12.5px; }
+.gw-kv dt { color: var(--mut-2); }
+.gw-kv dd { margin: 0; font-weight: 500; color: var(--ink-2); }
 
-.gw-spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid #d3dae6; border-top-color: #0aa5e6; border-radius: 50%; animation: gw-spin .7s linear infinite; }
+.gw-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line-2);
+  border-top-color: var(--acc); border-radius: 50%; animation: gw-spin .7s linear infinite; }
 @keyframes gw-spin { to { transform: rotate(360deg); } }
 
-/* ══ print: the pick sheet ══════════════════════════════════════════════
-   A warehouse document, not a screenshot of a web page. Everything that is
-   navigation disappears; what is left is the route, the stock and a place
-   to sign. */
+/* ══ impressao: a folha de picking ══════════════════════════════════════
+   Documento de armazem, nao print de pagina web. Tudo que e navegacao some;
+   o que sobra e a rota, o estoque e um lugar para assinar.
+
+   Duas coisas mudaram junto com a nova pele e precisam ser desfeitas aqui:
+   a grade passou a `border-collapse: separate` (linha dupla no papel) e
+   ganhou zebra (mancha cinza que gasta toner e nao carrega significado).
+   `!important` e proposital e restrito a este bloco: e a unica forma de um
+   override de impressao vencer um estado de :hover ou :nth-child.
+   ══════════════════════════════════════════════════════════════════════ */
 .gw-print-only { display: none; }
 @media print {
   @page { size: A4 landscape; margin: 11mm 10mm; }
-  body { background: #fff; font-size: 11pt; }
+  html, body { background: #fff; font-size: 11pt; overflow: visible !important; height: auto; }
   .gw-header, .gw-tabs, .gw-toolbar, .gw-drawer-back, .gw-modal-back,
-  .gw-toast, .gw-tiles, .no-print { display: none !important; }
-  .gw-drawer { position: static; width: auto; transform: none; box-shadow: none; background: #fff; overflow: visible; }
+  .gw-toast, .gw-tiles, .gw-agebar, .gw-key, .gw-note, .rl, .no-print { display: none !important; }
+  /* O rail lateral e fixo e empurra o body — no papel isso vira uma faixa
+     escura de 236mm de margem. */
+  html.rl-on body { padding-left: 0 !important; }
+  .gw-drawer { position: static; width: auto; transform: none; box-shadow: none; border: 0;
+    background: #fff; overflow: visible; }
   .gw-drawer-hd { display: none; }
   .gw-drawer-body, .gw-main { padding: 0; max-width: none; }
   .gw-print-only { display: block; }
-  .gw-table-wrap { border: none; border-radius: 0; overflow: visible; }
-  .gw-table { font-size: 10pt; }
-  .gw-table th { background: #eceff3 !important; color: #000 !important; border-bottom: 1.5pt solid #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .gw-table td { border-top: .5pt solid #b9c2ce; padding: 5pt 6pt; }
+  .gw-table-wrap { border: none; border-radius: 0; overflow: visible; box-shadow: none; }
+  .gw-table { font-size: 10pt; border-collapse: collapse !important; }
+  .gw-table th { background: #eceff3 !important; color: #000 !important; border-bottom: 1.5pt solid #000;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .gw-table td { border-top: .5pt solid #b9c2ce; border-bottom: 0; padding: 5pt 6pt; color: #000 !important; }
+  .gw-table tbody tr td, .gw-table tbody tr:hover td { background: #fff !important; }
   .gw-table tbody tr { page-break-inside: avoid; }
   thead { display: table-header-group; }
   .tag { border: .5pt solid #666 !important; background: #fff !important; color: #000 !important; }
-  .print-hd { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2pt solid #000; padding-bottom: 6pt; margin-bottom: 9pt; }
+  .age-alert, .age-warn, .age-unknown, .var-neg, .var-pos { color: #000 !important; }
+  .print-hd { display: flex; justify-content: space-between; align-items: flex-start;
+    border-bottom: 2pt solid #000; padding-bottom: 6pt; margin-bottom: 9pt; }
   .print-title { font-size: 17pt; font-weight: 700; }
   .print-meta { font-size: 9.5pt; text-align: right; line-height: 1.5; }
+  .print-note { margin-top: 8pt; font-size: 9.5pt; }
   .print-sign { margin-top: 16pt; display: flex; gap: 40pt; font-size: 10pt; page-break-inside: avoid; }
   .print-sign div { flex: 1; border-top: .8pt solid #000; padding-top: 4pt; }
   .use-first { font-weight: 700; letter-spacing: .04em; }

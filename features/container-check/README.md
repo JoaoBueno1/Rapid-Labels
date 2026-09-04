@@ -10,7 +10,7 @@ Spec completa: [PLAN.md](PLAN.md).
 
 | Path | Papel |
 |---|---|
-| `container-check.html` / `.js` / `.css` | Página (2 abas + modal de formulário) |
+| `container-check.html` / `.js` / `.css` | Página (3 abas: Records · Need Review · Quality) |
 | `container-check-engine.js` | Rotas Express (`/api/container-check/*`) |
 | `migrations/001_create_container_checks.sql` | `cin7_mirror.container_checks` + bucket de fotos |
 
@@ -26,17 +26,19 @@ de `cin7_mirror.products` (sugere, não bloqueia digitação manual).
 ## Fluxo / status
 
 ```
-New record ──> status: PENDING ──> aparece em "Need Review"
-                                        │
-                          revisão (🟢/🟠/🔴 + nota) define o status final
-                                        │
-                                        v
-        green / orange / red  ──> fica no histórico (aba Records)
+New record ──> pending ──> aparece em "Need Review"
+                                │
+                  revisor escreve a RESOLUÇÃO (obrigatória) e confirma
+                                │
+                                v
+                             green ──> fica no log (aba Records)
 ```
 - **pending** — recém-criado, aguardando revisão (fica em Need Review).
-- **green** — revisado, tudo OK.
-- **orange** — revisado, problema menor / em acompanhamento.
-- **red** — revisado, problema real (etiqueta/barcode errado/faltando).
+- **green** — revisado e tratado, com `reviewed_by/at` carimbados.
+
+`orange` e `red` foram **aposentados**: o CHECK do banco ainda os aceita para
+linhas legadas, mas nada os escreve. Todo registro acaba tratado, e
+pending → green é mais claro que um semáforo de três luzes.
 
 `updated_at` é bumpado pelo engine (sem trigger). `reviewed_by/at` são
 carimbados quando a revisão muda o status (≠ pending).
@@ -46,8 +48,8 @@ carimbados quando a revisão muda o status (≠ pending).
 Toda ação (criar / editar / revisar / apagar, + fotos +/−) grava 1 linha em
 `cin7_mirror.container_check_log` (sobrevive ao delete do registro). É
 **best-effort**: se a tabela não existir (migration 003 não rodada), o CRUD
-segue funcionando sem log. O histórico de cada registro aparece no modal de
-detalhe.
+segue funcionando sem log. O histórico de cada registro aparece no **painel
+lateral** de detalhe (clique na linha da grade).
 
 ## Fotos
 
@@ -58,8 +60,10 @@ Storage (resize no canvas → ~250KB). Não passam pelo Express (limite de
 ## Endpoints
 
 ```
-GET    /api/container-check/records?from&to&status&q&page&pageSize
+GET    /api/container-check/records?from&to&status&q&issues&sort&dir&page&pageSize
                                                        lista paginada + summary (sobre o filtro inteiro)
+                                                       issues=1 → só linhas com Wrong/Missing em ocl/icl/bar
+                                                       sort ∈ date|dc|code|po|qty|status|by · dir ∈ asc|desc
 GET    /api/container-check/review                     fila Need Review (status=pending)
 GET    /api/container-check/products?q=                autocomplete (cin7_mirror.products)
 GET    /api/container-check/records/:id/log            histórico do registro (auditoria)
@@ -68,8 +72,13 @@ PUT    /api/container-check/records/:id                edita / revisa (carimba r
 DELETE /api/container-check/records/:id                apaga (log sobrevive)
 ```
 
-`/records` devolve `{ items, summary, total, page, pageSize, pageCount }`.
+`/records` devolve `{ items, summary, total, page, pageSize, pageCount, sort, dir }`.
 Paginação default = 50/página.
+
+O `summary` é varrido sobre o filtro INTEIRO (não sobre a página) e alimenta
+os KPIs e a aba Quality: além de `total/ok/issues/issue_rate/by_status/by_label`,
+traz `skus`, `days`, `last_check`, `pending_oldest`, `pending_age_days`,
+`pending_over_7d`, `top_offenders[]` e `by_day[]` (últimos 45 dias com registro).
 
 Envelope `{ success, data?, error? }`. Writes exigem header `x-cc-user`
 (texto livre do `localStorage.containerCheckUser` — guard-rail, não auth).
@@ -91,6 +100,10 @@ Envelope `{ success, data?, error? }`. Writes exigem header `x-cc-user`
 ## Convenções
 
 - CSS escopado com prefixo `.cc-*`.
-- Mesmo design system do Container Builder (IBM Plex, paleta, pills).
+- **Design system do Stock Planning** (`/features/stock-planning/ui/planning.css`),
+  igual à Branch Replenishment: mesmo header, grade, painel lateral, modal e
+  toast. `container-check.css` só carrega o que é deste módulo.
+- Sem emoji: estado é etiqueta com contraste medido, e "tem foto" é a própria
+  miniatura na linha.
 - Registrado em `server.js` via
   `require('./features/container-check/container-check-engine')(app, supabaseBackend)`.

@@ -79,6 +79,21 @@ function dtfmt(d) {
   });
 }
 
+/** "3 min ago" / "5 h ago" / "2 days ago".
+    O painel de reconciliacao vinha imprimindo o interval CRU do Postgres —
+    "(00:01:19.348247 old)" — na frente do operador. */
+function sinceText(iso) {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const min = Math.round(ms / 60000);
+  if (min < 1)  return 'just now';
+  if (min < 90) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 36)   return `${h} h ago`;
+  return `${Math.round(h / 24)} days ago`;
+}
+
 function ageClass(days) {
   if (days == null) return 'age-unknown';
   const warn  = Number(state.settings.age_warn_days  || 60);
@@ -125,6 +140,26 @@ function toast(msg, bad) {
 }
 const fail = e => { console.error(e); toast(e.message || 'Something went wrong', true); };
 const empty = (n, msg) => `<tr><td colspan="${n}" class="gw-empty">${esc(msg)}</td></tr>`;
+
+/* Vazio e erro nao podem ser a mesma tela. Antes, um 500 deixava a tabela
+   dizendo "Loading..." para sempre e a unica pista era um toast que sumia em
+   6 segundos — num controle de estoque, "nenhuma linha" por causa de um 500
+   vira decisao de reposicao errada. `errRow` escreve a falha ONDE a lista
+   deveria estar, com a mensagem crua e um botao de tentar de novo. */
+const RETRY = {};
+function errRow(n, e, what, retryKey) {
+  if (retryKey) RETRY[retryKey] = true;
+  return `<tr><td colspan="${n}" class="gw-empty gw-err">
+    <b>Could not load ${esc(what)}</b>
+    <code>${esc(e && e.message ? e.message : String(e))}</code>
+    ${retryKey ? `<div><button class="gw-btn gw-btn-sm" type="button" onclick="retryLoad('${retryKey}')">Try again</button></div>` : ''}
+  </td></tr>`;
+}
+function retryLoad(key) {
+  ({ overview: loadOverview, restock: loadRestock, ovtr: loadOverviewTransfers,
+     inventory: loadInventory, transfers: loadTransfers, recon: loadRecon,
+     quality: loadQuality }[key] || (() => {}))();
+}
 
 // ─── modal ─────────────────────────────────────────────────────────────
 function modal(title, bodyHtml, buttons) {
@@ -224,7 +259,7 @@ function switchView(v) {
   state.view = v;
   document.querySelectorAll('.gw-tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
   document.querySelectorAll('.gw-view').forEach(s => {
-    s.style.display = s.id === `view-${v}` ? '' : 'none';
+    s.classList.toggle('active', s.id === `view-${v}`);
   });
   ({ overview: loadOverview, inventory: loadInventory, transfers: loadTransfers,
      recon: loadRecon, quality: loadQuality }[v] || (() => {}))();
@@ -244,6 +279,19 @@ function wireOverview() {
     document.querySelectorAll('.ov-cb').forEach(cb => { cb.checked = e.target.checked; toggleOv(cb); });
   };
   $('ovBuild').onclick = buildTransferFromRestock;
+
+  /* Delegado no container: o innerHTML dos tiles e refeito a cada load, e um
+     listener por tile morreria junto. */
+  $('tiles').addEventListener('click', e => {
+    const b = e.target.closest('[data-go]');
+    if (!b) return;
+    const f = b.dataset.filter;
+    if (f) {
+      state.inv.filter = f; state.inv.offset = 0;
+      const sel = $('invFilter'); if (sel) sel.value = f;
+    }
+    switchView(b.dataset.go);
+  });
 }
 
 async function loadOverview() {
@@ -251,50 +299,116 @@ async function loadOverview() {
   try {
     s = await api('/summary');
   } catch (e) {
-    if (e.status === 503) $('deployWarning').style.display = '';
+    if (e.status === 503) $('deployWarning').hidden = false;
+    $('tiles').innerHTML = `<div class="gw-tile bad"><span class="gw-tile-value">&mdash;</span>
+      <span class="gw-tile-label">Summary unavailable</span>
+      <span class="gw-tile-sub">${esc(e.message || 'request failed')}</span></div>`;
     return fail(e);
   }
-  $('deployWarning').style.display = 'none';
+  $('deployWarning').hidden = true;
   state.settings = s.settings || {};
 
   const synced = s.cin7_synced_at ? new Date(s.cin7_synced_at) : null;
   const ageMin = synced ? Math.round((Date.now() - synced) / 60000) : null;
   $('syncDot').className = 'gw-dot ' + (ageMin == null ? 'dead' : ageMin < 120 ? 'fresh' : ageMin < 480 ? 'stale' : 'dead');
   $('syncText').textContent = synced
-    ? `Cin7 stock synced ${ageMin < 90 ? `${ageMin} min` : `${Math.round(ageMin / 60)} h`} ago`
+    ? `Cin7 stock synced ${sinceText(s.cin7_synced_at)}`
     : 'Cin7 sync unknown';
 
-  // Slim KPIs — only what helps decide
-  const tiles = [
-    ['Products in Gateway', nfmt(s.products),      'holding stock',            ''],
-    ['Units',               nfmt(s.units),         'total in Gateway',         ''],
-    ['Open transfers',      nfmt(s.open_transfers),'in progress',              s.open_transfers > 0 ? 'warn' : ''],
-    ['Reserved',            nfmt(s.reserved),      'held by open transfers',   s.reserved > 0 ? 'warn' : ''],
-  ];
-  $('tiles').innerHTML = tiles.map(([l, v, sub, cls]) => `
-    <div class="gw-tile ${cls}">
-      <div class="gw-tile-label">${esc(l)}</div>
-      <div class="gw-tile-value">${v}</div>
-      <div class="gw-tile-sub">${esc(sub)}</div>
-    </div>`).join('');
+  /* KPIs.
+     Os quatro antigos eram Products / Units / Open transfers / Reserved — e
+     dois deles marcavam ZERO na maior parte dos dias, enquanto o /summary ja
+     devolvia, sem custo nenhum, o que decide alguma coisa: 160 SKUs parados
+     ha mais de 120 dias, 252 divergindo do Cin7 (24 mil unidades) e 277
+     pallets sem data de chegada. Nada disso aparecia na tela.
 
+     Cada tile que aponta para trabalho e um BOTAO e leva para a aba com o
+     filtro certo — o numero deixa de ser leitura e vira porta. */
+  const alert = Number(s.settings.age_alert_days || 120);
+  const warn  = Number(s.settings.age_warn_days  || 60);
+
+  const tile = (o) => {
+    const inner = `<span class="gw-tile-value">${o.v}${o.u ? `<u>${o.u}</u>` : ''}</span>` +
+      `<span class="gw-tile-label">${esc(o.label)}</span>` +
+      `<span class="gw-tile-sub">${o.sub}</span>`;
+    return o.go
+      ? `<button class="gw-tile ${o.cls || ''}" type="button" data-go="${o.go}"${o.filter ? ` data-filter="${o.filter}"` : ''}>${inner}</button>`
+      : `<div class="gw-tile ${o.cls || ''}">${inner}</div>`;
+  };
+
+  $('tiles').innerHTML = [
+    tile({ v: nfmt(s.units), label: 'Units in Gateway',
+           sub: `${nfmt(s.products)} products holding stock` }),
+    tile({ v: nfmt(s.aging_alert), label: 'Sitting over ' + nfmt(alert) + ' days',
+           cls: s.aging_alert ? 'bad' : 'good', go: 'inventory', filter: 'aging',
+           sub: s.aging_alert || s.aging_warn
+             ? `${nfmt(s.aging_warn)} more past ${nfmt(warn)} days`
+             : 'nothing has gone stale' }),
+    tile({ v: nfmt(s.discrepancies), label: 'Disagree with Cin7',
+           cls: s.discrepancies ? 'bad' : 'good', go: 'recon',
+           sub: s.discrepancies ? `${nfmt(s.discrepancy_units)} units apart` : 'every SKU agrees' }),
+    tile({ v: nfmt(s.undated_lots), label: 'Pallets with no date',
+           cls: s.undated_lots ? 'warn' : 'good', go: 'inventory', filter: 'undated',
+           sub: s.undated_lots ? 'FIFO cannot order what it cannot date' : 'every pallet is dated' }),
+    tile({ v: nfmt(s.open_transfers), label: 'Open transfers',
+           cls: s.open_transfers ? 'warn' : '', go: 'transfers',
+           sub: s.reserved ? `${nfmt(s.reserved)} units reserved` : 'nothing reserved' }),
+    tile({ v: nfmt(s.open_import_issues), label: 'Import issues',
+           cls: s.open_import_issues ? 'warn' : 'good', go: 'quality',
+           sub: s.open_import_issues ? 'rows the importer refused to guess about' : 'nothing outstanding' }),
+  ].join('');
+
+  renderAgeBar(s, warn, alert);
+
+  // Badge que nunca zera deixa de ser sinal e vira enfeite: some no zero.
   const badge = (id, n, cls) => {
     const b = $(id);
     if (!b) return;
-    b.textContent = nfmt(n);
-    b.className = `badge${n > 0 && cls ? ` ${cls}` : ''}`;
+    b.textContent = n > 0 ? nfmt(n) : '';
+    b.className = `badge${n > 0 ? ' on' : ''}${n > 0 && cls ? ` ${cls}` : ''}`;
   };
   badge('tabTransfers', s.open_transfers, '');
-  badge('tabRecon', s.discrepancies, 'warn');
+  badge('tabRecon', s.discrepancies, 'bad');
   badge('tabQuality', s.open_import_issues, 'warn');
 
   await Promise.all([loadRestock(), loadOverviewTransfers()]);
 }
 
+/* A unica grandeza desta tela que so a FORMA explica.
+   "64 em aviso, 160 em alerta" nao diz se isso e um canto do deposito ou a
+   metade dele; a barra diz, na hora, sem ler numero. Larguras vao em style
+   porque sao geometria de dado — o mesmo caminho que planning.js usa. */
+function renderAgeBar(s, warn, alert) {
+  const total = Number(s.products) || 0;
+  const bad   = Number(s.aging_alert) || 0;
+  const mid   = Number(s.aging_warn)  || 0;
+  const fresh = Math.max(0, total - bad - mid);
+  const sec = $('ageSec');
+  if (!total) { sec.hidden = true; return; }
+  sec.hidden = false;
+
+  const pct = n => (n / total * 100).toFixed(3);
+  const seg = (n, cls, title) => n ? `<i class="a-${cls}" style="width:${pct(n)}%" title="${esc(title)}"></i>` : '';
+  $('ageBar').innerHTML =
+      seg(fresh, 'fresh', `${nfmt(fresh)} under ${warn} days`)
+    + seg(mid,   'warn',  `${nfmt(mid)} between ${warn} and ${alert} days`)
+    + seg(bad,   'alert', `${nfmt(bad)} over ${alert} days`);
+
+  $('ageHint').textContent =
+    `${nfmt(total)} products holding stock · thresholds ${warn}d / ${alert}d, from Gateway settings`;
+  const share = n => total ? Math.round(n / total * 100) + '%' : '0%';
+  $('ageKey').innerHTML = `
+    <span><i class="a-fresh"></i>under ${warn}d <b>${nfmt(fresh)}</b> (${share(fresh)})</span>
+    <span><i class="a-warn"></i>${warn}&ndash;${alert}d <b>${nfmt(mid)}</b> (${share(mid)})</span>
+    <span><i class="a-alert"></i>over ${alert}d <b>${nfmt(bad)}</b> (${share(bad)})</span>
+    <span>counted per product, on its oldest pallet</span>`;
+}
+
 // ── Restock: what Main is low on and Gateway can supply ──
 async function loadRestock() {
   let d;
-  try { d = await api(`/recommendations?weeks=${state.ov.weeks}&limit=500`); } catch (e) { return fail(e); }
+  try { d = await api(`/recommendations?weeks=${state.ov.weeks}&limit=500`); }
+  catch (e) { $('ovRestock').innerHTML = errRow(10, e, 'the restock suggestions', 'restock'); return fail(e); }
   state.ov.rows = d.rows || [];
   state.ov.counts = d.counts || { lt2: 0, lt4: 0, lt6: 0 };
   state.ov.selected.clear();
@@ -387,7 +501,11 @@ async function loadOverviewTransfers() {
         <td class="r num">${nfmt(t.qty_moved)}</td>
         <td class="gw-sub">${esc(dtfmt(t.completed_at))}</td></tr>`).join('')
       : empty(4, 'No completed transfers yet');
-  } catch (e) { fail(e); }
+  } catch (e) {
+    $('ovOpenTr').innerHTML = errRow(6, e, 'the open transfers', 'ovtr');
+    $('ovHistTr').innerHTML = errRow(4, e, 'the recent history', 'ovtr');
+    fail(e);
+  }
 }
 
 // ═══════════ INVENTORY ═══════════
@@ -410,7 +528,8 @@ async function loadInventory() {
   const i = state.inv;
   const qs = new URLSearchParams({ q: i.q, filter: i.filter, sort: i.sort, limit: i.limit, offset: i.offset });
   let d;
-  try { d = await api(`/inventory?${qs}`); } catch (e) { return fail(e); }
+  try { d = await api(`/inventory?${qs}`); }
+  catch (e) { $('invBody').innerHTML = errRow(11, e, 'the inventory', 'inventory'); return fail(e); }
   i.total = d.total;
 
   $('invBody').innerHTML = d.rows.length ? d.rows.map(r => `
@@ -427,7 +546,7 @@ async function loadInventory() {
       <td class="r num">${nfmt(r.cin7_qty)}</td>
       <td class="r num">${diffCell(r.difference)}</td>
       <td class="gw-sub">${esc(r.shelves || '—')}</td>
-    </tr>`).join('') : empty(11, 'Nothing matches those filters');
+    </tr>`).join('') : empty(11, 'Nothing matches those filters — the search and the filter above are both applied');
 
   $('invCount').textContent = `${nfmt(d.total)} products`;
   $('invPage').textContent = d.total
@@ -456,18 +575,18 @@ async function showSku(sku) {
 
   $('drBody').innerHTML = `
     <div class="gw-tiles">
-      <div class="gw-tile"><div class="gw-tile-label">On hand</div>
-        <div class="gw-tile-value">${nfmt(b.local_qty)}</div>
-        <div class="gw-tile-sub">${nfmt(b.open_lots)} pallet(s)</div></div>
-      <div class="gw-tile"><div class="gw-tile-label">Available</div>
-        <div class="gw-tile-value">${nfmt(b.qty_available)}</div>
-        <div class="gw-tile-sub">${nfmt(b.qty_reserved || 0)} reserved</div></div>
-      <div class="gw-tile"><div class="gw-tile-label">Cin7</div>
-        <div class="gw-tile-value">${nfmt(d.cin7.on_hand)}</div>
-        <div class="gw-tile-sub">${d.cin7.synced_at ? esc(dtfmt(d.cin7.synced_at)) : 'not synced'}</div></div>
-      <div class="gw-tile ${diff ? 'warn' : 'good'}"><div class="gw-tile-label">Difference</div>
-        <div class="gw-tile-value">${diff > 0 ? '+' : ''}${nfmt(diff)}</div>
-        <div class="gw-tile-sub">${diff ? 'Cin7 minus ours' : 'agrees'}</div></div>
+      <div class="gw-tile"><span class="gw-tile-value">${nfmt(b.local_qty)}</span>
+        <span class="gw-tile-label">On hand</span>
+        <span class="gw-tile-sub">${nfmt(b.open_lots)} pallet(s)</span></div>
+      <div class="gw-tile"><span class="gw-tile-value">${nfmt(b.qty_available)}</span>
+        <span class="gw-tile-label">Available</span>
+        <span class="gw-tile-sub">${nfmt(b.qty_reserved || 0)} reserved</span></div>
+      <div class="gw-tile"><span class="gw-tile-value">${nfmt(d.cin7.on_hand)}</span>
+        <span class="gw-tile-label">Cin7</span>
+        <span class="gw-tile-sub">${d.cin7.synced_at ? esc(dtfmt(d.cin7.synced_at)) : 'not synced'}</span></div>
+      <div class="gw-tile ${diff ? 'bad' : 'good'}"><span class="gw-tile-value">${diff > 0 ? '+' : ''}${nfmt(diff)}</span>
+        <span class="gw-tile-label">Difference</span>
+        <span class="gw-tile-sub">${diff ? 'Cin7 minus ours' : 'agrees'}</span></div>
     </div>
 
     <div class="gw-sec">
@@ -628,7 +747,8 @@ async function loadTransfers() {
   else if (s.status !== 'all') qs.set('status', s.status);
 
   let d;
-  try { d = await api(`/transfers?${qs}`); } catch (e) { return fail(e); }
+  try { d = await api(`/transfers?${qs}`); }
+  catch (e) { $('trBody').innerHTML = errRow(10, e, 'the transfers', 'transfers'); return fail(e); }
   s.rows = d.rows;
 
   $('trBody').innerHTML = d.rows.length ? d.rows.map(t => `
@@ -647,7 +767,7 @@ async function loadTransfers() {
       <td class="r num">${nfmt(t.qty_allocated)}</td>
       <td class="r num">${Number(t.qty_moved) ? nfmt(t.qty_moved) : '—'}</td>
       <td class="gw-sub">${esc(dtfmt(t.created_at))}</td>
-    </tr>`).join('') : empty(10, 'No transfers');
+    </tr>`).join('') : empty(10, 'No transfers in this status');
   $('trCount').textContent = `${nfmt(d.total)} transfers`;
 }
 
@@ -731,7 +851,7 @@ async function showTransfer(id) {
             <td class="r num ${Number(l.qty_allocated) < Number(l.qty_requested) ? 'var-neg' : ''}">${nfmt(l.qty_allocated)}</td>
             <td class="r num">${l.qty_moved == null ? '—' : nfmt(l.qty_moved)}</td>
             <td>${as.filter(a => a.state !== 'released').map(a => `
-              <div style="margin:1px 0">
+              <div class="gw-alloc">
                 <span class="num">${nfmt(a.qty)}</span> from
                 <span class="mono">${esc(a.lot?.shelf_id || a.lot?.shelf_text || '?')}</span>
                 ${a.lot?.pallet_number ? `<span class="gw-sub">pallet ${esc(a.lot.pallet_number)}</span>` : ''}
@@ -740,7 +860,7 @@ async function showTransfer(id) {
                 ${editable ? `<button class="ui-act ui-act--danger no-print" onclick="removeAlloc(${a.id}, ${t.id})">remove</button>` : ''}
               </div>`).join('') || '<span class="gw-sub">allocation pending</span>'}
               ${editable && outbound && Number(l.qty_allocated) < Number(l.qty_requested)
-                ? `<div class="no-print" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+                ? `<div class="no-print gw-alloc-acts">
                      <button class="gw-btn gw-btn-primary gw-btn-sm" onclick="allocFifo(${l.id}, ${t.id})">Allocate FIFO (auto)</button>
                      <button class="gw-btn gw-btn-sm" onclick="overrideModal(${l.id}, '${esc(l.sku)}', ${t.id})">Pick shelf / split</button>
                    </div>` : ''}
@@ -788,7 +908,7 @@ function addLineModal(transferId, direction) {
         : 'Stock arriving into Gateway. It becomes a new shelf lot when you confirm the move.'}</div></div>
     <div class="gw-field"><label>Quantity</label>
       <input class="gw-input" id="alQty" type="number" min="0.001" step="any" /></div>
-    ${outbound ? `<div class="gw-field"><label style="display:flex;align-items:center;gap:8px;font-weight:500">
+    ${outbound ? `<div class="gw-field"><label class="gw-check">
       <input type="checkbox" id="alAuto" /> Allocate FIFO automatically now
       </label><div class="hint">Leave unticked to allocate shelf by shelf later.</div></div>` : ''}
     <div id="alFifo"></div>`,
@@ -817,7 +937,7 @@ function addLineModal(transferId, direction) {
       try {
         const q = await api(`/fifo/${encodeURIComponent(sku)}`);
         $('alFifo').innerHTML = q.length ? `
-          <div class="gw-sec-title" style="margin-bottom:5px">Stock available, oldest first</div>
+          <div class="gw-sec-title gw-mb5">Stock available, oldest first</div>
           <div class="gw-table-wrap"><table class="gw-table">
             <thead><tr><th class="c">#</th><th>Arrived</th><th>Shelf</th><th>Pallet</th><th class="r">Free</th></tr></thead>
             <tbody>${q.map(l => `<tr>
@@ -846,7 +966,7 @@ async function overrideModal(lineId, sku, transferId) {
     <div class="gw-field"><label>Shelf / pallet</label>
       <select class="gw-input" id="ovLot">${q.map(l => `
         <option value="${l.lot_id}" data-free="${l.qty_available}">
-          ${l.fifo_rank === 1 ? '★ FIFO · ' : ''}shelf ${l.shelf_id || l.shelf_text || '?'}${l.pallet_number ? ` · pallet ${l.pallet_number}` : ''}
+          ${l.fifo_rank === 1 ? '<span class="tag tag-cyan">FIFO</span> ' : ''}shelf ${l.shelf_id || l.shelf_text || '?'}${l.pallet_number ? ` · pallet ${l.pallet_number}` : ''}
           · ${l.received_on ? dfmt(l.received_on) : 'no date'} · ${nfmt(l.qty_available)} free
         </option>`).join('')}</select></div>
     <div class="gw-field"><label>Quantity from this shelf</label>
@@ -933,12 +1053,12 @@ function postModal(id, d) {
         <tr><td class="mono">${esc(r.lot?.sku || d.lines.find(l => l.id === r.line_id)?.sku || '')}</td>
           <td class="mono gw-sub">${esc(r.lot?.shelf_id || r.lot?.shelf_text || '—')}</td>
           <td class="r num">${nfmt(r.qty)}</td>
-          <td class="r"><input class="gw-input po-qty" data-id="${r.id}" type="number" step="any"
-              min="0" max="${r.qty}" value="${r.qty}" style="width:100px;text-align:right" /></td></tr>` : `
+          <td class="r"><input class="gw-input po-qty gw-qty" data-id="${r.id}" type="number" step="any"
+              min="0" max="${r.qty}" value="${r.qty}" /></td></tr>` : `
         <tr><td class="mono">${esc(r.sku)}</td><td class="gw-sub">new pallet</td>
           <td class="r num">${nfmt(r.qty_requested)}</td>
-          <td class="r"><input class="gw-input po-qty" data-line="${r.id}" type="number" step="any"
-              min="0" value="${r.qty_requested}" style="width:100px;text-align:right" /></td></tr>`).join('')}
+          <td class="r"><input class="gw-input po-qty gw-qty" data-line="${r.id}" type="number" step="any"
+              min="0" value="${r.qty_requested}" /></td></tr>`).join('')}
       </tbody></table></div>`,
   [
     { label: 'Cancel', onClick: closeModal },
@@ -1018,7 +1138,7 @@ function renderPicklist(id) {
     <div class="gw-toolbar no-print">
       <button class="gw-btn gw-btn-primary" onclick="window.print()">Print</button>
       <button class="gw-btn" onclick="showTransfer(${id})">Back to the transfer</button>
-      <span style="margin-left:auto;font-size:12px;color:#5b6b86">Sort:</span>
+      <span class="gw-gap"></span><span class="gw-toolbar-label">Sort:</span>
       ${sortBtn('route', 'Walk route')} ${sortBtn('shelf', 'Location')} ${sortBtn('sku', 'SKU')}
     </div>
 
@@ -1053,13 +1173,13 @@ function renderPicklist(id) {
           <td class="mono">${esc(r.sku)}</td>
           <td class="r num"><b>${nfmt(r.qty)}</b></td>
           <td>${esc(r.carton_pack || '')}</td>
-          <td class="c" style="min-width:56px">&nbsp;</td>
-          <td class="c" style="min-width:56px">&nbsp;</td>
+          <td class="c sign-box">&nbsp;</td>
+          <td class="c sign-box">&nbsp;</td>
         </tr>`).join('') : empty(9, 'Nothing allocated yet — allocate the lines first')}</tbody>
     </table></div>
 
     <div class="gw-print-only">
-      <div style="margin-top:8pt;font-size:9.5pt">*** Please fill everything and return to Joao ***</div>
+      <div class="print-note">*** Please fill everything and return to Joao ***</div>
       <div class="print-sign">
         <div>Picked by &nbsp; / &nbsp; date</div>
         <div>Driver &nbsp; / &nbsp; date</div>
@@ -1087,14 +1207,15 @@ async function loadRecon() {
   const qs = new URLSearchParams();
   if (state.recon.state) qs.set('state', state.recon.state);
   let d;
-  try { d = await api(`/reconciliation?${qs}`); } catch (e) { return fail(e); }
+  try { d = await api(`/reconciliation?${qs}`); }
+  catch (e) { $('reconBody').innerHTML = errRow(9, e, 'the differences', 'recon'); return fail(e); }
   state.recon.rows = d.rows;
 
   const f = d.cin7_freshness;
   $('reconNote').innerHTML = `Cin7 owns the per-SKU total. We own the shelf, the pallet and the
     arrival date, because Cin7 does not model any of them for Gateway. A difference is recorded
     and explained, never corrected by editing our history to agree.
-    ${f ? `<br /><b>Cin7 stock last synced:</b> ${esc(dtfmt(f.latest_sync))} (${esc(f.staleness || '')} old).` : ''}`;
+    ${f ? `<br /><b>Cin7 stock last synced:</b> ${esc(dtfmt(f.latest_sync))} &mdash; ${esc(sinceText(f.latest_sync) || 'age unknown')}.` : ''}`;
 
   $('reconBody').innerHTML = d.rows.length ? d.rows.map(r => `
     <tr>
@@ -1112,7 +1233,7 @@ async function loadRecon() {
       <td class="r">${r.issue_id
         ? `<button class="gw-btn gw-btn-sm" onclick="resolveModal(${r.issue_id}, '${esc(r.sku)}')">Explain</button>`
         : ''}</td>
-    </tr>`).join('') : empty(9, 'No differences');
+    </tr>`).join('') : empty(9, 'No differences — our ledger and Cin7 agree on every SKU here');
   $('reconCount').textContent = `${nfmt(d.total)} differences`;
 }
 
@@ -1159,7 +1280,8 @@ function wireQuality() {
 
 async function loadQuality() {
   let batches;
-  try { batches = await api('/imports'); } catch (e) { return fail(e); }
+  try { batches = await api('/imports'); }
+  catch (e) { $('qualBatches').innerHTML = errRow(9, e, 'the import history', 'quality'); return fail(e); }
   state.qual.batches = batches;
 
   $('qualBatches').innerHTML = batches.length ? batches.map(b => `
@@ -1178,7 +1300,8 @@ async function loadQuality() {
   const qs = new URLSearchParams({ resolved: 'false', limit: 300 });
   if (state.qual.severity) qs.set('severity', state.qual.severity);
   let d;
-  try { d = await api(`/imports/${latest.id}/issues?${qs}`); } catch (e) { return fail(e); }
+  try { d = await api(`/imports/${latest.id}/issues?${qs}`); }
+  catch (e) { $('qualIssues').innerHTML = errRow(6, e, 'the open issues', 'quality'); return fail(e); }
 
   $('qualIssues').innerHTML = d.rows.length ? d.rows.map(i => `
     <tr>

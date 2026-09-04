@@ -1,230 +1,194 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Container Check — Rapid Led</title>
-  <script>
-    // Self-heal stale cache: this app abandoned its service worker (every
-    // register() call is commented out repo-wide). If a legacy SW from an
-    // older version is still controlling this origin it serves stale pages —
-    // unregister it and drop its caches so we always load fresh from server.
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
-    }
-    if (window.caches && caches.keys) {
-      caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
-    }
-  </script>
-  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/styles.css" />
-  <link rel="stylesheet" href="container-check.css?v=20260717a" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/shared/rail.css?v=8">
-  <link rel="stylesheet" href="/shared/ui.css?v=4">
-  <script defer src="/shared/rail.js?v=9"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Container Check — Rapid LED</title>
+<script>
+  // Self-heal stale cache: this app abandoned its service worker (every
+  // register() call is commented out repo-wide). If a legacy SW from an
+  // older version is still controlling this origin it serves stale pages —
+  // unregister it and drop its caches so we always load fresh from server.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+  }
+  if (window.caches && caches.keys) {
+    caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
+  }
+</script>
+<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Reuse the Stock Planning design system verbatim so Container Check,
+     Stock Planning and Branch Replenishment read as one app. -->
+<link rel="stylesheet" href="/features/stock-planning/ui/planning.css?v=25">
+<link rel="stylesheet" href="/shared/rail.css?v=8">
+<link rel="stylesheet" href="/shared/ui.css?v=4">
+<link rel="stylesheet" href="container-check.css?v=20260904a">
+<script defer src="/shared/rail.js?v=9"></script>
 </head>
 <body>
 
-  <header class="site-header">
-    <div class="header-inner">
-      <div class="left">
-        <a class="back-link" href="/index.html">← Back</a>
-        <a class="brand" href="/index.html">Rapid LED WMS Lite</a>
-      </div>
-      <nav class="site-nav">
-        <a href="/index.html" class="nav-link">Home</a>
-      </nav>
+<header class="sp-header">
+  <div class="sp-header-inner">
+    <span class="sp-brand"><span class="sp-logo">C</span> Container Check</span>
+    <nav class="sp-tabs" id="tabs">
+      <button class="sp-tab is-on" data-view="records" type="button">Records</button>
+      <button class="sp-tab" data-view="review" type="button">Need Review <span class="sp-pip" id="pipReview"></span></button>
+      <button class="sp-tab" data-view="quality" type="button">Quality</button>
+    </nav>
+    <div class="sp-status" id="status">
+      <span class="sp-dot" id="statusDot"></span><span id="statusText">Loading&hellip;</span>
     </div>
-  </header>
-
-  <main class="main-container wide-container cc-shell">
-
-    <!-- ═══════════ Top bar ═══════════ -->
-    <div class="cc-topbar">
-      <div class="cc-topbar-left">
-        <h1 class="cc-page-title">📥 Container Check</h1>
-      </div>
-      <div class="cc-topbar-right">
-        <button class="cc-btn cc-btn-primary" id="ccBtnNew" type="button">＋ New record</button>
-      </div>
-    </div>
-
-    <div id="ccBanners"></div>
-
-    <!-- ═══════════ Tabs ═══════════ -->
-    <div class="cc-tabs">
-      <button class="cc-tab active" data-tab="records" type="button">Records</button>
-      <button class="cc-tab" data-tab="review" type="button">Need Review <span class="cc-tab-badge" id="ccReviewBadge" style="display:none">0</span></button>
-    </div>
-
-    <!-- ═══════════ TAB: Records ═══════════ -->
-    <section id="ccTabRecords" class="cc-tabpane">
-
-      <!-- Summary strip -->
-      <div class="cc-metrics" id="ccMetrics"></div>
-
-      <!-- Filters -->
-      <div class="cc-card cc-filters">
-        <div class="cc-filter">
-          <label>From</label>
-          <input type="date" id="ccFrom" />
-        </div>
-        <div class="cc-filter">
-          <label>To</label>
-          <input type="date" id="ccTo" />
-        </div>
-        <div class="cc-filter">
-          <label>Status</label>
-          <select id="ccStatusFilter">
-            <option value="">All</option>
-            <option value="pending">🟡 Pending</option>
-            <option value="green">🟢 Green</option>
-          </select>
-        </div>
-        <div class="cc-filter cc-filter-grow">
-          <label>Rapid Code</label>
-          <input type="text" id="ccSearch" placeholder="search SKU…" />
-        </div>
-        <button class="cc-mini-btn" id="ccBtnFilter" type="button">Filter</button>
-        <button class="cc-mini-btn" id="ccBtnClearFilter" type="button">Clear</button>
-      </div>
-
-      <!-- Table -->
-      <div class="cc-card" style="padding:0">
-        <div class="cc-table">
-          <div class="cc-thead">
-            <div>Date</div>
-            <div>5DC</div>
-            <div>Rapid Code</div>
-            <div>PO</div>
-            <div class="r">QTY</div>
-            <div class="c">OCL</div>
-            <div class="c">ICL</div>
-            <div class="c">Bar</div>
-            <div class="c">Photo</div>
-            <div class="c">Status</div>
-            <div>Recorded by</div>
-            <div>Reviewed by</div>
-            <div>Resolution</div>
-            <div>Note</div>
-          </div>
-          <div class="cc-tbody" id="ccTbody"></div>
-        </div>
-      </div>
-      <div class="cc-pager" id="ccPager"></div>
-    </section>
-
-    <!-- ═══════════ TAB: Need Review ═══════════ -->
-    <section id="ccTabReview" class="cc-tabpane" style="display:none">
-      <div id="ccReviewList"></div>
-    </section>
-
-  </main>
-
-  <!-- ═══════════ MODAL: form (new/edit record) ═══════════ -->
-  <div class="cc-modal" id="ccFormModal" style="display:none">
-    <div class="cc-modal-box cc-modal-wide">
-      <div class="cc-modal-head">
-        <h3 id="ccFormTitle">New record</h3>
-        <button class="cc-modal-close" id="ccFormClose" type="button">×</button>
-      </div>
-
-      <div class="cc-form-grid">
-        <div class="cc-field">
-          <label>Date *</label>
-          <input type="date" id="ccDate" />
-        </div>
-        <div class="cc-field cc-field-wide cc-field-ac">
-          <label>Rapid Code *</label>
-          <input type="text" id="ccRapidCode" autocomplete="off" />
-          <div class="cc-ac" id="ccAcList" style="display:none"></div>
-        </div>
-        <div class="cc-field">
-          <label>5DC</label>
-          <input type="text" id="ccFiveDc" inputmode="numeric" />
-        </div>
-        <div class="cc-field">
-          <label>QTY</label>
-          <input type="number" id="ccQty" inputmode="numeric" />
-        </div>
-        <div class="cc-field">
-          <label>PO</label>
-          <input type="text" id="ccPo" />
-        </div>
-        <div class="cc-field">
-          <label>Recorded by *</label>
-          <input type="text" id="ccRecordedBy" placeholder="Your name" autocomplete="off" />
-        </div>
-      </div>
-
-      <!-- Label selectors -->
-      <div class="cc-labels">
-        <div class="cc-label-row">
-          <span class="cc-label-name">OCL <small>Outer Carton</small></span>
-          <div class="cc-seg" data-field="ocl"></div>
-        </div>
-        <div class="cc-label-row">
-          <span class="cc-label-name">ICL <small>Inner Carton</small></span>
-          <div class="cc-seg" data-field="icl"></div>
-        </div>
-        <div class="cc-label-row">
-          <span class="cc-label-name">Bar <small>Barcode Unit</small></span>
-          <div class="cc-seg" data-field="bar"></div>
-        </div>
-      </div>
-
-      <!-- Photos -->
-      <div class="cc-field cc-field-full">
-        <label>Photos <small>(up to 4)</small></label>
-        <div class="cc-photos" id="ccPhotos">
-          <label class="cc-photo-add" id="ccPhotoAddLabel">
-            <span id="ccPhotoAddIcon">📷 +</span>
-            <input type="file" id="ccPhotoInput" accept="image/*" multiple hidden />
-          </label>
-        </div>
-      </div>
-
-      <!-- Notes -->
-      <div class="cc-field cc-field-full">
-        <label>Notes <small>(inventory)</small></label>
-        <textarea id="ccNotes" rows="2"></textarea>
-      </div>
-
-      <div class="cc-form-foot">
-        <span class="cc-status-hint">New → <b>Need Review</b> · suggestion: <span id="ccStatusSuggest" class="cc-pill cc-pill-pending">pending</span></span>
-        <div class="cc-modal-actions">
-          <button class="cc-btn cc-btn-secondary" id="ccFormCancel" type="button">Cancel</button>
-          <button class="cc-btn cc-btn-primary" id="ccFormSave" type="button">Save</button>
-        </div>
-      </div>
-    </div>
+    <button class="sp-btn is-primary" id="btnNew" type="button">New record</button>
   </div>
+</header>
 
-  <!-- ═══════════ MODAL: detalhe ═══════════ -->
-  <div class="cc-modal" id="ccDetailModal" style="display:none">
-    <div class="cc-modal-box cc-modal-wide">
-      <div class="cc-modal-head">
-        <h3 id="ccDetailTitle">Detail</h3>
-        <button class="cc-modal-close" id="ccDetailClose" type="button">×</button>
+<main class="sp-main">
+
+<!-- RECORDS — the log -->
+<section class="sp-view is-on" data-view="records">
+  <div class="sp-view-inner">
+
+    <div class="sp-bar">
+      <label class="cc-df">From <input type="date" id="fFrom"></label>
+      <label class="cc-df">To <input type="date" id="fTo"></label>
+      <select id="fStatus" title="Where the record is in the review flow">
+        <option value="">Any status</option>
+        <option value="pending">Awaiting review</option>
+        <option value="green">Reviewed</option>
+      </select>
+      <button class="sp-chip" id="fIssues" type="button" title="Only records where OCL, ICL or Bar came back Wrong or Missing">Issues only</button>
+      <input type="search" id="fSearch" placeholder="Rapid code&hellip;">
+      <button class="sp-btn" id="fApply" type="button">Filter</button>
+      <button class="sp-btn is-ghost" id="fClear" type="button">Clear</button>
+      <span class="sp-gap"></span>
+      <span class="sp-count" id="rowCount"></span>
+    </div>
+
+    <!-- The five questions this screen is for. Counted over the WHOLE filter,
+         not the page — a queue length that only counts the first 50 rows is
+         worse than no queue length at all. -->
+    <div class="sp-tiles cc-kpis" id="kpis"></div>
+
+    <div class="sp-scroll"><table class="sp-grid cc-grid" id="grid"></table></div>
+
+    <div class="cc-foot" id="foot"></div>
+  </div>
+</section>
+
+<!-- NEED REVIEW — the queue -->
+<section class="sp-view" data-view="review">
+  <div class="sp-view-inner">
+    <div class="sp-bar">
+      <span class="cc-bar-h">Waiting for a decision <small>&mdash; the photo is the evidence, so it leads the card</small></span>
+      <span class="sp-gap"></span>
+      <span class="sp-count" id="revCount"></span>
+    </div>
+    <div class="cc-pane"><div class="cc-revs" id="revList"></div></div>
+  </div>
+</section>
+
+<!-- QUALITY — where the fault is -->
+<section class="sp-view" data-view="quality">
+  <div class="sp-view-inner">
+    <div class="sp-bar">
+      <span class="cc-bar-h">Reads the same filter as Records <small>&mdash; change the dates there and this follows</small></span>
+      <span class="sp-gap"></span>
+      <span class="sp-count" id="qScope"></span>
+    </div>
+    <div class="cc-pane"><div class="cc-q" id="qBody"></div></div>
+  </div>
+</section>
+
+</main>
+
+<!-- detail panel (one record, with its full history) -->
+<aside class="sp-side" id="side">
+  <header><h3 id="sideTitle">Detail</h3><button class="sp-btn is-ghost" id="sideClose" type="button">&times;</button></header>
+  <div class="sp-side-body" id="sideBody"></div>
+</aside>
+
+<!-- record form -->
+<div class="sp-modal" id="mdForm">
+  <div class="sp-box is-wide">
+    <header><h3 id="fmTitle">New record</h3><button class="sp-btn is-ghost" data-close type="button">&times;</button></header>
+    <div class="sp-box-body">
+
+      <div class="cc-row4">
+        <label class="sp-field"><span>Date *</span><input type="date" id="fmDate"></label>
+        <label class="sp-field"><span>5DC</span><input type="text" id="fmDc" inputmode="numeric" autocomplete="off"></label>
+        <label class="sp-field"><span>Qty</span><input type="number" id="fmQty" inputmode="numeric"></label>
+        <label class="sp-field"><span>PO</span><input type="text" id="fmPo" autocomplete="off"></label>
       </div>
-      <div id="ccDetailBody"></div>
+
+      <div class="cc-row2b">
+        <label class="sp-field cc-acwrap">
+          <span>Rapid code *</span>
+          <input type="text" id="fmCode" autocomplete="off" placeholder="Type 2+ characters to search products">
+          <div class="cc-ac" id="fmAc"></div>
+        </label>
+        <label class="sp-field"><span>Recorded by *</span><input type="text" id="fmBy" placeholder="Your name" autocomplete="off"></label>
+      </div>
+
+      <h4 class="cc-sec">Labels on the goods</h4>
+      <div class="cc-lrow">
+        <span class="cc-lname">OCL <small>Outer carton label</small></span>
+        <div class="cc-seg" data-field="ocl"></div>
+      </div>
+      <div class="cc-lrow">
+        <span class="cc-lname">ICL <small>Inner carton label</small></span>
+        <div class="cc-seg" data-field="icl"></div>
+      </div>
+      <div class="cc-lrow">
+        <span class="cc-lname">Bar <small>Barcode on the unit</small></span>
+        <div class="cc-seg" data-field="bar"></div>
+      </div>
+
+      <h4 class="cc-sec">Photos &mdash; up to 4, resized in the browser before upload</h4>
+      <div class="cc-up" id="fmPhotos"></div>
+
+      <h4 class="cc-sec">What inventory saw</h4>
+      <label class="sp-field cc-notes"><textarea id="fmNotes" rows="2" placeholder="Free text — what was on the carton, what was missing, anything the photo does not show"></textarea></label>
+
     </div>
+    <footer>
+      <span class="cc-foot-hint">Saves as <span class="cc-lv cc-lv-Missing">awaiting review</span> &mdash; the reviewer closes it.</span>
+      <button class="sp-btn" data-close type="button">Cancel</button>
+      <button class="sp-btn is-primary" id="fmSave" type="button">Save</button>
+    </footer>
   </div>
+</div>
 
-  <!-- ═══════════ Lightbox (expand + download) ═══════════ -->
-  <div class="cc-lightbox" id="ccLightbox" style="display:none">
-    <div class="cc-lightbox-bar">
-      <button class="cc-lightbox-btn" id="ccLightboxDownload" type="button">⬇ Download</button>
-      <button class="cc-lightbox-btn" id="ccLightboxClose" type="button">✕ Close</button>
-    </div>
-    <img id="ccLightboxImg" src="" alt="" />
+<!-- confirm (replaces the native confirm(), which the design system bans) -->
+<div class="sp-modal" id="mdConfirm">
+  <div class="sp-box cc-box-sm">
+    <header><h3 id="cfTitle">Confirm</h3><button class="sp-btn is-ghost" data-close type="button">&times;</button></header>
+    <div class="sp-box-body"><p class="sp-hint" id="cfBody"></p></div>
+    <footer>
+      <button class="sp-btn" data-close type="button">Cancel</button>
+      <button class="sp-btn is-primary" id="cfOk" type="button">Confirm</button>
+    </footer>
   </div>
+</div>
 
-  <div id="ccToast"></div>
+<!-- photo lightbox -->
+<div class="cc-lb" id="lightbox">
+  <div class="cc-lb-bar">
+    <span class="cc-lb-cap" id="lbCap"></span>
+    <button class="cc-lb-btn" id="lbPrev" type="button">&#9664; Prev</button>
+    <button class="cc-lb-btn" id="lbNext" type="button">Next &#9654;</button>
+    <button class="cc-lb-btn" id="lbDl" type="button">Download</button>
+    <button class="cc-lb-btn" id="lbClose" type="button">Close</button>
+  </div>
+  <img id="lbImg" src="" alt="Container check photo">
+</div>
 
-  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-  <script src="/supabase-config.js"></script>
-  <script src="container-check.js?v=20260703a"></script>
+<div class="sp-toast" id="toast"></div>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="/supabase-config.js"></script>
+<script src="container-check.js?v=20260904a"></script>
 </body>
 </html>

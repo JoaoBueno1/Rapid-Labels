@@ -1,347 +1,335 @@
-/* ════════════════════════════════════════════════════════════════
-   Container Check — Module styles (cc-* prefix)
-   Restyled 2026-07-17 to match the Returns design system:
-   light surface, cyan accent, IBM Plex Sans (mono for codes/numbers),
-   soft radii, subtle borders. Class names & structure unchanged (JS-safe).
-   Tokens: bg #f4f6f9 · card #fff · ink #1a2230 · muted #5b6b86/#7a8aa2/#8a97ab
-           border #e2e7ef/#d3dae6 · accent #0aa5e6 (hover #0893cc)
-   ════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   Container Check — so o que e deste modulo.
 
-/* Page-scoped chrome: align the shared header + body bg with Returns,
-   only on pages that contain the Container Check shell. */
-body:has(.cc-shell) { background: #f4f6f9; }
-body:has(.cc-shell) .site-header { background: #fff; border-bottom: 1px solid #e2e7ef; box-shadow: none; }
-body:has(.cc-shell) .site-header .brand,
-body:has(.cc-shell) .site-header .nav-link { color: #1a2230; }
-body:has(.cc-shell) .site-header .back-link { color: #5b6b86; }
-body:has(.cc-shell) .site-header .back-link:hover,
-body:has(.cc-shell) .site-header .nav-link:hover { color: #0aa5e6; }
+   O shell (header, abas, barra), a grade, os tiles, o modal, o painel
+   lateral e o toast vem de /features/stock-planning/ui/planning.css —
+   exatamente como a Branch Replenishment faz. Os tres modulos passam a ler
+   como um app so, e um ajuste de token vale nos tres.
 
-.cc-shell {
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  background: #f4f6f9;
-  color: #1a2230;
-  font-size: 14px;
-  padding: 18px 22px 60px !important;
+   O que havia antes era uma segunda linguagem visual: header proprio, o
+   ciano #0aa5e6 cravado em ~40 lugares, capsulas arredondadas, e emoji
+   fazendo trabalho de dado — camera para dizer "tem foto", circulo amarelo
+   para dizer "esperando". Emoji nao tem contraste garantido, muda de
+   desenho por sistema e some no impresso; e "tem foto" e pergunta que so a
+   foto responde. Por isso a miniatura entrou na linha e o emoji saiu.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── layout das views ───────────────────────────────────────────────── */
+.sp-view-inner{flex:1;min-height:0;display:flex;flex-direction:column}
+.cc-pane{flex:1;min-height:0;overflow:auto;padding-bottom:18px}
+.sp-bar input[type=date]{padding:6px 10px;border:1px solid var(--line-2);border-radius:7px;
+  background:#fff;color:var(--ink);font-variant-numeric:tabular-nums}
+.cc-df{display:inline-flex;align-items:center;gap:6px;font:700 10px var(--sans);
+  text-transform:uppercase;letter-spacing:.05em;color:var(--mut-2);white-space:nowrap}
+.cc-df input{text-transform:none;letter-spacing:0}
+.cc-sep{width:1px;height:20px;background:var(--line-2);margin:0 3px}
+
+/* ── KPIs ───────────────────────────────────────────────────────────── */
+/* Cinco perguntas, nesta ordem: o que preciso fazer, ha quanto tempo esta
+   parado, quanto foi conferido, quanto deu problema, e onde o problema
+   esta. As duas primeiras sao fila; as tres ultimas sao qualidade. */
+.cc-kpis{grid-template-columns:repeat(auto-fit,minmax(166px,1fr));margin-bottom:12px}
+.cc-kpis .sp-tile{padding:11px 13px}
+.cc-kpis .sp-tile.warn b{color:var(--xl-amber-ink)}
+.cc-kpis .sp-tile.good b{color:var(--xl-good-ink)}
+.cc-kpis .sp-tile u{text-decoration:none;font:600 13px var(--sans);color:var(--mut-2);margin-left:3px}
+/* Tile que leva a algum lugar e botao de verdade — foco por teclado incluso. */
+.cc-kpis button.sp-tile{cursor:pointer;text-align:left;width:100%;font:inherit;display:block}
+.cc-kpis button.sp-tile:hover{border-color:var(--acc);box-shadow:0 3px 12px rgba(20,28,41,.10)}
+.cc-kpis button.sp-tile:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+
+/* ── grade de registros ─────────────────────────────────────────────── */
+.cc-grid{table-layout:fixed;width:100%;font-size:12.5px}
+.cc-grid th{position:sticky;top:0;z-index:3;height:30px;padding:0 9px;background:var(--head);
+  text-align:left;font:700 10px var(--sans);letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mut);white-space:nowrap;user-select:none;border-bottom:1px solid var(--line-3);
+  overflow:hidden;text-overflow:ellipsis}
+.cc-grid td{height:34px;padding:0 9px;border-bottom:1px solid var(--line);color:var(--ink-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-grid tbody tr{cursor:pointer}
+.cc-grid tbody tr:nth-child(even) td{background:var(--zebra)}
+.cc-grid tbody tr:hover td{background:color-mix(in srgb,var(--acc-soft) 55%,#fff)}
+.cc-grid th.c,.cc-grid td.c{text-align:center}
+.cc-grid th.n,.cc-grid td.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.cc-grid td.code{font:600 12px var(--mono);color:var(--ink)}
+.cc-grid td.mono{font-family:var(--mono);font-size:11.5px}
+.cc-grid td.mut{color:var(--mut-2)}
+.cc-grid td.void{color:var(--line-2)}
+.cc-grid th.srt{cursor:pointer}
+.cc-grid th.srt:hover{color:var(--ink)}
+.cc-grid th .ar{opacity:.28;font-size:9px;margin-left:3px}
+.cc-grid th.srt.on{color:var(--acc-d)}
+.cc-grid th.srt.on .ar{opacity:1}
+/* A faixa marca o que ESPERA ACAO — nao o que deu problema. Problema ja esta
+   dito, coluna por coluna, pelas etiquetas OCL/ICL/Bar; repetir num fundo
+   lavado so tiraria contraste delas. */
+.cc-grid tbody tr.is-pending td:first-child{box-shadow:inset 3px 0 0 var(--xl-amber-ink)}
+
+/* ── etiquetas de valor (OCL/ICL/Bar) ───────────────────────────────── */
+.cc-lv{display:inline-block;padding:1px 6px;border-radius:3px;white-space:nowrap;
+  font:700 10px/1.65 var(--sans);letter-spacing:.03em;text-transform:uppercase}
+.cc-lv-OK     {background:var(--xl-good); color:var(--xl-good-ink)}
+.cc-lv-Wrong  {background:var(--xl-bad);  color:var(--xl-bad-ink)}
+.cc-lv-Missing{background:var(--xl-amber);color:var(--xl-amber-ink)}
+.cc-lv-NA     {background:#e5ecf5;        color:var(--mut)}
+/* Nao conferido nao e "OK": fica vazio, e vazio e um traco, nao um branco. */
+.cc-lv-blank  {color:var(--line-2);font-weight:400;letter-spacing:0}
+
+/* ── miniaturas ─────────────────────────────────────────────────────── */
+.cc-thumbs{display:flex;gap:3px;align-items:center;justify-content:center}
+.cc-th{width:26px;height:26px;flex:none;display:block;border-radius:4px;object-fit:cover;
+  border:1px solid var(--line-2);background:var(--card-2);cursor:zoom-in;padding:0}
+.cc-th:hover{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
+.cc-more{font:600 10px var(--mono);color:var(--mut-3)}
+
+/* ── fila de revisao: o cartao ──────────────────────────────────────── */
+.cc-revs{display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));
+  gap:12px;align-content:start;padding-bottom:18px}
+.cc-rev{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line-2);
+  border-radius:9px;overflow:hidden;box-shadow:0 1px 2px rgba(20,28,41,.04)}
+.cc-rev.is-late{border-color:var(--xl-bad-ink)}
+.cc-rev-h{display:flex;align-items:center;gap:9px;padding:8px 13px;background:var(--card-2);
+  border-bottom:1px solid var(--line-2)}
+.cc-rev-h b{font:700 13px var(--mono);color:var(--ink)}
+.cc-rev-b{display:flex;gap:12px;padding:12px 13px;flex:1}
+.cc-rev-shots{flex:none;width:140px;display:flex;flex-direction:column;gap:5px}
+.cc-hero{width:140px;height:118px;display:block;border-radius:7px;object-fit:cover;padding:0;
+  border:1px solid var(--line-2);background:var(--card-2);cursor:zoom-in}
+.cc-hero:hover{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
+.cc-strip{display:flex;gap:4px}
+.cc-noshot{width:140px;height:118px;border:1px dashed var(--line-2);border-radius:7px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  background:var(--card-2);color:var(--mut-3);font:500 10.5px var(--sans);text-align:center}
+.cc-noshot svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round;opacity:.65}
+.cc-rev-facts{flex:1;min-width:0}
+.cc-fact{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:12.5px;color:var(--ink-2)}
+.cc-fact i{flex:none;min-width:72px;font-style:normal;color:var(--mut-3);
+  font:700 9.5px var(--sans);letter-spacing:.05em;text-transform:uppercase}
+.cc-fact b{color:var(--ink);font-weight:600}
+.cc-lrow-inline{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 0}
+/* .cc-pair, nao .cc-lb: o lightbox ja usava .cc-lb, e o display:none dele
+   (declarado mais abaixo) apagava estas etiquetas em silencio. */
+.cc-pair{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;background:#fff;
+  border:1px solid var(--line);border-radius:5px}
+.cc-pair i{font-style:normal;font:700 9px var(--sans);letter-spacing:.06em;
+  text-transform:uppercase;color:var(--mut-2)}
+.cc-rev-f{display:grid;grid-template-columns:168px 1fr auto;gap:9px;align-items:end;
+  padding:10px 13px;background:var(--card-2);border-top:1px solid var(--line-2)}
+.cc-rev-f label{display:block}
+.cc-rev-f span{display:block;font:700 9.5px var(--sans);letter-spacing:.05em;
+  text-transform:uppercase;color:var(--mut-2);margin-bottom:4px}
+.cc-rev-f span small{text-transform:none;letter-spacing:0;font-weight:400;color:var(--mut-3)}
+.cc-rev-f input,.cc-rev-f textarea{width:100%;padding:6px 9px;border:1px solid var(--line-2);
+  border-radius:7px;background:#fff;color:var(--ink);font:13px var(--sans)}
+.cc-rev-f textarea{resize:vertical;min-height:34px}
+.cc-rev-f input:focus,.cc-rev-f textarea:focus{outline:2px solid var(--acc);outline-offset:-1px;border-color:var(--acc)}
+
+/* ── nota citada (inventario / resolucao) ───────────────────────────── */
+.cc-note{margin-top:8px;padding:3px 0 3px 9px;border-left:2px solid var(--line-2);
+  font-size:12px;color:var(--mut);white-space:pre-wrap;word-break:break-word}
+.cc-note i{display:block;font-style:normal;margin-bottom:1px;color:var(--mut-3);
+  font:700 9px var(--sans);letter-spacing:.06em;text-transform:uppercase}
+.cc-note.is-res{border-left-color:var(--xl-good-ink)}
+
+/* ── formulario: seletor segmentado + upload ────────────────────────── */
+.cc-lrow{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+.cc-lrow:last-child{border-bottom:0}
+.cc-lname{flex:1;font:600 13px var(--sans);color:var(--ink)}
+.cc-lname small{display:block;font:400 11px var(--sans);color:var(--mut-2)}
+.cc-seg{display:inline-flex;border:1px solid var(--line-2);border-radius:7px;overflow:hidden}
+.cc-seg button{border:0;background:#fff;padding:6px 15px;cursor:pointer;
+  font:600 12px var(--sans);color:var(--mut)}
+.cc-seg button+button{border-left:1px solid var(--line-2)}
+.cc-seg button:hover{background:var(--card-2);color:var(--ink)}
+.cc-seg button.on-OK     {background:var(--xl-good); color:var(--xl-good-ink)}
+.cc-seg button.on-Wrong  {background:var(--xl-bad);  color:var(--xl-bad-ink)}
+.cc-seg button.on-Missing{background:var(--xl-amber);color:var(--xl-amber-ink)}
+.cc-seg button.on-NA     {background:#e5ecf5;        color:var(--mut)}
+
+.cc-up{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}
+.cc-up-item{position:relative;width:86px;height:86px;border-radius:7px;overflow:hidden;
+  border:1px solid var(--line-2);background:var(--card-2)}
+.cc-up-item img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.cc-up-item.busy{display:flex;align-items:center;justify-content:center}
+.cc-up-rm{position:absolute;top:3px;right:3px;width:20px;height:20px;border:0;border-radius:5px;
+  background:rgba(20,28,41,.72);color:#fff;font:700 13px/1 var(--sans);cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.cc-up-rm:hover{background:var(--xl-bad-ink)}
+.cc-up-add{width:86px;height:86px;border:1px dashed var(--line-3);border-radius:7px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  cursor:pointer;background:#fff;color:var(--mut-2);font:600 11px var(--sans);text-align:center}
+.cc-up-add:hover{border-color:var(--acc);color:var(--acc-d);background:var(--acc-soft)}
+.cc-up-add svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.cc-spin{width:18px;height:18px;border:2px solid var(--line-2);border-top-color:var(--acc);
+  border-radius:50%;animation:cc-spin .7s linear infinite}
+@keyframes cc-spin{to{transform:rotate(360deg)}}
+
+/* autocomplete do Rapid Code — ancorado no campo, nao flutuando na pagina */
+.cc-acwrap{position:relative}
+.cc-ac{position:absolute;left:0;right:0;top:100%;margin-top:3px;z-index:3200;display:none;
+  background:#fff;border:1px solid var(--line-3);border-radius:8px;max-height:252px;overflow:auto;
+  box-shadow:0 8px 26px rgba(20,28,41,.16)}
+.cc-ac.on{display:block}
+.cc-ac div{display:flex;gap:9px;align-items:baseline;padding:6px 10px;cursor:pointer;
+  border-bottom:1px solid var(--line)}
+.cc-ac div:last-child{border-bottom:0}
+.cc-ac div:hover,.cc-ac div.sel{background:var(--acc-soft)}
+.cc-ac .sku{font:600 12px var(--mono);color:var(--ink);white-space:nowrap}
+.cc-ac .dc{font:600 11px var(--mono);color:var(--acc-d);background:var(--acc-soft);
+  border-radius:3px;padding:0 4px;white-space:nowrap}
+.cc-ac .nm{flex:1;font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── lightbox ───────────────────────────────────────────────────────── */
+/* 65: acima do modal (60), que e de onde ele costuma ser aberto, e abaixo do
+   toast (70) — a mensagem de erro do download tem que aparecer sobre ele. */
+.cc-lb{position:fixed;inset:0;z-index:65;display:none;flex-direction:column;gap:12px;
+  align-items:center;justify-content:center;padding:24px;background:rgba(16,22,33,.9)}
+.cc-lb.is-on{display:flex}
+.cc-lb img{max-width:94vw;max-height:80vh;border-radius:8px;background:#fff;
+  box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.cc-lb-bar{display:flex;gap:8px;align-items:center}
+.cc-lb-btn{padding:6px 13px;border:1px solid rgba(255,255,255,.28);border-radius:7px;
+  background:rgba(255,255,255,.1);color:#fff;font:600 12.5px var(--sans);cursor:pointer}
+.cc-lb-btn:hover{background:rgba(255,255,255,.2)}
+.cc-lb-cap{color:#c8d2e0;font:11.5px var(--mono)}
+
+/* ── rodape + paginacao ─────────────────────────────────────────────── */
+.cc-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:none;
+  padding:8px 2px 10px;font-size:11.5px;color:var(--mut-3)}
+.cc-foot .k{width:11px;height:11px;border-radius:2px;display:inline-block;
+  vertical-align:-1px;margin-right:5px}
+.cc-pg{display:flex;align-items:center;gap:5px;margin-left:auto}
+.cc-pgbtn{padding:3px 9px;border:1px solid var(--line-2);border-radius:6px;background:#fff;
+  color:var(--ink-2);font:600 11.5px var(--sans);cursor:pointer}
+.cc-pgbtn:hover:not(:disabled){background:var(--card-2);border-color:var(--line-3)}
+.cc-pgbtn:disabled{opacity:.4;cursor:not-allowed}
+.cc-pos{padding:0 5px;font:600 11.5px var(--mono);color:var(--mut-2);white-space:nowrap}
+
+/* ── qualidade (aba de analise) ─────────────────────────────────────── */
+.cc-q{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:14px;align-items:start}
+.cc-q-wide{grid-column:1/-1}
+.cc-qrow{display:grid;grid-template-columns:126px 1fr 150px;gap:12px;align-items:center;
+  padding:9px 0;border-bottom:1px solid var(--line)}
+.cc-qrow:last-child{border-bottom:0}
+.cc-qname{font:600 12.5px var(--sans);color:var(--ink)}
+.cc-qname small{display:block;font:400 11px var(--sans);color:var(--mut-2)}
+.cc-qbar{display:flex;height:17px;border-radius:4px;overflow:hidden;
+  background:var(--card-2);border:1px solid var(--line)}
+.cc-qbar i{display:block;height:100%;min-width:0}
+.cc-qbar i.s-OK     {background:var(--xl-good)}
+.cc-qbar i.s-Wrong  {background:var(--xl-bad)}
+.cc-qbar i.s-Missing{background:var(--xl-amber)}
+.cc-qbar i.s-NA     {background:#e5ecf5}
+.cc-qbar i.s-blank  {background:repeating-linear-gradient(45deg,#fff,#fff 3px,var(--card-2) 3px,var(--card-2) 6px)}
+.cc-qnums{text-align:right;font:12px var(--mono);color:var(--mut-2);font-variant-numeric:tabular-nums}
+.cc-qnums b{color:var(--xl-bad-ink);font-weight:700}
+.cc-qnums em{font-style:normal;color:var(--xl-amber-ink);font-weight:700}
+
+.cc-key{display:flex;gap:13px;flex-wrap:wrap;padding:10px 0 0;font-size:11.5px;color:var(--mut-3)}
+.cc-key span{display:inline-flex;align-items:center;gap:5px}
+.cc-key i{width:11px;height:11px;border-radius:2px;display:inline-block;border:1px solid var(--line-2)}
+.cc-key i.s-OK{background:var(--xl-good)}
+.cc-key i.s-Wrong{background:var(--xl-bad)}
+.cc-key i.s-Missing{background:var(--xl-amber)}
+.cc-key i.s-NA{background:#e5ecf5}
+.cc-key i.s-blank{background:repeating-linear-gradient(45deg,#fff,#fff 3px,var(--card-2) 3px,var(--card-2) 6px)}
+.cc-key i.s-vol{background:var(--acc);opacity:.34}
+.cc-key i.s-bad{background:var(--xl-bad-ink)}
+
+/* Serie diaria: a coluna inteira e o volume conferido, a base vermelha e a
+   parte com problema. Duas grandezas, uma coluna — a taxa vira altura. */
+/* max-width importa: com 6 dias no filtro, flex:1 dava colunas de 230px e o
+   grafico virava uma parede. A barra tem largura de barra; o espaco que
+   sobra fica vazio a direita, que e o certo. */
+.cc-cols{display:flex;align-items:flex-end;justify-content:flex-start;gap:4px;height:130px;padding:16px 0 0}
+.cc-col{flex:1 1 0;min-width:6px;max-width:52px;display:flex;flex-direction:column;justify-content:flex-end;
+  align-items:center;gap:3px;position:relative}
+.cc-col .st{width:100%;min-height:2px;display:flex;flex-direction:column;justify-content:flex-end;
+  border-radius:3px 3px 0 0;overflow:hidden}
+.cc-col .ok {background:var(--acc);opacity:.34}
+.cc-col .bad{background:var(--xl-bad-ink)}
+.cc-col:hover .ok{opacity:.62}
+.cc-col .l{height:24px;margin-top:2px;font:9.5px var(--mono);color:var(--mut-3);white-space:nowrap;
+  transform:rotate(-52deg);transform-origin:top left}
+.cc-col .t{position:absolute;bottom:100%;margin-bottom:3px;font:600 10px var(--mono);
+  color:var(--ink);opacity:0;white-space:nowrap}
+.cc-col:hover .t{opacity:1}
+
+/* ── painel lateral: fotos + historico ──────────────────────────────── */
+.cc-side-shots{display:flex;gap:6px;flex-wrap:wrap}
+.cc-side-shot{width:82px;height:82px;display:block;padding:0;border-radius:7px;object-fit:cover;
+  border:1px solid var(--line-2);background:var(--card-2);cursor:zoom-in}
+.cc-side-shot:hover{border-color:var(--acc)}
+.cc-hist-row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:6px 0;
+  border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-2)}
+.cc-hist-row:last-child{border-bottom:0}
+.cc-hist-d{color:var(--mut-2);font-size:11.5px}
+.cc-hist-m{margin-left:auto;font:11px var(--mono);color:var(--mut-3);white-space:nowrap}
+.cc-hist-empty{padding:11px 0;font-size:12px;color:var(--mut-3)}
+
+/* ── os quatro estados: carregando · vazio · erro · com dado ────────── */
+/* Vazio e erro NAO podem ser a mesma tela. "Nenhum registro" quando a causa
+   foi um 500 faz alguem concluir que o conteiner chegou sem problema. */
+.cc-state{padding:40px 22px;text-align:center;color:var(--mut-3);font-size:12.5px}
+.cc-state b{display:block;margin-bottom:4px;font-size:13.5px;color:var(--ink-2);font-weight:600}
+.cc-state .sp-btn{margin-top:12px}
+.cc-state.err{border:1px solid var(--xl-bad-ink);border-radius:8px;
+  background:color-mix(in srgb,var(--xl-bad) 30%,#fff)}
+.cc-state.err b{color:var(--xl-bad-ink)}
+.cc-state.err code{font:11.5px var(--mono);color:var(--xl-bad-ink);word-break:break-word}
+
+@media (max-width:900px){
+  .cc-rev-f{grid-template-columns:1fr}
+  .cc-qrow{grid-template-columns:1fr;gap:5px}
+  .cc-qnums{text-align:left}
 }
-.cc-shell .mono,
-.cc-shell input[type="number"],
-.cc-shell .cc-thead,
-.cc-shell .cc-metric-label,
-.cc-shell .cc-metric-value .num,
-.cc-shell .cc-user-tag,
-.cc-shell .cc-row-code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
 
-/* ─── Top bar ─── */
-.cc-topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap;
-  border-bottom: 2px solid #e2e7ef; padding-bottom: 14px; margin-bottom: 18px;
-}
-.cc-topbar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.cc-page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
-.cc-user-tag {
-  font-size: 11px; color: #8a97ab; padding: 3px 9px; background: #eef1f6;
-  border-radius: 20px; cursor: pointer;
-}
-.cc-topbar-right { display: flex; gap: 8px; flex-wrap: wrap; }
-
-/* ─── Buttons ─── */
-.cc-btn {
-  font-family: inherit;
-  font-size: 13px; font-weight: 500; letter-spacing: 0;
-  padding: 8px 15px; border: 1px solid #d3dae6; cursor: pointer;
-  border-radius: 7px; transition: all .12s; background: #fff; color: #1a2230;
-}
-.cc-btn:hover { border-color: #0aa5e6; background: #fff; color: #1a2230; }
-.cc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.cc-btn-primary { background: #0aa5e6; color: #fff; border-color: #0aa5e6; }
-.cc-btn-primary:hover { background: #0893cc; border-color: #0893cc; color: #fff; }
-.cc-btn-secondary { background: transparent; }
-.cc-mini-btn {
-  font-family: inherit;
-  font-size: 12px; font-weight: 500; letter-spacing: 0;
-  padding: 6px 12px; border: 1px solid #d3dae6; background: #fff;
-  color: #1a2230; cursor: pointer; border-radius: 7px; height: 32px;
-}
-.cc-mini-btn:hover { border-color: #0aa5e6; }
-.cc-mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* ─── Banners / toast ─── */
-#ccBanners { margin-bottom: 12px; }
-.cc-banner { border: 1px solid #ffe0a6; background: #fff7e8; color: #b46a00; padding: 9px 14px; font-size: 13px; margin-bottom: 8px; border-radius: 8px; }
-.cc-banner-error { border-color: #f6c9c4; background: #fdecec; color: #c0392b; }
-.cc-toast {
-  position: fixed; bottom: 22px; right: 22px; z-index: 2000;
-  background: #1a2230; color: #fff; padding: 10px 16px; font-size: 13px;
-  max-width: 360px; border-radius: 8px; box-shadow: 0 6px 20px rgba(20,28,42,.25);
-}
-.cc-toast.err { background: #c0392b; }
-.cc-toast.ok  { background: #1b8a4b; }
-
-/* ─── Tabs (underline style, like Returns) ─── */
-.cc-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e2e7ef; margin-bottom: 18px; }
-.cc-tab {
-  font-family: inherit; font-size: 14px; font-weight: 500;
-  padding: 10px 18px; border: none; background: none;
-  cursor: pointer; color: #6b7a92; text-transform: none; letter-spacing: 0;
-  border-bottom: 2px solid transparent; margin-bottom: -2px;
-  display: flex; align-items: center; gap: 7px;
-}
-.cc-tab:hover { color: #1a2230; }
-.cc-tab.active { border-color: transparent; background: none; color: #0aa5e6; border-bottom-color: #0aa5e6; }
-.cc-tab-badge {
-  font-size: 10px; background: #c0392b; color: #fff; border-radius: 999px;
-  padding: 1px 7px; min-width: 16px; text-align: center; font-weight: 600;
+/* ── peças do formulário e do cabeçalho de barra ────────────────────── */
+.cc-bar-h{font:600 12.5px var(--sans);color:var(--ink-2)}
+.cc-bar-h small{font-weight:400;color:var(--mut-2)}
+.cc-sec{margin:17px 0 3px;font:700 10.5px var(--sans);letter-spacing:.06em;
+  text-transform:uppercase;color:var(--mut-2)}
+.cc-sec:first-child{margin-top:0}
+.cc-row4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.cc-row2b{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+.cc-box-sm{width:min(470px,96vw)}
+/* Nota de inventário é prosa, não número: mono de 118px de altura era o
+   formato do textarea de JSON que este modal herdou do Stock Planning. */
+.cc-notes textarea{min-height:62px;font:13px var(--sans)}
+.cc-foot-hint{display:flex;align-items:center;gap:8px;margin-right:auto;
+  font-size:12px;color:var(--mut-2)}
+@media (max-width:820px){
+  .cc-row4{grid-template-columns:1fr 1fr}
+  .cc-row2b{grid-template-columns:1fr}
 }
 
-/* ─── Card ─── */
-.cc-card { background: #fff; border: 1px solid #e2e7ef; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+/* ── larguras da grade ──────────────────────────────────────────────── */
+/* Em CSS e nao em <col width>: o atributo e presentacional e style= inline e
+   proibido. table-layout:fixed torna estas larguras a lei — a coluna nao
+   muda de tamanho quando muda a pagina, que era o que fazia a grade tremer.
+   Ordem: Date · 5DC · Rapid code · PO · Qty · OCL · ICL · Bar · Photos ·
+   Status · Recorded by · Reviewed by · Notes (o resto). */
+.cc-grid col:nth-child(1) {width:88px}
+.cc-grid col:nth-child(2) {width:64px}
+.cc-grid col:nth-child(3) {width:152px}
+.cc-grid col:nth-child(4) {width:92px}
+.cc-grid col:nth-child(5) {width:58px}
+.cc-grid col:nth-child(6) {width:86px}
+.cc-grid col:nth-child(7) {width:86px}
+.cc-grid col:nth-child(8) {width:86px}
+.cc-grid col:nth-child(9) {width:98px}
+.cc-grid col:nth-child(10){width:104px}
+.cc-grid col:nth-child(11){width:112px}
+.cc-grid col:nth-child(12){width:112px}
 
-/* ─── Metrics strip ─── */
-.cc-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
-.cc-metric { border: 1px solid #e2e7ef; background: #fff; border-radius: 10px; padding: 12px 14px; }
-.cc-metric.alert { border-color: #f0b6b0; background: #fdf2f1; }
-.cc-metric-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #7a8aa2; font-weight: 600; }
-.cc-metric-value { display: flex; align-items: baseline; gap: 5px; margin-top: 4px; }
-.cc-metric-value .num { font-size: 24px; font-weight: 600; line-height: 1; color: #1a2230; }
-.cc-metric.alert .num { color: #c0392b; }
-.cc-metric-value .unit { font-size: 11px; color: #9aa6ba; }
-.cc-metric-pills { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
-.cc-metric-pills span { font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: #5b6b86; }
-
-/* ─── Filters ─── */
-.cc-filters { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-.cc-filter { display: flex; flex-direction: column; gap: 5px; }
-.cc-filter-grow { flex: 1; min-width: 140px; }
-.cc-filter label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #7a8aa2; font-weight: 600; }
-.cc-filter input, .cc-filter select {
-  font-family: inherit; font-size: 13px; padding: 8px 11px; height: 34px;
-  border: 1px solid #d3dae6; background: #fff; outline: none; border-radius: 7px; color: #1a2230;
-}
-.cc-filter input:focus, .cc-filter select:focus { border-color: #0aa5e6; box-shadow: 0 0 0 3px rgba(10,165,230,.14); }
-
-/* ─── Table ─── */
-/* Date · 5DC · Rapid Code · PO · QTY · OCL · ICL · Bar · Photo · Status · Recorded by · Reviewed by · Resolution · Note */
-.cc-table { background: #fff; overflow-x: auto; border-radius: 10px; }
-.cc-thead, .cc-row {
-  display: grid;
-  grid-template-columns: 72px 58px 1.2fr 54px 44px 42px 42px 42px 38px 74px 0.85fr 0.85fr 1fr 1fr;
-  gap: 6px; align-items: center;
-  min-width: 1040px;
-}
-.cc-thead {
-  background: #f7f9fc; color: #7a8aa2; padding: 10px 12px;
-  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
-  border-bottom: 1px solid #e2e7ef;
-}
-.cc-thead .r, .cc-row .r { text-align: right; }
-.cc-thead .c, .cc-row .c { text-align: center; }
-.cc-tbody { max-height: 62vh; overflow-y: auto; }
-.cc-row {
-  padding: 9px 12px; border-top: 1px solid #eef1f6; font-size: 13px; cursor: pointer;
-}
-.cc-row:hover { background: #f9fbfd; }
-.cc-row-code { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cc-row-date { font-size: 12px; color: #5b6b86; }
-.cc-row-5dc, .cc-row-po, .cc-row-by { font-size: 12px; color: #5b6b86; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cc-row-note, .cc-row-resolution { font-size: 12px; color: #7a8aa2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cc-row-del { background: transparent; border: none; cursor: pointer; opacity: 0.3; font-size: 15px; color: #c0392b; padding: 0; }
-.cc-row-del:hover { opacity: 1; }
-.cc-empty { padding: 34px; text-align: center; color: #9aa6ba; font-size: 13px; }
-.cc-cam { font-size: 13px; }
-
-/* ─── Label value chips (in table) ─── */
-.cc-lv { font-size: 10px; font-weight: 600; letter-spacing: 0.02em; padding: 2px 6px; border-radius: 5px; }
-.cc-lv-OK      { background: #e5f7ec; color: #1b8a4b; }
-.cc-lv-Wrong   { background: #fdecec; color: #c0392b; }
-.cc-lv-Missing { background: #ffedd5; color: #9a3412; }
-.cc-lv-NA      { background: #eef1f6; color: #7a8aa2; }
-.cc-lv-blank   { color: #cbd5e1; }
-
-/* ─── Status pills ─── */
-.cc-pill { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
-.cc-pill-green   { background: #e5f7ec; color: #1b8a4b; }
-.cc-pill-red     { background: #fdecec; color: #c0392b; }
-.cc-pill-orange  { background: #ffedd5; color: #9a3412; }
-.cc-pill-pending { background: #fff4e0; color: #b46a00; }   /* amber — awaiting review */
-
-/* ─── Modal ─── */
-.cc-modal { position: fixed; inset: 0; background: rgba(20,28,42,.5); display: flex; align-items: flex-start; justify-content: center; z-index: 1000; padding: 30px 16px; overflow: auto; }
-.cc-modal-box { background: #fff; border: none; border-radius: 12px; padding: 20px 22px; max-width: 560px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(20,28,42,.3); }
-.cc-modal-wide { max-width: 720px; }
-.cc-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #eef1f6; }
-.cc-modal-box h3 { font-size: 16px; font-weight: 600; margin: 0; }
-.cc-modal-close { background: transparent; border: none; font-size: 24px; cursor: pointer; line-height: 1; color: #9aa6ba; }
-.cc-modal-close:hover { color: #1a2230; }
-.cc-modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
-
-/* ─── Form ─── */
-.cc-form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-.cc-field { display: flex; flex-direction: column; gap: 5px; }
-.cc-field-wide { grid-column: span 2; }
-.cc-field-full { grid-column: 1 / -1; margin-bottom: 16px; }
-.cc-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #7a8aa2; font-weight: 600; }
-.cc-field label small { text-transform: none; letter-spacing: 0; color: #9aa6ba; }
-.cc-field input, .cc-field textarea {
-  font-family: inherit; font-size: 13px; padding: 8px 11px;
-  border: 1px solid #d3dae6; background: #fff; outline: none; border-radius: 7px; color: #1a2230; width: 100%;
-}
-.cc-field input:focus, .cc-field textarea:focus { border-color: #0aa5e6; box-shadow: 0 0 0 3px rgba(10,165,230,.14); }
-.cc-field textarea { resize: vertical; }
-
-/* ─── Segmented label selector ─── */
-.cc-labels { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
-.cc-label-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.cc-label-name { font-size: 13px; font-weight: 600; min-width: 130px; }
-.cc-label-name small { display: block; font-size: 11px; color: #8a97ab; font-weight: 400; }
-.cc-seg { display: flex; gap: 0; flex: 1; min-width: 220px; }
-.cc-seg-btn {
-  flex: 1; font-family: inherit; font-size: 12px; font-weight: 500; padding: 8px 4px;
-  border: 1px solid #d3dae6; border-left-width: 0; background: #fff; cursor: pointer; color: #5b6b86;
-}
-.cc-seg-btn:first-child { border-left-width: 1px; border-radius: 7px 0 0 7px; }
-.cc-seg-btn:last-child { border-radius: 0 7px 7px 0; }
-.cc-seg-btn:hover { color: #1a2230; }
-.cc-seg-btn.sel-OK      { background: #1b8a4b; color: #fff; border-color: #1b8a4b; }
-.cc-seg-btn.sel-Wrong   { background: #c0392b; color: #fff; border-color: #c0392b; }
-.cc-seg-btn.sel-Missing { background: #d97706; color: #fff; border-color: #d97706; }
-.cc-seg-btn.sel-NA      { background: #7a8aa2; color: #fff; border-color: #7a8aa2; }
-
-/* ─── Photos ─── */
-.cc-photos { display: flex; gap: 8px; flex-wrap: wrap; }
-.cc-photo-add, .cc-photo-thumb {
-  width: 76px; height: 76px; border: 1px dashed #c3ccda; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center; cursor: pointer;
-  background: #f7f9fc; position: relative; overflow: hidden; flex-shrink: 0;
-}
-.cc-photo-add { font-family: inherit; font-size: 13px; color: #8a97ab; }
-.cc-photo-add:hover { border-color: #0aa5e6; color: #0aa5e6; }
-.cc-photo-thumb { border-style: solid; border-color: #e2e7ef; cursor: default; }
-.cc-photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.cc-photo-thumb.uploading { opacity: 0.55; }
-.cc-photo-spin { font-size: 10px; color: #5b6b86; }
-.cc-photo-rm {
-  position: absolute; top: 3px; right: 3px; background: rgba(20,28,42,.72); color: #fff;
-  border: none; width: 18px; height: 18px; line-height: 16px; font-size: 12px;
-  cursor: pointer; border-radius: 50%; padding: 0;
-}
-
-/* ─── Form footer ─── */
-.cc-form-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid #eef1f6; padding-top: 14px; }
-.cc-status-hint { font-size: 12px; color: #7a8aa2; }
-
-/* ─── Detail modal ─── */
-.cc-detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 24px; margin-bottom: 16px; font-size: 13px; }
-.cc-detail-grid .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #7a8aa2; font-weight: 600; }
-.cc-detail-grid .v { font-weight: 600; }
-.cc-detail-photos { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
-.cc-detail-photos a { display: block; width: 120px; height: 120px; border: 1px solid #e2e7ef; border-radius: 8px; overflow: hidden; }
-.cc-detail-photos img { width: 100%; height: 100%; object-fit: cover; }
-.cc-detail-note { background: #f7f9fc; border: 1px solid #e2e7ef; border-radius: 8px; padding: 9px 11px; font-size: 13px; margin-bottom: 8px; }
-.cc-detail-note .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #7a8aa2; font-weight: 600; display: block; margin-bottom: 3px; }
-
-/* ─── Review cards ─── */
-.cc-review-card { background: #fff; border: 1px solid #e2e7ef; border-left: 4px solid #d97706; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
-/* product data as labelled lines, one per row (Date/5DC/Product/QTY/PO/Recorded by) */
-.cc-review-info { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 14px; }
-.cc-ri-row { display: flex; align-items: baseline; gap: 8px; }
-.cc-ri-k { flex: 0 0 96px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #7a8aa2; font-weight: 600; }
-.cc-ri-row b { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; }
-.cc-ri-sep { color: #cbd5e1; }
-.cc-review-labels { display: flex; gap: 14px; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
-.cc-review-actions { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px; }
-.cc-rv-field { display: flex; flex-direction: column; gap: 4px; flex: 0 0 170px; }
-.cc-rv-field-grow { flex: 1 1 240px; }
-.cc-rv-label { font-size: 11px; font-weight: 600; color: #5b6b86; }
-.cc-rv-label small { font-weight: 400; color: #9aa6ba; }
-.cc-rv-field input, .cc-rv-field textarea { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid #d3dae6; border-radius: 7px; outline: none; color: #1a2230; }
-.cc-rv-field textarea { resize: vertical; }
-.cc-rv-field input:focus, .cc-rv-field textarea:focus { border-color: #0aa5e6; box-shadow: 0 0 0 3px rgba(10,165,230,.14); }
-.cc-rv-confirm { font-size: 13px; font-weight: 500; padding: 8px 16px; border: 1px solid #1b8a4b; background: #1b8a4b; color: #fff; cursor: pointer; border-radius: 7px; white-space: nowrap; }
-.cc-rv-confirm:hover { background: #167a41; border-color: #167a41; }
-
-/* ─── Autocomplete dropdown ─── */
-.cc-field-ac { position: relative; }
-.cc-ac {
-  position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
-  background: #fff; border: 1px solid #d3dae6; border-radius: 8px; margin-top: 4px;
-  max-height: 260px; overflow-y: auto; box-shadow: 0 10px 30px rgba(20,28,42,.15);
-}
-.cc-ac-item {
-  display: flex; align-items: baseline; gap: 8px; padding: 8px 11px;
-  border-top: 1px solid #f2f4f8; cursor: pointer;
-}
-.cc-ac-item:first-child { border-top: none; }
-.cc-ac-item:hover { background: #eaf6fd; }
-.cc-ac-sku  { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; }
-.cc-ac-name { font-size: 11px; color: #8a97ab; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ─── Pagination ─── */
-.cc-pager { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-.cc-pager-info { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #8a97ab; margin-right: auto; }
-.cc-pager-pos  { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5b6b86; padding: 0 4px; }
-
-/* ─── Clickable photos (detail / review) ─── */
-.cc-detail-photos .cc-ph {
-  width: 120px; height: 120px; border: 1px solid #e2e7ef; border-radius: 8px; overflow: hidden;
-  padding: 0; cursor: zoom-in; background: #f7f9fc;
-}
-.cc-detail-photos .cc-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cc-detail-photos .cc-ph:hover { border-color: #0aa5e6; }
-.cc-photo-thumb img[data-zoom] { cursor: zoom-in; }
-
-/* ─── Lightbox ─── */
-.cc-lightbox {
-  position: fixed; inset: 0; z-index: 3000; background: rgba(10,14,20,.92);
-  display: flex; align-items: center; justify-content: center; padding: 48px 16px 16px;
-}
-.cc-lightbox img { max-width: 96vw; max-height: 86vh; object-fit: contain; box-shadow: 0 8px 40px rgba(0,0,0,.5); border-radius: 6px; }
-.cc-lightbox-bar { position: absolute; top: 10px; right: 12px; display: flex; gap: 8px; }
-.cc-lightbox-btn {
-  font-family: inherit; font-size: 13px; font-weight: 500; letter-spacing: 0;
-  padding: 8px 14px; border: 1px solid rgba(255,255,255,.6); background: rgba(255,255,255,.1);
-  color: #fff; cursor: pointer; border-radius: 7px;
-}
-.cc-lightbox-btn:hover { background: #fff; color: #1a2230; }
-
-/* ─── Per-record History (detail) ─── */
-.cc-history { margin-top: 16px; border-top: 1px solid #eef1f6; padding-top: 12px; }
-.cc-hist-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #7a8aa2; font-weight: 600; margin-bottom: 6px; }
-.cc-hist-body { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
-.cc-hist-row { font-size: 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 4px 0; border-bottom: 1px dotted #eef1f6; }
-.cc-hist-act { font-weight: 600; }
-.cc-hist-d { color: #5b6b86; font-size: 11px; }
-.cc-hist-meta { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #9aa6ba; }
-.cc-hist-empty { font-size: 11px; color: #9aa6ba; }
-
-/* ─── Responsive (mobile = card por linha, otimizado pro dock) ─── */
-@media (max-width: 720px) {
-  .cc-form-grid { grid-template-columns: repeat(2, 1fr); }
-  .cc-field-wide { grid-column: 1 / -1; }
-  .cc-thead { display: none; }
-  .cc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; padding: 12px; text-align: left; }
-  .cc-row-code   { order: 1; flex: 1 1 50%; font-size: 14px; }
-  .cc-row-status { order: 2; margin-left: auto; }
-  .cc-row-date   { order: 3; font-size: 11px; color: #7a8aa2; }
-  .cc-row-5dc    { order: 4; font-size: 11px; color: #5b6b86; }
-  .cc-row-5dc:not(:empty)::before { content: '5DC '; color: #9aa6ba; }
-  .cc-row-po     { order: 5; font-size: 11px; color: #5b6b86; }
-  .cc-row-po:not(:empty)::before  { content: 'PO '; color: #9aa6ba; }
-  .cc-row-qty    { order: 6; font-size: 11px; color: #5b6b86; }
-  .cc-row-qty::before  { content: 'QTY '; color: #9aa6ba; }
-  .cc-row-ocl, .cc-row-icl, .cc-row-bar { order: 7; }
-  .cc-row-ocl::before  { content: 'OCL '; color: #9aa6ba; font-size: 9px; }
-  .cc-row-icl::before  { content: 'ICL '; color: #9aa6ba; font-size: 9px; }
-  .cc-row-bar::before  { content: 'Bar '; color: #9aa6ba; font-size: 9px; }
-  .cc-row-cam    { order: 8; }
-  .cc-row-by     { order: 9; font-size: 11px; color: #5b6b86; }
-  .cc-row-by:not(:empty)::before { content: '👤 '; color: #9aa6ba; }
-  .cc-row-resolution { order: 10; flex-basis: 100%; font-size: 11px; color: #5b6b86; white-space: normal; }
-  .cc-row-resolution:not(:empty)::before { content: '✅ '; }
-  .cc-row-note   { order: 11; flex-basis: 100%; font-size: 11px; color: #7a8aa2; white-space: normal; }
-  .cc-row-note:not(:empty)::before { content: '📝 '; }
-  .cc-review-actions .cc-rv-field { flex: 1 1 100%; }
-  .cc-label-name { min-width: 100%; }
-  .cc-seg { min-width: 100%; }
-}
+/* Linha de estado (carregando / vazio / erro) dentro da propria tabela: sem
+   altura de linha, sem zebra, sem hover e sem cursor de clique. */
+.cc-grid tbody.cc-st tr{cursor:default}
+.cc-grid tbody.cc-st td{height:auto;padding:0;white-space:normal;border-bottom:0;background:#fff}
+.cc-grid tbody.cc-st tr:hover td{background:#fff}
+.cc-revs .cc-state{grid-column:1/-1}
+.cc-foot .k[data-key=pending]{background:var(--xl-amber-ink)}
+.cc-side-act{margin-top:18px}
+.cc-col .st > i{flex:none;width:100%;display:block}

@@ -1,58 +1,85 @@
 /**
- * Container Check — Frontend (QC de recebimento / inbound)
+ * Container Check — front-end (QC de recebimento / inbound).
  *
- * Vanilla script. Usa o cliente Supabase do front (supabase-config.js →
- * window.supabase / window.supabaseReady) só pra subir foto direto pro
- * Storage. Todo o resto vai pela API REST.
+ * Vanilla. Usa o cliente Supabase do front (supabase-config.js) so para
+ * subir foto direto para o Storage; todo o resto vai pela API REST.
  *
- * Fluxo: New record → pending → aba "Need Review" → o revisor escreve a
- * resolução e confirma "tratado" → green. Tudo logado (aba Records).
+ * Fluxo: New record -> awaiting review -> o revisor escreve a resolucao e
+ * confirma -> reviewed. Tudo fica logado.
+ *
+ * DESENHO. A tela passou a usar o sistema do Stock Planning
+ * (/features/stock-planning/ui/planning.css), igual a Branch Replenishment:
+ * mesmo header, mesma grade, mesmo painel lateral, mesmo modal, mesmo toast.
+ * Tres consequencias que valem dizer:
+ *
+ *   · Emoji saiu. Ele estava fazendo trabalho de dado — uma camera dizendo
+ *     "tem foto" e um circulo amarelo dizendo "esperando". Agora a foto
+ *     aparece como miniatura na propria linha, e o estado e uma etiqueta
+ *     com contraste medido.
+ *   · O detalhe deixou de ser modal e virou painel lateral: e onde as outras
+ *     duas telas do modulo poem o detalhe de uma linha.
+ *   · confirm() nativo saiu (o design system proibe) e virou modal.
  */
 (function () {
   'use strict';
 
-  const API     = '/api/container-check';
-  const BUCKET  = 'container-check';
-  const LABELS  = ['OK', 'Wrong', 'Missing', 'N/A'];
+  const API        = '/api/container-check';
+  const BUCKET     = 'container-check';
+  const LABELS     = ['OK', 'Wrong', 'Missing', 'N/A'];
   const MAX_PHOTOS = 4;
   const PAGE_SIZE  = 50;
+  const LATE_DAYS  = 7;   // a partir daqui a fila deixou de ser fila
 
   const state = {
-    user:       localStorage.getItem('containerCheckUser') || '',
-    records:    [],
-    page:       1,
-    pageSize:   PAGE_SIZE,
-    total:      0,
-    pageCount:  1,
-    editingId:  null,
-    form:       { ocl: null, icl: null, bar: null },
-    photos:     [],          // [{url,label}]
-    uploading:  0,
-    acTimer:    null,
+    view:      'records',
+    records:   [],
+    summary:   null,
+    page:      1, pageSize: PAGE_SIZE, total: 0, pageCount: 1,
+    sort:      'date', dir: 'desc',
+    issuesOnly: false,
+    editingId: null,
+    form:      { ocl: null, icl: null, bar: null },
+    photos:    [],
+    uploading: 0,
+    acTimer:   null,
+    photoSets: {},          // id -> [url] (alimenta o lightbox de qualquer tela)
+    lb:        { list: [], i: 0 },
+    onConfirm: null,
   };
 
-  // ── tiny helpers ────────────────────────────────────────────────
-  const $   = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  // ── helpers ─────────────────────────────────────────────────────
+  const $  = (id) => document.getElementById(id);
+  const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
   const lvClass = (v) => (v === 'N/A' ? 'NA' : v);
+  const n0 = (v) => (v == null || v === '') ? '' : Number(v).toLocaleString('en-AU');
   const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
-  const fmtTime = (iso) => { try { return new Date(iso).toLocaleString(); } catch (_) { return iso || ''; } };
-  const fmtDate = (d) => { const s = String(d || '').slice(0, 10); const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return m ? `${m[3]}-${m[2]}-${m[1]}` : s; }; // YYYY-MM-DD → DD-MM-YYYY
+  /** dd/mm/yyyy — o padrao do app (features/returns/returns.js:20). */
+  const d10 = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+  const dSh = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${m[3]}/${m[2]}` : ''; };
+  const fmtTime = (iso) => { try { return new Date(iso).toLocaleString('en-AU'); } catch (_) { return iso || ''; } };
+  const daysSince = (d) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); if (!m) return null;
+    return Math.round((Date.parse(today() + 'T00:00:00Z') - Date.parse(m[0] + 'T00:00:00Z')) / 86400000);
+  };
+  const pluralDays = (n) => n === 0 ? 'today' : n === 1 ? '1 day' : n + ' days';
+  const plural = (n, one, many) => `${n0(n)} ${Number(n) === 1 ? one : (many || one + 's')}`;
 
-  function toast(msg, kind) {
-    const el = document.createElement('div');
-    el.className = 'cc-toast' + (kind ? ' ' + kind : '');
-    el.textContent = msg;
-    $('ccToast').appendChild(el);
-    setTimeout(() => el.remove(), 3200);
-  }
-  function banner(msg, kind) {
-    $('ccBanners').innerHTML = msg ? `<div class="cc-banner ${kind || ''}">${esc(msg)}</div>` : '';
+  let toastT;
+  function toast(msg, bad) {
+    const el = $('toast'); el.textContent = msg;
+    el.className = 'sp-toast is-on' + (bad ? ' bad' : '');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => { el.className = 'sp-toast'; }, bad ? 5000 : 2400);
   }
 
-  // Name is captured PER ACTION (Recorded by on new, Reviewed by on review) —
-  // not page-wide. Fields start empty on purpose so whoever is acting types
-  // their own name every time (no confusing pre-fill from a previous user).
+  /** O ponto no header e o unico lugar que diz, sempre, o que a tela acabou
+      de fazer. Sem ele o estado de erro so existia dentro da tabela. */
+  function setStatus(level, text) {
+    const dot = $('statusDot');
+    if (dot) dot.className = 'sp-dot ' + (level === 'loading' ? 'stale' : level === 'bad' ? 'dead' : 'fresh');
+    if ($('statusText')) $('statusText').textContent = text;
+  }
 
   async function api(path, opts) {
     opts = opts || {};
@@ -62,7 +89,10 @@
       if (!u) throw new Error('Enter your name first.');
       headers['x-cc-user'] = u;
     }
-    const res = await fetch(API + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    const res = await fetch(API + path, {
+      method: opts.method || 'GET', headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
     let json = {};
     try { json = await res.json(); } catch (_) {}
     if (!res.ok || !json.success) throw new Error((json && json.error) || `HTTP ${res.status}`);
@@ -70,142 +100,610 @@
   }
 
   // ════════════════════════════════════════════════════════════════
-  // TABS
+  // PECAS DE RENDER COMPARTILHADAS
   // ════════════════════════════════════════════════════════════════
-  function switchTab(tab) {
-    document.querySelectorAll('.cc-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    $('ccTabRecords').style.display = tab === 'records' ? '' : 'none';
-    $('ccTabReview').style.display  = tab === 'review'  ? '' : 'none';
-    if (tab === 'records') loadRecords();
-    else loadReview();
+
+  /** Etiqueta de valor de label. Vazio e um traco, nao um branco: "nao
+      conferido" e "conferido e estava OK" nao podem parecer a mesma coisa. */
+  function lv(v) {
+    if (!v) return '<span class="cc-lv cc-lv-blank">&mdash;</span>';
+    return `<span class="cc-lv cc-lv-${lvClass(v)}">${esc(v)}</span>`;
+  }
+
+  const STATUS_TAG = {
+    pending: ['Missing', 'awaiting'],
+    green:   ['OK',      'reviewed'],
+    red:     ['Wrong',   'red'],       // legado: nada escreve mais estes dois
+    orange:  ['Missing', 'orange'],
+  };
+  function statusTag(s) {
+    const t = STATUS_TAG[s] || ['NA', s || '—'];
+    return `<span class="cc-lv cc-lv-${t[0]}">${esc(t[1])}</span>`;
+  }
+
+  /** Registra as fotos de um registro e devolve miniaturas clicaveis.
+      O lightbox precisa da LISTA para ter proximo/anterior, e as tres telas
+      que mostram foto (grade, fila, painel) nao compartilham fonte de dados —
+      por isso o mapa por id em vez de ler do array da tela. */
+  function shots(rec, kind) {
+    const arr = (Array.isArray(rec.photos) ? rec.photos : []).filter(p => p && p.url);
+    state.photoSets[rec.id] = arr.map(p => p.url);
+    if (!arr.length) return null;
+    const img = (i, cls) =>
+      `<img class="${cls}" src="${esc(arr[i].url)}" alt="Photo ${i + 1} of ${esc(rec.rapid_code || 'record')}"
+            loading="lazy" data-set="${esc(rec.id)}" data-i="${i}">`;
+    if (kind === 'grid') {
+      const n = Math.min(3, arr.length);
+      let h = '';
+      for (let i = 0; i < n; i++) h += img(i, 'cc-th');
+      if (arr.length > n) h += `<span class="cc-more">+${arr.length - n}</span>`;
+      return `<span class="cc-thumbs">${h}</span>`;
+    }
+    if (kind === 'card') {
+      let strip = '';
+      for (let i = 1; i < arr.length; i++) strip += img(i, 'cc-th');
+      return `<div class="cc-rev-shots">${img(0, 'cc-hero')}${strip ? `<div class="cc-strip">${strip}</div>` : ''}</div>`;
+    }
+    let h = '';
+    for (let i = 0; i < arr.length; i++) h += img(i, 'cc-side-shot');
+    return `<div class="cc-side-shots">${h}</div>`;
+  }
+
+  const NO_SHOT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h3l2-3h8l2 3h3v11H3z"/><circle cx="12" cy="13" r="3.4"/></svg>';
+  const noShot = () => `<div class="cc-noshot">${NO_SHOT_SVG}<span>no photo</span></div>`;
+
+  function note(kind, txt, cls) {
+    if (!txt) return '';
+    return `<div class="cc-note ${cls || ''}"><i>${esc(kind)}</i>${esc(txt)}</div>`;
+  }
+
+  /** Qual das tres etiquetas mais falha. E a pergunta que o fornecedor
+      precisa responder, e nenhum dos numeros antigos respondia. */
+  function worstLabel(by) {
+    const NAME = { ocl: 'OCL', icl: 'ICL', bar: 'Bar' };
+    let best = null;
+    ['ocl', 'icl', 'bar'].forEach(k => {
+      const o = (by && by[k]) || {};
+      const wrong = o.Wrong || 0, missing = o.Missing || 0;
+      const bad = wrong + missing;
+      if (!best || bad > best.bad) best = { k, name: NAME[k], bad, wrong, missing };
+    });
+    return best;
   }
 
   // ════════════════════════════════════════════════════════════════
-  // RECORDS TAB (paginated)
+  // RECORDS — a grade
   // ════════════════════════════════════════════════════════════════
-  function filtersQS() {
+  /* Larguras fixas: table-layout:fixed nao deixa a coluna pular de tamanho
+     quando muda a pagina, que era o que fazia a grade antiga "tremer".
+     `reviewed_by` NAO e ordenavel de proposito — a coluna so existe depois da
+     migracao 003, e pedir ORDER BY numa coluna que pode nao existir devolve
+     400 em vez de uma lista. */
+  const COLS = [
+    { k: 'date',     t: 'Date',        w: 78,  srt: true },
+    { k: 'dc',       t: '5DC',         w: 64,  srt: true },
+    { k: 'code',     t: 'Rapid code',  w: 152, srt: true },
+    { k: 'po',       t: 'PO',          w: 92,  srt: true },
+    { k: 'qty',      t: 'Qty',         w: 58,  srt: true, cls: 'n' },
+    { k: 'ocl',      t: 'OCL',         w: 74,  cls: 'c' },
+    { k: 'icl',      t: 'ICL',         w: 74,  cls: 'c' },
+    { k: 'bar',      t: 'Bar',         w: 74,  cls: 'c' },
+    { k: 'photos',   t: 'Photos',      w: 98,  cls: 'c' },
+    { k: 'status',   t: 'Status',      w: 104, srt: true, cls: 'c' },
+    { k: 'by',       t: 'Recorded by', w: 112, srt: true },
+    { k: 'reviewer', t: 'Reviewed by', w: 112 },
+    { k: 'notes',    t: 'Notes' },
+  ];
+
+  function gridHead() {
+    // As larguras vivem no CSS (.cc-grid col:nth-child): atributo `width` em
+    // <col> e presentacional e style= inline e proibido pelo design system.
+    const cg = '<colgroup>' + COLS.map(() => '<col>').join('') + '</colgroup>';
+    const th = COLS.map(c => {
+      const on  = c.srt && state.sort === c.k;
+      const cls = [c.cls || '', c.srt ? 'srt' : '', on ? 'on' : ''].filter(Boolean).join(' ');
+      const ar  = c.srt ? `<span class="ar">${on && state.dir === 'asc' ? '&#9650;' : '&#9660;'}</span>` : '';
+      return `<th class="${cls}"${c.srt ? ` data-srt="${c.k}"` : ''}>${esc(c.t)}${ar}</th>`;
+    }).join('');
+    return cg + `<thead><tr>${th}</tr></thead>`;
+  }
+  const stateBody = (html) => `<tbody class="cc-st"><tr><td colspan="${COLS.length}">${html}</td></tr></tbody>`;
+
+  function filtersQS(extra) {
     const qs = new URLSearchParams();
-    if ($('ccFrom').value)          qs.set('from', $('ccFrom').value);
-    if ($('ccTo').value)            qs.set('to', $('ccTo').value);
-    if ($('ccStatusFilter').value)  qs.set('status', $('ccStatusFilter').value);
-    if ($('ccSearch').value.trim()) qs.set('q', $('ccSearch').value.trim());
+    if ($('fFrom').value)          qs.set('from', $('fFrom').value);
+    if ($('fTo').value)            qs.set('to', $('fTo').value);
+    if ($('fStatus').value)        qs.set('status', $('fStatus').value);
+    if ($('fSearch').value.trim()) qs.set('q', $('fSearch').value.trim());
+    if (state.issuesOnly)          qs.set('issues', '1');
+    qs.set('sort', state.sort);
+    qs.set('dir', state.dir);
     qs.set('page', state.page);
     qs.set('pageSize', state.pageSize);
+    Object.keys(extra || {}).forEach(k => qs.set(k, extra[k]));
     return qs.toString();
   }
+
   async function loadRecords() {
-    const tb = $('ccTbody');
-    tb.innerHTML = '<div class="cc-empty">Loading…</div>';
+    $('grid').innerHTML = gridHead() + stateBody('<div class="cc-state">Loading records&hellip;</div>');
+    setStatus('loading', 'Loading…');
     try {
       const data = await api('/records?' + filtersQS());
       state.records   = data.items || [];
+      state.summary   = data.summary || null;
       state.total     = data.total || 0;
       state.page      = data.page || 1;
       state.pageCount = data.pageCount || 1;
-      renderMetrics(data.summary || {});
-      renderTable(state.records);
-      renderPagination();
-      banner('');
+      renderKpis(state.summary || {});
+      renderGrid(state.records);
+      renderFoot();
+      renderQuality();
+      paintPip((state.summary && state.summary.by_status && state.summary.by_status.pending) || 0);
+      const s = state.summary || {};
+      $('rowCount').textContent =
+        `${plural(state.total, 'record')} · ${plural(s.skus || 0, 'SKU')} · ${plural(s.days || 0, 'day')}`;
+      setStatus('ok', s.last_check ? 'Last check ' + d10(s.last_check) : 'Loaded');
     } catch (e) {
-      tb.innerHTML = `<div class="cc-empty">Error: ${esc(e.message)}</div>`;
-      $('ccPager').innerHTML = '';
-      banner('Failed to load: ' + e.message, 'cc-banner-error');
+      // Vazio nao pode parecer erro nem o contrario: aqui a tela diz o que
+      // falhou, mostra a mensagem crua e oferece tentar de novo.
+      $('grid').innerHTML = gridHead() + stateBody(
+        `<div class="cc-state err"><b>Could not load the records</b>
+           <code>${esc(e.message)}</code>
+           <div><button class="sp-btn" type="button" data-retry>Try again</button></div>
+         </div>`);
+      $('kpis').innerHTML = '';
+      $('foot').innerHTML = '';
+      $('rowCount').textContent = '';
+      setStatus('bad', 'Load failed');
     }
   }
-  function reloadFromFirstPage() { state.page = 1; loadRecords(); }
+  function reload(fromFirstPage) { if (fromFirstPage) state.page = 1; loadRecords(); }
 
-  function renderMetrics(s) {
-    const rate = s.total ? (s.issue_rate * 100).toFixed(1) : '0.0';
-    const bs = s.by_status || { green: 0, red: 0, pending: 0 };
-    const lbl = (k) => {
-      const o = (s.by_label && s.by_label[k]) || {};
-      return `${k.toUpperCase()} <b>${(o.Wrong || 0) + (o.Missing || 0)}</b>`;
+  function renderGrid(items) {
+    if (!items.length) {
+      $('grid').innerHTML = gridHead() + stateBody(
+        `<div class="cc-state"><b>No records match this filter</b>
+           Nothing was rejected — there is simply nothing recorded in this range.
+           <div><button class="sp-btn" type="button" data-clear>Clear the filter</button></div>
+         </div>`);
+      return;
+    }
+    const rows = items.map(r => {
+      const inv = r.inventory_notes || '';
+      const res = r.reviewer_notes || '';
+      const notes = [inv, res && '→ ' + res].filter(Boolean).join('   ');
+      return `<tr data-id="${esc(r.id)}"${r.status === 'pending' ? ' class="is-pending"' : ''}>
+        <td class="mono">${esc(d10(r.check_date))}</td>
+        <td class="mono mut">${esc(r.five_dc || '') || '<span class="void">&mdash;</span>'}</td>
+        <td class="code" title="${esc(r.rapid_code || '')}">${esc(r.rapid_code || '')}</td>
+        <td class="mono mut" title="${esc(r.po || '')}">${esc(r.po || '') || '<span class="void">&mdash;</span>'}</td>
+        <td class="n">${r.qty != null ? esc(n0(r.qty)) : '<span class="void">&mdash;</span>'}</td>
+        <td class="c">${lv(r.ocl)}</td>
+        <td class="c">${lv(r.icl)}</td>
+        <td class="c">${lv(r.bar)}</td>
+        <td class="c">${shots(r, 'grid') || '<span class="cc-lv cc-lv-blank">&mdash;</span>'}</td>
+        <td class="c">${statusTag(r.status)}</td>
+        <td class="mut">${esc(r.created_by || '')}</td>
+        <td class="mut">${esc(r.reviewed_by || '') || '<span class="void">&mdash;</span>'}</td>
+        <td class="mut" title="${esc(notes)}">${esc(notes) || '<span class="void">&mdash;</span>'}</td>
+      </tr>`;
+    }).join('');
+    $('grid').innerHTML = gridHead() + `<tbody>${rows}</tbody>`;
+  }
+
+  // ── KPIs ────────────────────────────────────────────────────────
+  /* Cinco perguntas, e so estas cinco: o que preciso fazer, ha quanto tempo
+     esta parado, quanto deu problema, com que frequencia, e onde. Os numeros
+     antigos (Total / Items OK / With issues / Issue rate / dois blocos de
+     pilulas) contavam a mesma coisa tres vezes e nao diziam a idade da fila,
+     que e a unica que vira reclamacao de fornecedor. */
+  function renderKpis(s) {
+    const by      = s.by_status || {};
+    const pending = by.pending || 0;
+    const age     = s.pending_age_days;
+    const over    = s.pending_over_7d || 0;
+    const issues  = s.issues || 0;
+    const rate    = s.total ? (s.issue_rate * 100) : 0;
+    const worst   = worstLabel(s.by_label);
+
+    const ageTone = pending === 0 ? 'good' : (age != null && age > LATE_DAYS) ? 'bad' : 'warn';
+    const tile = (tone, val, unit, label, sub) =>
+      `<div class="sp-tile ${tone}"><b>${val}${unit ? `<u>${unit}</u>` : ''}</b><em>${label}</em><small>${sub}</small></div>`;
+
+    $('kpis').innerHTML = [
+      `<button class="sp-tile ${pending ? 'warn' : 'good'}" type="button" data-go="review">
+         <b>${n0(pending)}</b><em>Awaiting review</em>
+         <small>${pending ? 'open the queue to close them' : 'the queue is clear'}</small>
+       </button>`,
+      tile(ageTone,
+        pending && age != null ? n0(age) : '&mdash;',
+        pending && age != null ? 'd' : '',
+        'Oldest waiting',
+        pending ? (over ? `${n0(over)} past ${LATE_DAYS} days` : `none past ${LATE_DAYS} days`) : 'nothing is waiting'),
+      tile(issues ? 'bad' : 'good', n0(issues), '', 'With issues',
+        `of ${n0(s.total || 0)} records checked`),
+      tile(rate >= 10 ? 'bad' : rate >= 4 ? 'warn' : 'good', rate.toFixed(1), '%', 'Issue rate',
+        'Wrong or Missing on any label'),
+      worst && worst.bad
+        ? tile('bad', worst.name, '', 'Worst label',
+            `${n0(worst.bad)} bad &mdash; ${n0(worst.wrong)} wrong · ${n0(worst.missing)} missing`)
+        : tile('good', '&mdash;', '', 'Worst label', 'no label failed in this range'),
+    ].join('');
+  }
+
+  function paintPip(n) {
+    const pip = $('pipReview');
+    if (!pip) return;
+    pip.textContent = n ? n : '';
+    pip.className = 'sp-pip' + (n ? ' on' : '');
+  }
+
+  // ── rodape: legenda + paginacao ─────────────────────────────────
+  function renderFoot() {
+    const from = state.total ? (state.page - 1) * state.pageSize + 1 : 0;
+    const to   = Math.min(state.total, state.page * state.pageSize);
+    const btn  = (pg, txt, off) =>
+      `<button class="cc-pgbtn" type="button" data-pg="${pg}"${off ? ' disabled' : ''}>${txt}</button>`;
+    const first = state.page <= 1, last = state.page >= state.pageCount;
+    $('foot').innerHTML = `
+      <span><i class="k" data-key="pending"></i>awaiting review</span>
+      <span>Click a row for the whole record and its history</span>
+      <span class="cc-pg">
+        <span class="cc-pos">${n0(from)}&ndash;${n0(to)} of ${n0(state.total)}</span>
+        ${btn('first', '&laquo;', first)}${btn('prev', '&lsaquo; Prev', first)}
+        <span class="cc-pos">${state.page} / ${state.pageCount}</span>
+        ${btn('next', 'Next &rsaquo;', last)}${btn('last', '&raquo;', last)}
+      </span>`;
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // QUALITY — onde a falha esta
+  // ════════════════════════════════════════════════════════════════
+  /* Le o MESMO summary da aba Records (varrido sobre o filtro inteiro), por
+     isso nao ha segunda consulta nem segunda verdade. Larguras de barra vao
+     em style porque sao geometria de dado, nao decisao de estilo — mesmo
+     caminho que planning.js usa nos graficos dele. */
+  const LABEL_NAMES = { ocl: ['OCL', 'Outer carton label'], icl: ['ICL', 'Inner carton label'], bar: ['Bar', 'Barcode on the unit'] };
+  const CHART_H = 88;
+
+  function qStack(o, total) {
+    if (!total) return '<div class="cc-qbar"></div>';
+    const seg = (key, cls, name) => {
+      const v = o[key] || 0;
+      if (!v) return '';
+      return `<i class="s-${cls}" style="width:${(v / total * 100).toFixed(3)}%" title="${name}: ${n0(v)}"></i>`;
     };
-    $('ccMetrics').innerHTML = `
-      <div class="cc-metric"><div class="cc-metric-label">Total Records</div><div class="cc-metric-value"><span class="num">${s.total || 0}</span></div></div>
-      <div class="cc-metric"><div class="cc-metric-label">Items OK</div><div class="cc-metric-value"><span class="num">${s.ok || 0}</span></div></div>
-      <div class="cc-metric ${s.issues ? 'alert' : ''}"><div class="cc-metric-label">With issues</div><div class="cc-metric-value"><span class="num">${s.issues || 0}</span></div></div>
-      <div class="cc-metric ${s.issues ? 'alert' : ''}"><div class="cc-metric-label">Issue Rate</div><div class="cc-metric-value"><span class="num">${rate}</span><span class="unit">%</span></div></div>
-      <div class="cc-metric" style="grid-column:span 2">
-        <div class="cc-metric-label">Status</div>
-        <div class="cc-metric-pills"><span>🟡 ${bs.pending || 0}</span><span>🟢 ${bs.green || 0}</span></div>
-      </div>
-      <div class="cc-metric" style="grid-column:span 2">
-        <div class="cc-metric-label">Labels with issues</div>
-        <div class="cc-metric-pills"><span>${lbl('ocl')}</span><span>${lbl('icl')}</span><span>${lbl('bar')}</span></div>
-      </div>`;
+    return '<div class="cc-qbar">'
+      + seg('OK', 'OK', 'OK') + seg('Wrong', 'Wrong', 'Wrong') + seg('Missing', 'Missing', 'Missing')
+      + seg('N/A', 'NA', 'N/A') + seg('blank', 'blank', 'not checked')
+      + '</div>';
   }
 
-  function lvCell(v, extraClass) {
-    if (!v) return `<div class="${extraClass}"><span class="cc-lv cc-lv-blank">·</span></div>`;
-    return `<div class="${extraClass}"><span class="cc-lv cc-lv-${lvClass(v)}">${esc(v)}</span></div>`;
-  }
-
-  function renderTable(items) {
-    const tb = $('ccTbody');
-    if (!items.length) { tb.innerHTML = '<div class="cc-empty">No records. Click “＋ New record”.</div>'; return; }
-    tb.innerHTML = items.map(r => {
-      const nPhoto = Array.isArray(r.photos) ? r.photos.length : 0;
-      return `<div class="cc-row" data-id="${r.id}">
-        <div class="cc-row-date">${esc(fmtDate(r.check_date))}</div>
-        <div class="cc-row-5dc">${esc(r.five_dc || '')}</div>
-        <div class="cc-row-code">${esc(r.rapid_code || '')}</div>
-        <div class="cc-row-po">${esc(r.po || '')}</div>
-        <div class="cc-row-qty r">${r.qty != null ? esc(r.qty) : ''}</div>
-        ${lvCell(r.ocl, 'cc-row-ocl c')}
-        ${lvCell(r.icl, 'cc-row-icl c')}
-        ${lvCell(r.bar, 'cc-row-bar c')}
-        <div class="cc-row-cam c cc-cam">${nPhoto ? '📷' + (nPhoto > 1 ? nPhoto : '') : ''}</div>
-        <div class="cc-row-status c"><span class="cc-pill cc-pill-${r.status}">${esc(r.status)}</span></div>
-        <div class="cc-row-by">${esc(r.created_by || '')}</div>
-        <div class="cc-row-by">${esc(r.reviewed_by || '')}</div>
-        <div class="cc-row-resolution" title="${esc(r.reviewer_notes || '')}">${esc(r.reviewer_notes || '')}</div>
-        <div class="cc-row-note" title="${esc(r.inventory_notes || '')}">${esc(r.inventory_notes || '')}</div>
+  function qLabels(s) {
+    const total = s.total || 0;
+    const rows = ['ocl', 'icl', 'bar'].map(k => {
+      const o = (s.by_label && s.by_label[k]) || {};
+      const nm = LABEL_NAMES[k];
+      return `<div class="cc-qrow">
+        <span class="cc-qname">${nm[0]}<small>${nm[1]}</small></span>
+        ${qStack(o, total)}
+        <span class="cc-qnums"><b>${n0(o.Wrong || 0)}</b> wrong · <em>${n0(o.Missing || 0)}</em> missing</span>
       </div>`;
     }).join('');
+    return `<div class="sp-panel">
+      <h4>Where the label fails <span>&mdash; every record in the current filter</span></h4>
+      <div class="in">${rows}
+        <div class="cc-key">
+          <span><i class="s-OK"></i>OK</span><span><i class="s-Wrong"></i>Wrong</span>
+          <span><i class="s-Missing"></i>Missing</span><span><i class="s-NA"></i>N/A</span>
+          <span><i class="s-blank"></i>not checked</span>
+        </div>
+      </div></div>`;
   }
 
-  function renderPagination() {
-    const el = $('ccPager');
-    if (!state.total) { el.innerHTML = ''; return; }
-    const from = (state.page - 1) * state.pageSize + 1;
-    const to   = Math.min(state.total, state.page * state.pageSize);
-    el.innerHTML = `
-      <span class="cc-pager-info">${from}–${to} of ${state.total}</span>
-      <button class="cc-mini-btn" data-pg="first" ${state.page <= 1 ? 'disabled' : ''}>« First</button>
-      <button class="cc-mini-btn" data-pg="prev"  ${state.page <= 1 ? 'disabled' : ''}>‹ Prev</button>
-      <span class="cc-pager-pos">Page ${state.page} / ${state.pageCount}</span>
-      <button class="cc-mini-btn" data-pg="next"  ${state.page >= state.pageCount ? 'disabled' : ''}>Next ›</button>
-      <button class="cc-mini-btn" data-pg="last"  ${state.page >= state.pageCount ? 'disabled' : ''}>Last »</button>`;
+  function qOffenders(s) {
+    const list = s.top_offenders || [];
+    const body = list.length
+      ? list.map(c => `<tr class="click" data-code="${esc(c.code)}">
+          <td class="code">${esc(c.code)}</td>
+          <td class="n">${n0(c.records)}</td>
+          <td class="n">${n0(c.issues)}</td>
+          <td class="n">${c.records ? Math.round(c.issues / c.records * 100) : 0}%</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="cc-hist-empty">No SKU failed a label in this range.</td></tr>';
+    return `<div class="sp-panel">
+      <h4>SKUs that keep coming back <span>&mdash; click one to filter the log by it</span></h4>
+      <table><thead><tr><th>Rapid code</th><th class="n">Checks</th><th class="n">Issues</th><th class="n">Rate</th></tr></thead>
+      <tbody>${body}</tbody></table></div>`;
+  }
+
+  function qDaily(s) {
+    const days = s.by_day || [];
+    if (!days.length) return '';
+    const max = Math.max.apply(null, days.map(d => d.n).concat([1]));
+    const cols = days.map(d => {
+      const h   = Math.max(2, Math.round(d.n / max * CHART_H));
+      const bad = d.issues ? Math.max(1, Math.round(h * d.issues / d.n)) : 0;
+      return `<div class="cc-col" title="${esc(d10(d.d))} — ${n0(d.n)} checked, ${n0(d.issues)} with issues">
+        <span class="t">${n0(d.n)}</span>
+        <span class="st" style="height:${h}px"><i class="ok" style="height:${h - bad}px"></i><i class="bad" style="height:${bad}px"></i></span>
+        <span class="l">${esc(dSh(d.d))}</span>
+      </div>`;
+    }).join('');
+    return `<div class="sp-panel cc-q-wide">
+      <h4>Checked per day <span>&mdash; the last ${days.length} days with any record</span></h4>
+      <div class="in"><div class="cc-cols">${cols}</div>
+        <div class="cc-key"><span><i class="s-vol"></i>checked</span><span><i class="s-bad"></i>with an issue</span></div>
+      </div></div>`;
+  }
+
+  function renderQuality() {
+    const s = state.summary;
+    if (!s) { $('qBody').innerHTML = '<div class="cc-state">Load the records first.</div>'; return; }
+    if (!s.total) {
+      $('qBody').innerHTML = '<div class="cc-state"><b>Nothing to analyse</b>No records match the filter set on the Records tab.</div>';
+      $('qScope').textContent = '';
+      return;
+    }
+    $('qScope').textContent = `${plural(s.total, 'record')} · ${plural(s.skus || 0, 'SKU')}`;
+    $('qBody').innerHTML = qLabels(s) + qOffenders(s) + qDaily(s);
   }
 
   // ════════════════════════════════════════════════════════════════
-  // FORM (modal) + autocomplete
+  // NEED REVIEW — a fila
+  // ════════════════════════════════════════════════════════════════
+  /* O cartao mudou de eixo: a foto e a evidencia, entao ela lidera. Antes o
+     que aparecia era uma lista de rotulos e um botao verde com emoji, e a
+     foto ficava embaixo de tudo, pequena. */
+  function revCard(r) {
+    const age  = daysSince(r.check_date);
+    const late = age != null && age > LATE_DAYS;
+    const wait = age == null ? ''
+      : `<span class="cc-lv cc-lv-${late ? 'Wrong' : 'Missing'}">waiting ${esc(pluralDays(age))}</span>`;
+    const chip = (k, v) => `<span class="cc-pair"><i>${k}</i>${lv(v)}</span>`;
+    return `<article class="cc-rev${late ? ' is-late' : ''}">
+      <div class="cc-rev-h">
+        <b>${esc(r.rapid_code || '—')}</b>
+        ${r.five_dc ? `<span class="cc-lv cc-lv-NA">5DC ${esc(r.five_dc)}</span>` : ''}
+        <span class="sp-gap"></span>${wait}
+        <button class="ui-act" type="button" data-detail="${esc(r.id)}">Detail</button>
+      </div>
+      <div class="cc-rev-b">
+        ${shots(r, 'card') || noShot()}
+        <div class="cc-rev-facts">
+          <div class="cc-fact"><i>Checked</i><b>${esc(d10(r.check_date))}</b></div>
+          <div class="cc-fact"><i>Qty &middot; PO</i><b>${r.qty != null ? esc(n0(r.qty)) : '—'}</b> &middot; ${esc(r.po || '—')}</div>
+          <div class="cc-fact"><i>Recorded by</i>${esc(r.created_by || '—')}</div>
+          <div class="cc-lrow-inline">${chip('OCL', r.ocl)}${chip('ICL', r.icl)}${chip('Bar', r.bar)}</div>
+          ${note('What inventory saw', r.inventory_notes)}
+        </div>
+      </div>
+      <div class="cc-rev-f">
+        <label><span>Reviewed by *</span>
+          <input type="text" data-name="${esc(r.id)}" placeholder="Your name" autocomplete="off"></label>
+        <label><span>Resolution * <small>what you did</small></span>
+          <textarea data-note="${esc(r.id)}" rows="1">${esc(r.reviewer_notes || '')}</textarea></label>
+        <button class="sp-btn is-primary" type="button" data-confirm="${esc(r.id)}">Confirm treated</button>
+      </div>
+    </article>`;
+  }
+
+  async function loadReview() {
+    const list = $('revList');
+    list.innerHTML = '<div class="cc-state">Loading the queue&hellip;</div>';
+    try {
+      const data  = await api('/review');
+      const items = data.items || [];
+      state.review = items;
+      paintPip(items.length);
+      $('revCount').textContent = items.length ? `${plural(items.length, 'record')} waiting` : 'nothing waiting';
+      list.innerHTML = items.length
+        ? items.map(revCard).join('')
+        : `<div class="cc-state"><b>Nothing waiting</b>Every record recorded so far has been reviewed and closed.</div>`;
+    } catch (e) {
+      list.innerHTML = `<div class="cc-state err"><b>Could not load the queue</b>
+        <code>${esc(e.message)}</code>
+        <div><button class="sp-btn" type="button" data-retry-review>Try again</button></div></div>`;
+      $('revCount').textContent = '';
+    }
+  }
+
+  /** Modal de confirmacao. confirm() nativo e proibido pelo design system, e
+      com razao: ele nao diz para onde o registro vai. */
+  function confirmBox(title, body, okLabel) {
+    return new Promise(resolve => {
+      $('cfTitle').textContent = title;
+      $('cfBody').textContent  = body;
+      $('cfOk').textContent    = okLabel || 'Confirm';
+      state.onConfirm = resolve;
+      $('mdConfirm').classList.add('is-on');
+    });
+  }
+  function closeConfirm(v) {
+    $('mdConfirm').classList.remove('is-on');
+    const fn = state.onConfirm; state.onConfirm = null;
+    if (fn) fn(!!v);
+  }
+
+  async function reviewItem(id, btn) {
+    const nameEl = document.querySelector(`input[data-name="${id}"]`);
+    const reviewer = nameEl ? nameEl.value.trim() : '';
+    if (!reviewer) { toast('Enter your name first', true); if (nameEl) nameEl.focus(); return; }
+    const ta = document.querySelector(`textarea[data-note="${id}"]`);
+    const reviewer_notes = ta ? ta.value.trim() : '';
+    if (!reviewer_notes) { toast('Write the resolution before confirming', true); if (ta) ta.focus(); return; }
+
+    const okd = await confirmBox('Close this record?',
+      'It moves out of the queue and into the log as reviewed, stamped with your name. Editing it afterwards is still possible from the record detail.',
+      'Confirm treated');
+    if (!okd) return;
+
+    // Acao em voo trava o botao que a disparou — a defesa contra o duplo clique.
+    const label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      await api('/records/' + id, { method: 'PUT', body: { status: 'green', reviewer_notes }, user: reviewer });
+      toast('Reviewed');
+      loadReview();
+      loadRecords();
+    } catch (e) {
+      toast('Not saved: ' + e.message, true);
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // DETALHE — painel lateral (era modal)
+  // ════════════════════════════════════════════════════════════════
+  const ACTION = {
+    created:  ['Created',  'ui-tag--info'],
+    updated:  ['Edited',   'ui-tag--neutral'],
+    reviewed: ['Reviewed', 'ui-tag--ok'],
+    deleted:  ['Deleted',  'ui-tag--danger'],
+  };
+
+  function openDetail(r) {
+    $('sideTitle').textContent = r.rapid_code || 'Record';
+    const row = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
+    const reviewed = r.reviewed_by
+      ? row('Reviewed by', `${esc(r.reviewed_by)}<br><span class="cc-hist-d">${esc(fmtTime(r.reviewed_at))}</span>`)
+      : '';
+    $('sideBody').innerHTML = `
+      <table class="brk">
+        ${row('Status', statusTag(r.status))}
+        ${row('Date', esc(d10(r.check_date)))}
+        ${row('5DC', esc(r.five_dc || '—'))}
+        ${row('Qty', r.qty != null ? esc(n0(r.qty)) : '—')}
+        ${row('PO', esc(r.po || '—'))}
+        ${row('OCL', lv(r.ocl))}
+        ${row('ICL', lv(r.icl))}
+        ${row('Bar', lv(r.bar))}
+        ${row('Recorded by', esc(r.created_by || '—'))}
+        ${reviewed}
+      </table>
+      <h4>Photos</h4>
+      ${shots(r, 'side') || '<div class="cc-hist-empty">No photo on this record.</div>'}
+      ${note('What inventory saw', r.inventory_notes)}
+      ${note('Resolution', r.reviewer_notes, 'is-res')}
+      <h4>History</h4>
+      <div id="sideHist"><div class="cc-hist-empty">loading&hellip;</div></div>
+      <div class="cc-side-act"><button class="sp-btn" type="button" id="sideEdit">Edit this record</button></div>`;
+    $('sideEdit').addEventListener('click', () => { closeSide(); openForm(r); });
+    $('side').classList.add('is-on');
+    loadHistory(r.id);
+  }
+  function closeSide() { $('side').classList.remove('is-on'); }
+
+  function histDetails(action, d) {
+    if (!d) return '';
+    const bits = [];
+    if (action === 'created') {
+      ['ocl', 'icl', 'bar'].forEach(k => { if (d[k]) bits.push(`${k.toUpperCase()} ${d[k]}`); });
+      if (d.photos) bits.push(`${d.photos} photo(s)`);
+    }
+    if (action === 'reviewed' && d.to_status) bits.push('→ ' + d.to_status);
+    if (action === 'updated' && Array.isArray(d.changed) && d.changed.length) bits.push('changed: ' + d.changed.join(', '));
+    if (d.photos_added)   bits.push(`+${d.photos_added} photo`);
+    if (d.photos_removed) bits.push(`−${d.photos_removed} photo`);
+    return bits.length ? `<span class="cc-hist-d">${esc(bits.join(' · '))}</span>` : '';
+  }
+  async function loadHistory(id) {
+    const box = $('sideHist'); if (!box) return;
+    try {
+      const data  = await api('/records/' + id + '/log');
+      const items = data.items || [];
+      if (!items.length) {
+        box.innerHTML = `<div class="cc-hist-empty">${esc(data.note || 'No history recorded for this one yet.')}</div>`;
+        return;
+      }
+      box.innerHTML = items.map(l => {
+        const a = ACTION[l.action] || [l.action, 'ui-tag--neutral'];
+        return `<div class="cc-hist-row"><span class="ui-tag ${a[1]}">${esc(a[0])}</span>
+          ${histDetails(l.action, l.details)}
+          <span class="cc-hist-m">${esc(l.actor || '—')} · ${esc(fmtTime(l.created_at))}</span></div>`;
+      }).join('');
+    } catch (e) {
+      box.innerHTML = `<div class="cc-hist-empty">History unavailable: ${esc(e.message)}</div>`;
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // FORMULARIO — novo / editar
   // ════════════════════════════════════════════════════════════════
   function buildSegments() {
-    document.querySelectorAll('.cc-seg').forEach(seg => {
-      const field = seg.dataset.field;
-      seg.innerHTML = LABELS.map(v => `<button type="button" class="cc-seg-btn" data-field="${field}" data-val="${v}">${v}</button>`).join('');
+    $$('.cc-seg').forEach(seg => {
+      seg.innerHTML = LABELS.map(v =>
+        `<button type="button" data-field="${seg.dataset.field}" data-val="${v}">${v}</button>`).join('');
     });
   }
   function paintSegments() {
-    document.querySelectorAll('.cc-seg-btn').forEach(btn => {
-      const sel = state.form[btn.dataset.field] === btn.dataset.val;
-      btn.className = 'cc-seg-btn' + (sel ? ' sel-' + lvClass(btn.dataset.val) : '');
+    $$('.cc-seg button').forEach(b => {
+      b.className = state.form[b.dataset.field] === b.dataset.val ? 'on-' + lvClass(b.dataset.val) : '';
     });
-    paintSuggest();
-  }
-  function suggestStatus() { return 'pending'; }   // new records always enter as pending → Need Review
-  function paintSuggest() {
-    const s = suggestStatus();
-    const el = $('ccStatusSuggest');
-    el.textContent = s;
-    el.className = 'cc-pill cc-pill-' + s;
   }
 
-  // ── Autocomplete (cin7_mirror.products) — sugere, não bloqueia ──
-  function onRapidInput() {
-    const v = $('ccRapidCode').value.trim();
+  function openForm(record) {
+    state.editingId = record ? record.id : null;
+    state.form   = { ocl: (record && record.ocl) || null, icl: (record && record.icl) || null, bar: (record && record.bar) || null };
+    state.photos = record && Array.isArray(record.photos) ? record.photos.slice() : [];
+    $('fmTitle').textContent = record ? 'Edit record' : 'New record';
+    $('fmDate').value  = (record && record.check_date) || today();
+    $('fmCode').value  = (record && record.rapid_code) || '';
+    $('fmDc').value    = (record && record.five_dc) || '';
+    $('fmQty').value   = (record && record.qty != null) ? record.qty : '';
+    $('fmPo').value    = (record && record.po) || '';
+    $('fmNotes').value = (record && record.inventory_notes) || '';
+    // O nome comeca VAZIO de proposito: quem age digita o proprio nome toda
+    // vez. Pre-preencher com o anterior faz o log mentir sobre quem conferiu.
+    $('fmBy').value = '';
+    hideAc();
+    paintSegments();
+    renderPhotos();
+    $('mdForm').classList.add('is-on');
+    setTimeout(() => $('fmCode').focus(), 50);
+  }
+  function closeForm() { hideAc(); $('mdForm').classList.remove('is-on'); }
+
+  async function saveForm() {
+    const rapid_code = $('fmCode').value.trim();
+    if (!rapid_code) { toast('Rapid code is required', true); $('fmCode').focus(); return; }
+    const recordedBy = $('fmBy').value.trim();
+    if (!recordedBy) { toast('Recorded by (your name) is required', true); $('fmBy').focus(); return; }
+    if (state.uploading > 0) { toast('Wait for the photos to finish uploading', true); return; }
+
+    const body = {
+      check_date:      $('fmDate').value || today(),
+      rapid_code,
+      five_dc:         $('fmDc').value.trim(),
+      qty:             $('fmQty').value,
+      po:              $('fmPo').value.trim(),
+      ocl:             state.form.ocl,
+      icl:             state.form.icl,
+      bar:             state.form.bar,
+      photos:          state.photos,
+      inventory_notes: $('fmNotes').value.trim(),
+    };
+    // Novo registro: o engine forca `pending`. Na edicao o status nao e
+    // tocado aqui — quem manda nele e a revisao.
+
+    const btn = $('fmSave'); btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      if (state.editingId) await api('/records/' + state.editingId, { method: 'PUT', body, user: recordedBy });
+      else                 await api('/records', { method: 'POST', body, user: recordedBy });
+      closeForm();
+      toast('Saved');
+      loadRecords();
+      if (state.view === 'review') loadReview();
+    } catch (e) {
+      toast('Not saved: ' + e.message, true);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save';
+    }
+  }
+
+  // ── autocomplete do Rapid Code (sugere, nao bloqueia) ───────────
+  function onCodeInput() {
+    const v = $('fmCode').value.trim();
     clearTimeout(state.acTimer);
     if (v.length < 2) { hideAc(); return; }
     state.acTimer = setTimeout(async () => {
@@ -216,91 +714,44 @@
     }, 220);
   }
   function renderAc(items) {
-    const box = $('ccAcList');
+    const box = $('fmAc');
     if (!items.length) { hideAc(); return; }
     box.innerHTML = items.slice(0, 8).map(p =>
-      `<div class="cc-ac-item" data-sku="${esc(p.sku)}" data-dc="${esc(p.five_dc)}">
-         <span class="cc-ac-sku">${esc(p.sku)}</span><span class="cc-ac-name">${esc(p.name)}</span>
+      `<div data-sku="${esc(p.sku)}" data-dc="${esc(p.five_dc)}">
+         <span class="sku">${esc(p.sku)}</span>
+         ${p.five_dc ? `<span class="dc">${esc(p.five_dc)}</span>` : ''}
+         <span class="nm">${esc(p.name)}</span>
        </div>`).join('');
-    box.style.display = 'block';
+    box.classList.add('on');
   }
-  function hideAc() { const b = $('ccAcList'); if (b) { b.style.display = 'none'; b.innerHTML = ''; } }
+  function hideAc() { const b = $('fmAc'); if (b) { b.classList.remove('on'); b.innerHTML = ''; } }
 
-  function openForm(record) {
-    state.editingId = record ? record.id : null;
-    state.form = { ocl: record?.ocl || null, icl: record?.icl || null, bar: record?.bar || null };
-    state.photos = record && Array.isArray(record.photos) ? record.photos.slice() : [];
-    $('ccFormTitle').textContent = record ? 'Edit record' : 'New record';
-    $('ccDate').value      = record?.check_date || today();
-    $('ccRapidCode').value = record?.rapid_code || '';
-    $('ccFiveDc').value    = record?.five_dc || '';
-    $('ccQty').value       = record?.qty ?? '';
-    $('ccPo').value        = record?.po || '';
-    $('ccNotes').value     = record?.inventory_notes || '';
-    $('ccRecordedBy').value = record?.created_by || '';
-    hideAc();
-    paintSegments();
-    renderPhotos();
-    $('ccFormModal').style.display = 'flex';
-    setTimeout(() => $('ccRapidCode').focus(), 50);
-  }
-  function closeForm() { hideAc(); $('ccFormModal').style.display = 'none'; }
+  // ════════════════════════════════════════════════════════════════
+  // FOTOS — redimensiona no navegador, sobe direto pro Storage
+  // ════════════════════════════════════════════════════════════════
+  const CAM_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h3l2-3h8l2 3h3v11H3z"/><circle cx="12" cy="13" r="3.4"/><path d="M19 3v4M17 5h4"/></svg>';
 
-  async function saveForm() {
-    const rapid_code = $('ccRapidCode').value.trim();
-    if (!rapid_code) { toast('Rapid Code is required', 'err'); $('ccRapidCode').focus(); return; }
-    const recordedBy = $('ccRecordedBy').value.trim();
-    if (!recordedBy) { toast('Recorded by (your name) is required', 'err'); $('ccRecordedBy').focus(); return; }
-    if (state.uploading > 0) { toast('Wait for photos to finish uploading…'); return; }
-
-    const body = {
-      check_date:      $('ccDate').value || today(),
-      rapid_code,
-      five_dc:         $('ccFiveDc').value.trim(),
-      qty:             $('ccQty').value,
-      po:              $('ccPo').value.trim(),
-      ocl:             state.form.ocl,
-      icl:             state.form.icl,
-      bar:             state.form.bar,
-      photos:          state.photos,
-      inventory_notes: $('ccNotes').value.trim(),
-    };
-    // New record: engine forces `pending` (goes to Need Review). On edit we
-    // do NOT touch status here — review owns it.
-
-    const btn = $('ccFormSave'); btn.disabled = true; btn.textContent = 'Saving…';
-    try {
-      if (state.editingId) await api('/records/' + state.editingId, { method: 'PUT', body, user: recordedBy });
-      else                 await api('/records', { method: 'POST', body, user: recordedBy });
-      closeForm();
-      toast('Saved ✓', 'ok');
-      loadRecords();
-    } catch (e) {
-      toast('Error saving: ' + e.message, 'err');
-    } finally {
-      btn.disabled = false; btn.textContent = 'Save';
-    }
-  }
-
-  // ── Photos ──────────────────────────────────────────────────────
   function renderPhotos() {
-    const wrap = $('ccPhotos');
-    const thumbs = state.photos.map((p, i) =>
-      `<div class="cc-photo-thumb"><img src="${esc(p.url)}" alt="" data-zoom="${esc(p.url)}"><button type="button" class="cc-photo-rm" data-rm="${i}">×</button></div>`
-    ).join('');
-    const canAdd = state.photos.length < MAX_PHOTOS;
-    wrap.innerHTML = thumbs + (canAdd
-      ? `<label class="cc-photo-add" id="ccPhotoAddLabel"><span>📷 +</span><input type="file" id="ccPhotoInput" accept="image/*" multiple hidden></label>`
-      : '');
-    const input = $('ccPhotoInput');
-    if (input) input.addEventListener('change', onPhotoPick);
+    const wrap = $('fmPhotos');
+    const items = state.photos.map((p, i) =>
+      `<div class="cc-up-item">
+         <img src="${esc(p.url)}" alt="Photo ${i + 1}" data-up="${i}">
+         <button class="cc-up-rm" type="button" data-rm="${i}" title="Remove this photo">&times;</button>
+       </div>`).join('');
+    const add = state.photos.length < MAX_PHOTOS
+      ? `<label class="cc-up-add">${CAM_SVG}<span>Add photo</span>
+           <input type="file" id="fmPhotoInput" accept="image/*" multiple hidden></label>`
+      : '';
+    wrap.innerHTML = items + add;
+    const inp = $('fmPhotoInput');
+    if (inp) inp.addEventListener('change', onPhotoPick);
   }
 
   function resizeImage(file, maxDim, quality) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        let { width, height } = img;
+        let width = img.width, height = img.height;
         if (width > height && width > maxDim) { height = Math.round(height * maxDim / width); width = maxDim; }
         else if (height > maxDim) { width = Math.round(width * maxDim / height); height = maxDim; }
         const canvas = document.createElement('canvas');
@@ -316,8 +767,8 @@
 
   async function uploadPhoto(blob) {
     await window.supabaseReady;
-    const code = ($('ccRapidCode').value.trim() || 'item').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
-    const date = $('ccDate').value || today();
+    const code = ($('fmCode').value.trim() || 'item').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+    const date = $('fmDate').value || today();
     const rand = Math.random().toString(36).slice(2, 7);
     const path = `${date}/${code}-${Date.now()}-${rand}.jpg`;
     const { error } = await window.supabase.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg', upsert: false });
@@ -327,22 +778,23 @@
   }
 
   async function onPhotoPick(ev) {
-    const files = Array.from(ev.target.files || []);
+    const files = Array.prototype.slice.call(ev.target.files || []);
     ev.target.value = '';
     for (const file of files) {
-      if (state.photos.length >= MAX_PHOTOS) { toast(`Max ${MAX_PHOTOS} photos`); break; }
-      const wrap = $('ccPhotos');
+      if (state.photos.length >= MAX_PHOTOS) { toast(`Maximum ${MAX_PHOTOS} photos`, true); break; }
+      const wrap = $('fmPhotos');
       const ph = document.createElement('div');
-      ph.className = 'cc-photo-thumb uploading';
-      ph.innerHTML = '<span class="cc-photo-spin">⏳</span>';
-      wrap.insertBefore(ph, wrap.querySelector('#ccPhotoAddLabel'));
+      ph.className = 'cc-up-item busy';
+      ph.innerHTML = '<span class="cc-spin"></span>';
+      const addBtn = wrap.querySelector('.cc-up-add');
+      wrap.insertBefore(ph, addBtn || null);
       state.uploading++;
       try {
         const blob = await resizeImage(file, 1280, 0.72);
-        const url = await uploadPhoto(blob);
+        const url  = await uploadPhoto(blob);
         state.photos.push({ url, label: '' });
       } catch (e) {
-        toast('Photo failed: ' + e.message, 'err');
+        toast('Photo failed: ' + (e.message || e), true);
       } finally {
         state.uploading--;
         renderPhotos();
@@ -350,230 +802,196 @@
     }
   }
 
-  // ── Lightbox (click to expand + download) ──────────────────────
-  function openLightbox(url) {
-    $('ccLightboxImg').src = url;
-    $('ccLightbox').dataset.url = url;
-    $('ccLightbox').style.display = 'flex';
+  // ── lightbox (expandir, navegar, baixar) ────────────────────────
+  function openLightbox(list, i) {
+    if (!list || !list.length) return;
+    state.lb = { list, i: Math.max(0, Math.min(i || 0, list.length - 1)) };
+    paintLightbox();
+    $('lightbox').classList.add('is-on');
   }
-  function closeLightbox() { $('ccLightbox').style.display = 'none'; $('ccLightboxImg').src = ''; }
-  async function downloadCurrentImage() {
-    const url = $('ccLightbox').dataset.url; if (!url) return;
+  function paintLightbox() {
+    const { list, i } = state.lb;
+    $('lbImg').src = list[i];
+    $('lbCap').textContent = list.length > 1 ? `${i + 1} of ${list.length}` : '';
+    const many = list.length > 1;
+    $('lbPrev').hidden = !many;
+    $('lbNext').hidden = !many;
+  }
+  function stepLightbox(d) {
+    const { list } = state.lb;
+    if (!list.length) return;
+    state.lb.i = (state.lb.i + d + list.length) % list.length;
+    paintLightbox();
+  }
+  function closeLightbox() { $('lightbox').classList.remove('is-on'); $('lbImg').src = ''; }
+  async function downloadCurrent() {
+    const url = state.lb.list[state.lb.i]; if (!url) return;
     const name = (url.split('/').pop() || 'photo.jpg').split('?')[0];
     try {
-      const r = await fetch(url); const blob = await r.blob();
-      const a = document.createElement('a'); const obj = URL.createObjectURL(blob);
-      a.href = obj; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      const r = await fetch(url);
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      const obj = URL.createObjectURL(blob);
+      a.href = obj; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(obj);
     } catch (_) { window.open(url, '_blank', 'noopener'); }
   }
-  const photoThumbs = (arr) => (Array.isArray(arr) ? arr : []).map(p =>
-    `<button type="button" class="cc-ph" data-zoom="${esc(p.url)}"><img src="${esc(p.url)}" alt="" loading="lazy"></button>`).join('');
 
   // ════════════════════════════════════════════════════════════════
-  // DETAIL (modal) + per-record history
+  // ABAS + LIGACOES
   // ════════════════════════════════════════════════════════════════
-  function openDetail(r) {
-    $('ccDetailTitle').textContent = r.rapid_code || 'Detail';
-    const labelLine = (k, v) => `<span><b>${k}</b> ${v ? `<span class="cc-lv cc-lv-${lvClass(v)}">${esc(v)}</span>` : '<span class="cc-lv cc-lv-blank">·</span>'}</span>`;
-    const photos = photoThumbs(r.photos) || '<span style="opacity:.5;font-size:12px">no photos</span>';
-    const note = (k, v) => v ? `<div class="cc-detail-note"><span class="k">${k}</span>${esc(v)}</div>` : '';
-    const reviewed = r.reviewed_by ? `<div><div class="k">Reviewed by</div><div class="v">${esc(r.reviewed_by)} · ${esc(fmtTime(r.reviewed_at))}</div></div>` : '';
-    $('ccDetailBody').innerHTML = `
-      <div class="cc-detail-grid">
-        <div><div class="k">Date</div><div class="v">${esc(r.check_date || '')}</div></div>
-        <div><div class="k">Status</div><div class="v"><span class="cc-pill cc-pill-${r.status}">${esc(r.status)}</span></div></div>
-        <div><div class="k">5DC</div><div class="v">${esc(r.five_dc || '—')}</div></div>
-        <div><div class="k">QTY</div><div class="v">${r.qty != null ? esc(r.qty) : '—'}</div></div>
-        <div><div class="k">PO</div><div class="v">${esc(r.po || '—')}</div></div>
-        <div><div class="k">Logged by</div><div class="v">${esc(r.created_by || '—')}</div></div>
-        ${reviewed}
-      </div>
-      <div style="display:flex;gap:16px;margin-bottom:10px;font-size:13px;flex-wrap:wrap">
-        ${labelLine('OCL', r.ocl)} ${labelLine('ICL', r.icl)} ${labelLine('Bar', r.bar)}
-      </div>
-      <div class="cc-detail-photos">${photos}</div>
-      ${note('Notes (inventory)', r.inventory_notes)}
-      ${note('Review', r.reviewer_notes)}
-      <div class="cc-modal-actions" style="margin-top:14px">
-        <button class="cc-btn cc-btn-secondary" id="ccDetailEdit" type="button">Edit</button>
-      </div>
-      <div class="cc-history" id="ccDetailHistory"><div class="cc-hist-title">History</div><div class="cc-hist-body">loading…</div></div>`;
-    $('ccDetailEdit').addEventListener('click', () => { closeDetail(); openForm(r); });
-    $('ccDetailModal').style.display = 'flex';
-    loadHistory(r.id);
-  }
-  function closeDetail() { $('ccDetailModal').style.display = 'none'; }
-
-  function actionLabel(a) {
-    return { created: '➕ Created', updated: '✏️ Edited', reviewed: '✅ Reviewed', deleted: '🗑️ Deleted' }[a] || a;
-  }
-  function histDetails(action, d) {
-    if (!d) return '';
-    const bits = [];
-    if (action === 'created') { ['ocl','icl','bar'].forEach(k => { if (d[k]) bits.push(`${k.toUpperCase()} ${d[k]}`); }); if (d.photos) bits.push(`${d.photos} photo(s)`); }
-    if (action === 'reviewed' && d.to_status) bits.push(`→ ${d.to_status}`);
-    if (action === 'updated' && Array.isArray(d.changed) && d.changed.length) bits.push('changed: ' + d.changed.join(', '));
-    if (d.photos_added)   bits.push(`+${d.photos_added} photo`);
-    if (d.photos_removed) bits.push(`−${d.photos_removed} photo`);
-    return bits.length ? ` <span class="cc-hist-d">(${esc(bits.join(' · '))})</span>` : '';
-  }
-  async function loadHistory(id) {
-    const body = $('ccDetailHistory') && $('ccDetailHistory').querySelector('.cc-hist-body');
-    if (!body) return;
-    try {
-      const data = await api('/records/' + id + '/log');
-      const items = data.items || [];
-      if (!items.length) { body.innerHTML = `<div class="cc-hist-empty">${data.note ? esc(data.note) : 'no history yet'}</div>`; return; }
-      body.innerHTML = items.map(l =>
-        `<div class="cc-hist-row"><span class="cc-hist-act ui-act">${actionLabel(l.action)}</span>${histDetails(l.action, l.details)}
-           <span class="cc-hist-meta">${esc(l.actor || '—')} · ${esc(fmtTime(l.created_at))}</span></div>`).join('');
-    } catch (e) {
-      body.innerHTML = `<div class="cc-hist-empty">history unavailable: ${esc(e.message)}</div>`;
-    }
+  function showView(v) {
+    state.view = v;
+    $$('.sp-tab').forEach(b => b.classList.toggle('is-on', b.dataset.view === v));
+    $$('.sp-view').forEach(s => s.classList.toggle('is-on', s.dataset.view === v));
+    if (v === 'review')  loadReview();
+    if (v === 'quality') renderQuality();
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // REVIEW TAB
-  // ════════════════════════════════════════════════════════════════
-  async function loadReview() {
-    const list = $('ccReviewList');
-    list.innerHTML = '<div class="cc-empty">Loading…</div>';
-    try {
-      const data = await api('/review');
-      const items = data.items || [];
-      const badge = $('ccReviewBadge');
-      badge.textContent = items.length;
-      badge.style.display = items.length ? '' : 'none';
-      if (!items.length) { list.innerHTML = '<div class="cc-empty">Nothing to review 🎉</div>'; return; }
-      const lv = (k, v) => `<span><b>${k}</b> ${v ? `<span class="cc-lv cc-lv-${lvClass(v)}">${esc(v)}</span>` : '<span class="cc-lv cc-lv-blank">·</span>'}</span>`;
-      list.innerHTML = items.map(r => `
-        <div class="cc-review-card" data-id="${r.id}">
-          <div class="cc-review-info">
-            <div class="cc-ri-row"><span class="cc-ri-k">Date</span> ${esc(fmtDate(r.check_date))} <span class="cc-ri-sep">—</span> <span class="cc-pill cc-pill-${r.status}">${esc(r.status)}</span></div>
-            <div class="cc-ri-row"><span class="cc-ri-k">5DC</span> ${esc(r.five_dc || '—')}</div>
-            <div class="cc-ri-row"><span class="cc-ri-k">Product</span> <b>${esc(r.rapid_code || '—')}</b></div>
-            <div class="cc-ri-row"><span class="cc-ri-k">QTY</span> ${r.qty != null ? esc(r.qty) : '—'}</div>
-            <div class="cc-ri-row"><span class="cc-ri-k">PO</span> ${esc(r.po || '—')}</div>
-            <div class="cc-ri-row"><span class="cc-ri-k">Recorded by</span> ${esc(r.created_by || '—')}</div>
-          </div>
-          <div class="cc-review-labels">${lv('OCL', r.ocl)} ${lv('ICL', r.icl)} ${lv('Bar', r.bar)}</div>
-          ${r.inventory_notes ? `<div class="cc-detail-note"><span class="k">Inventory notes</span>${esc(r.inventory_notes)}</div>` : ''}
-          <div class="cc-detail-photos">${photoThumbs(r.photos) || '<span style="opacity:.5;font-size:12px">no photos</span>'}</div>
-          <div class="cc-review-actions">
-            <label class="cc-rv-field">
-              <span class="cc-rv-label">Reviewed by *</span>
-              <input type="text" class="cc-rv-name" data-name="${r.id}" placeholder="Your name" autocomplete="off" />
-            </label>
-            <label class="cc-rv-field cc-rv-field-grow">
-              <span class="cc-rv-label">Resolution * <small>what did you do / what happened</small></span>
-              <textarea data-note="${r.id}" rows="2">${esc(r.reviewer_notes || '')}</textarea>
-            </label>
-            <button class="cc-rv-confirm" data-confirm="${r.id}">✅ Confirm treated</button>
-          </div>
-        </div>`).join('');
-    } catch (e) {
-      list.innerHTML = `<div class="cc-empty">Error: ${esc(e.message)}</div>`;
-    }
+  const DESC_FIRST = { date: 1, qty: 1 };
+  function sortBy(key) {
+    if (state.sort === key) state.dir = state.dir === 'asc' ? 'desc' : 'asc';
+    else { state.sort = key; state.dir = DESC_FIRST[key] ? 'desc' : 'asc'; }
+    reload(true);
   }
 
-  async function reviewItem(id) {
-    const nameEl = document.querySelector(`input[data-name="${id}"]`);
-    const reviewer = nameEl ? nameEl.value.trim() : '';
-    if (!reviewer) { toast('Enter your name first', 'err'); if (nameEl) nameEl.focus(); return; }
-    const ta = document.querySelector(`textarea[data-note="${id}"]`);
-    const reviewer_notes = ta ? ta.value.trim() : '';
-    if (!reviewer_notes) { toast('Write the resolution (what you did) before confirming', 'err'); if (ta) ta.focus(); return; }
-    if (!window.confirm('Confirm this record is treated and ready? It moves to 🟢 Green.')) return;
-    try {
-      await api('/records/' + id, { method: 'PUT', body: { status: 'green', reviewer_notes }, user: reviewer });
-      toast('Reviewed ✓', 'ok');
-      loadReview();
-    } catch (e) { toast('Error: ' + e.message, 'err'); }
+  function clearFilters() {
+    $('fFrom').value = ''; $('fTo').value = ''; $('fStatus').value = ''; $('fSearch').value = '';
+    state.issuesOnly = false;
+    $('fIssues').classList.remove('is-on');
+    reload(true);
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // WIRING
-  // ════════════════════════════════════════════════════════════════
+  /** Abre o lightbox a partir de qualquer miniatura da pagina. */
+  function zoomFrom(el) {
+    const list = state.photoSets[el.dataset.set];
+    if (list && list.length) openLightbox(list, Number(el.dataset.i) || 0);
+  }
+
   function init() {
     buildSegments();
 
-    document.querySelectorAll('.cc-tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+    $$('.sp-tab').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
+    $('btnNew').addEventListener('click', () => openForm(null));
 
-    $('ccBtnNew').addEventListener('click', () => openForm(null));
-    $('ccFormClose').addEventListener('click', closeForm);
-    $('ccFormCancel').addEventListener('click', closeForm);
-    $('ccFormSave').addEventListener('click', saveForm);
-    $('ccDetailClose').addEventListener('click', closeDetail);
-
-    $('ccBtnFilter').addEventListener('click', reloadFromFirstPage);
-    $('ccBtnClearFilter').addEventListener('click', () => {
-      $('ccFrom').value = ''; $('ccTo').value = ''; $('ccStatusFilter').value = ''; $('ccSearch').value = '';
-      reloadFromFirstPage();
+    // ── filtros ──
+    $('fApply').addEventListener('click', () => reload(true));
+    $('fClear').addEventListener('click', clearFilters);
+    $('fStatus').addEventListener('change', () => reload(true));
+    $('fIssues').addEventListener('click', () => {
+      state.issuesOnly = !state.issuesOnly;
+      $('fIssues').classList.toggle('is-on', state.issuesOnly);
+      reload(true);
     });
-    $('ccSearch').addEventListener('keydown', e => { if (e.key === 'Enter') reloadFromFirstPage(); });
+    $('fSearch').addEventListener('keydown', e => { if (e.key === 'Enter') reload(true); });
+    [$('fFrom'), $('fTo')].forEach(el => el.addEventListener('change', () => reload(true)));
 
-    // pagination
-    $('ccPager').addEventListener('click', e => {
-      const b = e.target.closest('[data-pg]'); if (!b || b.disabled) return;
-      const pg = b.dataset.pg;
-      if (pg === 'first') state.page = 1;
-      else if (pg === 'prev') state.page = Math.max(1, state.page - 1);
-      else if (pg === 'next') state.page = Math.min(state.pageCount, state.page + 1);
-      else if (pg === 'last') state.page = state.pageCount;
-      loadRecords();
-    });
-
-    // segmented label selectors (delegated)
-    document.querySelector('.cc-labels').addEventListener('click', e => {
-      const btn = e.target.closest('.cc-seg-btn'); if (!btn) return;
-      state.form[btn.dataset.field] = (state.form[btn.dataset.field] === btn.dataset.val) ? null : btn.dataset.val;
-      paintSegments();
-    });
-
-    // autocomplete on Rapid Code
-    $('ccRapidCode').addEventListener('input', onRapidInput);
-    $('ccRapidCode').addEventListener('keydown', e => { if (e.key === 'Escape') hideAc(); });
-    $('ccAcList').addEventListener('mousedown', e => {   // mousedown fires before input blur
-      const it = e.target.closest('.cc-ac-item'); if (!it) return;
-      $('ccRapidCode').value = it.dataset.sku;
-      if (it.dataset.dc && !$('ccFiveDc').value.trim()) $('ccFiveDc').value = it.dataset.dc;
-      hideAc();
-    });
-
-    // photos: add input + remove + zoom (delegated)
-    const pin = $('ccPhotoInput'); if (pin) pin.addEventListener('change', onPhotoPick);
-    $('ccPhotos').addEventListener('click', e => {
-      const rm = e.target.closest('[data-rm]');
-      if (rm) { state.photos.splice(Number(rm.dataset.rm), 1); renderPhotos(); return; }
-      const zoom = e.target.closest('[data-zoom]');
-      if (zoom) openLightbox(zoom.dataset.zoom);
-    });
-
-    // lightbox: zoom from detail/review photos + controls
-    document.addEventListener('click', e => {
-      const z = e.target.closest('.cc-ph[data-zoom]'); if (z) { openLightbox(z.dataset.zoom); }
-    });
-    $('ccLightboxClose').addEventListener('click', closeLightbox);
-    $('ccLightboxDownload').addEventListener('click', downloadCurrentImage);
-    $('ccLightbox').addEventListener('click', e => { if (e.target === $('ccLightbox')) closeLightbox(); });
-
-    // table interactions (delegated) — row opens detail (delete removed from table)
-    $('ccTbody').addEventListener('click', e => {
-      const row = e.target.closest('.cc-row'); if (!row) return;
-      const r = state.records.find(x => String(x.id) === row.dataset.id);
+    // ── grade: ordenar, abrir detalhe, ampliar foto, recuperar de erro ──
+    $('grid').addEventListener('click', e => {
+      const zoom = e.target.closest('[data-set]');
+      if (zoom) { e.stopPropagation(); zoomFrom(zoom); return; }
+      const th = e.target.closest('th[data-srt]');
+      if (th) { sortBy(th.dataset.srt); return; }
+      if (e.target.closest('[data-retry]')) { loadRecords(); return; }
+      if (e.target.closest('[data-clear]')) { clearFilters(); return; }
+      const tr = e.target.closest('tr[data-id]');
+      if (!tr) return;
+      const r = state.records.find(x => String(x.id) === tr.dataset.id);
       if (r) openDetail(r);
     });
 
-    // review interactions (delegated) — the single Confirm button
-    $('ccReviewList').addEventListener('click', e => {
-      const b = e.target.closest('[data-confirm]'); if (!b) return;
-      reviewItem(b.dataset.confirm);
+    $('foot').addEventListener('click', e => {
+      const b = e.target.closest('[data-pg]'); if (!b || b.disabled) return;
+      const pg = b.dataset.pg;
+      if (pg === 'first')     state.page = 1;
+      else if (pg === 'prev') state.page = Math.max(1, state.page - 1);
+      else if (pg === 'next') state.page = Math.min(state.pageCount, state.page + 1);
+      else                    state.page = state.pageCount;
+      loadRecords();
     });
 
-    // close modals on backdrop click + Esc
-    [$('ccFormModal'), $('ccDetailModal')].forEach(m => m.addEventListener('click', e => { if (e.target === m) m.style.display = 'none'; }));
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeForm(); closeDetail(); closeLightbox(); } });
+    $('kpis').addEventListener('click', e => {
+      const go = e.target.closest('[data-go]');
+      if (go) showView(go.dataset.go);
+    });
+
+    // ── Quality: clicar um SKU leva ele para o filtro do log ──
+    $('qBody').addEventListener('click', e => {
+      const tr = e.target.closest('[data-code]'); if (!tr) return;
+      $('fSearch').value = tr.dataset.code;
+      showView('records');
+      reload(true);
+    });
+
+    // ── fila de revisao ──
+    $('revList').addEventListener('click', e => {
+      const zoom = e.target.closest('[data-set]'); if (zoom) { zoomFrom(zoom); return; }
+      if (e.target.closest('[data-retry-review]')) { loadReview(); return; }
+      const det = e.target.closest('[data-detail]');
+      if (det) {
+        const r = (state.review || []).find(x => String(x.id) === det.dataset.detail);
+        if (r) openDetail(r);
+        return;
+      }
+      const cf = e.target.closest('[data-confirm]');
+      if (cf) reviewItem(cf.dataset.confirm, cf);
+    });
+
+    // ── formulario ──
+    $('mdForm').addEventListener('click', e => {
+      if (e.target === $('mdForm') || e.target.hasAttribute('data-close')) { closeForm(); return; }
+      const seg = e.target.closest('.cc-seg button');
+      if (seg) {
+        const f = seg.dataset.field;
+        state.form[f] = state.form[f] === seg.dataset.val ? null : seg.dataset.val;
+        paintSegments();
+        return;
+      }
+      const rm = e.target.closest('[data-rm]');
+      if (rm) { state.photos.splice(Number(rm.dataset.rm), 1); renderPhotos(); return; }
+      const up = e.target.closest('[data-up]');
+      if (up) openLightbox(state.photos.map(p => p.url), Number(up.dataset.up) || 0);
+    });
+    $('fmSave').addEventListener('click', saveForm);
+    $('fmCode').addEventListener('input', onCodeInput);
+    $('fmCode').addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); hideAc(); } });
+    // mousedown dispara antes do blur do input — no click a selecao ja se perdeu
+    $('fmAc').addEventListener('mousedown', e => {
+      const it = e.target.closest('[data-sku]'); if (!it) return;
+      e.preventDefault();
+      $('fmCode').value = it.dataset.sku;
+      if (it.dataset.dc && !$('fmDc').value.trim()) $('fmDc').value = it.dataset.dc;
+      hideAc();
+    });
+
+    // ── confirmacao ──
+    $('cfOk').addEventListener('click', () => closeConfirm(true));
+    $('mdConfirm').addEventListener('click', e => {
+      if (e.target === $('mdConfirm') || e.target.hasAttribute('data-close')) closeConfirm(false);
+    });
+
+    // ── painel lateral + lightbox ──
+    $('sideClose').addEventListener('click', closeSide);
+    $('sideBody').addEventListener('click', e => {
+      const zoom = e.target.closest('[data-set]'); if (zoom) zoomFrom(zoom);
+    });
+    $('lbClose').addEventListener('click', closeLightbox);
+    $('lbDl').addEventListener('click', downloadCurrent);
+    $('lbPrev').addEventListener('click', () => stepLightbox(-1));
+    $('lbNext').addEventListener('click', () => stepLightbox(1));
+    $('lightbox').addEventListener('click', e => { if (e.target === $('lightbox')) closeLightbox(); });
+
+    document.addEventListener('keydown', e => {
+      const lbOn = $('lightbox').classList.contains('is-on');
+      if (lbOn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { stepLightbox(e.key === 'ArrowLeft' ? -1 : 1); return; }
+      if (e.key !== 'Escape') return;
+      // Uma camada por Escape, da mais alta para a mais baixa.
+      if (lbOn) { closeLightbox(); return; }
+      if ($('mdConfirm').classList.contains('is-on')) { closeConfirm(false); return; }
+      if ($('mdForm').classList.contains('is-on')) { closeForm(); return; }
+      closeSide();
+    });
 
     loadRecords();
   }

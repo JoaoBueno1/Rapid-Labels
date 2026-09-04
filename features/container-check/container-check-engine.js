@@ -31,6 +31,13 @@ const LABEL_VALUES  = ['OK', 'Wrong', 'Missing', 'N/A'];
 // nothing sets them anymore. Every record is treated eventually, so a simple
 // pending → green flow is clearer than a traffic light.)
 const STATUS_VALUES = ['green', 'pending'];
+// Whitelist, not passthrough: the sort key arrives from the query string.
+// `reviewed_by` fica DE FORA: a coluna so existe depois da migracao 003, e
+// um ORDER BY numa coluna ausente devolve 400 em vez de uma lista.
+const SORTABLE = {
+  date: 'check_date', code: 'rapid_code', dc: 'five_dc', po: 'po',
+  qty: 'qty', status: 'status', by: 'created_by',
+};
 
 // ─── Response helpers ───────────────────────────────────────────────
 function ok(res, data)            { return res.json({ success: true, data }); }
@@ -75,22 +82,78 @@ function hasIssue(r) {
   return ['ocl', 'icl', 'bar'].some(k => r[k] === 'Wrong' || r[k] === 'Missing');
 }
 
+// Days between two YYYY-MM-DD strings (UTC, calendar days).
+function dayDiff(from, to) {
+  const a = Date.parse(from + 'T00:00:00Z'), b = Date.parse(to + 'T00:00:00Z');
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+// The summary is swept over EVERY row matching the filter (not just the page),
+// so it is also the only place that can answer the questions the screen is
+// really for: how long has the queue been waiting, which label fails, and
+// which SKUs keep coming back. Counting them here costs one extra pass over
+// rows we already fetched.
 function buildSummary(items) {
   const by_status = { green: 0, red: 0, orange: 0, pending: 0 };
   const blank = () => ({ OK: 0, Wrong: 0, Missing: 0, 'N/A': 0, blank: 0 });
   const by_label = { ocl: blank(), icl: blank(), bar: blank() };
-  let issues = 0;
+  const perCode = new Map();   // rapid_code -> { code, records, issues }
+  const perDay  = new Map();   // check_date -> { d, n, issues }
+  const today   = new Date().toISOString().slice(0, 10);
+  let issues = 0, pending_oldest = null, pending_over_7d = 0;
+
   for (const r of items) {
     if (by_status[r.status] != null) by_status[r.status]++;
-    if (hasIssue(r)) issues++;
+    const bad = hasIssue(r);
+    if (bad) issues++;
+
     for (const k of ['ocl', 'icl', 'bar']) {
       const v = r[k];
       if (v && by_label[k][v] != null) by_label[k][v]++;
       else by_label[k].blank++;
     }
+
+    const code = (r.rapid_code || '').trim();
+    if (code) {
+      const c = perCode.get(code) || { code, records: 0, issues: 0 };
+      c.records++; if (bad) c.issues++;
+      perCode.set(code, c);
+    }
+
+    const d = String(r.check_date || '').slice(0, 10);
+    if (d) {
+      const day = perDay.get(d) || { d, n: 0, issues: 0 };
+      day.n++; if (bad) day.issues++;
+      perDay.set(d, day);
+    }
+
+    if (r.status === 'pending' && d) {
+      if (!pending_oldest || d < pending_oldest) pending_oldest = d;
+      if ((dayDiff(d, today) || 0) > 7) pending_over_7d++;
+    }
   }
-  const total = items.length;
-  return { total, ok: total - issues, issues, issue_rate: total ? issues / total : 0, by_status, by_label };
+
+  const total   = items.length;
+  // Ascending, then the tail: a filter spanning a year still charts the most
+  // recent 45 days with data instead of 365 slivers one pixel wide.
+  const by_day  = [...perDay.values()].sort((a, b) => (a.d < b.d ? -1 : 1)).slice(-45);
+  const top_offenders = [...perCode.values()]
+    .filter(c => c.issues > 0)
+    .sort((a, b) => b.issues - a.issues || b.records - a.records)
+    .slice(0, 8);
+
+  return {
+    total, ok: total - issues, issues, issue_rate: total ? issues / total : 0,
+    by_status, by_label,
+    skus: perCode.size,
+    days: perDay.size,
+    last_check: by_day.length ? by_day[by_day.length - 1].d : null,
+    pending_oldest,
+    pending_age_days: pending_oldest ? dayDiff(pending_oldest, today) : null,
+    pending_over_7d,
+    by_day, top_offenders,
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -110,6 +173,12 @@ module.exports = function registerContainerCheckRoutes(app, supabaseBackend) {
     if (query.status && STATUS_VALUES.includes(query.status)) q = q.eq('status', query.status);
     const term = (query.q || '').toString().trim();
     if (term) q = q.ilike('rapid_code', `%${term}%`);
+    // "Issues only": any of the three labels came back Wrong or Missing. It is
+    // the one question this log gets asked most, and doing it client-side over
+    // a page of 50 would answer it for the page instead of for the filter.
+    if (String(query.issues || '') === '1') {
+      q = q.or('ocl.in.(Wrong,Missing),icl.in.(Wrong,Missing),bar.in.(Wrong,Missing)');
+    }
     return q;
   }
 
@@ -135,7 +204,7 @@ module.exports = function registerContainerCheckRoutes(app, supabaseBackend) {
       // Summary over ALL matching rows (only 4 tiny cols; paginate past the 1000 cap).
       const summaryRows = [];
       for (let off = 0; off < 50000; off += 1000) {
-        const { data, error } = await applyFilters(db().select('status,ocl,icl,bar'), query).range(off, off + 999);
+        const { data, error } = await applyFilters(db().select('status,ocl,icl,bar,check_date,rapid_code'), query).range(off, off + 999);
         if (error) throw error;
         if (!data || !data.length) break;
         summaryRows.push(...data);
@@ -144,14 +213,23 @@ module.exports = function registerContainerCheckRoutes(app, supabaseBackend) {
       const total   = summaryRows.length;
       const summary = buildSummary(summaryRows);
 
-      // The page of full rows.
-      const { data: items, error: ie } = await applyFilters(db().select('*'), query)
-        .order('check_date', { ascending: false })
+      // The page of full rows. Sorting is server-side on purpose: sorting the
+      // 50 rows already on screen would reorder the page, not the log, and the
+      // header arrow would be lying about what it did.
+      const sortCol = SORTABLE[String(query.sort || '')] || 'check_date';
+      const asc     = String(query.dir || 'desc') === 'asc';
+      let rowsQ = applyFilters(db().select('*'), query).order(sortCol, { ascending: asc, nullsFirst: false });
+      if (sortCol !== 'check_date') rowsQ = rowsQ.order('check_date', { ascending: false });
+      const { data: items, error: ie } = await rowsQ
         .order('created_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
       if (ie) throw ie;
 
-      return ok(res, { items: items || [], summary, total, page, pageSize, pageCount: Math.max(1, Math.ceil(total / pageSize)) });
+      return ok(res, {
+        items: items || [], summary, total, page, pageSize,
+        pageCount: Math.max(1, Math.ceil(total / pageSize)),
+        sort: String(query.sort || 'date'), dir: asc ? 'asc' : 'desc',
+      });
     } catch (err) {
       console.error('[container-check/records]', err);
       return fail(res, 500, err.message);
