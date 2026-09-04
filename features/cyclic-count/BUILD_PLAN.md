@@ -295,7 +295,13 @@ login, e exigir um faria a contagem parar.
 | **3** | Rotas, tela de gestão, folha da filial, e-mail, item no menu | ✅ construído, a validar em uso |
 | **4** | Tratativa, fechar rodada, histórico | ✅ dentro da fase 3 |
 | **5** | Cron do agendador + página de análise (SKUs que somem sempre) | pendente |
-| **6** | Gate de permissão + aposentar `cyclic-count.html`/`count-form.html` da raiz e as tabelas `count_*` | pendente |
+| **6a** | Aposentar o protótipo de 2025 — 4 páginas, 2 uploaders órfãos, 7 rotas, `server.js` 1.131→838 | ✅ 04/09 (`005` a aplicar) |
+| **6b** | Gate de permissão (`app_users` já existe, vazio) | pendente |
+
+Decisão registrada: as tabelas `audit_*` ficaram órfãs junto, mas **não caem
+no `005`**. `audit_stock_analysis` tem 5.208 linhas de análise real de
+novembro/2025 — apagar histórico é decisão a se tomar de propósito. O `DROP`
+pronto está comentado no fim do `005` e em `docs/DEAD_CODE_REGISTER.md`.
 
 ### O que foi construído
 
