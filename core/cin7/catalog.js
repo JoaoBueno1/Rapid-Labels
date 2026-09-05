@@ -1613,9 +1613,100 @@ function totalCallsForBackfill(sinceISO, opts) {
   };
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUPERFÍCIE DA API — o que existe, o que usamos, o que não dá para ter
+   ═══════════════════════════════════════════════════════════════════════════
+   RESOURCES acima descreve o que SINCRONIZAMOS. Este bloco descreve a API
+   inteira: também o que está disponível e não usamos, e o que simplesmente não
+   existe. A segunda parte é a que evita a pergunta voltar.
+
+   Tudo aqui foi SONDADO na conta real em 2026-09-04, não lido em documentação.
+   Um 302 do Cin7 Core é redirect para /Error/NotFound — ou seja, endpoint
+   inexistente, não permissão faltando.
+
+   ── QUAL API É ESTA ──────────────────────────────────────────────────────
+   Rapid LED usa **Cin7 Core** (ex-DEAR): inventory.dearsystems.com/ExternalApi/v2.
+   NÃO existe "v1 nossa para mapear". A v1 é de outro produto — Cin7 Omni, em
+   api.cin7.com/api/v1 — uma plataforma diferente, com outra base de dados e
+   outras credenciais. Sondado: GET api.cin7.com/api/v1/Users com as nossas
+   chaves responde 401. Não é permissão a pedir; é o sistema errado.
+   Portanto: v2 é 100% da superfície que nos diz respeito.
+
+   ── USUÁRIOS / LOGINS / E-MAILS: NÃO EXISTEM NA API ──────────────────────
+   Sondados e todos 302 (inexistentes):
+       ref/user · users · user · ref/employee · ref/salesrep
+   O único endpoint de "conta" que responde é ref/account (200, Total=362) e ele
+   é o PLANO DE CONTAS CONTÁBIL — códigos de razão, não pessoas.
+   E /me (200) devolve as configurações da EMPRESA — Company, Currency,
+   TimeZone, LockDate, regras de imposto — nenhum usuário.
+
+   Ou seja: não há como puxar do Cin7 os e-mails e as contas para semear um
+   sistema de login. Esse cadastro nasce fora dele.
+
+   O que o Cin7 dá de identidade é só o NOME digitado no pedido:
+   Sale.SalesRepresentative — texto livre, sem e-mail e sem id estável.
+   É dele que sai `sales_rep` em cin7_mirror.v_rp_demand.
+
+   O que JÁ EXISTE deste lado, e é o mais próximo de um cadastro de pessoas:
+       rapid_inv.sales_rep_branch — 40 pessoas → 8 filiais, com is_active, uma
+       `note` justificando cada decisão e inferred_branch/inferred_pct vindos
+       da própria venda. Sem e-mail.
+   Quando o login com roles chegar, é esta tabela que ele deve casar (por nome,
+   uma vez, à mão) — não uma importação do Cin7, que não tem o dado.
+
+   ── REFERÊNCIA: o que responde e o que não ──────────────────────────────
+   Confirmados 200:
+       ref/location            Total=1421   USAMOS (bins/armazéns)
+       ref/productavailability Total=15341  USAMOS (estoque por SKU/local)
+       ref/account             Total=362    não usamos — plano de contas
+       ref/carrier             Total=1      não usamos — transportadora vem do TMS
+       ref/paymentterm         Total=1      não usamos
+       ref/pricetier                        não usamos
+       ref/attributeset        Total=4      não usamos — mas é onde vive o 5DC
+                                            (products.attribute1); ver a inversão
+                                            de nomes em features/wms/pwa/wms-labels.js
+       webhooks                             USAMOS (9 registrados; nenhum de
+                                            transferência — ver abaixo)
+   Confirmados INEXISTENTES (302):
+       ref/productcategory · ref/productbrand · ref/taxrule · ref/uom
+       ref/customertype · ref/salesorderstatus
+
+   ── O BURACO QUE JÁ CUSTOU CARO ─────────────────────────────────────────
+   Não há webhook de STOCK TRANSFER. Conferido na conta: 9 webhooks
+   registrados, nenhum de transferência, e a taxonomia do Core não tem o evento.
+   Por isso .github/workflows/cin7-transfers-sync.yml faz polling de 2 em 2 horas
+   para cin7_mirror.stock_transfers, e é DALI que o status de uma TR deve ser
+   lido — nunca perguntando ao Cin7 na hora em que alguém abre uma tela.
+*/
+const SURFACE = {
+  probedAt: '2026-09-04',
+  product: 'Cin7 Core (ex-DEAR)',
+  base: 'https://inventory.dearsystems.com/ExternalApi/v2',
+  v1: { applies: false, product: 'Cin7 Omni', base: 'https://api.cin7.com/api/v1',
+        evidence: 'GET /Users com as nossas credenciais → 401 (2026-09-04)' },
+  identity: {
+    usersEndpoint: null,
+    probed404: ['ref/user', 'users', 'user', 'ref/employee', 'ref/salesrep'],
+    note: 'ref/account e o plano de contas; /me sao as configuracoes da empresa. '
+        + 'A unica identidade e Sale.SalesRepresentative (texto livre, sem e-mail).',
+    localSource: 'rapid_inv.sales_rep_branch (40 pessoas → 8 filiais, sem e-mail)',
+  },
+  reference: {
+    used:   ['ref/location', 'ref/productavailability', 'webhooks'],
+    unused: ['ref/account', 'ref/carrier', 'ref/paymentterm', 'ref/pricetier', 'ref/attributeset'],
+    absent: ['ref/productcategory', 'ref/productbrand', 'ref/taxrule', 'ref/uom',
+             'ref/customertype', 'ref/salesorderstatus'],
+  },
+  gaps: [
+    { what: 'webhook de stock transfer', exists: false,
+      workaround: '.github/workflows/cin7-transfers-sync.yml — polling 2h → cin7_mirror.stock_transfers' },
+  ],
+};
+
 module.exports = {
   CATALOG_VERSION,
   CIN7_BASE,
+  SURFACE,
   RATE_LIMIT_PER_MIN,
   COVERAGE_SINCE,
   COVERAGE_UNTIL,
