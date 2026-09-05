@@ -425,7 +425,7 @@
           return s + '</div>';
         }
         view.innerHTML =
-          '<p class="eyebrow">Container check</p>' +
+          '<p class="eyebrow">Barcodes review</p>' +
           (rascunho ? '<div class="banner warn">You have an unsaved check in progress. ' +
                       '<b>Discard</b> it below if this is a new item.</div>' : '') +
           '<label class="lab-f"><span>Rapid code <i>(required)</i></span>' +
@@ -444,7 +444,7 @@
           // capture="environment" abre a câmera traseira direto; sem ele o
           // Android pergunta câmera-ou-galeria a cada foto.
           '<input type="file" id="ccFile" accept="image/*" capture="environment" multiple hidden>' +
-          '<div class="meta" style="margin-top:14px"><a href="/features/container-check/container-check.html" id="ccFull">Open the full Container Check</a> for records and review.</div>';
+          '<div class="meta" style="margin-top:14px"><a href="/features/container-check/container-check.html" id="ccFull">Open the full Barcodes Review</a> for records and review.</div>';
         bottom((rascunho ? '<button class="btn ghost" id="ccDiscard">Discard</button>' : '') +
                '<button class="btn" id="ccSave">Save check</button>');
         if ($('ccDiscard')) $('ccDiscard').onclick = function () {
@@ -614,7 +614,7 @@
         },
         tiles: [
           { id: 'tLabels', title: 'Labels', sub: 'Search &amp; print, custom, multi', screen: 'labels' },
-          { id: 'tCC', title: 'Container check', sub: 'Check an item and photograph it', screen: 'ccCheck' }
+          { id: 'tCC', title: 'Barcodes Review', sub: 'Check the labels on an item and photograph it', screen: 'ccCheck' }
         ]
       };
     }

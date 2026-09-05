@@ -25,8 +25,16 @@
 
   // ── state + navigation ──
   var EXTRA_TILES;          // preenchido junto do SCREENS, no fim do arquivo
-  var S = { user: localStorage.getItem('wms_user') || 'operator', stack: [], pick: null };
-  function setUser(u) { S.user = u || 'operator'; localStorage.setItem('wms_user', S.user); $('whoChip').textContent = S.user; }
+  /* O nome do operador continua VIAJANDO (X-WMS-User em toda chamada, x-cc-user
+     no barcodes review) porque o servidor carimba quem fez cada movimento — e um
+     movimento sem autor e um registro que nao responde a pergunta que se faz
+     depois. O que saiu foi a ESCOLHA dele na tela: digitar o proprio nome num
+     prompt nao e identidade, e um toque errado atribuia o trabalho a outra
+     pessoa sem ninguem perceber.
+     O valor real vem do login com roles, que esta sendo feito noutro repo. Ate
+     la fica 'operator', que e honesto: diz que ninguem foi identificado, em vez
+     de um nome digitado que parece identificacao. */
+  var S = { user: 'operator', stack: [], pick: null };
   function go(screen, title, ctx) { S.stack.push({ screen: screen, title: title, ctx: ctx }); render(); }
   function back() {
     var cur = S.stack[S.stack.length - 1];
@@ -114,13 +122,11 @@
         EXTRA_TILES.map(function (t) {
           return '<button class="tile" id="' + t.id + '"><div class="t">' + t.title + '</div><div class="s">' + t.sub + '</div></button>';
         }).join('') +
-      '</div>' +
-      '<div class="row" style="justify-content:flex-end;margin-top:22px"><button class="who" id="tUser">' + esc(S.user) + ' ▾</button></div>';
+      '</div>';
     $('tPick').onclick = function () { go('pickEntry', 'Pick'); };
     $('tTr').onclick = function () { go('trEntry', 'Transfer (TR)'); };
     $('tXfer').onclick = function () { S.bb = null; go('transfer', 'Bin transfer'); };
     $('tLook').onclick = function () { go('lookup', 'Stock lookup'); };
-    $('tUser').onclick = function () { var u = prompt('Operator name', S.user); if (u) { setUser(u.trim()); render(); } };
     EXTRA_TILES.forEach(function (t) {
       var el = $(t.id); if (el) el.onclick = function () { go(t.screen, t.title); };
     });
@@ -488,8 +494,6 @@
 
   // ── boot ──
   $('backBtn').onclick = back;
-  $('whoChip').textContent = S.user;
-  $('whoChip').onclick = function () { var u = prompt('Operator name', S.user); if (u) { setUser(u.trim()); render(); } };
   S.stack = [{ screen: 'home', title: 'Rapid WMS' }];
   render();
 })();

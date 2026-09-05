@@ -82,7 +82,7 @@
         match: ['/purchase-orders', '/features/stock-planning/ui/po.html'] },
       { t: 'Master Stock', href: '/master', ic: 'box',
         match: ['/master', '/features/stock-planning/ui/master.html'] },
-      { t: 'Container Check', href: '/features/container-check/container-check.html', ic: 'inbox' },
+      { t: 'Barcodes Review', href: '/features/container-check/container-check.html', ic: 'inbox' },
       { t: 'Gateway', href: '/gateway-main.html', ic: 'fact', dot: 'railDotGateway' },
       { t: 'Branch Replenishment', href: '/features/replenishment/ui/replenishment.html', ic: 'truck',
         match: ['/features/replenishment/ui/replenishment.html'] },
