@@ -563,6 +563,9 @@ function mapDbToUi(row){
   tubes: row.tubes,
   invoice: row.invoice || row.invoice_number || row.invoice_no || '',
   salesRep: row.sales_rep || row.salesrep || row.rep || '',
+  // Linha antiga (anterior a migration) nao tem o campo: ela E da Main, que e
+  // onde tudo aconteceu ate agora. Mostrar vazio faria parecer indefinido.
+  warehouse: row.warehouse || WH_DEFAULT,
       contactName: row.contact_name,
       contactNumber: row.contact_number,
       email: row.email,
@@ -713,6 +716,10 @@ function openAddOrderModal(){
   showModal('addOrderModal');
   // Ensure customer autocomplete is ready (no layout change)
   try { setupCustomerAutocomplete(); } catch(e){ reportError('setupCustomerAutocomplete', e); }
+  // Idempotente: so preenche se estiver vazio. Aqui alem do DOMContentLoaded
+  // porque o modal pode ser aberto por um caminho que nao passou por la, e um
+  // select de armazem vazio deixaria a coleta sem origem.
+  try { fillWarehouseSelects(); } catch(e){ reportError('fillWarehouseSelects', e); }
   const addModal = document.getElementById('addOrderModal');
   // Ensure placeholder present immediately (in case JS execution later fails)
   const wrap = document.getElementById('parcelDraftList');
@@ -1097,6 +1104,33 @@ async function confirmAddOrderAndPrint(){
 }
 
 // Extract shared logic so we can branch for print
+/* Os armazens, na MESMA ordem e com os MESMOS nomes do Returns
+   (features/returns/returns.js) — sao os nomes que o Cin7 usa, e um "Sunshine
+   Coast" aqui contra "Sunshine Coast Warehouse" ali significaria que o mesmo
+   lugar nao casa entre os dois modulos.
+   WH_DEFAULT e Main porque e onde o Collections roda hoje; quando cada usuario
+   tiver a sua filial no login, e esta constante que sai. */
+const WAREHOUSES = ['Main Warehouse', 'Sydney', 'Melbourne', 'Brisbane', 'Cairns', 'Coffs Harbour', 'Hobart', 'Sunshine Coast'];
+const WH_DEFAULT = 'Main Warehouse';
+
+function fillWarehouseSelects(){
+  const form = document.getElementById('orderWarehouse');
+  if (form && !form.options.length){
+    form.innerHTML = WAREHOUSES.map(w => `<option value="${w}">${w}</option>`).join('');
+    form.value = WH_DEFAULT;
+  }
+  const ed = document.getElementById('editWarehouse');
+  if (ed && !ed.options.length){
+    ed.innerHTML = WAREHOUSES.map(w => `<option value="${w}">${w}</option>`).join('');
+  }
+  const filt = document.getElementById('warehouseFilter');
+  if (filt && !filt.options.length){
+    // "All" primeiro: quem abre a tela quer ver tudo, nao a Main por acaso.
+    filt.innerHTML = '<option value="">All warehouses</option>' +
+      WAREHOUSES.map(w => `<option value="${w}">${w}</option>`).join('');
+  }
+}
+
 async function confirmAddOrderInternal(shouldPrint){
   // Sanitize textual fields (no layout/UI change)
   const customer = sanitizeText(document.getElementById('orderCustomer').value, 80);
@@ -1107,6 +1141,7 @@ async function confirmAddOrderInternal(shouldPrint){
   const contactNumber = sanitizeText(document.getElementById('orderContactNumber').value, 40);
   const email = sanitizeText((document.getElementById('orderEmail')?.value||''), 120);
   const date = document.getElementById('orderDate').value;
+  const warehouse = (document.getElementById('orderWarehouse')?.value || WH_DEFAULT);
   // Clear previous required state
   ['orderCustomer','orderReference','orderDate'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.classList.remove('error'); el.removeAttribute('aria-invalid'); }});
   let missing=[];
@@ -1162,7 +1197,7 @@ async function confirmAddOrderInternal(shouldPrint){
   let createRes = await window.supabaseCollections.create({
     customer, reference, cartons, pallets, tubes,
     contactName, contactNumber, email, date,
-    salesRep, invoice
+    salesRep, invoice, warehouse
   });
   if(!createRes.success){
     handleDbError('create', createRes.error);
@@ -1308,12 +1343,19 @@ function renderCollections(){
     btn.disabled = n===0;
     btn.textContent = showOnlyDup ? `Show all (${n})` : `Show duplicates (${n})`;
   }
-  const effRows = showOnlyDup ? rows.filter(o=> dupKeys.has(normalizeCustomer(o.customer))) : rows;
+  // O filtro de armazem vem ANTES do de duplicados: "duplicado" e uma pergunta
+  // sobre o que esta na tela, e com Sydney selecionado o mesmo cliente com uma
+  // ordem em Sydney e outra na Main nao e duplicata daquela visao.
+  const whSel = (document.getElementById('warehouseFilter')||{}).value || '';
+  const whRows = whSel ? rows.filter(o => (o.warehouse||WH_DEFAULT) === whSel) : rows;
+  const effRows = showOnlyDup ? whRows.filter(o=> dupKeys.has(normalizeCustomer(o.customer))) : whRows;
   const tbody=document.getElementById('collectionsTbody');
   if (!tbody) return;
   if (effRows.length === 0){
-    if(q || showOnlyDup){ tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;opacity:.7">Order not found</td></tr>'; }
-    else { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;opacity:.7">No data</td></tr>'; }
+    // colspan acompanha a coluna nova; deixado em 9 a linha de vazio ficaria
+    // curta e a tabela desalinharia so no estado que ninguem testa.
+    if(q || showOnlyDup){ tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;opacity:.7">Order not found</td></tr>'; }
+    else { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;opacity:.7">No data</td></tr>'; }
     return;
   }
   tbody.innerHTML = effRows.map(o=>{
@@ -1331,6 +1373,7 @@ function renderCollections(){
       <td>${o.tubes||0}</td>
       <td>${o.invoice||''}</td>
       <td>${o.salesRep||''}</td>
+      <td class="wh-cell">${o.warehouse||WH_DEFAULT}</td>
       <td><span class="date-chip ${dateClass(o.date)}">${formatShort(o.date)}</span></td>
       <td class="actions-col" style="text-align:right">
         <div class="action-buttons">
@@ -1348,6 +1391,15 @@ function resetCollectionsFilters(){ document.getElementById('collectionsSearch')
 
 // Bind Show Duplicates toggle
 document.addEventListener('DOMContentLoaded', ()=>{
+  // Os selects nascem vazios no HTML e sao preenchidos aqui: a lista de
+  // armazens vive no JS (uma so, ao lado da do Returns) e duplicar os <option>
+  // no markup seria a segunda copia que diverge.
+  try { fillWarehouseSelects(); } catch(e){ /* nao pode impedir o resto do binding */ }
+  const wf = document.getElementById('warehouseFilter');
+  if (wf && !wf._whBound){
+    wf.addEventListener('change', ()=> renderCollections());
+    wf._whBound = true;
+  }
   const btn = document.getElementById('toggleDupBtn');
   if(btn && !btn._dupBound){
     btn.addEventListener('click', ()=>{
@@ -1386,6 +1438,8 @@ function openEditOrder(id){
   const ep=document.getElementById('editPallets'); if(ep) ep.value = o.pallets||0;
   const et=document.getElementById('editTubes'); if(et) et.value = o.tubes||0;
   const ed=document.getElementById('editDate'); if(ed) ed.value = o.date || '';
+  fillWarehouseSelects();
+  const ew=document.getElementById('editWarehouse'); if(ew) ew.value = o.warehouse || WH_DEFAULT;
 }
 function closeEditOrderModal(){ hideModal('editOrderModal'); editingOrderId=null; }
 async function saveEditOrder(){
@@ -1404,7 +1458,8 @@ async function saveEditOrder(){
   cartons: clampNumber(parseInt(document.getElementById('editCartons').value||'0',10) || 0,0,9999),
   pallets: clampNumber(parseInt(document.getElementById('editPallets').value||'0',10) || 0,0,9999),
   tubes: clampNumber(parseInt(document.getElementById('editTubes').value||'0',10) || 0,0,9999),
-    date: document.getElementById('editDate').value
+    date: document.getElementById('editDate').value,
+    warehouse: (document.getElementById('editWarehouse')?.value || collectionsActive[idx].warehouse || WH_DEFAULT)
   };
   // Required: customer, reference, date (contact fields now optional, same regra do Add Order)
   if(!updated.customer || !updated.reference || !updated.date){
@@ -1428,7 +1483,8 @@ async function saveEditOrder(){
   contactName: updated.contactName,
       contactNumber: updated.contactNumber,
       email: updated.email,
-      date: updated.date
+      date: updated.date,
+      warehouse: updated.warehouse
     });
     if (!res.success){
       console.error('Supabase update error:', res.error);

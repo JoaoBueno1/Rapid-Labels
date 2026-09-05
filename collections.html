@@ -11,6 +11,12 @@
 	<meta name="x-build" content="2025-09-09T00:00:00Z-v3" />
   <link rel="stylesheet" href="/shared/rail.css?v=8">
   <script defer src="/shared/rail.js?v=9"></script>
+  <style>
+    /* "Main Warehouse" quebrava em duas linhas e engordava TODA linha da tabela.
+       Regra escopada aqui, e nao no styles.css: .app-table e usada por 13 telas
+       e o que se ganha numa se paga nas outras doze. */
+    .app-table td.wh-cell { white-space: nowrap; }
+  </style>
 </head>
  <body>
 	<header class="site-header">
@@ -43,6 +49,9 @@
 				<div class="legend-row">
 						<div class="small-note">Status legend: <span class="badge neutral">0–7 days</span> <span class="badge warn">7–14 days</span> <span class="badge danger">14+ days</span></div>
 						<div class="legend-actions">
+							<!-- Filtro de armazem. Fica ao lado dos outros porque e a mesma
+							     pergunta: "o que eu quero ver nesta tabela". -->
+							<select id="warehouseFilter" class="search-btn-small secondary" title="Show one warehouse only" style="padding:6px 10px"></select>
 							<button id="toggleDupBtn" type="button" class="search-btn-small secondary" aria-pressed="false" title="Show only customers with multiple active orders">Show duplicates</button>
 							<button class="search-btn-small" onclick="openAddOrderModal()">Add Order</button>
 						</div>
@@ -59,6 +68,7 @@
 								<th>Tubes</th>
 								<th>Invoice</th>
 								<th>Sales Rep</th>
+								<th>Warehouse</th>
 								<th>Date</th>
 								<th class="actions-col" style="text-align:right">Actions</th>
 					</tr>
@@ -111,6 +121,12 @@
 						<label for="orderInvoice">Invoice N.</label>
 						<input id="orderInvoice" type="text" placeholder="Invoice number" />
 					</div>
+				</div>
+				<!-- Armazem de onde a coleta sai. Main por padrao: e onde o modulo
+				     roda hoje, e sera o caso da grande maioria por um bom tempo. -->
+				<div class="field-group">
+					<label for="orderWarehouse">Warehouse</label>
+					<select id="orderWarehouse"></select>
 				</div>
 				<div class="field-group">
 					<label for="orderDate">Date</label>
@@ -336,6 +352,12 @@
 									<label for="editInvoice">Invoice N.</label>
 									<input id="editInvoice" type="text" />
 								</div>
+							</div>
+							<!-- Editavel tambem: sem isto, um armazem errado no cadastro
+							     nao teria como ser corrigido nunca. -->
+							<div class="field-group">
+								<label for="editWarehouse">Warehouse</label>
+								<select id="editWarehouse"></select>
 							</div>
 							<div class="field-row">
 								<div class="field-group">

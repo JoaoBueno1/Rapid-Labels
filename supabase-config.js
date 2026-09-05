@@ -468,7 +468,7 @@ window.supabaseReady = (async () => {
           .from('collections_history')
           .select(`
                         id, customer, reference, cartons, pallets, tubes,
-                        invoice, sales_rep,
+                        invoice, sales_rep, warehouse,
             contact_name, contact_number, email,
             collected_by, operator, collected_at, collection_date,
             signature, signature_data, created_at
@@ -476,6 +476,18 @@ window.supabaseReady = (async () => {
           .order('collected_at', { ascending:false })
           .limit(limit);
         return error ? { success:false, error } : { success:true, data };
+      },
+      /* A coluna warehouse pode ainda nao existir: o codigo e a migration nao
+         sobem no mesmo instante, e este modulo e usado todo dia. Sem esta rede,
+         a primeira coleta cadastrada depois do deploy e antes do SQL falharia com
+         "column does not exist" — e quem esta na recepcao com o cliente na frente
+         nao tem o que fazer com isso.
+         Uma vez detectada a ausencia, para de tentar: repetir a cada cadastro
+         gastaria duas chamadas por coleta ate alguem rodar o SQL. */
+      _noWarehouseCol: false,
+      _isMissingWarehouse(error){
+        var m = String((error && (error.message || error.code)) || '');
+        return /warehouse/i.test(m) && (/does not exist/i.test(m) || /42703/.test(m));
       },
       async create(order){
         const payload = {
@@ -489,13 +501,26 @@ window.supabaseReady = (async () => {
           email: order.email || null,
                     invoice: order.invoice || null,
                     sales_rep: order.salesRep || null,
+          // Sem armazem informado, Main — que e onde o modulo sempre rodou.
+          // O banco tem o mesmo default; este aqui existe para o valor viajar
+          // explicito e nao depender de quem escreve lembrar dele.
+          warehouse: order.warehouse || 'Main Warehouse',
           collection_date: order.date
         };
-        const { data, error } = await supabase
+        if (this._noWarehouseCol) delete payload.warehouse;
+        let { data, error } = await supabase
           .from('collections_active')
           .insert(payload)
           .select()
           .single();
+        if (error && this._isMissingWarehouse(error)){
+          // Cadastra sem o campo e AVISA no console — o dado do armazem se perde
+          // ate o SQL rodar, e isso tem de estar dito em algum lugar.
+          console.warn('[collections] coluna warehouse ausente — rode features/collections/db/001_collections_warehouse.sql. Salvando sem ela.');
+          this._noWarehouseCol = true;
+          delete payload.warehouse;
+          ({ data, error } = await supabase.from('collections_active').insert(payload).select().single());
+        }
         return error ? { success:false, error } : { success:true, data };
       },
       async update(id, patch){
@@ -512,12 +537,22 @@ window.supabaseReady = (async () => {
                     sales_rep: patch.salesRep || null,
           collection_date: patch.date
         };
-        const { data, error } = await supabase
+        // So escreve o armazem se veio um. `patch.warehouse || 'Main'` apagaria
+        // o armazem de uma filial toda vez que alguem editasse a coleta por uma
+        // tela que ainda nao manda o campo — e a edicao nao e o lugar de decidir
+        // isso.
+        if (patch.warehouse && !this._noWarehouseCol) upd.warehouse = patch.warehouse;
+        let { data, error } = await supabase
           .from('collections_active')
           .update(upd)
           .eq('id', id)
           .select()
           .single();
+        if (error && this._isMissingWarehouse(error)){
+          this._noWarehouseCol = true;
+          delete upd.warehouse;
+          ({ data, error } = await supabase.from('collections_active').update(upd).eq('id', id).select().single());
+        }
         return error ? { success:false, error } : { success:true, data };
       },
       async remove(id){
@@ -547,17 +582,28 @@ window.supabaseCollections = window.supabaseCollections || {};
 
 // === (RE)Definição listHistory simples + debug ===
 window.supabaseCollections.listHistory = async function listHistory(limit = 500){
-  const { data, error } = await supabase
-    .from('collections_history')
-    .select(`
+  /* O select e explicito, entao pedir uma coluna que ainda nao existe nao volta
+     "sem o campo" — volta ERRO, e o historico inteiro some da tela. Como o
+     deploy do codigo e o do SQL nao sao o mesmo ato, pede-se com a coluna e,
+     se ela nao estiver la, pede-se de novo sem. */
+  const COLS = `
       id, customer, reference, cartons, pallets, tubes,
-    invoice, sales_rep,
+    invoice, sales_rep, %WH%
       contact_name, contact_number, email,
       collected_by, operator, collected_at, collection_date,
       signature, signature_data, created_at
-    `)
+    `;
+  const ask = (wh) => supabase
+    .from('collections_history')
+    .select(COLS.replace('%WH%', wh ? 'warehouse,' : ''))
     .order('collected_at', { ascending:false })
     .limit(limit);
+
+  let { data, error } = await ask(true);
+  if (error && /warehouse/i.test(String(error.message || error.code || ''))){
+    console.warn('[collections] coluna warehouse ausente no historico — rode features/collections/db/001_collections_warehouse.sql');
+    ({ data, error } = await ask(false));
+  }
 
   if (error){
     console.warn('[listHistory] error', error);
