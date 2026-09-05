@@ -380,8 +380,12 @@
 								</div>
 							</div>
 							<div class="field-group">
-								<label for="editDate">Date</label>
-								<input id="editDate" type="date" />
+								<label for="editOrderDate">Date</label>
+								<!-- editOrderDate, e nao editDate: o #searchModal ja tem um
+								     #editDate (linha 243) e o getElementById devolve AQUELE,
+								     por vir antes no documento. O campo daqui nascia vazio e
+								     a data digitada era ignorada no save. -->
+								<input id="editOrderDate" type="date" />
 							</div>
 						</div>
 				<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">

@@ -1475,7 +1475,7 @@ function openEditOrder(id){
   const ec=document.getElementById('editCartons'); if(ec) ec.value = o.cartons||0;
   const ep=document.getElementById('editPallets'); if(ep) ep.value = o.pallets||0;
   const et=document.getElementById('editTubes'); if(et) et.value = o.tubes||0;
-  const ed=document.getElementById('editDate'); if(ed) ed.value = o.date || '';
+  const ed=document.getElementById('editOrderDate'); if(ed) ed.value = o.date || '';
   fillWarehouseSelects();
   const ew=document.getElementById('editWarehouse'); if(ew) ew.value = o.warehouse || WH_DEFAULT;
 }
@@ -1496,7 +1496,7 @@ async function saveEditOrder(){
   cartons: clampNumber(parseInt(document.getElementById('editCartons').value||'0',10) || 0,0,9999),
   pallets: clampNumber(parseInt(document.getElementById('editPallets').value||'0',10) || 0,0,9999),
   tubes: clampNumber(parseInt(document.getElementById('editTubes').value||'0',10) || 0,0,9999),
-    date: document.getElementById('editDate').value,
+    date: document.getElementById('editOrderDate').value,
     warehouse: (document.getElementById('editWarehouse')?.value || collectionsActive[idx].warehouse || WH_DEFAULT)
   };
   // Required: customer, reference, date (contact fields now optional, same regra do Add Order)
