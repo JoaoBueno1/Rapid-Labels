@@ -1,5 +1,9 @@
 // Collections page logic – DB only (local storage removed)
 let collectionsActive = [];
+/* O carregamento falhou? Sem isto, um 500 do Supabase deixava a tabela dizendo
+   "No data" — que no balcao significa "nao ha coleta agendada" e manda o cliente
+   embora. Vazio nao pode parecer erro nem o contrario. */
+let loadFailed = null;
 // history kept only for immediate session logic after confirm (not persisted locally)
 let collectionsHistory = [];
 let draftParcels = [];
@@ -683,14 +687,17 @@ async function refreshCollections(silent = false){
       if (res.success){
         collectionsActive = (res.data || []).map(mapDbToUi);
   // Sales Rep datalist disabled; value/placeholder come from customer history
+        loadFailed = null;
       } else {
         console.error('Supabase listActive error:', res.error);
+        loadFailed = (res.error && (res.error.message || res.error)) || 'unknown error';
         handleDbError('listActive', res.error);
       }
     } else {
+      loadFailed = 'Database not initialised';
       toast('Database not initialised','error');
     }
-  } catch(e){ reportError('init:listActive', e); }
+  } catch(e){ loadFailed = e.message || String(e); reportError('init:listActive', e); }
   renderCollections();
   // Initialize customer autocomplete data after first load
   refreshCustomerAutocompleteSources();
@@ -1325,6 +1332,11 @@ function dateClass(dateStr){ const d=daysDiffFrom(dateStr); if(d<7) return 'neut
 function formatShort(dateStr){ try{ const d=new Date(dateStr); const dd=String(d.getDate()).padStart(2,'0'); const mm=String(d.getMonth()+1).padStart(2,'0'); const yy=String(d.getFullYear()).slice(-2); return `${dd}/${mm}/${yy}`; } catch { return dateStr; } }
 // Status now indicated only by color of the date chip
 
+/* dateClass devolve neutral|warn|danger, que eram os nomes das antigas .badge.
+   chipTone traduz para o vocabulario .co-chip-* sem tocar no dateClass, que e
+   usado tambem pela legenda e por outros pontos. */
+function chipTone(d){ const c = dateClass(d); return c === 'danger' ? 'danger' : c === 'warn' ? 'warn' : 'neutral'; }
+
 function renderCollections(){
   const q=(document.getElementById('collectionsSearch').value||'').toLowerCase();
   const rows=collectionsActive
@@ -1351,21 +1363,49 @@ function renderCollections(){
   const effRows = showOnlyDup ? whRows.filter(o=> dupKeys.has(normalizeCustomer(o.customer))) : whRows;
   const tbody=document.getElementById('collectionsTbody');
   if (!tbody) return;
+  // ANTES do retorno do vazio: com a tabela filtrada a zero a contagem tem de
+  // dizer "0 de 89", que e o que explica por que a tela esta vazia.
+  // coRowCount e NAO collectionsCount: aquele id pertence ao badge do trilho
+  // (shared/rail.js:65,301) e ao dashboard. Reusa-lo punha "89 order(s)" dentro
+  // do menu lateral.
+  const cnt = document.getElementById('coRowCount');
+  if (cnt) cnt.textContent = (effRows.length === rows.length)
+    ? `${rows.length} order(s)` : `${effRows.length} of ${rows.length}`;
+  const sub = document.getElementById('collectionsSub');
+  if (sub && !loadFailed) sub.textContent = `${collectionsActive.length} active`;
   if (effRows.length === 0){
-    // colspan acompanha a coluna nova; deixado em 9 a linha de vazio ficaria
-    // curta e a tabela desalinharia so no estado que ninguem testa.
-    if(q || showOnlyDup){ tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;opacity:.7">Order not found</td></tr>'; }
-    else { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;opacity:.7">No data</td></tr>'; }
+    if (loadFailed){
+      // Vermelho, com o motivo e um caminho de saida — nao um cinza que diz
+      // "nao ha nada".
+      tbody.innerHTML = `<tr><td colspan="10" class="co-state co-state-error">`
+        + `<div><b>Could not load the collections.</b></div>`
+        + `<div class="co-hint">${escapeHtml(String(loadFailed))}</div>`
+        + `<button class="co-btn" onclick="location.reload()">Try again</button></td></tr>`;
+      const sub2 = document.getElementById('collectionsSub');
+      if (sub2) sub2.textContent = 'Could not load';
+      return;
+    }
+    // VAZIO nao pode parecer ERRO. "Nenhum pedido" porque a busca nao casou e
+    // "nenhum pedido" porque o banco caiu levam a decisoes opostas no balcao.
+    const vazio = (q || showOnlyDup || whSel)
+      ? 'Nothing matches these filters.'
+      : 'No collections scheduled.';
+    tbody.innerHTML = `<tr><td colspan="10" class="co-state co-state-empty">${vazio}</td></tr>`;
     return;
   }
   tbody.innerHTML = effRows.map(o=>{
     const highlight = q && [o.customer,o.reference,o.invoice,o.salesRep,o.contactName,o.email,o.id].some(v => (v||'').toLowerCase().includes(q));
     const isDup = dupKeys.has(normalizeCustomer(o.customer));
-    const hlAttr = (highlight || (showOnlyDup && isDup)) ? ' style="background:#fffbe6"' : '';
+    // Classe e nao style inline: inline vence toda regra e sobrevive a qualquer
+    // restyle, entao o realce de busca ficaria amarelo para sempre.
+    const hlAttr = (highlight || (showOnlyDup && isDup)) ? ' class="co-hl"' : '';
     const custKey = normalizeCustomer(o.customer);
     const dupCount = counts.get(custKey) || 0;
-    const dupBadge = (!showOnlyDup && dupCount>1) ? `<span class="dup-badge" title="This customer has ${dupCount} active orders">×${dupCount}</span>` : '';
-    return `<tr>
+    const dupBadge = (!showOnlyDup && dupCount>1) ? `<span class="co-chip co-chip-accent" title="This customer has ${dupCount} active orders">×${dupCount}</span>` : '';
+    // A barra vermelha na primeira celula so no 14+; tingir por severidade
+    // coloriria a tabela inteira, ja que toda linha aqui espera coleta.
+    const late = dateClass(o.date) === 'danger' ? ' class="co-late"' : '';
+    return `<tr${late}>
       <td${hlAttr}>${o.customer} ${dupBadge}</td>
       <td>${o.reference}</td>
       <td>${o.cartons||0}</td>
@@ -1374,15 +1414,13 @@ function renderCollections(){
       <td>${o.invoice||''}</td>
       <td>${o.salesRep||''}</td>
       <td class="wh-cell">${o.warehouse||WH_DEFAULT}</td>
-      <td><span class="date-chip ${dateClass(o.date)}">${formatShort(o.date)}</span></td>
-      <td class="actions-col" style="text-align:right">
-        <div class="action-buttons">
-          <button class="btn-mini btn-green" title="Confirm" onclick="openConfirmCollect('${o.id}')">✓</button>
-          <button class="btn-mini btn-blue" title="Edit" onclick="openEditOrder('${o.id}')">✎</button>
-          <button class="btn-mini" title="Print Labels" onclick="printOrderLabelsById('${o.id}')">🖨️</button>
-          <button class="btn-mini" title="Message" onclick="messageOrder('${o.id}')">💬</button>
-          <button class="btn-mini btn-red" title="Cancel" onclick="cancelOrder('${o.id}')">✕</button>
-        </div>
+      <td><span class="co-chip co-chip-${chipTone(o.date)}">${formatShort(o.date)}</span></td>
+      <td class="co-actions">
+        <button class="co-btn co-btn-sm" title="Confirm collection" aria-label="Confirm collection" onclick="openConfirmCollect('${o.id}')">✓</button>
+        <button class="co-btn co-btn-sm" title="Edit" aria-label="Edit" onclick="openEditOrder('${o.id}')">✎</button>
+        <button class="co-btn co-btn-sm" title="Print labels" aria-label="Print labels" onclick="printOrderLabelsById('${o.id}')">🖨️</button>
+        <button class="co-btn co-btn-sm" title="Message" aria-label="Message" onclick="messageOrder('${o.id}')">💬</button>
+        <button class="co-btn co-btn-sm co-btn-danger" title="Cancel" aria-label="Cancel" onclick="cancelOrder('${o.id}')">✕</button>
       </td>
     </tr>`; }).join('');
 }

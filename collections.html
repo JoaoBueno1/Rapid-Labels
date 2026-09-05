@@ -11,54 +11,46 @@
 	<meta name="x-build" content="2025-09-09T00:00:00Z-v3" />
   <link rel="stylesheet" href="/shared/rail.css?v=8">
   <script defer src="/shared/rail.js?v=9"></script>
-  <style>
-    /* "Main Warehouse" quebrava em duas linhas e engordava TODA linha da tabela.
-       Regra escopada aqui, e nao no styles.css: .app-table e usada por 13 telas
-       e o que se ganha numa se paga nas outras doze. */
-    .app-table td.wh-cell { white-space: nowrap; }
-  </style>
+  <!-- Ordem importa: styles.css continua dono do .hidden/.modal (nove modais o
+       usam e o JS le a classe de volta como estado), os tokens definem, e o CSS
+       da feature so estiliza classes .co-* novas. Nada aqui sobrescreve nada. -->
+  <link rel="stylesheet" href="/shared/tokens.css?v=1">
+  <link rel="stylesheet" href="/features/collections/collections.css?v=1">
 </head>
  <body>
-	<header class="site-header">
-		<div class="header-inner">
-			<div class="left">
-				<a class="back-link" href="index.html">← Back</a>
-				<a class="brand" href="index.html">Rapid LED WMS Lite</a>
-			</div>
-			<nav class="site-nav">
-				<a href="index.html" class="nav-link">Home</a>
-				<a href="collections.html" class="nav-link active">Collections</a>
-				<a href="collections-history.html" class="nav-link">Collections History</a>
+	<header class="co-header">
+		<div class="co-header-inner">
+			<div class="co-brand">Collections</div>
+			<nav class="co-nav">
+				<a href="index.html" class="co-nav-link">Home</a>
+				<a href="collections.html" class="co-nav-link is-on">Collections</a>
+				<a href="collections-history.html" class="co-nav-link">History</a>
 			</nav>
+			<!-- A linha de status da pagina, como o .rt-sub do Returns. -->
+			<div class="co-sub" id="collectionsSub">Loading…</div>
 		</div>
 	</header>
 
-	<div class="main-container wide-container">
-			<div class="page-header">
-				<h1>Collections</h1>
-			<div class="header-actions">
-				<div class="search-input-group">
-					<input type="text" id="collectionsSearch" placeholder="Search by Customer, Contact or Reference or scan" oninput="filterCollections()" />
-					<button class="search-btn-small" onclick="filterCollections()">Search</button>
-					<button class="search-btn-small secondary" type="button" onclick="openScanModal('collectionsSearch', filterCollections)" aria-label="Open camera">📷</button>
-				</div>
-        
+	<main class="co-main">
+			<div id="selfTestPanel" class="co-hint hidden"></div>
+			<!-- UMA barra de ferramentas onde havia tres faixas. -->
+			<div class="co-toolbar">
+				<button class="co-btn co-btn-primary" onclick="openAddOrderModal()">+ Add order</button>
+				<input type="text" id="collectionsSearch" class="co-input co-input-grow" placeholder="Search customer, reference or contact…" oninput="filterCollections()" />
+				<button class="co-btn" type="button" onclick="openScanModal('collectionsSearch', filterCollections)" aria-label="Scan with the camera" title="Scan with the camera">Scan</button>
+				<select id="warehouseFilter" class="co-input" title="Show one warehouse only"></select>
+				<button id="toggleDupBtn" type="button" class="co-btn" aria-pressed="false" title="Show only customers with multiple active orders">Show duplicates</button>
+				<span class="co-count" id="coRowCount"></span>
 			</div>
-		</div>
-			<div id="selfTestPanel" class="small-note hidden" style="border:1px solid var(--border);background:#fff;border-radius:8px;padding:8px 10px;margin:6px 0"></div>
-				<div class="legend-row">
-						<div class="small-note">Status legend: <span class="badge neutral">0–7 days</span> <span class="badge warn">7–14 days</span> <span class="badge danger">14+ days</span></div>
-						<div class="legend-actions">
-							<!-- Filtro de armazem. Fica ao lado dos outros porque e a mesma
-							     pergunta: "o que eu quero ver nesta tabela". -->
-							<select id="warehouseFilter" class="search-btn-small secondary" title="Show one warehouse only" style="padding:6px 10px"></select>
-							<button id="toggleDupBtn" type="button" class="search-btn-small secondary" aria-pressed="false" title="Show only customers with multiple active orders">Show duplicates</button>
-							<button class="search-btn-small" onclick="openAddOrderModal()">Add Order</button>
-						</div>
-				</div>
+			<div class="co-legend">
+				Age
+				<span class="co-chip co-chip-neutral">0–7 days</span>
+				<span class="co-chip co-chip-warn">7–14</span>
+				<span class="co-chip co-chip-danger">14+</span>
+			</div>
 
-		<div class="table-wrapper">
-			<table class="app-table">
+		<div class="co-table-wrap">
+			<table class="co-table">
 				<thead>
 					<tr>
 								<th>Customer</th>
@@ -73,10 +65,10 @@
 								<th class="actions-col" style="text-align:right">Actions</th>
 					</tr>
 				</thead>
-					<tbody id="collectionsTbody"><tr><td colspan="9" style="text-align:center;opacity:.7">No data</td></tr></tbody>
+					<tbody id="collectionsTbody"><tr><td colspan="10" class="co-state co-state-loading">Loading…</td></tr></tbody>
 			</table>
 		</div>
-	</div>
+	</main>
 
 	<footer class="site-footer">
 		<div class="footer-inner">© 2023-2026 Rapid LED WMS Lite — All rights reserved.</div>

@@ -1,0 +1,96 @@
+/* shared/tokens.css — os tokens que o CLAUDE.md manda usar.
+ *
+ * POR QUE ESTE ARQUIVO EXISTE
+ *   O CLAUDE.md proíbe hex cravado e manda `var(--color-*)`. Só que nenhum
+ *   `--color-*` existia no repo — conferido, zero ocorrências em todo .css e
+ *   .html. A regra "se precisa mudar um valor, mude na fonte" pressupunha uma
+ *   fonte que não existia, e por isso toda tela nova acabava cravando hex e a
+ *   próxima copiava.
+ *
+ *   Este arquivo DEFINE e nunca sobrescreve. Não é um quinto `*-theme.css`: não
+ *   tem um `!important`, não re-aponta token de outro módulo e não disputa
+ *   especificidade com ninguém. `--color-border` não colide com o `--border`
+ *   que o styles.css declara no `body` — nomes diferentes, escopos diferentes.
+ *
+ * COMO USAR
+ *   Carregue DEPOIS do styles.css e ANTES do CSS da feature. Só quem opta entra:
+ *   nenhuma tela existente muda por este arquivo existir.
+ *
+ * OS VALORES SÃO OS DA TABELA DO CLAUDE.md, verbatim. Se algum estiver errado, o
+ * conserto é lá e aqui — não numa exceção na tela.
+ */
+:root {
+  /* ── Superfície ─────────────────────────────────────────────────────── */
+  --color-surface:        #FFFFFF;
+  --color-surface-sunken: #F8FAFC;
+  --color-surface-subtle: #F1F5F9;
+
+  /* ── Tinta ──────────────────────────────────────────────────────────── */
+  /* --color-text é a MARCA (#1B2A3F). O ciano #0AA5E6 das telas mais recentes
+     não entra aqui de propósito: ele não é migrado nem usado em código novo. */
+  --color-text:              #1B2A3F;
+  --color-text-muted:        #64748B;
+  --color-text-muted-strong: #475569;
+  --color-text-subtle:       #94A3B8;
+  --color-text-inverse:      #FFFFFF;
+
+  /* ── Borda ──────────────────────────────────────────────────────────── */
+  --color-border:        #E2E8F0;
+  --color-border-strong: #CBD5E1;
+
+  /* ── Acento ─────────────────────────────────────────────────────────── */
+  --color-accent:        #2563EB;
+  --color-accent-subtle: #DBEAFE;
+  --color-accent-text:   #1E40AF;
+
+  /* ── Erro ───────────────────────────────────────────────────────────── */
+  --color-danger:        #DC2626;
+  --color-danger-subtle: #FEE2E2;
+  --color-danger-text:   #991B1B;
+
+  /* ── Sucesso ────────────────────────────────────────────────────────── */
+  --color-success:        #15803D;
+  --color-success-subtle: #DCFCE7;
+  --color-success-text:   #166534;
+
+  /* ── Aviso ──────────────────────────────────────────────────────────── */
+  /* --color-warning NUNCA é tinta: #F59E0B sobre branco dá 2.15:1. Para texto,
+     --color-warning-text. */
+  --color-warning:        #F59E0B;
+  --color-warning-subtle: #FEF3C7;
+  --color-warning-text:   #92400E;
+
+  /* ── Espaço ─────────────────────────────────────────────────────────── */
+  /* Não existe 10. É hoje o segundo valor mais usado no repo, e é justamente o
+     que faz duas telas nunca alinharem. */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+  --space-7: 32px;
+
+  /* ── Raio ───────────────────────────────────────────────────────────── */
+  --radius-sm:   6px;
+  --radius:      8px;
+  --radius-lg:  12px;
+  --radius-pill: 9999px;
+
+  /* ── Tipografia ─────────────────────────────────────────────────────── */
+  /* Stack de sistema. As 16 páginas que já carregam IBM Plex ficam como estão —
+     mas código novo não puxa fonte de CDN. */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 12px;   /* o PISO. Nada abaixo disto. */
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+
+  /* ── Camadas ────────────────────────────────────────────────────────── */
+  /* Quatro, e só quatro. Um z-index fora desta escala é um bug esperando. */
+  --z-sticky:   100;
+  --z-dropdown: 1000;
+  --z-modal:    2000;
+  --z-toast:    3000;
+}

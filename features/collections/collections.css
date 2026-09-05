@@ -1,0 +1,277 @@
+/* features/collections/collections.css — a tela de Collections.
+ *
+ * MESMAS FORMAS DO RETURNS, PALETA DA MARCA.
+ *   O Returns é a referência de LAYOUT: cabeçalho com a contagem à direita,
+ *   uma barra de ferramentas só, tabela de cabeçalho fino, barra colorida na
+ *   primeira célula, chips, casca de modal. O que NÃO vem dele são os valores:
+ *   o acento dele é o ciano #0AA5E6 e a fonte é IBM Plex de CDN, e o CLAUDE.md
+ *   diz que os dois não entram em código novo. Aqui é `var(--color-*)` de
+ *   shared/tokens.css e stack de sistema. Parece irmão, não gêmeo — de propósito.
+ *
+ * ISTO NÃO É UM QUINTO *-theme.css, e o teste é mecânico:
+ *   · zero `!important`
+ *   · não re-aponta token de nenhum outro módulo
+ *   · não vence classe compartilhada por especificidade
+ *   Consegue isso estilizando SÓ classes novas com prefixo `co-`. No instante em
+ *   que aparecer um `.co-x .search-btn-small { … }` aqui, virou tema e tem de
+ *   parar.
+ *
+ * O QUE FICA COM O styles.css, de propósito:
+ *   `.hidden` e o trio `.modal` / `.modal.hidden` / `.modal:not(.hidden)`. É o
+ *   mecanismo de mostrar/esconder de nove modais, do bloco de assinatura e do
+ *   painel de self-test — e o collections.js LÊ essa classe de volta como estado
+ *   (decide o placeholder do Sales Rep por `classList.contains('hidden')`).
+ *   Mexer ali faz modal nunca abrir, ou nunca fechar, sem um erro no console.
+ */
+
+/* ══ Casca ════════════════════════════════════════════════════════════════ */
+.co-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+.co-header-inner {
+  max-width: 1280px;
+  margin-inline: auto;
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+.co-brand {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -.01em;
+}
+/* A linha de status da página. margin-left:auto e não um spacer vazio — o
+   Returns faz igual, e um <div> só para empurrar é markup que não diz nada. */
+.co-sub {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.co-nav { display: flex; gap: var(--space-1); }
+/* A navegação de topo FICA, mesmo o Returns não tendo uma. Tirar caminho de
+   navegação de uma tela de balcão para parecer com outra não é troca que valha. */
+.co-nav-link {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+}
+.co-nav-link:hover { background: var(--color-surface-subtle); color: var(--color-text); }
+.co-nav-link.is-on { background: var(--color-accent-subtle); color: var(--color-accent-text); }
+
+/* margin-inline:auto e nunca position/negative-margin: o shared/rail.css empurra
+   o body com padding-left, e um main posicionado brigaria com o trilho. */
+.co-main {
+  max-width: 1280px;
+  margin-inline: auto;
+  padding: var(--space-5) var(--space-6) var(--space-7);
+}
+
+/* ══ Barra de ferramentas ═════════════════════════════════════════════════ */
+/* UMA barra. Hoje são três faixas (page-header, header-actions, legend-row)
+   fazendo o trabalho de uma. */
+.co-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.co-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.co-legend { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted); }
+.co-legend + .co-table-wrap { margin-top: var(--space-4); }
+
+/* ══ Botões ═══════════════════════════════════════════════════════════════ */
+.co-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 9px var(--space-5);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.co-btn:hover { border-color: var(--color-accent); color: var(--color-accent-text); }
+.co-btn:disabled { opacity: .5; cursor: not-allowed; border-color: var(--color-border); color: var(--color-text-subtle); }
+.co-btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-text-inverse); }
+.co-btn-primary:hover { background: var(--color-accent-text); border-color: var(--color-accent-text); color: var(--color-text-inverse); }
+.co-btn-danger { background: var(--color-danger); border-color: var(--color-danger); color: var(--color-text-inverse); }
+.co-btn-danger:hover { background: var(--color-danger-text); border-color: var(--color-danger-text); color: var(--color-text-inverse); }
+.co-btn-sm { padding: var(--space-2) var(--space-3); font-size: var(--text-xs); }
+
+/* ══ Campos ═══════════════════════════════════════════════════════════════ */
+.co-input {
+  font-family: inherit;
+  /* 16px é o piso que impede o iOS de dar zoom ao focar. Abaixo disto a tela
+     salta a cada toque num campo — no balcão isso é atrito real. */
+  font-size: var(--text-md);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 9px var(--space-4);
+  outline: none;
+}
+.co-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-subtle); }
+.co-input::placeholder { color: var(--color-text-subtle); }
+.co-input-grow { flex: 1; min-width: 200px; }
+
+/* ══ Tabela ═══════════════════════════════════════════════════════════════ */
+/* O wrap rola de lado. É a resposta do Returns e substitui o que a .app-table
+   fazia: ESCONDER colunas abaixo de 768px — na Collections, justamente Invoice
+   e Warehouse. Dado sumir no aparelho em que a ferramenta é usada é bug, não
+   responsividade. Agora o operador arrasta. */
+.co-table-wrap {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: auto;
+}
+.co-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+/* Cabeçalho sobre #F1F5F9 → a tinta é #475569. O muted (#64748B) daria 4.34:1
+   contra esse fundo e reprova; o muted-strong dá 6.92:1. */
+.co-table th {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--color-surface-subtle);
+  color: var(--color-text-muted-strong);
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: var(--space-4);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+.co-table td {
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  vertical-align: middle;
+  color: var(--color-text);
+}
+.co-table tbody tr:first-child td { border-top: 0; }
+.co-table tbody tr:hover td { background: var(--color-surface-sunken); }
+.co-table td.wh-cell { white-space: nowrap; }
+.co-table .co-actions { text-align: right; white-space: nowrap; }
+.co-table .co-actions .co-btn { margin-left: var(--space-1); }
+
+/* Realce de busca / duplicata. Era um style="background:#fffbe6" concatenado no
+   <td>; inline vence qualquer regra e sobrevive a tudo, então virou classe. */
+.co-table td.co-hl { background: var(--color-warning-subtle); }
+
+/* A barra na PRIMEIRA célula marca o atraso. Vai no td e nunca no tr: fundo em
+   tr perde para td, e aí a barra some sem explicação.
+   Só o vermelho (14+ dias) recebe barra — tingir por severidade colore a tabela
+   inteira, já que toda linha aqui está esperando coleta e o que muda é a idade. */
+.co-table tr.co-late td:first-child { box-shadow: inset 3px 0 0 var(--color-danger); }
+
+/* ══ Chips ════════════════════════════════════════════════════════════════ */
+.co-chip {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1.5;
+  padding: 1px var(--space-3);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.co-chip-neutral { background: var(--color-surface-subtle); color: var(--color-text-muted-strong); }
+.co-chip-warn    { background: var(--color-warning-subtle); color: var(--color-warning-text); }
+.co-chip-danger  { background: var(--color-danger-subtle);  color: var(--color-danger-text); }
+.co-chip-accent  { background: var(--color-accent-subtle);  color: var(--color-accent-text); }
+
+/* ══ Os quatro estados ════════════════════════════════════════════════════ */
+/* VAZIO ≠ ERRO. Num controle de coleta, "nenhum pedido" por causa de um 500 vira
+   um cliente esperando por algo que ninguém sabe que existe. O erro é vermelho e
+   traz botão de tentar de novo; o vazio é cinza e não sugere falha. */
+.co-state { text-align: center; padding: var(--space-7) var(--space-5); font-size: var(--text-sm); }
+.co-state-empty   { color: var(--color-text-subtle); }
+.co-state-loading { color: var(--color-text-muted); }
+.co-state-error   { color: var(--color-danger-text); background: var(--color-danger-subtle); }
+.co-state-error .co-btn { margin-top: var(--space-4); }
+.co-hint { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* ══ Modal ════════════════════════════════════════════════════════════════ */
+/* Alinha ao topo como no Returns SEM tocar no styles.css: `.modal.co-modal` tem
+   especificidade 0-3-0 e ganha de `.modal:not(.hidden)` (0-2-0) sem !important.
+   O raio de alcance é exatamente esta página. */
+.modal.co-modal { z-index: var(--z-modal); }
+.modal.co-modal:not(.hidden) {
+  align-items: flex-start;
+  overflow: auto;
+  padding: var(--space-7) var(--space-5);
+}
+.co-modal-box {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 560px;
+  box-shadow: 0 12px 40px rgba(27, 42, 63, .18);
+}
+.co-modal-lg { max-width: 880px; }
+.co-modal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+.co-modal-head h2, .co-modal-head h3 { margin: 0; font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
+.co-modal-body { padding: var(--space-6); }
+.co-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+.co-x {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  font-size: var(--text-lg);
+  line-height: 1;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+  padding: var(--space-1);
+}
+.co-x:hover { color: var(--color-text); }
+
+/* ══ Toasts ═══════════════════════════════════════════════════════════════ */
+/* Os nomes .toast/.success/.error ficam: 31 pontos no JS os escrevem. O que muda
+   é só a aparência, escopada pelo container. */
+.co-toasts { z-index: var(--z-toast); }
+.co-toasts .toast {
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: 0 6px 20px rgba(27, 42, 63, .16);
+}
+
+/* ══ Responsivo ═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .co-header-inner, .co-main { padding-inline: var(--space-4); }
+  .co-toolbar > .co-input-grow { flex-basis: 100%; }
+  .co-count { margin-left: 0; }
+}
